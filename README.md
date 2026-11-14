@@ -126,6 +126,8 @@ From Qwerty, hold Numpad and tap **Q** for Bluetooth profile 0 or **W** for prof
 
 Typing, onboard Javelin, Plover HID, and dictionary editing have been verified over Bluetooth on macOS. The Windows plain-text output profile has been tested on Windows; Windows Bluetooth remains unverified.
 
+The left half enables `CONFIG_ZMK_USB_BOOT=y` for hosts that require the standard USB keyboard Boot protocol, including some Mac FileVault startup screens. Connect the left half by USB and use Qwerty mode for the first password. FileVault operation still needs testing on the target Mac; this option does not change Bluetooth startup compatibility. [ZMK USB Boot protocol documentation](https://zmk.dev/docs/config/system#usb)
+
 Both halves enable deep sleep after 15 idle minutes on battery. Wake each half with one of its own keys. The left half switches off the external flash rail during deep sleep and also after 30 seconds outside Javelin/Practice without dictionary use. Entering Javelin or accessing the editor wakes the flash. Boot checks verify the installed images before translation starts.
 
 Battery logging is available as an optional build feature. [Battery logger](tools/steno-squid-battery/README.md) · [Power settings](config/steno-squid-split/corne_left.conf)
