@@ -86,18 +86,28 @@ void steno_squid_words_answer(unsigned round, bool correct, uint32_t elapsed_ms)
     if (steno_squid_model_answer(&model, round, correct, elapsed_ms)) generation++;
     k_mutex_unlock(&progress_mutex);
 }
-void steno_squid_words_finish(void) {
+void steno_squid_hands_begin(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    steno_squid_model_hands_begin(&model);
+    k_mutex_unlock(&progress_mutex);
+}
+void steno_squid_hands_answer(unsigned round, bool correct, uint32_t elapsed_ms) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    if (steno_squid_model_hands_answer(&model, round, correct, elapsed_ms)) generation++;
+    k_mutex_unlock(&progress_mutex);
+}
+void steno_squid_practice_finish(void) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     if (steno_squid_model_finish(&model)) generation++;
     k_mutex_unlock(&progress_mutex);
-    steno_squid_words_checkpoint();
+    steno_squid_practice_checkpoint();
 }
-void steno_squid_words_checkpoint(void) { k_work_submit(&save_progress_work); }
-void steno_squid_words_end(void) {
+void steno_squid_practice_checkpoint(void) { k_work_submit(&save_progress_work); }
+void steno_squid_practice_end(void) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     model.run.active = false;
     k_mutex_unlock(&progress_mutex);
-    steno_squid_words_checkpoint();
+    steno_squid_practice_checkpoint();
 }
 
 uint64_t steno_squid_practice_progress(void) {
@@ -116,7 +126,7 @@ uint64_t steno_squid_practice_progress(void) {
  * computer is needed. Save requests also happen at completion and on exit. */
 static int practice_activity(const zmk_event_t *event) {
     const struct zmk_activity_state_changed *activity = as_zmk_activity_state_changed(event);
-    if (activity && activity->state != ZMK_ACTIVITY_ACTIVE) steno_squid_words_checkpoint();
+    if (activity && activity->state != ZMK_ACTIVITY_ACTIVE) steno_squid_practice_checkpoint();
     return ZMK_EV_EVENT_BUBBLE;
 }
 ZMK_LISTENER(steno_squid_practice_progress, practice_activity);

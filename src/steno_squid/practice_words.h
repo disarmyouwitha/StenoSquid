@@ -7,6 +7,7 @@
  * Changing the pool/order requires changing its fingerprint too. */
 #define STENO_SQUID_WORD_COUNT 100u
 #define STENO_SQUID_WORD_ROUNDS 10u
+#define STENO_SQUID_HAND_ROUNDS 50u
 #define STENO_SQUID_WORD_SET_ID 0xa4918383u
 
 static const struct { const char *word; const char *outline; } steno_squid_words[] = {

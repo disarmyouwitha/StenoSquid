@@ -59,11 +59,13 @@ void k_work_reschedule(int *, int64_t) {}
 uint32_t sys_rand32_get() { return 3; }
 static steno_squid_practice_model progress_model;
 void steno_squid_words_begin() { steno_squid_model_begin(&progress_model, sys_rand32_get); }
+void steno_squid_hands_begin() { steno_squid_model_hands_begin(&progress_model); }
+void steno_squid_hands_answer(unsigned round, bool correct, uint32_t ms) { steno_squid_model_hands_answer(&progress_model,round,correct,ms); }
 unsigned steno_squid_words_prompt(unsigned round) { return progress_model.run.deck[round < 10 ? round : 9]; }
 void steno_squid_words_answer(unsigned round, bool correct, uint32_t ms) { steno_squid_model_answer(&progress_model,round,correct,ms); }
-void steno_squid_words_finish() { steno_squid_model_finish(&progress_model); }
-void steno_squid_words_checkpoint() {}
-void steno_squid_words_end() { progress_model.run.active=false; }
+void steno_squid_practice_finish() { steno_squid_model_finish(&progress_model); }
+void steno_squid_practice_checkpoint() {}
+void steno_squid_practice_end() { progress_model.run.active=false; }
 struct k_spinlock {};
 using k_spinlock_key_t = int;
 int k_spin_lock(k_spinlock *) { return 0; }

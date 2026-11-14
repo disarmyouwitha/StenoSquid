@@ -82,5 +82,32 @@ int main(void) {
     assert(steno_squid_model_answer(&model,1,true,900));
     assert(model.record.xp==STENO_SQUID_XP_MAX);
     assert(model.record.words[model.run.deck[1]].completed==UINT16_MAX);
-    puts("Adaptive practice: unique decks, weighted sampling, XP, levels, timing and saturation passed");
+    /* Both hand drills share the same rules, independent of word history. */
+    steno_squid_model_init(&model);
+    steno_squid_model_hands_begin(&model);
+    assert(sizeof(model.record)==1224); // Existing saved progress stays compatible.
+    const struct steno_squid_word_stats empty_words[100]={{0}};
+    assert(!steno_squid_model_answer(&model,0,true,1000));
+    for(unsigned round=0;round<50;round++) {
+        const unsigned before=model.record.xp;
+        assert(steno_squid_model_hands_answer(&model,round,true,1000));
+        assert(model.record.xp>before);
+        assert(!steno_squid_model_hands_answer(&model,round,true,1000));
+    }
+    assert(model.run.earned==90 && model.run.hand_streak==50);
+    assert(steno_squid_model_finish(&model));
+    assert(model.run.earned==110 && model.record.xp==110);
+    assert(!steno_squid_model_finish(&model));
+    assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
+    steno_squid_model_hands_begin(&model);
+    const unsigned previous=model.record.xp;
+    for(unsigned round=0;round<50;round++) {
+        assert(!steno_squid_model_hands_answer(&model,round,false,100));
+        assert(model.record.xp==previous+round);
+        assert(steno_squid_model_hands_answer(&model,round,true,1000));
+    }
+    assert(steno_squid_model_finish(&model));
+    assert(model.run.earned==70 && model.record.xp==previous+70);
+    assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
+    puts("Adaptive practice: unique decks, weighted sampling, XP, hand streak bonuses, levels, timing and saturation passed");
 }

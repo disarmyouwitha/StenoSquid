@@ -179,8 +179,8 @@ static void practice_advance(struct k_work *) {
       practice_draw_hand_prompt(true);
     }
     practice.prompt_started_at = k_uptime_get();
-    if (practice.feedback == STENO_SQUID_PRACTICE_DONE && practice.drill == STENO_SQUID_PRACTICE_WORDS) {
-      steno_squid_words_finish();
+    if (practice.feedback == STENO_SQUID_PRACTICE_DONE) {
+      steno_squid_practice_finish();
     }
     practice_publish();
   }
@@ -207,7 +207,7 @@ static void practice_refresh_dictionary() {
 }
 
 static void practice_switch_drill(int direction) {
-  steno_squid_words_end();
+  steno_squid_practice_end();
   k_work_cancel_delayable(&practice_advance_work);
   const int count = STENO_SQUID_PRACTICE_DRILL_COUNT;
   const auto drill = static_cast<steno_squid_practice_drill>((practice.drill + direction + count) % count);
@@ -274,7 +274,7 @@ extern "C" void steno_squid_practice_set_active(bool active) {
       new (processor) StenoProcessor(stenoRepeat.value);
     }
     practice_pending_releases |= practice.keys;
-    steno_squid_words_end();
+    steno_squid_practice_end();
     practice = {};
     practice.active = active && processor;
     practice.menu = practice.active;
@@ -321,6 +321,7 @@ static bool practice_process_key(int index, bool pressed) {
         if (practice.menu) {
           practice.menu = false;
           if (practice.drill == STENO_SQUID_PRACTICE_WORDS) steno_squid_words_begin();
+          else steno_squid_hands_begin();
           practice.prompt_started_at = k_uptime_get();
           practice_refresh_dictionary();
           practice_publish();
@@ -335,10 +336,12 @@ static bool practice_process_key(int index, bool pressed) {
         practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
       } else {
         const bool correct = practice_correct(practice.chord.ToStroke());
+        const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
+        const uint32_t elapsed_ms = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
         if (practice.drill == STENO_SQUID_PRACTICE_WORDS) {
-          const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
-          steno_squid_words_answer(practice.round, correct,
-                                   elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed);
+          steno_squid_words_answer(practice.round, correct, elapsed_ms);
+        } else {
+          steno_squid_hands_answer(practice.round, correct, elapsed_ms);
         }
         if (correct) {
           ++practice.streak;

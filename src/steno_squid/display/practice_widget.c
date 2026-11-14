@@ -22,7 +22,6 @@ static lv_obj_t *feedback_label;
 static lv_obj_t *progress_bar;
 static lv_obj_t *progress_label;
 static lv_obj_t *best_label;
-static lv_obj_t *level_label;
 static uint32_t last_practice;
 static uint64_t last_progress;
 static unsigned result_card;
@@ -49,38 +48,49 @@ static void fit_text(lv_obj_t *label, const char *text, bool large) {
 }
 
 static void progress_labels(void) {
-    if (!level_label) return;
+    if (!best_label) return;
     char text[32];
     unsigned into, needed;
     const unsigned level = steno_squid_pop_level(steno_squid_practice_xp(last_progress), &into, &needed);
-    snprintf(text, sizeof(text), "Pop Lv %u", level);
-    fit_text(level_label, text, false);
     const bool words = ((last_practice & STENO_SQUID_PRACTICE_DRILL_MASK) >> STENO_SQUID_PRACTICE_DRILL_SHIFT)
                          == STENO_SQUID_PRACTICE_WORDS;
-    if (!words || steno_squid_practice_feedback_value(last_practice) != STENO_SQUID_PRACTICE_DONE) return;
-    snprintf(text, sizeof(text), "%u/10", steno_squid_practice_first_try(last_progress));
+    if (steno_squid_practice_feedback_value(last_practice) != STENO_SQUID_PRACTICE_DONE) return;
+    if (words) snprintf(text, sizeof(text), "%u/10", steno_squid_practice_first_try(last_progress));
+    else snprintf(text, sizeof(text), "%u/%u", STENO_SQUID_HAND_ROUNDS, STENO_SQUID_HAND_ROUNDS);
     fit_text(prompt_label, text, true);
     lv_obj_set_style_text_font(prompt_label, &lv_font_montserrat_20, 0);
     snprintf(text, sizeof(text), "Pop Lv %u", level);
     fit_text(progress_label, text, false);
+    bool review_word = false;
+    const unsigned average = steno_squid_practice_average(last_progress);
     switch (result_card % 4) {
     case 0: snprintf(text, sizeof(text), "+%u XP", steno_squid_practice_xp_earned(last_progress)); break;
-    case 1: {
-        const unsigned average = steno_squid_practice_average(last_progress);
-        if (average == 511) snprintf(text, sizeof(text), "Avg 51s+");
+    case 1:
+        if (!words) {
+            snprintf(text, sizeof(text), "Best %u", steno_squid_practice_counter(last_practice, STENO_SQUID_PRACTICE_BEST_SHIFT));
+        } else if (average == 511) snprintf(text, sizeof(text), "Avg 51s+");
         else snprintf(text, sizeof(text), "Avg %u.%us", average / 10, average % 10);
         break;
-    }
     case 2: {
+        if (!words) {
+            if (average == 511) snprintf(text, sizeof(text), "Avg 51s+");
+            else snprintf(text, sizeof(text), "Avg %u.%us", average / 10, average % 10);
+            break;
+        }
         const unsigned word = steno_squid_practice_review(last_progress);
         if (word < STENO_SQUID_WORD_COUNT && steno_squid_practice_errors(last_progress)) {
-            snprintf(text, sizeof(text), "Again %s", steno_squid_words[word].word);
+            fit_text(progress_label, "Review", false);
+            snprintf(text, sizeof(text), "%s", steno_squid_words[word].word);
+            review_word = true;
         } else snprintf(text, sizeof(text), "Clean run!");
         break;
     }
     default: snprintf(text, sizeof(text), "%u/%u XP", into, needed); break;
     }
     fit_text(best_label, text, false);
+    if (review_word && lv_text_get_width(text, strlen(text), &lv_font_montserrat_14, 0) <= 66) {
+        lv_obj_set_style_text_font(best_label, &lv_font_montserrat_14, 0);
+    }
 }
 
 void steno_squid_practice_widget_set_progress(uint64_t progress) {
@@ -134,10 +144,9 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
         lv_obj_set_style_bg_opa(drill_choices[i], LV_OPA_COVER, 0);
         lv_label_set_text_static(drill_choices[i], choices[i]);
     }
-    level_label = steno_squid_display_label(welcome_page, 92, &lv_font_montserrat_10);
-    navigation_label = steno_squid_display_label(welcome_page, 106, &lv_font_unscii_8);
-    lv_label_set_text_static(navigation_label, "*L / *R");
-    lv_obj_t *start = steno_squid_display_label(welcome_page, 118, &lv_font_unscii_8);
+    navigation_label = steno_squid_display_label(welcome_page, 98, &lv_font_unscii_8);
+    lv_label_set_text_static(navigation_label, "*- / -*");
+    lv_obj_t *start = steno_squid_display_label(welcome_page, 115, &lv_font_unscii_8);
     lv_label_set_text_static(start, "A/O: GO");
 
     run_page = lv_obj_create(page);
@@ -211,7 +220,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     const unsigned total = steno_squid_practice_rounds(drill);
     const bool words = drill == STENO_SQUID_PRACTICE_WORDS;
     const bool done = feedback == STENO_SQUID_PRACTICE_DONE;
-    if (done && words) { lv_timer_reset(results_timer); lv_timer_resume(results_timer); }
+    if (done) { lv_timer_reset(results_timer); lv_timer_resume(results_timer); }
     else lv_timer_pause(results_timer);
     const bool no_dictionary = (practice & STENO_SQUID_PRACTICE_NO_DICTIONARY) != 0;
     const unsigned completed = round + (feedback == STENO_SQUID_PRACTICE_CORRECT);
@@ -220,6 +229,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     char progress[32];
 
     lv_label_set_text_static(drill_label, done ? "A: MENU" : drill_names[drill]);
+    lv_obj_set_style_text_decor(drill_label, done ? LV_TEXT_DECOR_UNDERLINE : LV_TEXT_DECOR_NONE, 0);
     lv_obj_set_style_text_font(prompt_label, done ? &lv_font_montserrat_16 : &lv_font_montserrat_28, 0);
     fit_text(prompt_label, done ? "DONE" : prompt, !done);
     fit_text(outline_label, no_dictionary ? "Enable dict" : words ? outline : "Tap key", false);
@@ -245,5 +255,5 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         snprintf(progress, sizeof(progress), "%u/%u  Streak %u", round + 1, total, streak);
     }
     lv_label_set_text(progress_label, progress);
-    if (done && words) { result_card = 0; progress_labels(); }
+    if (done) { result_card = 0; progress_labels(); }
 }

@@ -158,7 +158,7 @@ The right nice!view shows the drill, a large prompt, progress, and streak.
 Correct answers show **CORRECT** for
 250 ms and advance automatically. Mistakes show **RETRY**, reset the streak,
 and keep the current prompt. After all prompts are answered correctly, the screen shows
-the celebrating squid. WORDS shows first-try accuracy, Pop’s level, and rotating XP, timing, and review details. Hand drills retain their completion score and best streak. Tap a vowel thumb to return
+the celebrating squid. WORDS shows first-try accuracy, Pop’s level, and rotating XP, timing, and review details. Hand drills show completion, Pop’s level, and rotating XP, best-streak, timing, and level-progress details. **A: MENU** is underlined. Tap a vowel thumb to return
 to the Practice menu, or a star to select another drill.
 
 The outer left thumb returns to Qwerty. The outer right thumb exits to
@@ -166,7 +166,7 @@ normal Javelin. To select Plover, return to Qwerty first and tap the outer
 right thumb there. Leaving the steno
 layer ends practice. Turn practice off and on to restart. A right-half reboot or
 reconnect reloads the current screen from the left. Rebooting the left resets
-the active session, while saved per-word statistics and Pop’s XP survive. Both halves can run on battery with the computer off. Progress checkpoints at round completion, on exit/switch, and when idle; abrupt power loss can lose changes since the last checkpoint. WORDS awards 10 XP for a first-try answer, 2 after a correction, and 20 for completing the round. See the [training rules](../../README.md#offline-practice) for persistence and level details.
+the active session, while saved per-word statistics and Pop’s XP survive. Both halves can run on battery with the computer off. Progress checkpoints at round completion, on exit/switch, and when idle; abrupt power loss can lose changes since the last checkpoint. WORDS awards 10 XP for a first-try answer, 2 after a correction, and 20 for completing the round. Hand drills award 1 XP per correct key, growing bonuses every five consecutive correct keys, and 20 for completing the round (110 XP for a clean run). See the [training rules](../../README.md#offline-practice) for persistence and level details.
 
 Practice consumes its steno chords before the normal Javelin output pipeline,
 so a connected computer receives no practice text. Keys pressed during correct

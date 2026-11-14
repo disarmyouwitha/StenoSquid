@@ -39,6 +39,8 @@ struct steno_squid_word_run {
     uint8_t review_errors;
     uint8_t timed_count;
     uint32_t response_ds;
+    uint8_t hand_streak;
+    bool hand;
     bool active;
     bool finished;
 };
@@ -106,7 +108,7 @@ static inline void steno_squid_model_begin(struct steno_squid_practice_model *mo
 static inline bool steno_squid_model_answer(struct steno_squid_practice_model *model,
                                            unsigned round, bool correct, uint32_t elapsed_ms) {
     struct steno_squid_word_run *run = &model->run;
-    if (!run->active || run->finished || round != run->position || round >= STENO_SQUID_WORD_ROUNDS) {
+    if (!run->active || run->hand || run->finished || round != run->position || round >= STENO_SQUID_WORD_ROUNDS) {
         return false;
     }
     const unsigned word = run->deck[round];
@@ -143,9 +145,48 @@ static inline bool steno_squid_model_answer(struct steno_squid_practice_model *m
     return true;
 }
 
+static inline void steno_squid_model_hands_begin(struct steno_squid_practice_model *model) {
+    memset(&model->run, 0, sizeof(model->run));
+    model->run.review = STENO_SQUID_NO_REVIEW;
+    model->run.active = model->run.hand = true;
+}
+
+/* One XP for a correct key. Every fifth consecutive correct key adds a bonus
+ * of 1, 2, 3, 4, then 5 XP (capped there). A clean 50-key run totals 110 XP
+ * including completion, fitting the same bounded result packet as WORDS. */
+static inline bool steno_squid_model_hands_answer(struct steno_squid_practice_model *model,
+                                                 unsigned round, bool correct, uint32_t elapsed_ms) {
+    struct steno_squid_word_run *run = &model->run;
+    if (!run->active || !run->hand || run->finished || round != run->position || round >= STENO_SQUID_HAND_ROUNDS) {
+        return false;
+    }
+    if (!correct) {
+        if (run->errors < 63) run->errors++;
+        run->hand_streak = 0;
+        return false; // Run feedback changed, but no persistent data changed.
+    }
+    run->hand_streak++;
+    unsigned reward = 1;
+    if (run->hand_streak % 5 == 0) {
+        const unsigned bonus = run->hand_streak / 5;
+        reward += bonus > 5 ? 5 : bonus;
+    }
+    run->earned += reward;
+    model->record.xp = model->record.xp > STENO_SQUID_XP_MAX - reward
+                           ? STENO_SQUID_XP_MAX : model->record.xp + reward;
+    if (elapsed_ms <= 120000) {
+        unsigned ds = elapsed_ms / 100;
+        if (!ds) ds = 1;
+        run->response_ds += ds;
+        run->timed_count++;
+    }
+    run->position++;
+    return true;
+}
+
 static inline bool steno_squid_model_finish(struct steno_squid_practice_model *model) {
     struct steno_squid_word_run *run = &model->run;
-    if (!run->active || run->finished || run->position != STENO_SQUID_WORD_ROUNDS) return false;
+    if (!run->active || run->finished || run->position != (run->hand ? STENO_SQUID_HAND_ROUNDS : STENO_SQUID_WORD_ROUNDS)) return false;
     run->finished = true;
     run->earned += 20;
     model->record.xp = model->record.xp > STENO_SQUID_XP_MAX - 20

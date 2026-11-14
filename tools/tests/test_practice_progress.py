@@ -71,7 +71,7 @@ int main(void) {
         steno_squid_words_answer(i,true,1500);
         assert(writes==0 && queued==0); // Never queue a write on every key/chord.
     }
-    steno_squid_words_finish();
+    steno_squid_practice_finish();
     assert(queued && model.record.xp==120);
     const uint64_t summary=steno_squid_practice_progress();
     assert(steno_squid_practice_first_try(summary)==10);
@@ -105,9 +105,19 @@ int main(void) {
     save_progress(&save_progress_work);
     assert(saved_generation!=generation && queued>requests);
     save_progress(&save_progress_work);assert(saved_generation==generation);
-    steno_squid_words_end();assert(!model.run.active);
+    steno_squid_practice_end();assert(!model.run.active);
     zmk_event_t idle={ZMK_ACTIVITY_IDLE};
     const int previous=queued;practice_activity(&idle);assert(queued>previous);
+    // Restored word stats and XP survive adding hand rewards to the same record.
+    steno_squid_hands_begin();
+    for(unsigned i=0;i<50;i++) steno_squid_hands_answer(i,true,1000);
+    steno_squid_practice_finish();
+    const uint32_t hand_xp=model.record.xp;
+    save_progress(&save_progress_work);
+    steno_squid_model_init(&model);generation=saved_generation=0;
+    assert(registered_load("progress",disk_size,read_disk,NULL)==0);
+    assert(model.record.xp==hand_xp);
+    assert(model.record.rounds==expected.rounds+1);
     puts("Practice persistence: reboot restore, CRC/pool rejection, failures, concurrent updates and idle checkpoint passed");
 }
 '''

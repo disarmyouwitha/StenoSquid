@@ -194,12 +194,13 @@ int main(void) {
         steno_squid_practice_widget_set_progress(summary);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,
             STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU,85,false);
-        assert(!strcmp(lv_label_get_text(level_label),"Pop Lv 2"));
+        assert(!strcmp(lv_label_get_text(navigation_label),"*- / -*"));
         save("adaptive-menu");
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
             (10<<STENO_SQUID_PRACTICE_ROUND_SHIFT),85,false);
         assert(!strcmp(lv_label_get_text(prompt_label),"8/10"));
+        assert(lv_obj_get_style_text_decor(drill_label,0)==LV_TEXT_DECOR_UNDERLINE);
         assert(!lv_timer_get_paused(results_timer));
         lv_refr_now(NULL);
         assert(lv_obj_get_y(prompt_label)+lv_obj_get_height(prompt_label)+10<=48);
@@ -223,6 +224,18 @@ int main(void) {
         }
         steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
         assert(lv_timer_get_paused(results_timer));
+        const uint64_t hands=342 | (uint64_t)15<<30 | (uint64_t)110<<39 | (uint64_t)127<<46;
+        steno_squid_practice_widget_set_progress(hands);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_LEFT<<STENO_SQUID_PRACTICE_DRILL_SHIFT)|
+            (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
+            (50<<STENO_SQUID_PRACTICE_ROUND_SHIFT)|(50<<STENO_SQUID_PRACTICE_BEST_SHIFT),85,false);
+        assert(!strcmp(lv_label_get_text(prompt_label),"50/50"));
+        assert(!strcmp(lv_label_get_text(best_label),"+110 XP"));
+        save("adaptive-hands-xp");
+        result_tick(results_timer);
+        assert(!strcmp(lv_label_get_text(best_label),"Best 50"));
+        save("adaptive-hands-streak");
     }
     for (unsigned pass=0; pass<30; pass++) {
         for (unsigned mode=0; mode<STENO_SQUID_MODE_COUNT; mode++) {
