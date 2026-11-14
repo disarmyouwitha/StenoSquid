@@ -110,6 +110,7 @@ static uint8_t dictionary_selection = 3 | EXTRAS_SELECTION_DEFAULT;
 #endif
 
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
+#include "steno_squid/practice_progress.h"
 K_MUTEX_DEFINE(practice_mutex);
 static atomic_t practice_screen;
 static StenoKeyState practice_pending_releases;
@@ -123,6 +124,7 @@ static struct {
   uint8_t streak;
   uint8_t best;
   int64_t advance_at;
+  int64_t prompt_started_at;
   steno_squid_practice_drill drill;
   steno_squid_practice_feedback feedback;
   StenoKeyState keys;
@@ -130,7 +132,7 @@ static struct {
 } practice;
 
 static unsigned practice_prompt() {
-  return practice.drill == STENO_SQUID_PRACTICE_WORDS ? practice.round % 4 : practice.hand_prompt;
+  return practice.drill == STENO_SQUID_PRACTICE_WORDS ? steno_squid_words_prompt(practice.round) : practice.hand_prompt;
 }
 
 // Draws the next hand-drill prompt. After the first, it never repeats the
@@ -154,7 +156,7 @@ static void practice_publish() {
     snapshot = STENO_SQUID_PRACTICE_ACTIVE |
                (practice.menu ? STENO_SQUID_PRACTICE_MENU : 0) |
                (practice.no_dictionary ? STENO_SQUID_PRACTICE_NO_DICTIONARY : 0) |
-               practice_prompt() |
+               steno_squid_practice_pack_prompt(practice_prompt()) |
                (uint32_t(practice.feedback) << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT) |
                (uint32_t(practice.round) << STENO_SQUID_PRACTICE_ROUND_SHIFT) |
                (uint32_t(practice.streak) << STENO_SQUID_PRACTICE_STREAK_SHIFT) |
@@ -176,6 +178,10 @@ static void practice_advance(struct k_work *) {
     if (practice.feedback == STENO_SQUID_PRACTICE_PROMPT && practice.drill != STENO_SQUID_PRACTICE_WORDS) {
       practice_draw_hand_prompt(true);
     }
+    practice.prompt_started_at = k_uptime_get();
+    if (practice.feedback == STENO_SQUID_PRACTICE_DONE && practice.drill == STENO_SQUID_PRACTICE_WORDS) {
+      steno_squid_words_finish();
+    }
     practice_publish();
   }
   k_mutex_unlock(&practice_mutex);
@@ -184,14 +190,13 @@ static void practice_advance(struct k_work *) {
 K_WORK_DELAYABLE_DEFINE(practice_advance_work, practice_advance);
 
 static const StenoDictionary *practice_fallback_dictionary() {
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-  // Use the verified base locally. Never enable a dictionary in the engine
-  // or change the saved selection on behalf of a drill.
-  if (!(dictionary_selection & 6)) {
-    return lapwing_dictionary();
-  }
-#endif
+#ifdef CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
+  // WORDS is a Lapwing drill. Use the verified base locally even when its
+  // checkbox is off; never change the engine's saved dictionary selection.
+  return lapwing_dictionary();
+#else
   return nullptr;
+#endif
 }
 
 static void practice_refresh_dictionary() {
@@ -202,6 +207,7 @@ static void practice_refresh_dictionary() {
 }
 
 static void practice_switch_drill(int direction) {
+  steno_squid_words_end();
   k_work_cancel_delayable(&practice_advance_work);
   const int count = STENO_SQUID_PRACTICE_DRILL_COUNT;
   const auto drill = static_cast<steno_squid_practice_drill>((practice.drill + direction + count) % count);
@@ -223,15 +229,17 @@ static bool practice_correct(const StenoStroke &stroke) {
     return stroke == expected;
   }
   const StenoDictionaryLookup lookup(&stroke, 1);
+  const char *expected = steno_squid_words[practice_prompt()].word;
   auto result = StenoEngine::container.value.GetDictionary().Lookup(lookup);
-  if (!result.IsValid()) {
+  bool correct = result.IsValid() && strcasecmp(result.GetText(), expected) == 0;
+  result.Destroy();
+  if (!correct) {
     if (const auto *base = practice_fallback_dictionary()) {
       result = base->Lookup(lookup);
+      correct = result.IsValid() && strcasecmp(result.GetText(), expected) == 0;
+      result.Destroy();
     }
   }
-  const bool correct =
-      result.IsValid() && strcasecmp(result.GetText(), steno_squid_practice_words[practice_prompt()]) == 0;
-  result.Destroy();
   return correct;
 }
 
@@ -266,6 +274,7 @@ extern "C" void steno_squid_practice_set_active(bool active) {
       new (processor) StenoProcessor(stenoRepeat.value);
     }
     practice_pending_releases |= practice.keys;
+    steno_squid_words_end();
     practice = {};
     practice.active = active && processor;
     practice.menu = practice.active;
@@ -311,6 +320,8 @@ static bool practice_process_key(int index, bool pressed) {
            steno_key == StenoKey::E || steno_key == StenoKey::U)) {
         if (practice.menu) {
           practice.menu = false;
+          if (practice.drill == STENO_SQUID_PRACTICE_WORDS) steno_squid_words_begin();
+          practice.prompt_started_at = k_uptime_get();
           practice_refresh_dictionary();
           practice_publish();
         } else {
@@ -322,17 +333,23 @@ static bool practice_process_key(int index, bool pressed) {
       practice_refresh_dictionary();
       if (practice.no_dictionary) {
         practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
-      } else if (practice_correct(practice.chord.ToStroke())) {
-        ++practice.streak;
-        if (practice.streak > practice.best) {
-          practice.best = practice.streak;
-        }
-        practice.feedback = STENO_SQUID_PRACTICE_CORRECT;
-        practice.advance_at = k_uptime_get() + 250;
-        k_work_reschedule(&practice_advance_work, K_TIMEOUT_ABS_MS(practice.advance_at));
       } else {
-        practice.streak = 0;
-        practice.feedback = STENO_SQUID_PRACTICE_INCORRECT;
+        const bool correct = practice_correct(practice.chord.ToStroke());
+        if (practice.drill == STENO_SQUID_PRACTICE_WORDS) {
+          const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
+          steno_squid_words_answer(practice.round, correct,
+                                   elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed);
+        }
+        if (correct) {
+          ++practice.streak;
+          if (practice.streak > practice.best) practice.best = practice.streak;
+          practice.feedback = STENO_SQUID_PRACTICE_CORRECT;
+          practice.advance_at = k_uptime_get() + 250;
+          k_work_reschedule(&practice_advance_work, K_TIMEOUT_ABS_MS(practice.advance_at));
+        } else {
+          practice.streak = 0;
+          practice.feedback = STENO_SQUID_PRACTICE_INCORRECT;
+        }
       }
       practice_publish();
     }

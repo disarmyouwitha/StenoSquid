@@ -330,6 +330,7 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
         lv_obj_remove_flag(practice_page, LV_OBJ_FLAG_HIDDEN);
         steno_squid_practice_widget_update(practice);
     } else {
+        steno_squid_practice_widget_hide();
         lv_obj_add_flag(practice_page, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(status_page, LV_OBJ_FLAG_HIDDEN);
         const char *title = mode < STENO_SQUID_MODE_COUNT ? mode_names[mode] : layer_name;

@@ -35,6 +35,8 @@ static atomic_t host_disconnected;
 static atomic_t layer_name_low;
 static atomic_t layer_name_high;
 static atomic_t practice_screen;
+static uint64_t practice_progress;
+static struct k_spinlock progress_lock;
 static atomic_t pet_wake;
 static atomic_t pet_typing;
 static atomic_t pet_greeting;
@@ -82,6 +84,10 @@ static void refresh_status(struct k_work *work) {
     k_spin_unlock(&tape_lock, key);
     steno_squid_screen_set_tape(&shown_tape);
 #endif
+    k_spinlock_key_t progress_key = k_spin_lock(&progress_lock);
+    const uint64_t shown_progress = practice_progress;
+    k_spin_unlock(&progress_lock, progress_key);
+    steno_squid_practice_widget_set_progress(shown_progress);
     steno_squid_screen_update(shown, name, practice, zmk_battery_state_of_charge(),
                          atomic_get(&host_disconnected));
     if (!practicing) {
@@ -116,34 +122,23 @@ static int status_received(struct zmk_behavior_binding *binding,
             return -EINVAL;
         }
         atomic_set(&host_disconnected, binding->param1);
-    } else if (binding->param2 == STENO_SQUID_PRACTICE_PROTOCOL ||
-        binding->param2 == STENO_SQUID_PRACTICE_RUN_PROTOCOL ||
-        binding->param2 == STENO_SQUID_PRACTICE_LEGACY_PROTOCOL) {
-        const uint32_t raw = binding->param1;
-        const bool legacy = binding->param2 == STENO_SQUID_PRACTICE_LEGACY_PROTOCOL;
-        const unsigned drill = (raw >> (legacy ? 20 : STENO_SQUID_PRACTICE_DRILL_SHIFT)) & 3u;
-        const uint32_t allowed = STENO_SQUID_PRACTICE_ACTIVE |
-            (legacy ? 0x3fffffu : binding->param2 == STENO_SQUID_PRACTICE_PROTOCOL
-                                       ? 0xfffffffu : 0x7ffffffu);
-        if (!(raw & STENO_SQUID_PRACTICE_ACTIVE) || (raw & ~allowed) ||
-            drill >= STENO_SQUID_PRACTICE_DRILL_COUNT) {
+    } else if ((binding->param2 & 0xffu) == STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL &&
+               !(binding->param2 & 0xe0000000u)) {
+        const uint64_t value = ((uint64_t)(binding->param2 >> 8) << 32) | binding->param1;
+        const unsigned review = steno_squid_practice_review(value);
+        if (steno_squid_practice_first_try(value) > STENO_SQUID_WORD_ROUNDS ||
+            steno_squid_practice_xp_earned(value) > 120 ||
+            (review >= STENO_SQUID_WORD_COUNT && review != 127)) return -EINVAL;
+        k_spinlock_key_t key = k_spin_lock(&progress_lock);
+        practice_progress = value;
+        k_spin_unlock(&progress_lock, key);
+    } else if (binding->param2 == STENO_SQUID_PRACTICE_PROTOCOL) {
+        const uint32_t value = binding->param1;
+        const unsigned drill = (value >> STENO_SQUID_PRACTICE_DRILL_SHIFT) & 3u;
+        if (!(value & STENO_SQUID_PRACTICE_ACTIVE) || drill >= STENO_SQUID_PRACTICE_DRILL_COUNT) {
             return -EINVAL;
         }
-        uint32_t value = raw;
-        if (legacy) {
-            const unsigned round = (raw >> 4) & 31;
-            const unsigned prompt = drill == STENO_SQUID_PRACTICE_WORDS ? raw & 3u :
-                                    round % steno_squid_practice_prompt_count(drill);
-            value = STENO_SQUID_PRACTICE_ACTIVE | STENO_SQUID_PRACTICE_LEGACY | prompt |
-                    (((raw >> 2) & 3u) << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT) |
-                    (round << STENO_SQUID_PRACTICE_ROUND_SHIFT) |
-                    (((raw >> 9) & 31u) << STENO_SQUID_PRACTICE_STREAK_SHIFT) |
-                    (((raw >> 14) & 31u) << STENO_SQUID_PRACTICE_BEST_SHIFT) |
-                    (drill << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
-                    ((raw & (1u << 19)) ? STENO_SQUID_PRACTICE_NO_DICTIONARY : 0);
-        }
-        const unsigned total = legacy && drill != STENO_SQUID_PRACTICE_WORDS ? 30 :
-                               steno_squid_practice_rounds(drill);
+        const unsigned total = steno_squid_practice_rounds(drill);
         const unsigned round = steno_squid_practice_counter(value, STENO_SQUID_PRACTICE_ROUND_SHIFT);
         if (((value & STENO_SQUID_PRACTICE_MENU) &&
              (round || steno_squid_practice_feedback_value(value) != STENO_SQUID_PRACTICE_PROMPT)) ||
@@ -151,7 +146,7 @@ static int status_received(struct zmk_behavior_binding *binding,
             ((round == total) != (steno_squid_practice_feedback_value(value) == STENO_SQUID_PRACTICE_DONE)) ||
             steno_squid_practice_counter(value, STENO_SQUID_PRACTICE_STREAK_SHIFT) > total ||
             steno_squid_practice_counter(value, STENO_SQUID_PRACTICE_BEST_SHIFT) > total ||
-            (value & STENO_SQUID_PRACTICE_PROMPT_MASK) >= steno_squid_practice_prompt_count(drill)) {
+            steno_squid_practice_prompt_value(value) >= steno_squid_practice_prompt_count(drill)) {
             return -EINVAL;
         }
         atomic_set(&practice_screen, value);

@@ -108,17 +108,23 @@ Hold the middle left thumb for Numpad, tap the outer right thumb, then release b
 
 | Drill | Prompts | Checks |
 | --- | ---: | --- |
-| WORDS | 10 | CAT, THE, IF, and IS through the onboard dictionary engine. |
+| WORDS | 10 | Ten different words from a verified pool of 100 common Lapwing words, weighted toward mistakes, slow answers, and less-recent practice. |
 | LEFT | 50 | Random left-hand consonant keys. |
 | RIGHT | 50 | Random right-hand consonant keys. |
 
-Practice opens a Practice menu. Select WORDS, LEFT, or RIGHT with the left/right star keys, then tap a vowel thumb (A, O, E, or U) to start. After a run, tap a vowel thumb to return to the menu.
+Practice opens a menu showing **Pop’s level**. Select WORDS, LEFT, or RIGHT with the left/right star keys, then tap a vowel thumb (A, O, E, or U) to start. The menu has three visible rows and scrolls to follow the selection if more drills are added. After a run, tap a vowel thumb to return to the menu.
 
-The hand drills use Steno Jig's key sets and draw a new random prompt after each correct answer. Consecutive repeats are allowed. Mistakes keep the current prompt and reset the streak; correct answers advance after 250 ms.
+WORDS records each word’s completions, first-try successes, mistakes, response-time average, and last practice session. Each round samples ten distinct words without replacement. Pop earns **10 XP** for a first-try answer, **2 XP** after a correction, and **20 XP** for completing the round. Incorrect attempts and repeated keys during feedback earn no XP. Levels cost progressively more: level 2 needs 100 total XP, level 3 needs 300, and level 4 needs 600. Hand drills retain their existing scoring and do not award XP in this version.
+
+The WORDS completion screen celebrates with Pop and shows **first-try accuracy out of ten** and the current level. A second line rotates through XP earned, average response time, the word needing the most retries (or “Clean run!”), and progress toward the next level. Pauses over two minutes are excluded from timing averages.
+
+Progress is a compact, checksummed record in the left controller’s ZMK settings storage. It saves at round completion, on leaving/switching drills, and on idle before deep sleep; it does not write flash per chord. Saved progress survives reboots and normal UF2 updates. Abrupt power loss can lose work since the last checkpoint. Clearing all ZMK settings also clears training progress; changing the word-pool fingerprint starts fresh stats for that pool. No computer, JSON file, dictionary rewrite, or companion tool is needed. [Word pool](src/steno_squid/practice_words.h) · [Selection and XP rules](src/steno_squid/practice_model.h)
+
+The hand drills use Steno Jig's key sets and draw a new random prompt after each correct answer, avoiding an immediate repeat. Mistakes keep the current prompt and reset the streak; correct answers advance after 250 ms.
 
 Tap a left star by itself for the previous drill, or a right star for the next. The outer right thumb toggles Practice; the former left-hand Practice key is unbound. The outer left thumb returns to Qwerty.
 
-Practice works with the computer off and consumes its strokes before host output. Hand drills work with dictionaries disabled; WORDS can use the verified Lapwing Base as a fallback. Saved dictionary selections stay intact. [Practice guide](config/steno-squid-split/README.md#offline-practice) · [Steno Jig](https://joshuagrams.github.io/steno-jig/learn-keyboard.html)
+Practice works with the computer off and consumes its strokes before host output. Hand drills work with dictionaries disabled; WORDS uses the verified Lapwing Base locally, even when its checkbox is off, and also accepts an active-dictionary outline that translates to the requested word. Saved dictionary selections stay intact. Install matching left and right firmware for this 100-word protocol; dictionary images do not need reinstalling. [Practice guide](config/steno-squid-split/README.md#offline-practice) · [Steno Jig](https://joshuagrams.github.io/steno-jig/learn-keyboard.html)
 
 ## Bluetooth and power
 

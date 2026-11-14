@@ -178,6 +178,52 @@ int main(void) {
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,0,85,false);
         assert(lv_obj_has_flag(tape_text,LV_OBJ_FLAG_HIDDEN));
     }
+    /* Every word ID must render on one line without covering the hint. */
+    for (unsigned word=0;word<STENO_SQUID_WORD_COUNT;word++) {
+        const uint32_t snapshot=STENO_SQUID_PRACTICE_ACTIVE|steno_squid_practice_pack_prompt(word);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,snapshot,85,false);
+        lv_refr_now(NULL);
+        assert(!strcmp(lv_label_get_text(prompt_label),steno_squid_words[word].word));
+        assert(lv_obj_get_y(prompt_label)+lv_obj_get_height(prompt_label)<=lv_obj_get_y(outline_label));
+        assert(lv_obj_get_y(outline_label)+lv_obj_get_height(outline_label)<=lv_obj_get_y(feedback_label));
+        if(!strcmp(steno_squid_words[word].word,"PEOPLE"))save("adaptive-word");
+    }
+    {
+        const uint64_t summary=232 | (uint64_t)8<<20 | (uint64_t)3<<24 | (uint64_t)27<<30 |
+                               (uint64_t)104<<39 | (uint64_t)99<<46;
+        steno_squid_practice_widget_set_progress(summary);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,
+            STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU,85,false);
+        assert(!strcmp(lv_label_get_text(level_label),"Pop Lv 2"));
+        save("adaptive-menu");
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
+            (10<<STENO_SQUID_PRACTICE_ROUND_SHIFT),85,false);
+        assert(!strcmp(lv_label_get_text(prompt_label),"8/10"));
+        assert(!lv_timer_get_paused(results_timer));
+        lv_refr_now(NULL);
+        assert(lv_obj_get_y(prompt_label)+lv_obj_get_height(prompt_label)+10<=48);
+        save("adaptive-results-xp");
+        lv_tick_inc(2499);lv_timer_handler();assert(result_card==0);
+        lv_tick_inc(1);lv_timer_handler();assert(result_card==1);
+        save("adaptive-results-time");
+        for(unsigned card=1;card<3;card++) {
+            result_tick(results_timer);
+            save(card==1 ? "adaptive-results-review" : "adaptive-results-level");
+        }
+        const uint64_t maximum=0xfffff | (uint64_t)10<<20 | (uint64_t)63<<24 |
+                               (uint64_t)511<<30 | (uint64_t)120<<39 | (uint64_t)99<<46;
+        steno_squid_practice_widget_set_progress(maximum);
+        for(unsigned card=0;card<4;card++) {
+            lv_refr_now(NULL);
+            assert(lv_obj_get_y(best_label)+lv_obj_get_height(best_label)<=130);
+            assert(lv_text_get_width(lv_label_get_text(best_label),strlen(lv_label_get_text(best_label)),
+                                    lv_obj_get_style_text_font(best_label,0),0)<=66);
+            result_tick(results_timer);
+        }
+        steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
+        assert(lv_timer_get_paused(results_timer));
+    }
     for (unsigned pass=0; pass<30; pass++) {
         for (unsigned mode=0; mode<STENO_SQUID_MODE_COUNT; mode++) {
             steno_squid_screen_update(mode,NULL,0,pass+65,false);
