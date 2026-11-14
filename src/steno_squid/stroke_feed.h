@@ -27,6 +27,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "display_ascii.h"
 
 #define STENO_SQUID_TAPE_TAG (1u << 30)
 #define STENO_SQUID_TAPE_KIND_SHIFT 28
@@ -167,22 +168,24 @@ static inline bool steno_squid_tape_unbrace(const char *raw, char *inner, size_t
 }
 
 /* Turns a dictionary entry into what the display shows: braces and attach
- * markers removed, ASCII only. At most `cap - 1` characters.
+ * markers removed and Latin accents folded to ASCII. At most `cap - 1` characters.
  */
 static inline void steno_squid_tape_clean_text(const char *raw, char *out, size_t cap) {
+    if (!cap) {
+        return;
+    }
     char inner[STENO_SQUID_TAPE_RAW_MAX];
     const char *source = raw;
     if (steno_squid_tape_unbrace(raw, inner, sizeof(inner))) {
         source = inner[0] ? inner : "^";
     }
     size_t n = 0;
-    for (const unsigned char *p = (const unsigned char *)source; *p && n + 1 < cap; p++) {
-        if (*p >= 0x80) {
-            if (*p >= 0xc0) { /* one question mark per UTF-8 character */
-                out[n++] = '?';
-            }
-        } else {
-            out[n++] = *p < 0x20 || *p == 0x7f ? ' ' : (char)*p;
+    const unsigned char *p = (const unsigned char *)source;
+    while (*p && n + 1 < cap) {
+        char folded[2];
+        const size_t count = steno_squid_display_ascii(steno_squid_display_codepoint(&p), folded);
+        for (size_t i = 0; i < count && n + 1 < cap; i++) {
+            out[n++] = folded[i];
         }
     }
     out[n] = '\0';
@@ -194,17 +197,19 @@ static inline void steno_squid_tape_clean_text(const char *raw, char *out, size_
  */
 static inline unsigned steno_squid_tape_typed_chars(const char *raw) {
     char inner[STENO_SQUID_TAPE_RAW_MAX];
-    char clean[STENO_SQUID_TAPE_RAW_MAX];
-    if (steno_squid_tape_unbrace(raw, inner, sizeof(inner))) {
-        if (!inner[0] || steno_squid_tape_is_command(inner)) {
-            return 0;
-        }
-        steno_squid_tape_clean_text(inner, clean, sizeof(clean));
-        return (unsigned)strlen(clean);
+    const bool attached = steno_squid_tape_unbrace(raw, inner, sizeof(inner));
+    if (attached && (!inner[0] || steno_squid_tape_is_command(inner))) {
+        return 0;
     }
-    steno_squid_tape_clean_text(raw, clean, sizeof(clean));
-    const size_t length = strlen(clean);
-    return length ? (unsigned)length + 1 : 0;
+    const unsigned char *p = (const unsigned char *)(attached ? inner : raw);
+    unsigned count = 0;
+    while (*p) {
+        if (!steno_squid_display_combining(steno_squid_display_codepoint(&p))) {
+            count++;
+        }
+    }
+    /* Count typed characters, not an expanded display fallback such as ss. */
+    return count && !attached ? count + 1 : count;
 }
 
 /* ---- Messages ------------------------------------------------------------ */
