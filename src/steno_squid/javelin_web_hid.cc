@@ -143,6 +143,7 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
     // Expose dictionary operations and selection of built-in host layouts.
     const char *allowed[] = {"hello", "list_dictionaries", "lookup_stroke",
                              "add_user_entry", "remove_user_entry", "reset_user_dictionary",
+                             "user_dictionary_status",
                              "enable_dictionary", "disable_dictionary", "toggle_dictionary",
 #ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
                              "get_parameter", "set_host_layout",

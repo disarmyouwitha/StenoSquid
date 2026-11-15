@@ -41,7 +41,11 @@ Personal entries have highest priority, followed by the Lapwing extras in the or
 
 Enable Plover Base and disable Lapwing Base to switch bases. The extras have independent checkboxes, so disable those too if you want only Plover's base plus your personal entries. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
-The compiled base and extras images occupy about 4.13 MiB of external flash. Personal entries have 16 KiB of entry data, backed by two CRC-checked snapshots. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
+The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
+
+![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](docs/assets/qspi-flash-map.png)
+
+The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
 
 ## Wireless dictionary editing
 

@@ -1,296 +1,363 @@
 #include "user_dictionary_store.h"
-
 #include "console.h"
-#include "crc32.h"
-#include "dictionary/user_dictionary.h"
+#include "dictionary/dictionary.h"
 #include "lapwing_flash.h"
-#include "static_allocate.h"
 #include "stroke_list_parser.h"
-
+#include "user_dictionary_snapshot.h"
+#include "xip_load.h"
 extern "C" {
 #include "quad.h"
 }
-
+#include <stdlib.h>
 #include <string.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/crc.h>
-
 namespace {
-constexpr uint32_t STORAGE_START = 0xf00000;
-constexpr size_t SECTOR_BYTES = 4096;
-constexpr size_t PAGE_BYTES = 256;
-constexpr size_t MIRROR_BYTES = 32 * 1024;
-constexpr size_t BODY_BYTES = MIRROR_BYTES - StenoUserDictionaryData::ALL_DESCRIPTORS_SIZE;
-constexpr size_t SLOT_BYTES = SECTOR_BYTES + BODY_BYTES;
-constexpr uint32_t MAGIC = 0x3155445a; // ZDU1
-constexpr uint32_t NATIVE_MAGIC = 0x4455534a; // JSUD, pinned Javelin ABI
-constexpr uint32_t NATIVE_VERSION = 3;
-
-static_assert(LAPWING_BYTES <= STORAGE_START);
-static_assert(STORAGE_START + 2 * SLOT_BYTES <= 0xfff000);
-static_assert(BODY_BYTES % SECTOR_BYTES == 0);
-
-struct Header {
-    uint32_t magic;
-    uint32_t generation;
-    uint32_t body_crc;
-    uint32_t remaining;
-    uint32_t maximum_outline;
-    uint32_t header_crc;
-};
-
-alignas(SECTOR_BYTES) uint8_t mirror[MIRROR_BYTES];
-alignas(4) uint8_t page[PAGE_BYTES];
-StenoUserDictionaryData layout(mirror, sizeof(mirror));
-JavelinStaticAllocate<StenoUserDictionary> dictionary;
-StenoDictionary *parent;
-int active_slot = -1;
-Header active_header{};
-bool store_available;
-
-uint32_t slot_address(int slot) {
-    return STORAGE_START + slot * SLOT_BYTES;
-}
-
-uint32_t header_crc(const Header &header) {
-    return crc32_ieee(reinterpret_cast<const uint8_t *>(&header), offsetof(Header, header_crc));
-}
-
+using namespace squid_user;
+static_assert(BASE_DICTIONARY_LIMIT <= SLOT_START);
+static_assert(SLOT_START + 2 * SLOT_BYTES <= 0xfff000);
+static_assert(sizeof(StenoStroke) == 4);
+constexpr uintptr_t XIP_BASE = DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi), qspi_mm);
 bool wait_ready() {
-    const int64_t deadline = k_uptime_get() + 2000;
-    do {
-        const nrfx_err_t rc = nrfx_qspi_mem_busy_check();
-        if (rc != NRFX_ERROR_BUSY) {
-            return rc == NRFX_SUCCESS;
-        }
-        k_msleep(1);
-    } while (k_uptime_get() < deadline);
+  int64_t deadline = k_uptime_get() + 2000;
+  do {
+    nrfx_err_t rc = nrfx_qspi_mem_busy_check();
+    if (rc != NRFX_ERROR_BUSY)
+      return rc == NRFX_SUCCESS;
+    k_msleep(1);
+  } while (k_uptime_get() < deadline);
+  return false;
+}
+class QspiDevice final : public Device {
+public:
+  bool mapped = false;
+  bool Read(uint32_t address, void *data, size_t size) override {
+    if (address > 0x1000000 || size > 0x1000000 - address)
+      return false;
+    if (mapped) {
+      copy_xip_bytes(data, reinterpret_cast<const void *>(XIP_BASE + address),
+                     size);
+      return true;
+    }
+    auto *out = static_cast<uint8_t *>(data);
+    alignas(4) uint8_t buffer[256];
+    while (size) {
+      uint32_t skip = address & 3;
+      size_t n = size > sizeof(buffer) - skip ? sizeof(buffer) - skip : size;
+      if (nrfx_qspi_read(buffer, (skip + n + 3) & ~size_t(3), address - skip) !=
+          NRFX_SUCCESS)
+        return false;
+      memcpy(out, buffer + skip, n);
+      address += n;
+      out += n;
+      size -= n;
+    }
+    return true;
+  }
+  bool Program(uint32_t address, const void *data, size_t size) override {
+    if (address < SLOT_START || address > SLOT_START + 2 * SLOT_BYTES ||
+        size > SLOT_START + 2 * SLOT_BYTES - address || (address & 3) ||
+        (size & 3) || (reinterpret_cast<uintptr_t>(data) & 3))
+      return false;
+    return nrfx_qspi_write(data, size, address) == NRFX_SUCCESS && wait_ready();
+  }
+  bool Erase(uint32_t address) override {
+    return address >= SLOT_START && address < SLOT_START + 2 * SLOT_BYTES &&
+           EraseSector(address);
+  }
+
+private:
+  static bool EraseSector(uint32_t address) {
+    return !(address % SECTOR) &&
+           nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_4KB, address) == NRFX_SUCCESS &&
+           wait_ready();
+  }
+} qspi_device;
+Store store(qspi_device);
+bool store_available = false;
+uint32_t last_save_ms = 0;
+Entry make_key(const StenoStroke *strokes, size_t length) {
+  Entry e{};
+  if (length <= MAX_STROKES) {
+    e.length = length;
+    memcpy(e.strokes, strokes, length * 4);
+  }
+  return e;
+}
+char *copy_text(const Entry &e) {
+  char *text = static_cast<char *>(malloc(e.text_bytes));
+  if (!text)
+    return nullptr;
+  if (!store.ReadText(e, 0, text, e.text_bytes)) {
+    free(text);
+    return nullptr;
+  }
+  return text;
+}
+bool same_text(const Entry &e, const char *text) {
+  if (e.text_bytes != strlen(text) + 1)
     return false;
+  char buffer[64];
+  for (uint32_t off = 0; off < e.text_bytes;) {
+    size_t n = e.text_bytes - off > sizeof(buffer) ? sizeof(buffer)
+                                                   : e.text_bytes - off;
+    if (!store.ReadText(e, off, buffer, n) || memcmp(buffer, text + off, n))
+      return false;
+    off += n;
+  }
+  return true;
 }
-
-bool verify_body(int slot, uint32_t expected_crc) {
-    uint32_t crc = 0;
-    for (size_t offset = 0; offset < BODY_BYTES; offset += sizeof(page)) {
-        if (nrfx_qspi_read(page, sizeof(page), slot_address(slot) + SECTOR_BYTES + offset) !=
-            NRFX_SUCCESS) {
-            return false;
-        }
-        crc = crc32_ieee_update(crc, page, sizeof(page));
+class QspiUserDictionary final : public StenoDictionary {
+public:
+  QspiUserDictionary() : StenoDictionary(0) {}
+  void Refresh() {
+    maximumOutlineLength = store.Maximum();
+    OnLookupDataChanged();
+  }
+  const char *GetName() const override { return "user_dictionary"; }
+  StenoDictionaryLookupResult
+  Lookup(const StenoDictionaryLookup &lookup) const override {
+    Entry e{};
+    if (!store_available || lookup.length > MAX_STROKES ||
+        !store.Find(make_key(lookup.strokes, lookup.length), e))
+      return StenoDictionaryLookupResult::CreateInvalid();
+    char *text = copy_text(e);
+    return text ? StenoDictionaryLookupResult::CreateDynamicString(text)
+                : StenoDictionaryLookupResult::CreateInvalid();
+  }
+  const StenoDictionary *
+  GetDictionaryForOutline(const StenoDictionaryLookup &lookup) const override {
+    Entry e{};
+    return store_available && lookup.length <= MAX_STROKES &&
+                   store.Find(make_key(lookup.strokes, lookup.length), e)
+               ? this
+               : nullptr;
+  }
+  bool CanRemove() const override { return true; }
+  bool Remove(const char *name, const StenoStroke *strokes,
+              size_t length) override {
+    return (!name || strcmp(name, GetName()) == 0) &&
+           Edit(make_key(strokes, length), nullptr);
+  }
+  bool Edit(const Entry &key, const Entry *replacement, bool clear = false) {
+    if (!store_available || !reactivate_after_xip())
+      return false;
+    const int64_t started = k_uptime_get();
+    qspi_device.mapped = false;
+    EditSource source(store, key, replacement, clear);
+    bool ok = source.Prepare();
+    if (ok && (clear || replacement || source.Exists()))
+      ok = store.Save(source);
+    qspi_device.mapped = true;
+    last_save_ms = static_cast<uint32_t>(k_uptime_get() - started);
+    if (ok)
+      Refresh();
+    return ok;
+  }
+  void ReverseLookup(StenoReverseDictionaryLookup &lookup) const override {
+    uint32_t hash = hash_bytes(lookup.definition, lookup.definitionLength);
+    for (uint32_t i = store.ReverseStart(hash); i < store.Count(); ++i) {
+      Entry e{};
+      if (!store.Get(i, true, e) || e.text_hash != hash)
+        break;
+      if (e.length < lookup.ignoreStrokeThreshold &&
+          same_text(e, lookup.definition)) {
+        StenoStroke strokes[MAX_STROKES];
+        memcpy(strokes, e.strokes, e.length * 4);
+        lookup.AddResult(strokes, e.length, this);
+      }
     }
-    return crc == expected_crc;
-}
-
-bool valid_slot(int slot, Header &header) {
-    return nrfx_qspi_read(&header, sizeof(header), slot_address(slot)) == NRFX_SUCCESS &&
-           header.magic == MAGIC && header.header_crc == header_crc(header) &&
-           header.remaining <= layout.dataBlockSize && header.remaining % 4 == 0 &&
-           header.maximum_outline <= StenoUserDictionary::MAX_STROKE_COUNT &&
-           verify_body(slot, header.body_crc);
-}
-
-void construct_dictionary() {
-    new (dictionary) StenoUserDictionary(layout);
-    dictionary.value.SetParentRecursively(parent);
-    dictionary.value.OnLookupDataChanged();
-}
-
-bool restore_mirror() {
-    memset(mirror, 0xff, sizeof(mirror));
-    if (active_slot >= 0) {
-        if (nrfx_qspi_read(mirror, BODY_BYTES, slot_address(active_slot) + SECTOR_BYTES) !=
-                NRFX_SUCCESS ||
-            crc32_ieee(mirror, BODY_BYTES) != active_header.body_crc) {
-            return false;
-        }
-        // The persisted header has no RAM pointers. Rebuild the native descriptor
-        // so entries survive changes to the firmware's RAM layout.
-        StenoUserDictionaryDescriptor descriptor{};
-        descriptor.magic = NATIVE_MAGIC;
-        descriptor.version = NATIVE_VERSION;
-        descriptor.data = layout;
-        descriptor.data.dataBlockSizeRemaining = active_header.remaining;
-        descriptor.data.maximumOutlineLength = active_header.maximum_outline;
-        descriptor.crc32 = Crc32::Hash(&descriptor.data, sizeof(descriptor.data));
-        memcpy(mirror + BODY_BYTES, &descriptor, sizeof(descriptor));
-    }
-    construct_dictionary();
-    return true;
-}
-
-bool save_dictionary() {
-    const auto *descriptor = layout.FindMostRecentDescriptor();
-    if (!descriptor) {
-        return false;
-    }
-
-    Header header{MAGIC, active_header.generation + 1, crc32_ieee(mirror, BODY_BYTES),
-                  static_cast<uint32_t>(descriptor->data.dataBlockSizeRemaining),
-                  descriptor->data.maximumOutlineLength,
-                  0};
-    if (active_slot >= 0 && header.body_crc == active_header.body_crc &&
-        header.remaining == active_header.remaining &&
-        header.maximum_outline == active_header.maximum_outline) {
-        return true;
-    }
-    if (!reactivate_after_xip()) {
-        return false;
-    }
-    header.header_crc = header_crc(header);
-    const int slot = active_slot == 0 ? 1 : 0;
-    const uint32_t base = slot_address(slot);
-
-    // Erase the inactive header first and publish the replacement header last.
-    for (size_t offset = 0; offset < SLOT_BYTES; offset += SECTOR_BYTES) {
-        if (nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_4KB, base + offset) != NRFX_SUCCESS ||
-            !wait_ready()) {
-            return false;
-        }
-    }
-    for (size_t offset = 0; offset < BODY_BYTES; offset += PAGE_BYTES) {
-        if (!Flash::IsErased(mirror + offset, PAGE_BYTES) &&
-            (nrfx_qspi_write(mirror + offset, PAGE_BYTES, base + SECTOR_BYTES + offset) !=
-                 NRFX_SUCCESS ||
-             !wait_ready())) {
-            return false;
-        }
-    }
-    if (!verify_body(slot, header.body_crc) ||
-        nrfx_qspi_write(&header, sizeof(header), base) != NRFX_SUCCESS || !wait_ready()) {
-        return false;
-    }
-    Header readback{};
-    if (nrfx_qspi_read(&readback, sizeof(readback), base) != NRFX_SUCCESS ||
-        memcmp(&readback, &header, sizeof(header)) != 0) {
-        return false;
-    }
-    active_header = header;
-    active_slot = slot;
-    return true;
-}
-
-void finish_edit(bool changed) {
-    if (changed && save_dictionary()) {
-        Console::SendOk();
+  }
+  void PrintDictionary(PrintDictionaryContext &context) const override {
+    if (context.HasName() && strcmp(context.GetName(), GetName()))
+      return;
+    for (uint32_t i = 0; i < store.Count(); ++i) {
+      Entry e{};
+      if (!store.Get(i, false, e))
         return;
-    }
-    if (!reactivate_after_xip() || !restore_mirror()) {
-        // Keep Lapwing usable if the personal store can no longer be read.
-        store_available = false;
-        memset(mirror, 0xff, sizeof(mirror));
-        construct_dictionary();
-        parent->DisableDictionary("user_dictionary");
-        Console::Printf("ERR Unable to restore the saved personal dictionary\n\n");
+      char *text = copy_text(e);
+      if (!text)
         return;
+      StenoStroke strokes[MAX_STROKES];
+      memcpy(strokes, e.strokes, e.length * 4);
+      context.Print(strokes, e.length, text);
+      free(text);
     }
-    Console::Printf("%s", changed
-                              ? "ERR Unable to save the personal dictionary\n\n"
-                              : "ERR Entry not added; the personal dictionary may be full\n\n");
-}
-
+  }
+  void PrintEntriesWithPartialOutline(
+      PrintPartialOutlineContext &context) const override {
+    for (uint32_t i = 0; i < store.Count() && !context.IsDone(); ++i) {
+      Entry e{};
+      if (!store.Get(i, false, e))
+        return;
+      if (e.length <= context.length)
+        continue;
+      StenoStroke strokes[MAX_STROKES];
+      memcpy(strokes, e.strokes, e.length * 4);
+      if (!StenoStroke::HasPartialOutline(strokes, context.strokes,
+                                          context.length,
+                                          e.length - context.length))
+        continue;
+      char *text = copy_text(e);
+      if (!text)
+        return;
+      context.Add(strokes, e.length, text, this);
+      free(text);
+    }
+  }
+  void PrintEntriesWithPrefix(PrintPrefixContext &context) const override {
+    for (uint32_t i = 0; i < store.Count() && !context.IsDone(); ++i) {
+      Entry e{};
+      if (!store.Get(i, false, e))
+        return;
+      if (e.text_bytes <= context.prefixLength + 1)
+        continue;
+      char *text = copy_text(e);
+      if (!text)
+        return;
+      if (strncmp(text, context.prefix, context.prefixLength) == 0) {
+        StenoStroke strokes[MAX_STROKES];
+        memcpy(strokes, e.strokes, e.length * 4);
+        context.Add(strokes, e.length, text, this);
+      }
+      free(text);
+    }
+  }
+  void PrintInfo(int depth) const override {
+    Console::Printf("%s%s\n%sFormat: QSPI compact snapshots v2\n%sEntries: "
+                    "%u\n%sSnapshot bytes: %u/%u\n",
+                    Spaces(depth), GetName(), Spaces(depth + 2),
+                    Spaces(depth + 2), store.Count(), Spaces(depth + 2),
+                    store.Used(), SLOT_BYTES);
+  }
+} dictionary;
+StenoDictionary *parent = nullptr;
 bool parse_outline(const char *line, StrokeListParser &parser) {
-    const char *space = strchr(line, ' ');
-    if (!space || !parser.Parse(space + 1) ||
-        parser.GetCount() > StenoUserDictionary::MAX_STROKE_COUNT) {
-        Console::Printf("ERR Invalid outline\n\n");
-        return false;
-    }
-    return true;
+  const char *space = strchr(line, ' ');
+  if (!space || !parser.Parse(space + 1) || !parser.GetCount() ||
+      parser.GetCount() > MAX_STROKES) {
+    Console::Printf("ERR Invalid outline\n\n");
+    return false;
+  }
+  return true;
 }
-
 bool can_edit() {
-    if (!store_available) {
-        Console::Printf("ERR Personal dictionary unavailable\n\n");
-    }
-    return store_available;
+  if (!store_available)
+    Console::Printf("ERR Personal dictionary unavailable\n\n");
+  return store_available;
 }
-
+void finish_edit(bool ok) {
+  if (ok)
+    Console::SendOk();
+  else
+    Console::Printf("ERR Personal dictionary full or save failed; previous "
+                    "saved copy retained\n\n");
+}
 void add_entry(void *, const char *line) {
-    StrokeListParser parser;
-    if (!can_edit() || !parse_outline(line, parser)) {
-        return;
-    }
-    if (*parser.failureOrEnd == '\0') {
-        Console::Printf("ERR No translation specified\n\n");
-        return;
-    }
-    finish_edit(dictionary.value.Add(parser.GetData(), parser.GetCount(), parser.failureOrEnd));
+  StrokeListParser parser;
+  if (!can_edit() || !parse_outline(line, parser))
+    return;
+  if (!*parser.failureOrEnd) {
+    Console::Printf("ERR No translation specified\n\n");
+    return;
+  }
+  size_t n = strlen(parser.failureOrEnd);
+  if (n > MAX_TEXT) {
+    Console::Printf("ERR Translation too long\n\n");
+    return;
+  }
+  Entry e = make_key(parser.GetData(), parser.GetCount()), old{};
+  if (store.Find(e, old) && same_text(old, parser.failureOrEnd)) {
+    Console::SendOk();
+    return;
+  }
+  e.text = parser.failureOrEnd;
+  e.text_bytes = n + 1;
+  e.text_hash = hash_bytes(e.text, n);
+  finish_edit(dictionary.Edit(e, &e));
 }
-
 void remove_entry(void *, const char *line) {
-    StrokeListParser parser;
-    if (!can_edit() || !parse_outline(line, parser)) {
-        return;
-    }
-    if (*parser.failureOrEnd != '\0') {
-        Console::Printf("ERR Unexpected text after outline\n\n");
-        return;
-    }
-    if (dictionary.value.Remove(parser.GetData(), parser.GetCount())) {
-        finish_edit(true);
-    } else {
-        Console::SendOk();
-    }
+  StrokeListParser parser;
+  if (!can_edit() || !parse_outline(line, parser))
+    return;
+  if (*parser.failureOrEnd) {
+    Console::Printf("ERR Unexpected text after outline\n\n");
+    return;
+  }
+  finish_edit(
+      dictionary.Edit(make_key(parser.GetData(), parser.GetCount()), nullptr));
 }
-
 void reset_entries(void *, const char *) {
-    if (!can_edit()) {
-        return;
-    }
-    dictionary.value.Reset();
-    dictionary.value.OnLookupDataChanged();
-    finish_edit(true);
+  if (can_edit())
+    finish_edit(dictionary.Edit(Entry{}, nullptr, true));
 }
-
 void lookup_outline(void *, const char *line) {
-    StrokeListParser parser;
-    if (!parse_outline(line, parser)) {
-        return;
+  StrokeListParser parser;
+  if (!parse_outline(line, parser))
+    return;
+  StenoDictionaryLookup lookup(parser.GetData(), parser.GetCount());
+  List<const StenoDictionary *> dictionaries;
+  parent->GetDictionariesForOutline(dictionaries, lookup);
+  Console::Printf("[");
+  bool first = true;
+  for (const auto *entry : dictionaries) {
+    auto result = entry->Lookup(lookup);
+    if (result.IsValid()) {
+      Console::Printf(first ? "{t: %Y,d: %Y%s}" : ",{t: %Y,d: %Y%s}",
+                      result.GetText(), entry->GetName(),
+                      entry->CanRemove() ? ",r: 1" : "");
+      first = false;
     }
-    const StenoDictionaryLookup lookup(parser.GetData(), parser.GetCount());
-    List<const StenoDictionary *> dictionaries;
-    parent->GetDictionariesForOutline(dictionaries, lookup);
-    Console::Printf("[");
-    bool first = true;
-    for (const auto *entry : dictionaries) {
-        auto result = entry->Lookup(lookup);
-        if (result.IsValid()) {
-            Console::Printf(first ? "{t: %Y,d: %Y%s}" : ",{t: %Y,d: %Y%s}",
-                            result.GetText(), entry->GetName(), entry->CanRemove() ? ",r: 1" : "");
-            first = false;
-        }
-        result.Destroy();
-    }
-    Console::Printf("]\n\n");
+    result.Destroy();
+  }
+  Console::Printf("]\n\n");
+}
+void store_status(void *, const char *) {
+  Console::Printf(
+      "{\"format\":2,\"available\":%s,\"entries\":%u,\"used_bytes\":%u,"
+      "\"slot_bytes\":%u,\"generation\":%u,\"last_save_ms\":%u,"
+      "\"ram_mirror_bytes\":0,\"valid_copies\":%u}\n\n",
+      store_available ? "true" : "false", store.Count(), store.Used(),
+      SLOT_BYTES, store.Generation(), last_save_ms, store.ValidCopies());
+}
+bool erased_headers() {
+  const uint32_t addresses[]{SLOT_START, SLOT_START + SLOT_BYTES};
+  for (uint32_t address : addresses) {
+    uint32_t words[8];
+    if (!qspi_device.Read(address, words, sizeof(words)))
+      return false;
+    for (uint32_t word : words)
+      if (word != 0xffffffffu)
+        return false;
+  }
+  return true;
 }
 } // namespace
-
-StenoUserDictionary *steno_squid_user_dictionary_open() {
-    if (!reactivate_after_xip()) {
-        return nullptr;
-    }
-    for (int slot = 0; slot < 2; slot++) {
-        Header header{};
-        if (valid_slot(slot, header) &&
-            (active_slot < 0 || static_cast<int32_t>(header.generation - active_header.generation) > 0)) {
-            active_slot = slot;
-            active_header = header;
-        }
-    }
-    store_available = restore_mirror();
-    return store_available ? &dictionary.value : nullptr;
+StenoDictionary *steno_squid_user_dictionary_open() {
+  if (!reactivate_after_xip())
+    return nullptr;
+  qspi_device.mapped = false;
+  // A fresh device commits its first snapshot on the first edit.
+  store_available = store.Open() || erased_headers();
+  qspi_device.mapped = true;
+  dictionary.Refresh();
+  return store_available ? &dictionary : nullptr;
 }
-
-void steno_squid_user_dictionary_register(Console &console, StenoDictionary &root) {
-    parent = &root;
-    console.RegisterCommand("lookup_stroke", "Look up an outline in the dictionaries", lookup_outline, nullptr);
-    console.RegisterCommand("add_user_entry", "Save a personal translation", add_entry, nullptr);
-    console.RegisterCommand("remove_user_entry", "Remove a personal translation", remove_entry, nullptr);
-    console.RegisterCommand("reset_user_dictionary", "Clear personal translations", reset_entries, nullptr);
-}
-
-bool steno_squid_user_dictionary_owns(const void *address, size_t size) {
-    const auto start = reinterpret_cast<uintptr_t>(mirror);
-    const auto target = reinterpret_cast<uintptr_t>(address);
-    return target >= start && target - start <= sizeof(mirror) &&
-           size <= sizeof(mirror) - (target - start);
+void steno_squid_user_dictionary_register(Console &console,
+                                          StenoDictionary &root) {
+  parent = &root;
+  console.RegisterCommand("user_dictionary_status",
+                          "Read personal snapshot usage", store_status,
+                          nullptr);
+  dictionary.SetParentRecursively(parent);
+  console.RegisterCommand("lookup_stroke",
+                          "Look up an outline in the dictionaries",
+                          lookup_outline, nullptr);
+  console.RegisterCommand("add_user_entry", "Save a personal translation",
+                          add_entry, nullptr);
+  console.RegisterCommand("remove_user_entry", "Remove a personal translation",
+                          remove_entry, nullptr);
+  console.RegisterCommand("reset_user_dictionary",
+                          "Clear personal translations", reset_entries,
+                          nullptr);
 }
