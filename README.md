@@ -110,8 +110,6 @@ python3 tools/steno-squid-lapwing/upload.py /dev/cu.usbmodem14501
 
 The uploader installs missing configured images from `build/`. Use `--status` to inspect them or `--verify` for a full CRC check. After provisioning, flash **left-studio** for everyday use. Dictionary images are uploaded separately from the UF2 firmware.
 
-- [Split build, provisioning, and pairing guide](config/steno-squid-split/README.md)
-
 Local builds must use this checkout's west manifest. If the workspace keeps a separate manifest copy, synchronize it before running `west update`. The compiled dictionary format depends on the pinned Javelin engine. [Dependency manifest](config/west.yml)
 
 ## License
