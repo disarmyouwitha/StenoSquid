@@ -13,6 +13,9 @@ while depth:
     depth += (source[end] == '{') - (source[end] == '}')
     end += 1
 function = source[start:end]
+first_start=source.index('static bool practice_first_stroke_correct(')
+first_end=source.index('\n}\n',first_start)+2
+function=source[first_start:first_end]+'\n'+function
 prefix = r'''
 #include <cassert>
 #include <cstdio>
@@ -20,12 +23,17 @@ prefix = r'''
 #include <strings.h>
 #include <string>
 #include "split_status.h"
+#include "practice_words.h"
+#include "practice_multi.h"
+#include "practice_build.h"
+#include "practice_view.h"
 struct StenoStroke {
   std::string outline;
   void Set(const char *s) { outline=s; }
   bool operator==(const StenoStroke &other) const { return outline==other.outline; }
 };
-struct StenoDictionaryLookup { StenoDictionaryLookup(const StenoStroke *,unsigned) {} };
+static unsigned outline_count;
+struct StenoDictionaryLookup { StenoDictionaryLookup(const StenoStroke *,unsigned count) { outline_count=count; } };
 struct Result {
   const char *text;
   bool IsValid() const { return text; }
@@ -41,8 +49,9 @@ static StenoDictionary active, base;
 static bool base_available=true;
 struct Engine { StenoDictionary &GetDictionary() { return active; } };
 namespace StenoEngine { static struct { Engine value; } container; }
-static struct { steno_squid_practice_drill drill=STENO_SQUID_PRACTICE_WORDS; } practice;
-static unsigned practice_prompt() { return 0; }
+static struct { steno_squid_practice_drill drill=STENO_SQUID_PRACTICE_WORDS; StenoStroke multi_strokes[2]; unsigned build_stage=0; } practice;
+static unsigned prompt_id;
+static unsigned practice_prompt() { return prompt_id; }
 static const StenoDictionary *practice_fallback_dictionary() { return base_available?&base:nullptr; }
 '''
 cases = r'''
@@ -60,6 +69,37 @@ int main() {
   assert(practice_correct(stroke)); // Capitalization is not an error.
   active.text=nullptr;
   assert(!practice_correct(stroke));
+  practice.drill=STENO_SQUID_PRACTICE_TROUBLE;
+  base_available=true;base.text="cat";
+  assert(practice_correct(stroke)); // Trouble uses word translation/fallback too.
+  practice.drill=STENO_SQUID_PRACTICE_BUILD;
+  stroke.Set("KA");assert(!practice_correct(stroke));
+  stroke.Set("K");assert(practice_correct(stroke));
+  practice.build_stage=1;
+  stroke.Set("K");assert(!practice_correct(stroke));
+  stroke.Set("KA");assert(practice_correct(stroke));
+  practice.build_stage=2;
+  stroke.Set("KAT");assert(practice_correct(stroke));
+  practice.drill=STENO_SQUID_PRACTICE_MULTI;
+  stroke.Set("K");assert(!practice_first_stroke_correct(stroke));
+  stroke.Set("HE");assert(practice_first_stroke_correct(stroke));
+  active.text="hello";
+  assert(practice_correct(stroke) && outline_count==2);
+  active.text="wrong";base.text="hello";
+  assert(practice_correct(stroke));
+  active.text=nullptr;base_available=false;
+  assert(!practice_correct(stroke));
+  practice.drill=STENO_SQUID_PRACTICE_COLUMNS;
+  unsigned calls=active.calls;
+  stroke.Set("TK");assert(practice_correct(stroke));
+  stroke.Set("TKP");assert(!practice_correct(stroke));
+  assert(active.calls==calls);
+  prompt_id=8;stroke.Set("AO");assert(practice_correct(stroke));
+  stroke.Set("A");assert(!practice_correct(stroke));
+  prompt_id=9;stroke.Set("EU");assert(practice_correct(stroke));
+  stroke.Set("E");assert(!practice_correct(stroke));
+  assert(active.calls==calls);
+  prompt_id=0;
   practice.drill=STENO_SQUID_PRACTICE_LEFT;
   const unsigned lookups=active.calls;
   stroke.Set("S");assert(practice_correct(stroke));

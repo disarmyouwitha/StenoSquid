@@ -2,20 +2,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <zephyr/toolchain.h>
-#include "practice_words.h"
+#include "practice_types.h"
 
 #define STENO_SQUID_STATUS_BEHAVIOR "zrst"
 #define STENO_SQUID_STATUS_PROTOCOL 1
 #define STENO_SQUID_HOST_STATUS_PROTOCOL 7
-#define STENO_SQUID_PRACTICE_PROTOCOL 8
-#define STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL 9
 /* A renamed layer uses the high bit of param2 as its tag. The remaining
  * 63 bits hold nine 7-bit characters, first character in the lowest bits.
  */
 #define STENO_SQUID_LAYER_NAME_PROTOCOL (1u << 31)
 #define STENO_SQUID_LAYER_NAME_CHARS 9
 #define STENO_SQUID_PRACTICE_ACTIVE (1u << 31)
-#define STENO_SQUID_PRACTICE_PROMPT_MASK 15u
+#define STENO_SQUID_PRACTICE_TIMEOUT (1u << 30)
+#define STENO_SQUID_PRACTICE_PARTIAL 1u
+#define STENO_SQUID_PRACTICE_SECOND_ERROR (1u << 3)
+#define STENO_SQUID_PRACTICE_BUILD_SHIFT 1
+#define STENO_SQUID_PRACTICE_BUILD_MASK (3u << STENO_SQUID_PRACTICE_BUILD_SHIFT)
 #define STENO_SQUID_PRACTICE_FEEDBACK_SHIFT 4
 #define STENO_SQUID_PRACTICE_ROUND_SHIFT 6
 #define STENO_SQUID_PRACTICE_STREAK_SHIFT 12
@@ -23,8 +25,8 @@
 #define STENO_SQUID_PRACTICE_COUNTER_MASK 63u
 #define STENO_SQUID_PRACTICE_NO_DICTIONARY (1u << 24)
 #define STENO_SQUID_PRACTICE_DRILL_SHIFT 25
-#define STENO_SQUID_PRACTICE_DRILL_MASK (3u << STENO_SQUID_PRACTICE_DRILL_SHIFT)
-#define STENO_SQUID_PRACTICE_MENU (1u << 27)
+#define STENO_SQUID_PRACTICE_DRILL_MASK (15u << STENO_SQUID_PRACTICE_DRILL_SHIFT)
+#define STENO_SQUID_PRACTICE_MENU (1u << 29)
 #define STENO_SQUID_PRACTICE_ROUNDS STENO_SQUID_HAND_ROUNDS
 BUILD_ASSERT(STENO_SQUID_PRACTICE_ROUNDS <= STENO_SQUID_PRACTICE_COUNTER_MASK,
              "A practice counter field cannot hold the round count");
@@ -33,8 +35,19 @@ enum steno_squid_practice_drill {
     STENO_SQUID_PRACTICE_WORDS,
     STENO_SQUID_PRACTICE_LEFT,
     STENO_SQUID_PRACTICE_RIGHT,
+    STENO_SQUID_PRACTICE_COLUMNS,
+    STENO_SQUID_PRACTICE_BUILD,
+    STENO_SQUID_PRACTICE_MULTI,
+    STENO_SQUID_PRACTICE_SPEED,
+    STENO_SQUID_PRACTICE_TROUBLE,
     STENO_SQUID_PRACTICE_DRILL_COUNT,
 };
+
+BUILD_ASSERT(STENO_SQUID_PRACTICE_DRILL_COUNT <= 16, "The drill field has four bits");
+
+static inline bool steno_squid_practice_word_drill(enum steno_squid_practice_drill drill) {
+    return drill == STENO_SQUID_PRACTICE_WORDS || drill == STENO_SQUID_PRACTICE_TROUBLE || drill == STENO_SQUID_PRACTICE_SPEED;
+}
 
 enum steno_squid_practice_feedback {
     STENO_SQUID_PRACTICE_PROMPT,
@@ -43,24 +56,21 @@ enum steno_squid_practice_feedback {
     STENO_SQUID_PRACTICE_DONE,
 };
 
-/* Low four prompt bits keep the original positions. Bits 28..30 carry the
- * high three bits for the 100-word pool; hand prompts still fit in four. */
-static inline unsigned steno_squid_practice_prompt_value(uint32_t snapshot) {
-    return (snapshot & STENO_SQUID_PRACTICE_PROMPT_MASK) | ((snapshot >> 24) & 0x70u);
-}
-static inline uint32_t steno_squid_practice_pack_prompt(unsigned prompt) {
-    return (prompt & 15u) | ((prompt & 0x70u) << 24);
-}
 static inline unsigned steno_squid_practice_first_try(uint64_t progress) { return (progress >> 20) & 15u; }
 static inline unsigned steno_squid_practice_errors(uint64_t progress) { return (progress >> 24) & 63u; }
 static inline unsigned steno_squid_practice_average(uint64_t progress) { return (progress >> 30) & 511u; }
 static inline unsigned steno_squid_practice_xp_earned(uint64_t progress) { return (progress >> 39) & 127u; }
-static inline unsigned steno_squid_practice_review(uint64_t progress) { return (progress >> 46) & 127u; }
+static inline bool steno_squid_practice_no_trouble(uint64_t progress) { return (progress >> 53) & 1u; }
+static inline unsigned steno_squid_practice_seconds(uint64_t progress) { return (progress >> 46) & 31u; }
 static inline uint32_t steno_squid_practice_xp(uint64_t progress) { return progress & 0xfffffu; }
 
 static const char *const steno_squid_practice_left[] = {"S", "T", "K", "P", "W", "H", "R"};
 static const char *const steno_squid_practice_right[] = {
     "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z",
+};
+
+static const char *const steno_squid_practice_columns[] = {
+    "TK", "PW", "HR", "-FR", "-PB", "-LG", "-TS", "-DZ", "AO", "EU",
 };
 
 static inline unsigned steno_squid_practice_prompt_count(enum steno_squid_practice_drill drill) {
@@ -70,7 +80,10 @@ static inline unsigned steno_squid_practice_prompt_count(enum steno_squid_practi
     if (drill == STENO_SQUID_PRACTICE_RIGHT) {
         return sizeof(steno_squid_practice_right) / sizeof(steno_squid_practice_right[0]);
     }
-    return STENO_SQUID_WORD_COUNT;
+    if (drill == STENO_SQUID_PRACTICE_COLUMNS) {
+        return sizeof(steno_squid_practice_columns) / sizeof(steno_squid_practice_columns[0]);
+    }
+    return 0;
 }
 
 static inline const char *steno_squid_practice_outline(enum steno_squid_practice_drill drill,
@@ -81,11 +94,13 @@ static inline const char *steno_squid_practice_outline(enum steno_squid_practice
     if (drill == STENO_SQUID_PRACTICE_RIGHT) {
         return steno_squid_practice_right[prompt];
     }
-    return prompt < STENO_SQUID_WORD_COUNT ? steno_squid_words[prompt].outline : "?";
+    if (drill == STENO_SQUID_PRACTICE_COLUMNS) return steno_squid_practice_columns[prompt];
+    return "?";
 }
 
 static inline unsigned steno_squid_practice_rounds(enum steno_squid_practice_drill drill) {
-    return drill == STENO_SQUID_PRACTICE_WORDS ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_PRACTICE_ROUNDS;
+    return steno_squid_practice_word_drill(drill) || (drill == STENO_SQUID_PRACTICE_MULTI || drill == STENO_SQUID_PRACTICE_BUILD)
+               ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_PRACTICE_ROUNDS;
 }
 
 static inline unsigned steno_squid_practice_feedback_value(uint32_t snapshot) {

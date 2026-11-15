@@ -16,21 +16,20 @@ int main(void) {
     assert(steno_squid_menu_first(3,0,7,3)==0);
     struct steno_squid_practice_model model;
     steno_squid_model_init(&model);
-    assert(sizeof(model.record) < 2048);
-    assert(sizeof(steno_squid_words)/sizeof(steno_squid_words[0])==100);
-    unsigned visits[100]={0};
+    assert(sizeof(model.record) < 3800);
+    assert(sizeof(steno_squid_words)/sizeof(steno_squid_words[0])==300);
+    unsigned visits[300]={0};
     for(unsigned run=0;run<1000;run++) {
         steno_squid_model_begin(&model,random_word);
-        bool seen[100]={0};
+        bool seen[300]={0};
         for(unsigned round=0;round<10;round++) {
             const unsigned word=model.run.deck[round];
-            assert(word<100 && !seen[word]);seen[word]=true;visits[word]++;
-            assert(steno_squid_practice_prompt_value(steno_squid_practice_pack_prompt(word))==word);
+            assert(word<300 && !seen[word]);seen[word]=true;visits[word]++;
         }
     }
-    for(unsigned i=0;i<100;i++)assert(visits[i]>0);
+    for(unsigned i=0;i<300;i++)assert(visits[i]>0);
     steno_squid_model_init(&model);
-    for(unsigned i=0;i<100;i++) {
+    for(unsigned i=0;i<300;i++) {
         model.record.words[i].completed=100;
         model.record.words[i].first_try=100;
         model.record.words[i].last_session=1;
@@ -85,29 +84,89 @@ int main(void) {
     /* Both hand drills share the same rules, independent of word history. */
     steno_squid_model_init(&model);
     steno_squid_model_hands_begin(&model);
-    assert(sizeof(model.record)==1224); // Existing saved progress stays compatible.
-    const struct steno_squid_word_stats empty_words[100]={{0}};
+    assert(sizeof(model.record)==3624); // New 300-word record fits one NVS sector.
+    const struct steno_squid_word_stats empty_words[300]={{0}};
     assert(!steno_squid_model_answer(&model,0,true,1000));
-    for(unsigned round=0;round<50;round++) {
+    for(unsigned round=0;round<30;round++) {
         const unsigned before=model.record.xp;
         assert(steno_squid_model_hands_answer(&model,round,true,1000));
         assert(model.record.xp>before);
         assert(!steno_squid_model_hands_answer(&model,round,true,1000));
     }
-    assert(model.run.earned==90 && model.run.hand_streak==50);
+    assert(model.run.earned==50 && model.run.hand_streak==30);
     assert(steno_squid_model_finish(&model));
-    assert(model.run.earned==110 && model.record.xp==110);
+    assert(model.run.earned==70 && model.record.xp==70);
     assert(!steno_squid_model_finish(&model));
     assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
     steno_squid_model_hands_begin(&model);
     const unsigned previous=model.record.xp;
-    for(unsigned round=0;round<50;round++) {
+    for(unsigned round=0;round<30;round++) {
         assert(!steno_squid_model_hands_answer(&model,round,false,100));
         assert(model.record.xp==previous+round);
         assert(steno_squid_model_hands_answer(&model,round,true,1000));
     }
     assert(steno_squid_model_finish(&model));
-    assert(model.run.earned==70 && model.record.xp==previous+70);
+    assert(model.run.earned==50 && model.record.xp==previous+50);
     assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
-    puts("Adaptive practice: unique decks, weighted sampling, XP, hand streak bonuses, levels, timing and saturation passed");
+    steno_squid_model_multi_begin(&model,random_word);
+    bool multi_seen[STENO_SQUID_MULTI_COUNT]={false};
+    for(unsigned i=0;i<10;i++) {
+        assert(model.run.deck[i]<STENO_SQUID_MULTI_COUNT && !multi_seen[model.run.deck[i]]);
+        multi_seen[model.run.deck[i]]=true;
+        if(i==0)assert(!steno_squid_model_hands_answer(&model,i,false,1000));
+        assert(steno_squid_model_hands_answer(&model,i,true,2000));
+    }
+    assert(steno_squid_model_finish(&model) && model.run.earned==112 && model.run.first_try==9);
+    assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
+    steno_squid_model_begin(&model,random_word);
+    const unsigned speed_xp=model.record.xp;
+    assert(steno_squid_model_answer(&model,0,true,1000));
+    assert(steno_squid_model_timeout(&model));
+    assert(model.record.xp==speed_xp+10 && model.run.earned==10);
+    assert(!steno_squid_model_finish(&model) && !steno_squid_model_timeout(&model));
+    steno_squid_model_build_begin(&model,random_word);
+    bool build_seen[STENO_SQUID_BUILD_COUNT]={false};
+    for(unsigned i=0;i<10;i++) {
+        assert(model.run.deck[i]<STENO_SQUID_BUILD_COUNT && !build_seen[model.run.deck[i]]);
+        build_seen[model.run.deck[i]]=true;
+        assert(steno_squid_model_hands_answer(&model,i,true,3000));
+    }
+    assert(steno_squid_model_finish(&model) && model.run.earned==120);
+    /* Trouble never invents history or resets the persisted record. */
+    steno_squid_model_init(&model);
+    assert(!steno_squid_model_trouble_begin(&model,random_word));
+    assert(!model.run.active && model.record.session==0);
+    assert(steno_squid_trouble_count(&model.record)==0);
+    model.record.words[299].misses=1; // Aborted word attempt still needs review.
+    assert(steno_squid_model_trouble_begin(&model,random_word));
+    for(unsigned i=0;i<10;i++) {
+        assert(model.run.deck[i]==299);
+        assert(steno_squid_model_answer(&model,i,true,1000));
+    }
+    assert(steno_squid_model_finish(&model));
+    assert(model.record.xp==120 && !steno_squid_trouble_count(&model.record));
+    model.record.words[1].completed=10;model.record.words[1].first_try=9;
+    model.record.words[1].mean_ds=40;
+    assert(!steno_squid_word_trouble(&model.record.words[1])); // Exact thresholds pass.
+    model.record.words[1].mean_ds=41;
+    model.record.words[2].completed=10;model.record.words[2].first_try=8;
+    for(unsigned run=0;run<100;run++) {
+        assert(steno_squid_model_trouble_begin(&model,random_word));
+        for(unsigned i=0;i<10;i++) {
+            assert(model.run.deck[i]==1 || model.run.deck[i]==2);
+            if(i)assert(model.run.deck[i]!=model.run.deck[i-1]);
+        }
+    }
+    for(unsigned i=10;i<30;i++)model.record.words[i].misses=1;
+    for(unsigned run=0;run<100;run++) {
+        assert(steno_squid_model_trouble_begin(&model,random_word));
+        bool seen[300]={false};
+        for(unsigned i=0;i<10;i++) {
+            const unsigned word=model.run.deck[i];
+            assert(steno_squid_word_trouble(&model.record.words[word]));
+            assert(!seen[word]);seen[word]=true;
+        }
+    }
+    assert(sizeof(model.record)==3624);
+    puts("Adaptive practice: unique decks, weighted sampling, XP, hand streak bonuses, levels, timing, Trouble targeting/recovery and saturation passed");
 }

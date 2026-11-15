@@ -18,6 +18,10 @@ static struct steno_squid_practice_model model = {
     .run = {.review = STENO_SQUID_NO_REVIEW},
 };
 static uint32_t generation, saved_generation;
+/* One NVS value must fit within a 4 KB sector, including its name/metadata.
+ * The system and startup stacks are 8 KB; this 3,624-byte record stays on the
+ * stack only during load/save, never on the key/BT receive threads. */
+BUILD_ASSERT(sizeof(struct steno_squid_progress_record) <= 3800);
 
 static bool valid_record(const struct steno_squid_progress_record *record) {
     if (record->magic != STENO_SQUID_PROGRESS_MAGIC || record->pool != STENO_SQUID_WORD_SET_ID ||
@@ -75,6 +79,19 @@ void steno_squid_words_begin(void) {
     generation++;
     k_mutex_unlock(&progress_mutex);
 }
+bool steno_squid_trouble_begin(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    const bool started = steno_squid_model_trouble_begin(&model, sys_rand32_get);
+    if (started) generation++;
+    k_mutex_unlock(&progress_mutex);
+    return started;
+}
+unsigned steno_squid_practice_review_word(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    const unsigned word = model.run.review;
+    k_mutex_unlock(&progress_mutex);
+    return word;
+}
 unsigned steno_squid_words_prompt(unsigned round) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     const unsigned word = round < STENO_SQUID_WORD_ROUNDS ? model.run.deck[round] : model.run.deck[STENO_SQUID_WORD_ROUNDS - 1];
@@ -90,6 +107,22 @@ void steno_squid_hands_begin(void) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     steno_squid_model_hands_begin(&model);
     k_mutex_unlock(&progress_mutex);
+}
+void steno_squid_multi_begin(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    steno_squid_model_multi_begin(&model, sys_rand32_get);
+    k_mutex_unlock(&progress_mutex);
+}
+void steno_squid_build_begin(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    steno_squid_model_build_begin(&model, sys_rand32_get);
+    k_mutex_unlock(&progress_mutex);
+}
+void steno_squid_speed_timeout(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    if (steno_squid_model_timeout(&model)) generation++;
+    k_mutex_unlock(&progress_mutex);
+    steno_squid_practice_checkpoint();
 }
 void steno_squid_hands_answer(unsigned round, bool correct, uint32_t elapsed_ms) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
@@ -117,7 +150,8 @@ uint64_t steno_squid_practice_progress(void) {
     const uint64_t packed = (uint64_t)model.record.xp |
         ((uint64_t)run->first_try << 20) | ((uint64_t)run->errors << 24) |
         ((uint64_t)(average > 511 ? 511 : average) << 30) |
-        ((uint64_t)run->earned << 39) | ((uint64_t)run->review << 46);
+        ((uint64_t)run->earned << 39) |
+        ((uint64_t)(steno_squid_trouble_count(&model.record) == 0) << 53);
     k_mutex_unlock(&progress_mutex);
     return packed;
 }

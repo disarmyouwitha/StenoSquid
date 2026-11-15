@@ -23,6 +23,7 @@
 #include "display/pet_widget.h"
 #include "split_status.h"
 #include "stroke_feed.h"
+#include "practice_view.h"
 
 BUILD_ASSERT(DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT));
 BUILD_ASSERT(__builtin_strcmp(DEVICE_DT_NAME(DT_DRV_INST(0)), STENO_SQUID_STATUS_BEHAVIOR) == 0);
@@ -35,7 +36,8 @@ static atomic_t host_disconnected;
 static atomic_t layer_name_low;
 static atomic_t layer_name_high;
 static atomic_t practice_screen;
-static uint64_t practice_progress;
+static struct steno_squid_practice_view practice_view;
+static struct steno_squid_practice_receiver practice_receiver;
 static struct k_spinlock progress_lock;
 static atomic_t pet_wake;
 static atomic_t pet_typing;
@@ -67,7 +69,10 @@ static void refresh_status(struct k_work *work) {
             name[i] = (packed >> (7 * i)) & 0x7f;
         }
     }
+    k_spinlock_key_t progress_key = k_spin_lock(&progress_lock);
     const uint32_t practice = atomic_get(&practice_screen);
+    const struct steno_squid_practice_view shown_view = practice_view;
+    k_spin_unlock(&progress_lock, progress_key);
     const bool wake = atomic_clear(&pet_wake);
     const bool typing = atomic_clear(&pet_typing);
     const bool practicing = (practice & STENO_SQUID_PRACTICE_ACTIVE) != 0;
@@ -84,10 +89,7 @@ static void refresh_status(struct k_work *work) {
     k_spin_unlock(&tape_lock, key);
     steno_squid_screen_set_tape(&shown_tape);
 #endif
-    k_spinlock_key_t progress_key = k_spin_lock(&progress_lock);
-    const uint64_t shown_progress = practice_progress;
-    k_spin_unlock(&progress_lock, progress_key);
-    steno_squid_practice_widget_set_progress(shown_progress);
+    if (practicing) steno_squid_practice_widget_set_view(&shown_view);
     steno_squid_screen_update(shown, name, practice, zmk_battery_state_of_charge(),
                          atomic_get(&host_disconnected));
     if (!practicing) {
@@ -122,34 +124,15 @@ static int status_received(struct zmk_behavior_binding *binding,
             return -EINVAL;
         }
         atomic_set(&host_disconnected, binding->param1);
-    } else if ((binding->param2 & 0xffu) == STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL &&
-               !(binding->param2 & 0xe0000000u)) {
-        const uint64_t value = ((uint64_t)(binding->param2 >> 8) << 32) | binding->param1;
-        const unsigned review = steno_squid_practice_review(value);
-        if (steno_squid_practice_first_try(value) > STENO_SQUID_WORD_ROUNDS ||
-            steno_squid_practice_xp_earned(value) > 120 ||
-            (review >= STENO_SQUID_WORD_COUNT && review != 127)) return -EINVAL;
+    } else if ((binding->param2 & 0xffu) == STENO_SQUID_PRACTICE_VIEW_PROTOCOL &&
+               !(binding->param2 & (STENO_SQUID_LAYER_NAME_PROTOCOL | STENO_SQUID_TAPE_TAG))) {
         k_spinlock_key_t key = k_spin_lock(&progress_lock);
-        practice_progress = value;
+        const int result = steno_squid_practice_receive(&practice_receiver, binding->param1,
+                                                       binding->param2, &practice_view);
+        if (result == 1) atomic_set(&practice_screen, practice_view.state);
         k_spin_unlock(&progress_lock, key);
-    } else if (binding->param2 == STENO_SQUID_PRACTICE_PROTOCOL) {
-        const uint32_t value = binding->param1;
-        const unsigned drill = (value >> STENO_SQUID_PRACTICE_DRILL_SHIFT) & 3u;
-        if (!(value & STENO_SQUID_PRACTICE_ACTIVE) || drill >= STENO_SQUID_PRACTICE_DRILL_COUNT) {
-            return -EINVAL;
-        }
-        const unsigned total = steno_squid_practice_rounds(drill);
-        const unsigned round = steno_squid_practice_counter(value, STENO_SQUID_PRACTICE_ROUND_SHIFT);
-        if (((value & STENO_SQUID_PRACTICE_MENU) &&
-             (round || steno_squid_practice_feedback_value(value) != STENO_SQUID_PRACTICE_PROMPT)) ||
-            round > total ||
-            ((round == total) != (steno_squid_practice_feedback_value(value) == STENO_SQUID_PRACTICE_DONE)) ||
-            steno_squid_practice_counter(value, STENO_SQUID_PRACTICE_STREAK_SHIFT) > total ||
-            steno_squid_practice_counter(value, STENO_SQUID_PRACTICE_BEST_SHIFT) > total ||
-            steno_squid_practice_prompt_value(value) >= steno_squid_practice_prompt_count(drill)) {
-            return -EINVAL;
-        }
-        atomic_set(&practice_screen, value);
+        if (result < 0) return -EINVAL;
+        if (!result) return ZMK_BEHAVIOR_OPAQUE;
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
     } else if ((binding->param2 & STENO_SQUID_TAPE_TAG) &&
                !(binding->param2 & STENO_SQUID_LAYER_NAME_PROTOCOL)) {
@@ -226,7 +209,11 @@ static int display_event(const zmk_event_t *event) {
         if (!split->connected) {
             atomic_clear(&mode);
             atomic_clear(&host_disconnected);
+            k_spinlock_key_t key = k_spin_lock(&progress_lock);
             atomic_clear(&practice_screen);
+            memset(&practice_receiver, 0, sizeof(practice_receiver));
+            memset(&practice_view, 0, sizeof(practice_view));
+            k_spin_unlock(&progress_lock, key);
             clear_tape();
         }
     }

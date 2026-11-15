@@ -28,6 +28,8 @@ PREFIX = r'''
 #include "split_status.h"
 #include "practice_model.h"
 #include "practice_progress.h"
+#include "practice_view.h"
+#include "stroke_feed.h"
 // The display receiver is C; allow its integer-to-enum calls in this C++ harness.
 unsigned steno_squid_practice_prompt_count(unsigned drill) {
   return steno_squid_practice_prompt_count(static_cast<steno_squid_practice_drill>(drill));
@@ -58,7 +60,13 @@ void k_work_cancel_delayable(int *) {}
 void k_work_reschedule(int *, int64_t) {}
 uint32_t sys_rand32_get() { return 3; }
 static steno_squid_practice_model progress_model;
+uint64_t steno_squid_practice_progress() { return 0; }
+unsigned steno_squid_practice_review_word() { return progress_model.run.review; }
 void steno_squid_words_begin() { steno_squid_model_begin(&progress_model, sys_rand32_get); }
+bool steno_squid_trouble_begin() { return steno_squid_model_trouble_begin(&progress_model,sys_rand32_get); }
+void steno_squid_build_begin() { steno_squid_model_build_begin(&progress_model,sys_rand32_get); }
+void steno_squid_multi_begin() { steno_squid_model_multi_begin(&progress_model,sys_rand32_get); }
+void steno_squid_speed_timeout() { steno_squid_model_timeout(&progress_model); }
 void steno_squid_hands_begin() { steno_squid_model_hands_begin(&progress_model); }
 void steno_squid_hands_answer(unsigned round, bool correct, uint32_t ms) { steno_squid_model_hands_answer(&progress_model,round,correct,ms); }
 unsigned steno_squid_words_prompt(unsigned round) { return progress_model.run.deck[round < 10 ? round : 9]; }
@@ -71,7 +79,8 @@ using k_spinlock_key_t = int;
 int k_spin_lock(k_spinlock *) { return 0; }
 void k_spin_unlock(k_spinlock *, int) {}
 k_spinlock progress_lock;
-uint64_t practice_progress;
+struct steno_squid_practice_view practice_view;
+struct steno_squid_practice_receiver practice_receiver;
 extern "C" void steno_squid_split_status_refresh() {}
 struct zmk_behavior_binding { uint32_t param1, param2; };
 struct zmk_behavior_binding_event {};
@@ -83,6 +92,8 @@ void clear_tape() {}
 void queue_refresh() {}
 int lookups;
 bool answer_correct = true;
+bool first_correct = true;
+static bool practice_first_stroke_correct(const StenoStroke &) { return first_correct; }
 static bool practice_correct(const StenoStroke &) { ++lookups; return answer_correct; }
 static void practice_refresh_dictionary();
 '''
@@ -99,8 +110,16 @@ int main() {
   tap(StenoKey::KL);  // Menu does not score strokes.
   assert(lookups == 0 && practice.menu);
   tap(StenoKey::STAR1);
-  assert(practice.drill == STENO_SQUID_PRACTICE_RIGHT && practice.menu);
-  tap(StenoKey::STAR3);
+  assert(practice.drill == STENO_SQUID_PRACTICE_TROUBLE && practice.menu);
+  tap(StenoKey::A);
+  assert(!practice.menu && progress_model.run.active && practice.drill==STENO_SQUID_PRACTICE_WORDS);
+  assert(lookups==0); // Try Words starts a Words round without scoring the start key.
+  tap(StenoKey::STAR1); // Back to Trouble.
+  assert(practice.menu && practice.drill==STENO_SQUID_PRACTICE_TROUBLE);
+  progress_model.record.words[42].misses=1;
+  tap(StenoKey::A);
+  assert(!practice.menu && practice_prompt()==42);
+  tap(StenoKey::STAR3); // Trouble wraps forward to Words.
   assert(practice.drill == STENO_SQUID_PRACTICE_WORDS && practice.menu);
   tap(StenoKey::STAR4);
   assert(practice.drill == STENO_SQUID_PRACTICE_LEFT);
@@ -130,33 +149,112 @@ int main() {
     tap(key);  // Keep celebration until an explicit return to menu.
     assert(practice.menu && practice.round == 0);
   }
-  // Menu packets, extended word IDs and malformed packets remain distinct.
-  zmk_behavior_binding packet{practice_screen, STENO_SQUID_PRACTICE_PROTOCOL};
-  assert(status_received(&packet, {}) == 0);
-  const auto snapshot = practice_screen;
-  zmk_behavior_binding host_packet{1, STENO_SQUID_HOST_STATUS_PROTOCOL};
-  assert(status_received(&host_packet, {}) == 0 && host_disconnected);
-  assert(practice_screen == snapshot);
-  host_packet.param1 = 0;
-  assert(status_received(&host_packet, {}) == 0 && !host_disconnected);
-  packet.param1 |= 1u << STENO_SQUID_PRACTICE_ROUND_SHIFT;
-  assert(status_received(&packet, {}) == -EINVAL);
-  packet = {STENO_SQUID_PRACTICE_ACTIVE | steno_squid_practice_pack_prompt(99), STENO_SQUID_PRACTICE_PROTOCOL};
-  assert(status_received(&packet, {}) == 0);
-  assert(steno_squid_practice_prompt_value(practice_screen)==99);
-  packet.param1 = STENO_SQUID_PRACTICE_ACTIVE | steno_squid_practice_pack_prompt(100);
-  assert(status_received(&packet, {}) == -EINVAL);
-  for(unsigned id=0;id<100;id++) {
-    packet.param1=STENO_SQUID_PRACTICE_ACTIVE|steno_squid_practice_pack_prompt(id);
+  // Build-Up credits only complete ladders; mistakes retain the current step.
+  practice.drill=STENO_SQUID_PRACTICE_BUILD;practice_switch_drill(0);tap(StenoKey::A);
+  const unsigned build_xp=progress_model.record.xp;
+  struct steno_squid_practice_view build_view;
+  steno_squid_practice_view_snapshot(&build_view);
+  assert(!strcmp(build_view.prompt,"K"));
+  answer_correct=false;tap(StenoKey::KL);
+  assert(practice.build_stage==0 && practice.round==0 && progress_model.record.xp==build_xp);
+  answer_correct=true;tap(StenoKey::KL);
+  assert(practice.feedback==STENO_SQUID_PRACTICE_CORRECT && progress_model.run.position==0);
+  now+=250;practice_advance(nullptr);
+  assert(practice.build_stage==1 && practice.round==0);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"KA"));
+  answer_correct=false;tap(StenoKey::KL);assert(practice.build_stage==1);
+  answer_correct=true;tap(StenoKey::KL);now+=250;practice_advance(nullptr);
+  assert(practice.build_stage==2 && progress_model.record.xp==build_xp);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"KA-T"));
+  tap(StenoKey::KL);
+  assert(progress_model.record.xp==build_xp+2 && progress_model.run.position==1);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"CAT"));
+  now+=250;practice_advance(nullptr);assert(practice.round==0);
+  now+=350;practice_advance(nullptr);assert(practice.round==1 && practice.build_stage==0);
+  // Multi rejects a wrong first stroke immediately, then keeps a good prefix.
+  practice.drill=STENO_SQUID_PRACTICE_MULTI;
+  practice_switch_drill(0);tap(StenoKey::A);
+  const unsigned before_multi=lookups;
+  first_correct=false;tap(StenoKey::KL);
+  assert(practice.multi_count==0 && lookups==before_multi && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
+  assert(progress_model.run.errors==1 && progress_model.record.xp>0);
+  first_correct=true;tap(StenoKey::KL);
+  assert(practice.multi_count==1 && lookups==before_multi && practice.round==0);
+  assert(practice_screen&STENO_SQUID_PRACTICE_PARTIAL);
+  struct steno_squid_practice_view partial;
+  steno_squid_practice_view_snapshot(&partial);
+  assert(!strcmp(partial.outline,steno_squid_multi[practice_prompt()].outline));
+  answer_correct=false;tap(StenoKey::PL);
+  assert(practice.multi_count==0 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
+  assert(!(practice_screen&STENO_SQUID_PRACTICE_PARTIAL));
+  assert(practice_screen&STENO_SQUID_PRACTICE_SECOND_ERROR);
+  answer_correct=true;tap(StenoKey::KL);tap(StenoKey::PL);
+  assert(practice.feedback==STENO_SQUID_PRACTICE_CORRECT);
+  now+=250;practice_advance(nullptr);
+  assert(practice.round==1 && practice.multi_count==0);
+  tap(StenoKey::KL); // Switching clears the partial outline.
+  tap(StenoKey::STAR1);tap(StenoKey::STAR1);
+  assert(practice.drill==STENO_SQUID_PRACTICE_COLUMNS && practice.multi_count==0 && practice.menu);
+  // Columns still uses full released chords, including extra-key errors.
+  tap(StenoKey::A);assert(!practice.menu);
+  practice.hand_prompt=7;
+  steno_squid_practice_view_snapshot(&partial);
+  assert(!strcmp(partial.prompt,"DZ"));
+  assert(!strcmp(steno_squid_practice_outline(practice.drill,7),"-DZ"));
+  answer_correct=false;tap(StenoKey::KL);
+  assert(practice.feedback==STENO_SQUID_PRACTICE_INCORRECT && practice.round==0);
+  answer_correct=true;
+  // Speed advances immediately and a delayed timer cannot credit a late chord.
+  practice.drill=STENO_SQUID_PRACTICE_SPEED;practice_switch_drill(0);tap(StenoKey::A);
+  const auto deadline=practice.deadline;
+  steno_squid_practice_view_snapshot(&partial);
+  assert(steno_squid_practice_seconds(partial.progress)==30);
+  tap(StenoKey::KL);assert(practice.round==1 && practice.feedback==STENO_SQUID_PRACTICE_PROMPT);
+  now=deadline-1;
+  tap(StenoKey::KL);assert(practice.round==2);
+  now=deadline;tap(StenoKey::KL);
+  assert(practice.round==2 && practice.timed_out && practice.feedback==STENO_SQUID_PRACTICE_DONE);
+  assert(progress_model.run.finished);
+  // A key held across expiry is consumed; releasing a vowel cannot dismiss results.
+  tap(StenoKey::A);tap(StenoKey::A); // Menu then a new round.
+  practice_process_key(int(StenoKey::E),true);
+  now=practice.deadline;practice_clock(nullptr);
+  practice_process_key(int(StenoKey::E),false);
+  assert(!practice.menu && practice.timed_out);
+  tap(StenoKey::A);tap(StenoKey::A);
+  const unsigned xp=progress_model.record.xp;
+  for(unsigned i=0;i<10;i++)tap(StenoKey::KL);
+  assert(practice.round==10 && !practice.timed_out && practice.feedback==STENO_SQUID_PRACTICE_DONE);
+  assert(progress_model.record.xp==xp+120);
+  now=practice.deadline+1000;practice_clock(nullptr);
+  assert(!practice.timed_out); // Winning cannot turn into timeout later.
+  // Exercise actual engine -> text encoder -> display receiver, atomically.
+  struct steno_squid_practice_view sent;
+  practice.drill=STENO_SQUID_PRACTICE_WORDS;
+  practice.menu=false;
+  practice.round=0;
+  practice.feedback=STENO_SQUID_PRACTICE_PROMPT;
+  progress_model.run.deck[0]=299;
+  practice_publish();
+  steno_squid_practice_view_snapshot(&sent);
+  assert(!strcmp(sent.prompt,steno_squid_words[299].word));
+  uint8_t bytes[STENO_SQUID_PRACTICE_FRAME_MAX];
+  const unsigned size=steno_squid_practice_encode(&sent,bytes);
+  atomic_set(&practice_screen,0);
+  for(unsigned i=0;i<(size+4)/5;i++) {
+    zmk_behavior_binding packet{};
+    steno_squid_practice_fragment(bytes,size,1,i,&packet.param1,&packet.param2);
     assert(status_received(&packet,{})==0);
-    assert(steno_squid_practice_prompt_value(practice_screen)==id);
+    if(i+1<(size+4)/5)assert(practice_screen==0);
   }
-  const uint64_t stats=120 | (uint64_t(8)<<20) | (uint64_t(3)<<24) | (uint64_t(27)<<30) |
-                       (uint64_t(104)<<39) | (uint64_t(99)<<46);
-  packet={uint32_t(stats),STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL | (uint32_t(stats>>32)<<8)};
-  assert(status_received(&packet,{})==0 && practice_progress==stats);
-  packet.param2 |= 0x20000000;
-  assert(status_received(&packet,{})==-EINVAL);
+  assert(practice_view.state==sent.state && practice_screen==sent.state);
+  assert(!strcmp(practice_view.prompt,steno_squid_words[299].word));
+  zmk_behavior_binding host_packet{1,STENO_SQUID_HOST_STATUS_PROTOCOL};
+  assert(status_received(&host_packet,{})==0 && host_disconnected);
+  host_packet.param1=0;
+  assert(status_received(&host_packet,{})==0 && !host_disconnected);
+  zmk_behavior_binding layer_packet{0,STENO_SQUID_LAYER_NAME_PROTOCOL|STENO_SQUID_PRACTICE_VIEW_PROTOCOL};
+  assert(status_received(&layer_packet,{})==0 && mode==MODE_LAYER_NAME);
   practice.active = false;
   assert(!practice_process_key(int(StenoKey::KL), true));
   puts("Practice menu, navigation, start, feedback and replay checks passed");

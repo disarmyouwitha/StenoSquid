@@ -43,7 +43,7 @@ HARNESS = r'''
 #include <stdio.h>
 #include <string.h>
 #include "practice_progress.c"
-static uint8_t disk[2048];
+static uint8_t disk[4096];
 static size_t disk_size;
 static unsigned writes;
 static bool failed, race;
@@ -65,9 +65,11 @@ static int read_disk(void *arg,void *out,size_t size) { memcpy(out,disk,disk_siz
 static int read_short(void *arg,void *out,size_t size) { memcpy(out,disk,disk_size-1);return disk_size-1; }
 static int read_error(void *arg,void *out,size_t size) { return -EIO; }
 int main(void) {
+    assert(steno_squid_practice_no_trouble(steno_squid_practice_progress()));
+    assert(!steno_squid_trouble_begin() && generation==0);
     steno_squid_words_begin();
     for(unsigned i=0;i<10;i++) {
-        assert(steno_squid_words_prompt(i)<100);
+        assert(steno_squid_words_prompt(i)<300);
         steno_squid_words_answer(i,true,1500);
         assert(writes==0 && queued==0); // Never queue a write on every key/chord.
     }
@@ -77,7 +79,7 @@ int main(void) {
     assert(steno_squid_practice_first_try(summary)==10);
     assert(steno_squid_practice_average(summary)==15);
     assert(steno_squid_practice_xp_earned(summary)==120);
-    assert(steno_squid_practice_review(summary)==127);
+    assert(steno_squid_practice_review_word()==UINT16_MAX);
     save_progress(&save_progress_work);
     assert(writes==1 && saved_generation==generation);
     save_progress(&save_progress_work);assert(writes==1);
@@ -88,6 +90,7 @@ int main(void) {
     assert(!memcmp(model.record.words,expected.words,sizeof(expected.words)));
     assert(registered_load("other",disk_size,read_disk,NULL)==-ENOENT);
     assert(registered_load("progress",disk_size-1,read_disk,NULL)==-EINVAL);
+    assert(registered_load("progress",1224,read_disk,NULL)==-EINVAL); // Old pool starts fresh.
     assert(registered_load("progress",disk_size,read_short,NULL)==-EINVAL);
     assert(registered_load("progress",disk_size,read_error,NULL)==-EIO);
     disk[20]^=1;
@@ -110,7 +113,7 @@ int main(void) {
     const int previous=queued;practice_activity(&idle);assert(queued>previous);
     // Restored word stats and XP survive adding hand rewards to the same record.
     steno_squid_hands_begin();
-    for(unsigned i=0;i<50;i++) steno_squid_hands_answer(i,true,1000);
+    for(unsigned i=0;i<30;i++) steno_squid_hands_answer(i,true,1000);
     steno_squid_practice_finish();
     const uint32_t hand_xp=model.record.xp;
     save_progress(&save_progress_work);
@@ -118,6 +121,31 @@ int main(void) {
     assert(registered_load("progress",disk_size,read_disk,NULL)==0);
     assert(model.record.xp==hand_xp);
     assert(model.record.rounds==expected.rounds+1);
+    assert(!steno_squid_practice_no_trouble(steno_squid_practice_progress()));
+    assert(steno_squid_trouble_begin());
+    for(unsigned i=0;i<10;i++) steno_squid_words_answer(i,true,1000);
+    steno_squid_practice_finish();
+    const struct steno_squid_progress_record trouble=model.record;
+    save_progress(&save_progress_work);
+    steno_squid_model_init(&model);generation=saved_generation=0;
+    assert(registered_load("progress",disk_size,read_disk,NULL)==0);
+    assert(model.record.xp==trouble.xp && model.record.rounds==trouble.rounds);
+    assert(!memcmp(model.record.words,trouble.words,sizeof(trouble.words)));
+    assert(steno_squid_practice_no_trouble(steno_squid_practice_progress()));
+    const struct steno_squid_progress_record before_multi=model.record;
+    steno_squid_multi_begin();
+    for(unsigned i=0;i<10;i++)steno_squid_hands_answer(i,true,2000);
+    steno_squid_practice_finish();
+    save_progress(&save_progress_work);
+    steno_squid_model_init(&model);generation=saved_generation=0;
+    assert(registered_load("progress",disk_size,read_disk,NULL)==0);
+    assert(model.record.xp==before_multi.xp+120);
+    assert(!memcmp(model.record.words,before_multi.words,sizeof(model.record.words)));
+    steno_squid_words_begin();steno_squid_words_answer(0,true,1000);
+    const unsigned timeout_xp=model.record.xp;
+    steno_squid_speed_timeout();save_progress(&save_progress_work);
+    steno_squid_model_init(&model);generation=saved_generation=0;
+    assert(registered_load("progress",disk_size,read_disk,NULL)==0 && model.record.xp==timeout_xp);
     puts("Practice persistence: reboot restore, CRC/pool rejection, failures, concurrent updates and idle checkpoint passed");
 }
 '''
@@ -144,6 +172,11 @@ def main():
                         '-O2', '-I' + str(output), str(ROOT / 'tools/tests/test_practice_model.c'),
                         '-o', str(model_binary)], check=True)
         subprocess.run([str(model_binary)], check=True)
+        view_binary = output / 'view-test'
+        subprocess.run(['clang', '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-O2',
+                        '-I' + str(output), str(ROOT / 'tools/tests/test_practice_view.c'),
+                        '-o', str(view_binary)], check=True)
+        subprocess.run([str(view_binary)], check=True)
 
 
 if __name__ == '__main__':

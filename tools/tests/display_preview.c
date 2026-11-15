@@ -1,3 +1,6 @@
+#include "../../src/steno_squid/practice_words.h"
+#include "../../src/steno_squid/practice_multi.h"
+#include "../../src/steno_squid/practice_build.h"
 /* Native LVGL render regression using the real screen, drill and squid widgets. */
 #include <assert.h>
 #include <stdio.h>
@@ -101,7 +104,7 @@ int main(void) {
     steno_squid_screen_update(STENO_SQUID_MODE_COUNT,"Other",0,85,false);
     assert(frame_index == 0); // Custom layer names can also select different layers.
     steno_squid_screen_update(STENO_SQUID_MODE_PLOVER,NULL,0,85,false); save("plover");
-    for(unsigned i=0;i<3;i++) {
+    for(unsigned i=0;i<STENO_SQUID_PRACTICE_DRILL_COUNT;i++) {
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,
            STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU|(i<<STENO_SQUID_PRACTICE_DRILL_SHIFT),85,false);
         char name[30];snprintf(name,sizeof(name),"welcome-%u",i);save(name);
@@ -180,22 +183,48 @@ int main(void) {
     }
     /* Every word ID must render on one line without covering the hint. */
     for (unsigned word=0;word<STENO_SQUID_WORD_COUNT;word++) {
-        const uint32_t snapshot=STENO_SQUID_PRACTICE_ACTIVE|steno_squid_practice_pack_prompt(word);
+        const uint32_t snapshot=STENO_SQUID_PRACTICE_ACTIVE;
+        struct steno_squid_practice_view view={.state=snapshot};
+        snprintf(view.prompt,sizeof(view.prompt),"%s",steno_squid_words[word].word);
+        snprintf(view.outline,sizeof(view.outline),"%s",steno_squid_words[word].outline);
+        steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,snapshot,85,false);
         lv_refr_now(NULL);
         assert(!strcmp(lv_label_get_text(prompt_label),steno_squid_words[word].word));
+        assert(lv_text_get_width(lv_label_get_text(prompt_label),strlen(lv_label_get_text(prompt_label)),
+                                lv_obj_get_style_text_font(prompt_label,0),0)<=66);
         assert(lv_obj_get_y(prompt_label)+lv_obj_get_height(prompt_label)<=lv_obj_get_y(outline_label));
         assert(lv_obj_get_y(outline_label)+lv_obj_get_height(outline_label)<=lv_obj_get_y(feedback_label));
         if(!strcmp(steno_squid_words[word].word,"PEOPLE"))save("adaptive-word");
+        if(!strcmp(steno_squid_words[word].word,"EVERYTHING"))save("practice-300-long-word");
     }
     {
         const uint64_t summary=232 | (uint64_t)8<<20 | (uint64_t)3<<24 | (uint64_t)27<<30 |
-                               (uint64_t)104<<39 | (uint64_t)99<<46;
-        steno_squid_practice_widget_set_progress(summary);
+                               (uint64_t)104<<39;
+        struct steno_squid_practice_view view={.progress=summary};
+        strcpy(view.review,"GOOD");
+        steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,
             STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU,85,false);
-        assert(!strcmp(lv_label_get_text(navigation_label),"*- / -*"));
+        assert(!strcmp(lv_label_get_text(navigation_label)," *-/-*v"));
         save("adaptive-menu");
+        const uint32_t trouble=STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_TROUBLE<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,trouble|STENO_SQUID_PRACTICE_MENU,85,false);
+        lv_refr_now(NULL);
+        assert(menu_first==5);
+        assert(!strcmp(lv_label_get_text(drill_choices[2]),"TROUBLE"));
+        assert(!strcmp(lv_label_get_text(start_label),"A/O: GO"));
+        save("trouble-menu");
+        steno_squid_practice_widget_set_progress(summary|((uint64_t)1<<53));
+        assert(!strcmp(lv_label_get_text(start_label),"Try Words"));
+        save("trouble-empty");
+        strcpy(view.prompt,"GOOD");strcpy(view.outline,"TKPWAOD");
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,trouble,85,false);
+        assert(!strcmp(lv_label_get_text(drill_label),"TROUBLE"));
+        assert(!strcmp(lv_label_get_text(prompt_label),"GOOD"));
+        save("trouble-word");
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
             (10<<STENO_SQUID_PRACTICE_ROUND_SHIFT),85,false);
@@ -214,7 +243,7 @@ int main(void) {
             save(card==1 ? "adaptive-results-review" : "adaptive-results-level");
         }
         const uint64_t maximum=0xfffff | (uint64_t)10<<20 | (uint64_t)63<<24 |
-                               (uint64_t)511<<30 | (uint64_t)120<<39 | (uint64_t)99<<46;
+                               (uint64_t)511<<30 | (uint64_t)120<<39;
         steno_squid_practice_widget_set_progress(maximum);
         for(unsigned card=0;card<4;card++) {
             lv_refr_now(NULL);
@@ -226,17 +255,17 @@ int main(void) {
         }
         steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
         assert(lv_timer_get_paused(results_timer));
-        const uint64_t hands=342 | (uint64_t)15<<30 | (uint64_t)110<<39 | (uint64_t)127<<46;
+        const uint64_t hands=342 | (uint64_t)15<<30 | (uint64_t)70<<39;
         steno_squid_practice_widget_set_progress(hands);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_LEFT<<STENO_SQUID_PRACTICE_DRILL_SHIFT)|
             (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
-            (50<<STENO_SQUID_PRACTICE_ROUND_SHIFT)|(50<<STENO_SQUID_PRACTICE_BEST_SHIFT),85,false);
-        assert(!strcmp(lv_label_get_text(prompt_label),"50/50"));
-        assert(!strcmp(lv_label_get_text(best_label),"+110 XP"));
+            (30<<STENO_SQUID_PRACTICE_ROUND_SHIFT)|(30<<STENO_SQUID_PRACTICE_BEST_SHIFT),85,false);
+        assert(!strcmp(lv_label_get_text(prompt_label),"30/30"));
+        assert(!strcmp(lv_label_get_text(best_label),"+70 XP"));
         save("adaptive-hands-xp");
         result_tick(results_timer);
-        assert(!strcmp(lv_label_get_text(best_label),"Best 50"));
+        assert(!strcmp(lv_label_get_text(best_label),"Best 30"));
         save("adaptive-hands-streak");
         /* A finished celebration must not pick the idle keyboard's sleep pose
          * or USB sparkles while its score/menu text is still on screen. */
@@ -259,6 +288,90 @@ int main(void) {
         preview_activity=ZMK_ACTIVITY_ACTIVE;
         steno_squid_pet_set_state(PET_IDLE);
     }
+    {
+        // Last menu page, all two-stroke hints, raw columns, live clock/results.
+        const uint32_t multi=STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_MULTI<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
+        const uint32_t speed=STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_SPEED<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU|
+            (STENO_SQUID_PRACTICE_TROUBLE<<STENO_SQUID_PRACTICE_DRILL_SHIFT),85,false);
+        assert(menu_first==5);
+        assert(!strcmp(lv_label_get_text(drill_choices[2]),"TROUBLE"));
+        save("eight-drill-menu");
+        struct steno_squid_practice_view view={0};
+        for(unsigned i=0;i<STENO_SQUID_MULTI_COUNT;i++) {
+            snprintf(view.prompt,sizeof(view.prompt),"%s",steno_squid_multi[i].word);
+            snprintf(view.outline,sizeof(view.outline),"%s",steno_squid_multi[i].outline);
+            steno_squid_practice_widget_set_view(&view);
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi,85,false);
+            assert(!strcmp(lv_label_get_text(feedback_label),"STROKE 1"));
+            lv_refr_now(NULL);
+            assert(lv_text_get_width(lv_label_get_text(prompt_label),strlen(lv_label_get_text(prompt_label)),lv_obj_get_style_text_font(prompt_label,0),0)<=66);
+            assert(!lv_obj_has_flag(outline_second,LV_OBJ_FLAG_HIDDEN));
+            assert(lv_obj_get_y(prompt_label)+lv_obj_get_height(prompt_label)<=lv_obj_get_y(outline_label));
+            assert(lv_obj_get_y(outline_label)+lv_obj_get_height(outline_label)<=lv_obj_get_y(outline_second));
+            assert(lv_obj_get_y(outline_second)+lv_obj_get_height(outline_second)<=lv_obj_get_y(feedback_label));
+            steno_squid_practice_widget_set_view(&view);
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_PARTIAL,85,false);
+            assert(!strcmp(lv_label_get_text(feedback_label),"STROKE 2"));
+            assert(lv_obj_get_style_text_decor(outline_second,0)==LV_TEXT_DECOR_UNDERLINE);
+            assert(strchr(lv_label_get_text(outline_label),':')==NULL && strchr(lv_label_get_text(outline_second),':')==NULL);
+            if(i==0)save("multi-stroke-two");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_SECOND_ERROR|
+                (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+            assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 1"));
+            assert(lv_obj_get_style_text_decor(outline_label,0)==LV_TEXT_DECOR_UNDERLINE);
+            if(i==0)save("multi-retry-two");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|
+                (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+            assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 1"));
+        }
+        const uint32_t build=STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_BUILD<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
+        for(unsigned i=0;i<STENO_SQUID_BUILD_COUNT;i++) {
+            for(unsigned stage=0;stage<3;stage++) {
+                steno_squid_build_format(view.prompt,sizeof(view.prompt),steno_squid_build[i].strokes[stage]);
+                snprintf(view.outline,sizeof(view.outline),"Step %u/3",stage+1);
+                steno_squid_practice_widget_set_view(&view);
+                steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,build|(stage<<STENO_SQUID_PRACTICE_BUILD_SHIFT),85,false);
+                assert(lv_obj_has_flag(outline_second,LV_OBJ_FLAG_HIDDEN));
+                if(i==0) {
+                    char name[30];snprintf(name,sizeof(name),"build-step-%u",stage+1);save(name);
+                }
+            }
+        }
+        strcpy(view.prompt,"CAT");strcpy(view.outline,"KA-T");
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,build|
+            (2<<STENO_SQUID_PRACTICE_BUILD_SHIFT)|(STENO_SQUID_PRACTICE_CORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+        assert(lv_bar_get_value(progress_bar)==1);
+        save("build-reveal");
+        strcpy(view.prompt,"FR");strcpy(view.outline,"Chord keys");
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_COLUMNS<<STENO_SQUID_PRACTICE_DRILL_SHIFT),85,false);
+        save("columns");
+        strcpy(view.prompt,"CAT");strcpy(view.outline,"KAT");view.progress=(uint64_t)30<<46;
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,speed,85,false);
+        assert(!strcmp(lv_label_get_text(progress_label),"0/10  30s"));
+        save("speed-start");
+        view.progress=(uint64_t)29<<46;
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,speed,85,false);
+        assert(!strcmp(lv_label_get_text(progress_label),"0/10  29s"));
+        view.progress=30|(uint64_t)30<<39;
+        view.prompt[0]=view.outline[0]=0;
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,speed|STENO_SQUID_PRACTICE_TIMEOUT|
+            (3<<STENO_SQUID_PRACTICE_ROUND_SHIFT)|(STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+        assert(!strcmp(lv_label_get_text(prompt_label),"3/10"));
+        assert(!strcmp(lv_label_get_text(best_label),"Time up"));
+        assert(state==PET_IDLE && awake_hold);
+        save("speed-timeout");
+        result_tick(results_timer);assert(!strcmp(lv_label_get_text(best_label),"+30 XP"));
+    }
     for (unsigned pass=0; pass<30; pass++) {
         for (unsigned mode=0; mode<STENO_SQUID_MODE_COUNT; mode++) {
             steno_squid_screen_update(mode,NULL,0,pass+65,false);
@@ -270,7 +383,7 @@ int main(void) {
         for(unsigned tick=0; tick<12; tick++) {
             lv_tick_inc(100); lv_timer_handler(); lv_refr_now(NULL);
         }
-        for(unsigned drill=0; drill<3; drill++) {
+        for(unsigned drill=0; drill<STENO_SQUID_PRACTICE_DRILL_COUNT; drill++) {
             const uint32_t base=STENO_SQUID_PRACTICE_ACTIVE|(drill<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,base|STENO_SQUID_PRACTICE_MENU,85,false);
             lv_refr_now(NULL);

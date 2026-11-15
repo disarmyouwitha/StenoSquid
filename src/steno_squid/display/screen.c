@@ -354,7 +354,7 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
     const bool tape_visible = show_tape(!practicing && !host_disconnected &&
                           mode == STENO_SQUID_MODE_JAVELIN);
     if (done != was_done) {
-        steno_squid_pet_set_state(done ? PET_LEVEL_UP : PET_IDLE);
+        steno_squid_pet_set_state(done && !(practice & STENO_SQUID_PRACTICE_TIMEOUT) ? PET_LEVEL_UP : PET_IDLE);
     }
     steno_squid_pet_set_headroom(done || (!practicing && !tape_visible &&
                             lv_obj_has_flag(mode_above, LV_OBJ_FLAG_HIDDEN)));
