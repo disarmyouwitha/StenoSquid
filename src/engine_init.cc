@@ -132,7 +132,7 @@ static struct {
 } practice;
 
 static unsigned practice_prompt() {
-  return practice.drill == STENO_SQUID_PRACTICE_WORDS ? steno_squid_words_prompt(practice.round) : practice.hand_prompt;
+  return steno_squid_practice_word_drill(practice.drill) ? steno_squid_words_prompt(practice.round) : practice.hand_prompt;
 }
 
 // Draws the next hand-drill prompt. After the first, it never repeats the
@@ -175,7 +175,7 @@ static void practice_advance(struct k_work *) {
     practice.feedback = practice.round == steno_squid_practice_rounds(practice.drill)
                             ? STENO_SQUID_PRACTICE_DONE
                             : STENO_SQUID_PRACTICE_PROMPT;
-    if (practice.feedback == STENO_SQUID_PRACTICE_PROMPT && practice.drill != STENO_SQUID_PRACTICE_WORDS) {
+    if (practice.feedback == STENO_SQUID_PRACTICE_PROMPT && !steno_squid_practice_word_drill(practice.drill)) {
       practice_draw_hand_prompt(true);
     }
     practice.prompt_started_at = k_uptime_get();
@@ -201,7 +201,7 @@ static const StenoDictionary *practice_fallback_dictionary() {
 
 static void practice_refresh_dictionary() {
   practice.no_dictionary =
-      practice.drill == STENO_SQUID_PRACTICE_WORDS &&
+      steno_squid_practice_word_drill(practice.drill) &&
       StenoEngine::container.value.GetDictionary().GetMaximumOutlineLength() == 0 &&
       !practice_fallback_dictionary();
 }
@@ -215,7 +215,7 @@ static void practice_switch_drill(int direction) {
   practice.active = true;
   practice.menu = true;
   practice.drill = drill;
-  if (drill != STENO_SQUID_PRACTICE_WORDS) {
+  if (!steno_squid_practice_word_drill(drill)) {
     practice_draw_hand_prompt(false);
   }
   practice_refresh_dictionary();
@@ -223,7 +223,7 @@ static void practice_switch_drill(int direction) {
 }
 
 static bool practice_correct(const StenoStroke &stroke) {
-  if (practice.drill != STENO_SQUID_PRACTICE_WORDS) {
+  if (!steno_squid_practice_word_drill(practice.drill)) {
     StenoStroke expected;
     expected.Set(steno_squid_practice_outline(practice.drill, practice_prompt()));
     return stroke == expected;
@@ -319,11 +319,14 @@ static bool practice_process_key(int index, bool pressed) {
           (steno_key == StenoKey::A || steno_key == StenoKey::O ||
            steno_key == StenoKey::E || steno_key == StenoKey::U)) {
         if (practice.menu) {
-          practice.menu = false;
-          if (practice.drill == STENO_SQUID_PRACTICE_WORDS) steno_squid_words_begin();
-          else steno_squid_hands_begin();
-          practice.prompt_started_at = k_uptime_get();
-          practice_refresh_dictionary();
+          const bool ready = practice.drill != STENO_SQUID_PRACTICE_TROUBLE || steno_squid_trouble_begin();
+          if (ready) {
+            practice.menu = false;
+            if (practice.drill == STENO_SQUID_PRACTICE_WORDS) steno_squid_words_begin();
+            else if (!steno_squid_practice_word_drill(practice.drill)) steno_squid_hands_begin();
+            practice.prompt_started_at = k_uptime_get();
+            practice_refresh_dictionary();
+          }
           practice_publish();
         } else {
           practice_switch_drill(0);
@@ -338,7 +341,7 @@ static bool practice_process_key(int index, bool pressed) {
         const bool correct = practice_correct(practice.chord.ToStroke());
         const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
         const uint32_t elapsed_ms = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
-        if (practice.drill == STENO_SQUID_PRACTICE_WORDS) {
+        if (steno_squid_practice_word_drill(practice.drill)) {
           steno_squid_words_answer(practice.round, correct, elapsed_ms);
         } else {
           steno_squid_hands_answer(practice.round, correct, elapsed_ms);

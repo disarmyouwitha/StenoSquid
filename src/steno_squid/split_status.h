@@ -33,8 +33,15 @@ enum steno_squid_practice_drill {
     STENO_SQUID_PRACTICE_WORDS,
     STENO_SQUID_PRACTICE_LEFT,
     STENO_SQUID_PRACTICE_RIGHT,
+    STENO_SQUID_PRACTICE_TROUBLE,
     STENO_SQUID_PRACTICE_DRILL_COUNT,
 };
+
+BUILD_ASSERT(STENO_SQUID_PRACTICE_DRILL_COUNT <= 4, "The drill field has two bits");
+
+static inline bool steno_squid_practice_word_drill(enum steno_squid_practice_drill drill) {
+    return drill == STENO_SQUID_PRACTICE_WORDS || drill == STENO_SQUID_PRACTICE_TROUBLE;
+}
 
 enum steno_squid_practice_feedback {
     STENO_SQUID_PRACTICE_PROMPT,
@@ -56,6 +63,7 @@ static inline unsigned steno_squid_practice_errors(uint64_t progress) { return (
 static inline unsigned steno_squid_practice_average(uint64_t progress) { return (progress >> 30) & 511u; }
 static inline unsigned steno_squid_practice_xp_earned(uint64_t progress) { return (progress >> 39) & 127u; }
 static inline unsigned steno_squid_practice_review(uint64_t progress) { return (progress >> 46) & 127u; }
+static inline bool steno_squid_practice_no_trouble(uint64_t progress) { return (progress >> 53) & 1u; }
 static inline uint32_t steno_squid_practice_xp(uint64_t progress) { return progress & 0xfffffu; }
 
 static const char *const steno_squid_practice_left[] = {"S", "T", "K", "P", "W", "H", "R"};
@@ -85,7 +93,7 @@ static inline const char *steno_squid_practice_outline(enum steno_squid_practice
 }
 
 static inline unsigned steno_squid_practice_rounds(enum steno_squid_practice_drill drill) {
-    return drill == STENO_SQUID_PRACTICE_WORDS ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_PRACTICE_ROUNDS;
+    return steno_squid_practice_word_drill(drill) ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_PRACTICE_ROUNDS;
 }
 
 static inline unsigned steno_squid_practice_feedback_value(uint32_t snapshot) {

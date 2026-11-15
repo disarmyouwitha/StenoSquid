@@ -6,6 +6,7 @@
 extern "C" {
 #endif
 void steno_squid_words_begin(void);
+bool steno_squid_trouble_begin(void);
 void steno_squid_hands_begin(void);
 void steno_squid_hands_answer(unsigned round, bool correct, uint32_t elapsed_ms);
 unsigned steno_squid_words_prompt(unsigned round);

@@ -109,5 +109,41 @@ int main(void) {
     assert(steno_squid_model_finish(&model));
     assert(model.run.earned==70 && model.record.xp==previous+70);
     assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
-    puts("Adaptive practice: unique decks, weighted sampling, XP, hand streak bonuses, levels, timing and saturation passed");
+    /* Trouble never invents history or resets the persisted record. */
+    steno_squid_model_init(&model);
+    assert(!steno_squid_model_trouble_begin(&model,random_word));
+    assert(!model.run.active && model.record.session==0);
+    assert(steno_squid_trouble_count(&model.record)==0);
+    model.record.words[42].misses=1; // Aborted word attempt still needs review.
+    assert(steno_squid_model_trouble_begin(&model,random_word));
+    for(unsigned i=0;i<10;i++) {
+        assert(model.run.deck[i]==42);
+        assert(steno_squid_model_answer(&model,i,true,1000));
+    }
+    assert(steno_squid_model_finish(&model));
+    assert(model.record.xp==120 && !steno_squid_trouble_count(&model.record));
+    model.record.words[1].completed=10;model.record.words[1].first_try=9;
+    model.record.words[1].mean_ds=40;
+    assert(!steno_squid_word_trouble(&model.record.words[1])); // Exact thresholds pass.
+    model.record.words[1].mean_ds=41;
+    model.record.words[2].completed=10;model.record.words[2].first_try=8;
+    for(unsigned run=0;run<100;run++) {
+        assert(steno_squid_model_trouble_begin(&model,random_word));
+        for(unsigned i=0;i<10;i++) {
+            assert(model.run.deck[i]==1 || model.run.deck[i]==2);
+            if(i)assert(model.run.deck[i]!=model.run.deck[i-1]);
+        }
+    }
+    for(unsigned i=10;i<30;i++)model.record.words[i].misses=1;
+    for(unsigned run=0;run<100;run++) {
+        assert(steno_squid_model_trouble_begin(&model,random_word));
+        bool seen[100]={false};
+        for(unsigned i=0;i<10;i++) {
+            const unsigned word=model.run.deck[i];
+            assert(steno_squid_word_trouble(&model.record.words[word]));
+            assert(!seen[word]);seen[word]=true;
+        }
+    }
+    assert(sizeof(model.record)==1224);
+    puts("Adaptive practice: unique decks, weighted sampling, XP, hand streak bonuses, levels, timing, Trouble targeting/recovery and saturation passed");
 }

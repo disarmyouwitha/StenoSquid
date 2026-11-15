@@ -65,6 +65,8 @@ static int read_disk(void *arg,void *out,size_t size) { memcpy(out,disk,disk_siz
 static int read_short(void *arg,void *out,size_t size) { memcpy(out,disk,disk_size-1);return disk_size-1; }
 static int read_error(void *arg,void *out,size_t size) { return -EIO; }
 int main(void) {
+    assert(steno_squid_practice_no_trouble(steno_squid_practice_progress()));
+    assert(!steno_squid_trouble_begin() && generation==0);
     steno_squid_words_begin();
     for(unsigned i=0;i<10;i++) {
         assert(steno_squid_words_prompt(i)<100);
@@ -118,6 +120,17 @@ int main(void) {
     assert(registered_load("progress",disk_size,read_disk,NULL)==0);
     assert(model.record.xp==hand_xp);
     assert(model.record.rounds==expected.rounds+1);
+    assert(!steno_squid_practice_no_trouble(steno_squid_practice_progress()));
+    assert(steno_squid_trouble_begin());
+    for(unsigned i=0;i<10;i++) steno_squid_words_answer(i,true,1000);
+    steno_squid_practice_finish();
+    const struct steno_squid_progress_record trouble=model.record;
+    save_progress(&save_progress_work);
+    steno_squid_model_init(&model);generation=saved_generation=0;
+    assert(registered_load("progress",disk_size,read_disk,NULL)==0);
+    assert(model.record.xp==trouble.xp && model.record.rounds==trouble.rounds);
+    assert(!memcmp(model.record.words,trouble.words,sizeof(trouble.words)));
+    assert(steno_squid_practice_no_trouble(steno_squid_practice_progress()));
     puts("Practice persistence: reboot restore, CRC/pool rejection, failures, concurrent updates and idle checkpoint passed");
 }
 '''

@@ -75,6 +75,13 @@ void steno_squid_words_begin(void) {
     generation++;
     k_mutex_unlock(&progress_mutex);
 }
+bool steno_squid_trouble_begin(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    const bool started = steno_squid_model_trouble_begin(&model, sys_rand32_get);
+    if (started) generation++;
+    k_mutex_unlock(&progress_mutex);
+    return started;
+}
 unsigned steno_squid_words_prompt(unsigned round) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     const unsigned word = round < STENO_SQUID_WORD_ROUNDS ? model.run.deck[round] : model.run.deck[STENO_SQUID_WORD_ROUNDS - 1];
@@ -117,7 +124,8 @@ uint64_t steno_squid_practice_progress(void) {
     const uint64_t packed = (uint64_t)model.record.xp |
         ((uint64_t)run->first_try << 20) | ((uint64_t)run->errors << 24) |
         ((uint64_t)(average > 511 ? 511 : average) << 30) |
-        ((uint64_t)run->earned << 39) | ((uint64_t)run->review << 46);
+        ((uint64_t)run->earned << 39) | ((uint64_t)run->review << 46) |
+        ((uint64_t)(steno_squid_trouble_count(&model.record) == 0) << 53);
     k_mutex_unlock(&progress_mutex);
     return packed;
 }

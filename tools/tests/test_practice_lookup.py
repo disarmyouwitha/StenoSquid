@@ -60,6 +60,9 @@ int main() {
   assert(practice_correct(stroke)); // Capitalization is not an error.
   active.text=nullptr;
   assert(!practice_correct(stroke));
+  practice.drill=STENO_SQUID_PRACTICE_TROUBLE;
+  base_available=true;base.text="cat";
+  assert(practice_correct(stroke)); // Trouble uses word translation/fallback too.
   practice.drill=STENO_SQUID_PRACTICE_LEFT;
   const unsigned lookups=active.calls;
   stroke.Set("S");assert(practice_correct(stroke));

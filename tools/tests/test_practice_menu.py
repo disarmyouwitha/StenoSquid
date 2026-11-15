@@ -59,6 +59,7 @@ void k_work_reschedule(int *, int64_t) {}
 uint32_t sys_rand32_get() { return 3; }
 static steno_squid_practice_model progress_model;
 void steno_squid_words_begin() { steno_squid_model_begin(&progress_model, sys_rand32_get); }
+bool steno_squid_trouble_begin() { return steno_squid_model_trouble_begin(&progress_model,sys_rand32_get); }
 void steno_squid_hands_begin() { steno_squid_model_hands_begin(&progress_model); }
 void steno_squid_hands_answer(unsigned round, bool correct, uint32_t ms) { steno_squid_model_hands_answer(&progress_model,round,correct,ms); }
 unsigned steno_squid_words_prompt(unsigned round) { return progress_model.run.deck[round < 10 ? round : 9]; }
@@ -99,8 +100,13 @@ int main() {
   tap(StenoKey::KL);  // Menu does not score strokes.
   assert(lookups == 0 && practice.menu);
   tap(StenoKey::STAR1);
-  assert(practice.drill == STENO_SQUID_PRACTICE_RIGHT && practice.menu);
-  tap(StenoKey::STAR3);
+  assert(practice.drill == STENO_SQUID_PRACTICE_TROUBLE && practice.menu);
+  tap(StenoKey::A);
+  assert(practice.menu && !progress_model.run.active); // No history: keep menu.
+  progress_model.record.words[42].misses=1;
+  tap(StenoKey::A);
+  assert(!practice.menu && practice_prompt()==42);
+  tap(StenoKey::STAR3); // Trouble wraps forward to Words.
   assert(practice.drill == STENO_SQUID_PRACTICE_WORDS && practice.menu);
   tap(StenoKey::STAR4);
   assert(practice.drill == STENO_SQUID_PRACTICE_LEFT);
@@ -155,7 +161,9 @@ int main() {
                        (uint64_t(104)<<39) | (uint64_t(99)<<46);
   packet={uint32_t(stats),STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL | (uint32_t(stats>>32)<<8)};
   assert(status_received(&packet,{})==0 && practice_progress==stats);
-  packet.param2 |= 0x20000000;
+  packet.param2 |= 0x20000000; // Valid no-trouble flag in payload bit 53.
+  assert(status_received(&packet,{})==0 && steno_squid_practice_no_trouble(practice_progress));
+  packet.param2 |= 0x40000000;
   assert(status_received(&packet,{})==-EINVAL);
   practice.active = false;
   assert(!practice_process_key(int(StenoKey::KL), true));

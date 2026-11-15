@@ -123,7 +123,7 @@ static int status_received(struct zmk_behavior_binding *binding,
         }
         atomic_set(&host_disconnected, binding->param1);
     } else if ((binding->param2 & 0xffu) == STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL &&
-               !(binding->param2 & 0xe0000000u)) {
+               !(binding->param2 & 0xc0000000u)) {
         const uint64_t value = ((uint64_t)(binding->param2 >> 8) << 32) | binding->param1;
         const unsigned review = steno_squid_practice_review(value);
         if (steno_squid_practice_first_try(value) > STENO_SQUID_WORD_ROUNDS ||

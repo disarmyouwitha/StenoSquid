@@ -12,8 +12,9 @@ static lv_obj_t *run_page;
 #define PRACTICE_MENU_ROWS 3
 static lv_obj_t *drill_choices[PRACTICE_MENU_ROWS];
 static lv_obj_t *navigation_label;
+static lv_obj_t *start_label;
 static unsigned menu_first;
-static const char *const choices[] = {"WORDS 10", "LEFT 50", "RIGHT 50"};
+static const char *const choices[] = {"WORDS 10", "LEFT 50", "RIGHT 50", "TROUBLE"};
 BUILD_ASSERT(sizeof(choices) / sizeof(choices[0]) == STENO_SQUID_PRACTICE_DRILL_COUNT);
 static lv_obj_t *drill_label;
 static lv_obj_t *prompt_label;
@@ -52,8 +53,8 @@ static void progress_labels(void) {
     char text[32];
     unsigned into, needed;
     const unsigned level = steno_squid_pop_level(steno_squid_practice_xp(last_progress), &into, &needed);
-    const bool words = ((last_practice & STENO_SQUID_PRACTICE_DRILL_MASK) >> STENO_SQUID_PRACTICE_DRILL_SHIFT)
-                         == STENO_SQUID_PRACTICE_WORDS;
+    const bool words = steno_squid_practice_word_drill(
+        (last_practice & STENO_SQUID_PRACTICE_DRILL_MASK) >> STENO_SQUID_PRACTICE_DRILL_SHIFT);
     if (steno_squid_practice_feedback_value(last_practice) != STENO_SQUID_PRACTICE_DONE) return;
     if (words) snprintf(text, sizeof(text), "%u/10", steno_squid_practice_first_try(last_progress));
     else snprintf(text, sizeof(text), "%u/%u", STENO_SQUID_HAND_ROUNDS, STENO_SQUID_HAND_ROUNDS);
@@ -96,12 +97,20 @@ static void progress_labels(void) {
     }
 }
 
+static void start_instruction(void) {
+    if (!start_label) return;
+    const unsigned drill = (last_practice & STENO_SQUID_PRACTICE_DRILL_MASK) >> STENO_SQUID_PRACTICE_DRILL_SHIFT;
+    fit_text(start_label, drill == STENO_SQUID_PRACTICE_TROUBLE && steno_squid_practice_no_trouble(last_progress)
+                              ? "Try Words" : "A/O: GO", false);
+}
+
 void steno_squid_practice_widget_set_progress(uint64_t progress) {
     if (progress == last_progress) return;
     last_progress = progress;
     result_card = 0;
     if (results_timer && !lv_timer_get_paused(results_timer)) lv_timer_reset(results_timer);
     progress_labels();
+    if (last_practice & STENO_SQUID_PRACTICE_MENU) start_instruction();
 }
 
 void steno_squid_practice_widget_hide(void) {
@@ -154,8 +163,8 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
     menu_separator(welcome_page, 92);
     navigation_label = steno_squid_display_label(welcome_page, 98, &lv_font_unscii_8);
     lv_label_set_text_static(navigation_label, "*- / -*");
-    lv_obj_t *start = steno_squid_display_label(welcome_page, 115, &lv_font_unscii_8);
-    lv_label_set_text_static(start, "A/O: GO");
+    start_label = steno_squid_display_label(welcome_page, 115, &lv_font_unscii_8);
+    lv_label_set_text_static(start_label, "A/O: GO");
 
     run_page = lv_obj_create(page);
     lv_obj_remove_style_all(run_page);
@@ -183,7 +192,7 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
 }
 
 void steno_squid_practice_widget_update(uint32_t practice) {
-    static const char *const drill_names[] = {"WORDS", "LEFT", "RIGHT"};
+    static const char *const drill_names[] = {"WORDS", "LEFT", "RIGHT", "TROUBLE"};
     static const char *const feedback_names[] = {"READY", "CORRECT", "RETRY", "DONE"};
     if (last_practice == practice) {
         return;
@@ -217,16 +226,17 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         }
         if (STENO_SQUID_PRACTICE_DRILL_COUNT > PRACTICE_MENU_ROWS) {
             char navigation[10];
-            snprintf(navigation, sizeof(navigation), "%c *L*R %c", menu_first ? '^' : ' ',
+            snprintf(navigation, sizeof(navigation), "%c*-/-*%c", menu_first ? '^' : ' ',
                      menu_first + PRACTICE_MENU_ROWS < STENO_SQUID_PRACTICE_DRILL_COUNT ? 'v' : ' ');
             lv_label_set_text(navigation_label, navigation);
         }
+        start_instruction();
         return;
     }
     lv_obj_add_flag(welcome_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(run_page, LV_OBJ_FLAG_HIDDEN);
     const unsigned total = steno_squid_practice_rounds(drill);
-    const bool words = drill == STENO_SQUID_PRACTICE_WORDS;
+    const bool words = steno_squid_practice_word_drill(drill);
     const bool done = feedback == STENO_SQUID_PRACTICE_DONE;
     if (done) { lv_timer_reset(results_timer); lv_timer_resume(results_timer); }
     else lv_timer_pause(results_timer);

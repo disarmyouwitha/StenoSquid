@@ -101,7 +101,7 @@ int main(void) {
     steno_squid_screen_update(STENO_SQUID_MODE_COUNT,"Other",0,85,false);
     assert(frame_index == 0); // Custom layer names can also select different layers.
     steno_squid_screen_update(STENO_SQUID_MODE_PLOVER,NULL,0,85,false); save("plover");
-    for(unsigned i=0;i<3;i++) {
+    for(unsigned i=0;i<STENO_SQUID_PRACTICE_DRILL_COUNT;i++) {
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,
            STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU|(i<<STENO_SQUID_PRACTICE_DRILL_SHIFT),85,false);
         char name[30];snprintf(name,sizeof(name),"welcome-%u",i);save(name);
@@ -194,8 +194,24 @@ int main(void) {
         steno_squid_practice_widget_set_progress(summary);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,
             STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU,85,false);
-        assert(!strcmp(lv_label_get_text(navigation_label),"*- / -*"));
+        assert(!strcmp(lv_label_get_text(navigation_label)," *-/-*v"));
         save("adaptive-menu");
+        const uint32_t trouble=STENO_SQUID_PRACTICE_ACTIVE|
+            (STENO_SQUID_PRACTICE_TROUBLE<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,trouble|STENO_SQUID_PRACTICE_MENU,85,false);
+        lv_refr_now(NULL);
+        assert(menu_first==1);
+        assert(!strcmp(lv_label_get_text(drill_choices[2]),"TROUBLE"));
+        assert(!strcmp(lv_label_get_text(start_label),"A/O: GO"));
+        save("trouble-menu");
+        steno_squid_practice_widget_set_progress(summary|((uint64_t)1<<53));
+        assert(!strcmp(lv_label_get_text(start_label),"Try Words"));
+        save("trouble-empty");
+        steno_squid_practice_widget_set_progress(summary);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,trouble|steno_squid_practice_pack_prompt(99),85,false);
+        assert(!strcmp(lv_label_get_text(drill_label),"TROUBLE"));
+        assert(!strcmp(lv_label_get_text(prompt_label),"GOOD"));
+        save("trouble-word");
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
             (10<<STENO_SQUID_PRACTICE_ROUND_SHIFT),85,false);
@@ -270,7 +286,7 @@ int main(void) {
         for(unsigned tick=0; tick<12; tick++) {
             lv_tick_inc(100); lv_timer_handler(); lv_refr_now(NULL);
         }
-        for(unsigned drill=0; drill<3; drill++) {
+        for(unsigned drill=0; drill<STENO_SQUID_PRACTICE_DRILL_COUNT; drill++) {
             const uint32_t base=STENO_SQUID_PRACTICE_ACTIVE|(drill<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,base|STENO_SQUID_PRACTICE_MENU,85,false);
             lv_refr_now(NULL);
