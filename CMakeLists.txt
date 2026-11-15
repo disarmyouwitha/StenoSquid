@@ -1,3 +1,9 @@
+# Layer handling on the left half: dictionary hold and Practice. It does not
+# depend on the right half having a display.
+if(CONFIG_ZMK_JAVELIN_STENO AND CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+  target_sources(app PRIVATE src/steno_squid/layer_control.c)
+endif()
+
 if(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
   if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     target_sources(app PRIVATE src/steno_squid/split_status_central.c)

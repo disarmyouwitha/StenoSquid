@@ -15,6 +15,7 @@
 #include <zmk/split/central.h>
 #include <dt-bindings/zmk/javelin_steno_layers.h>
 
+#include "layer_control.h"
 #include "split_status.h"
 #include "stroke_feed.h"
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
@@ -27,17 +28,6 @@
 
 BUILD_ASSERT(ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT == 1);
 
-/* Modes are recognised by layer ID, a layer's position in the devicetree
- * keymap. ZMK Studio can rename or reorder layers without changing it. These
- * checks fail the build if the keymap order drifts from javelin_steno_layers.h.
- */
-#define CHECK_LAYER_ID(node, id)                                                                   \
-    COND_CODE_1(DT_NODE_EXISTS(node), (BUILD_ASSERT(DT_NODE_CHILD_IDX(node) == (id));), ())
-CHECK_LAYER_ID(DT_PATH(keymap, main_layer), JAVELIN_LAYER_MAIN)
-CHECK_LAYER_ID(DT_PATH(keymap, sym_num_layer), JAVELIN_LAYER_SYM_NUM)
-CHECK_LAYER_ID(DT_PATH(keymap, steno_layer), JAVELIN_LAYER_STENO)
-CHECK_LAYER_ID(DT_PATH(keymap, plover_hid_layer), JAVELIN_LAYER_PLOVER_HID)
-
 /* The names the keymap gives its layers, by layer ID. A layer that still has
  * its keymap name shows the firmware's own label for its mode.
  */
@@ -45,14 +35,6 @@ CHECK_LAYER_ID(DT_PATH(keymap, plover_hid_layer), JAVELIN_LAYER_PLOVER_HID)
 static const char *const keymap_layer_names[] = {
     ZMK_KEYMAP_LAYERS_FOREACH_SEP(KEYMAP_LAYER_NAME, (, ))};
 
-#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-/* Practice runs on the steno layer while this is set. */
-static atomic_t practice_wanted;
-#endif
-
-static zmk_keymap_layer_id_t active_layer(void) {
-    return zmk_keymap_layer_index_to_id(zmk_keymap_highest_layer_active());
-}
 BUILD_ASSERT(sizeof(STENO_SQUID_STATUS_BEHAVIOR) <= ZMK_SPLIT_RUN_BEHAVIOR_DEV_LEN);
 
 /* Four snapshots a second apart, then six more spread over half a minute.
@@ -83,7 +65,7 @@ static enum steno_squid_mode dictionary_mode(enum steno_squid_mode ready) {
 }
 
 static enum steno_squid_mode current_mode(void) {
-    switch (active_layer()) {
+    switch (steno_squid_active_layer()) {
     case JAVELIN_LAYER_SYM_NUM:
         return STENO_SQUID_MODE_SYMBOLS;
     case JAVELIN_LAYER_STENO:
@@ -100,7 +82,7 @@ static enum steno_squid_mode current_mode(void) {
  * renamed in ZMK Studio, or it has no mode of its own. Otherwise NULL.
  */
 static const char *custom_layer_name(void) {
-    const zmk_keymap_layer_id_t layer = active_layer();
+    const zmk_keymap_layer_id_t layer = steno_squid_active_layer();
     const char *name = zmk_keymap_layer_name(layer);
     if (!name || !name[0]) {
         return NULL;
@@ -309,71 +291,3 @@ BT_CONN_CB_DEFINE(steno_squid_split_status_conn) = {
     .connected = status_connected,
     .disconnected = status_disconnected,
 };
-
-static void apply_layer(void) {
-    const bool steno = active_layer() == JAVELIN_LAYER_STENO;
-    ARG_UNUSED(steno);
-#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-    /* Keep the dictionaries powered and ready while this layer is selected. */
-    lapwing_flash_hold(steno);
-#endif
-#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-    /* Leaving the steno layer ends practice. */
-    if (!steno) {
-        atomic_clear(&practice_wanted);
-    }
-    const bool want_practice = steno && atomic_get(&practice_wanted);
-#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-    /* Starting practice takes the engine lock, which waits for an idle flash
-     * to power up. This runs on the thread that handles keys, so do not wait
-     * here: lapwing_flash_hold() above has started the wake, and the ready
-     * hook calls apply_layer() again once the dictionaries are mapped.
-     */
-    if (want_practice && !lapwing_mapped_address()) {
-        steno_squid_split_status_refresh();
-        return;
-    }
-#endif
-    steno_squid_practice_set_active(want_practice);
-#endif
-    steno_squid_split_status_refresh();
-}
-
-#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-void steno_squid_practice_toggle(void) {
-    if (active_layer() == JAVELIN_LAYER_STENO) {
-        atomic_set(&practice_wanted, !atomic_get(&practice_wanted));
-    } else {
-        /* The layer change clears the flag on its way, so set it afterwards. */
-        /* Match &to: clear locked layers as well. A locked Plover layer
-         * otherwise stays above Javelin and prevents Practice from starting.
-         */
-        zmk_keymap_layer_to(JAVELIN_LAYER_STENO, true);
-        atomic_set(&practice_wanted, 1);
-    }
-    apply_layer();
-}
-#endif
-
-static int layer_changed(const zmk_event_t *event) {
-    apply_layer();
-    return ZMK_EV_EVENT_BUBBLE;
-}
-
-#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-/* The dictionaries became usable, or a check gave up. Practice selected during
- * the check starts now, and the right display drops its loading message.
- */
-static void flash_ready(struct k_work *work) {
-    apply_layer();
-}
-
-K_WORK_DEFINE(flash_ready_work, flash_ready);
-
-void lapwing_flash_ready_changed(void) {
-    k_work_submit(&flash_ready_work);
-}
-#endif
-
-ZMK_LISTENER(steno_squid_split_status, layer_changed);
-ZMK_SUBSCRIPTION(steno_squid_split_status, zmk_layer_state_changed);

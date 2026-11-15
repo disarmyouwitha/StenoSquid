@@ -47,6 +47,11 @@ jobs:
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
+          - name: left-studio-no-display
+            shield: corne_left
+            snippet: studio-rpc-usb-uart
+            dictionaries: true
+            extra: "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/left-no-display.conf"
           - name: right
             shield: corne_right
           - name: right-nice-view
