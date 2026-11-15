@@ -229,7 +229,8 @@ void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) 
       snprintf(view->outline, sizeof(view->outline), "%u: %.*s", practice.multi_count + 1, length, part);
     } else {
       const char *outline = words ? steno_squid_words[id].outline : steno_squid_practice_outline(practice.drill, id);
-      snprintf(view->prompt, sizeof(view->prompt), "%s", words ? steno_squid_words[id].word : outline);
+      const char *shown = practice.drill == STENO_SQUID_PRACTICE_COLUMNS && outline[0] == '-' ? outline + 1 : outline;
+      snprintf(view->prompt, sizeof(view->prompt), "%s", words ? steno_squid_words[id].word : shown);
       snprintf(view->outline, sizeof(view->outline), "%s", words ? outline :
           practice.drill == STENO_SQUID_PRACTICE_COLUMNS ? "Chord keys" : "Tap key");
     }
@@ -299,6 +300,18 @@ static void practice_switch_drill(int direction) {
   }
   practice_refresh_dictionary();
   practice_publish();
+}
+
+/* The first chord follows the displayed learning outline. Keep the correct
+ * prefix across a second-chord retry so the feedback identifies the mistake. */
+static bool practice_first_stroke_correct(const StenoStroke &stroke) {
+  const char *outline = steno_squid_multi[practice_prompt()].outline;
+  const char *slash = strchr(outline, '/');
+  char first[STENO_SQUID_PRACTICE_OUTLINE_SIZE];
+  snprintf(first, sizeof(first), "%.*s", int(slash - outline), outline);
+  StenoStroke expected;
+  expected.Set(first);
+  return stroke == expected;
 }
 
 static bool practice_correct(const StenoStroke &stroke) {
@@ -426,14 +439,17 @@ static bool practice_process_key(int index, bool pressed) {
         practice.multi_count = 0;
         practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
       } else {
-        if (practice.drill == STENO_SQUID_PRACTICE_MULTI) {
-          practice.multi_strokes[practice.multi_count++] = practice.chord.ToStroke();
+        const StenoStroke stroke = practice.chord.ToStroke();
+        const bool first_error = practice.drill == STENO_SQUID_PRACTICE_MULTI &&
+            practice.multi_count == 0 && !practice_first_stroke_correct(stroke);
+        if (practice.drill == STENO_SQUID_PRACTICE_MULTI && !first_error) {
+          practice.multi_strokes[practice.multi_count++] = stroke;
         }
-        if (practice.drill == STENO_SQUID_PRACTICE_MULTI && practice.multi_count == 1) {
+        if (practice.drill == STENO_SQUID_PRACTICE_MULTI && !first_error && practice.multi_count == 1) {
           practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
         } else {
-          const bool correct = practice_correct(practice.chord.ToStroke());
-          practice.multi_count = 0;
+          const bool correct = !first_error && practice_correct(stroke);
+          practice.multi_count = practice.drill == STENO_SQUID_PRACTICE_MULTI && !correct && !first_error ? 1 : 0;
           const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
           const uint32_t elapsed_ms = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
           if (steno_squid_practice_word_drill(practice.drill)) {

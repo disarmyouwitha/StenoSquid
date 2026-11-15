@@ -92,7 +92,7 @@ int main(void) {
   }
   // Speed can finish short of its goal only with an explicit timeout; partial
   // outlines are accepted only in an active Multi- prompt.
-  for (unsigned scenario = 0; scenario < 4; scenario++) {
+  for (unsigned scenario = 0; scenario < 5; scenario++) {
     in.state = STENO_SQUID_PRACTICE_ACTIVE;
     in.progress = 0;
     if (scenario < 2) {
@@ -111,6 +111,8 @@ int main(void) {
           STENO_SQUID_PRACTICE_PARTIAL;
       if (scenario == 3)
         in.state |= STENO_SQUID_PRACTICE_MENU;
+      if (scenario == 4)
+        in.state |= STENO_SQUID_PRACTICE_INCORRECT << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT;
     }
     n = steno_squid_practice_encode(&in, bytes);
     memset(&rx, 0, sizeof(rx));

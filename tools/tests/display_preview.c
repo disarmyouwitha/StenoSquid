@@ -211,7 +211,7 @@ int main(void) {
             (STENO_SQUID_PRACTICE_TROUBLE<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,trouble|STENO_SQUID_PRACTICE_MENU,85,false);
         lv_refr_now(NULL);
-        assert(menu_first==1);
+        assert(menu_first==4);
         assert(!strcmp(lv_label_get_text(drill_choices[2]),"TROUBLE"));
         assert(!strcmp(lv_label_get_text(start_label),"A/O: GO"));
         save("trouble-menu");
@@ -293,9 +293,10 @@ int main(void) {
             (STENO_SQUID_PRACTICE_MULTI<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
         const uint32_t speed=STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_SPEED<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
-        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,speed|STENO_SQUID_PRACTICE_MENU,85,false);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU|
+            (STENO_SQUID_PRACTICE_TROUBLE<<STENO_SQUID_PRACTICE_DRILL_SHIFT),85,false);
         assert(menu_first==4);
-        assert(!strcmp(lv_label_get_text(drill_choices[2]),"SPEED"));
+        assert(!strcmp(lv_label_get_text(drill_choices[2]),"TROUBLE"));
         save("seven-drill-menu");
         struct steno_squid_practice_view view={0};
         for(unsigned i=0;i<STENO_SQUID_MULTI_COUNT;i++) {
@@ -312,8 +313,15 @@ int main(void) {
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_PARTIAL,85,false);
             assert(!strcmp(lv_label_get_text(feedback_label),"STROKE 2"));
             if(i==0)save("multi-stroke-two");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_PARTIAL|
+                (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+            assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 2"));
+            if(i==0)save("multi-retry-two");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|
+                (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+            assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 1"));
         }
-        strcpy(view.prompt,"-FR");strcpy(view.outline,"Chord keys");
+        strcpy(view.prompt,"FR");strcpy(view.outline,"Chord keys");
         steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_COLUMNS<<STENO_SQUID_PRACTICE_DRILL_SHIFT),85,false);

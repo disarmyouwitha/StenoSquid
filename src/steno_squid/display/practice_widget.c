@@ -14,7 +14,7 @@ static lv_obj_t *drill_choices[PRACTICE_MENU_ROWS];
 static lv_obj_t *navigation_label;
 static lv_obj_t *start_label;
 static unsigned menu_first;
-static const char *const choices[] = {"WORDS 10", "LEFT 50", "RIGHT 50", "TROUBLE", "Multi-", "COLUMNS", "SPEED"};
+static const char *const choices[] = {"WORDS 10", "LEFT 50", "RIGHT 50", "COLUMNS", "SPEED", "Multi-", "TROUBLE"};
 BUILD_ASSERT(sizeof(choices) / sizeof(choices[0]) == STENO_SQUID_PRACTICE_DRILL_COUNT);
 static lv_obj_t *drill_label;
 static lv_obj_t *drill_separator;
@@ -219,7 +219,7 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
 }
 
 void steno_squid_practice_widget_update(uint32_t practice) {
-    static const char *const drill_names[] = {"WORDS", "LEFT", "RIGHT", "TROUBLE", "Multi-", "COLUMNS", "SPEED"};
+    static const char *const drill_names[] = {"WORDS", "LEFT", "RIGHT", "COLUMNS", "SPEED", "Multi-", "TROUBLE"};
     static const char *const feedback_names[] = {"READY", "CORRECT", "RETRY", "DONE"};
     if (last_practice == practice && !view_dirty) {
         return;
@@ -297,8 +297,12 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         lv_obj_remove_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(best_label, LV_OBJ_FLAG_HIDDEN);
         const char *feedback_text = feedback_names[feedback];
-        if (drill == STENO_SQUID_PRACTICE_MULTI && feedback == STENO_SQUID_PRACTICE_PROMPT) {
-            feedback_text = (practice & STENO_SQUID_PRACTICE_PARTIAL) ? "STROKE 2" : "STROKE 1";
+        if (drill == STENO_SQUID_PRACTICE_MULTI) {
+            if (feedback == STENO_SQUID_PRACTICE_PROMPT) {
+                feedback_text = (practice & STENO_SQUID_PRACTICE_PARTIAL) ? "STROKE 2" : "STROKE 1";
+            } else if (feedback == STENO_SQUID_PRACTICE_INCORRECT) {
+                feedback_text = (practice & STENO_SQUID_PRACTICE_PARTIAL) ? "RETRY 2" : "RETRY 1";
+            }
         }
         lv_label_set_text_static(feedback_label, no_dictionary ? "DICT OFF" : feedback_text);
         lv_bar_set_range(progress_bar, 0, total);

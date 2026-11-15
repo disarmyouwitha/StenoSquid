@@ -111,18 +111,18 @@ Hold the middle left thumb for Numpad, tap the outer right thumb, then release b
 | WORDS | 10 | Ten different words from a verified pool of 300 common Lapwing words, weighted toward mistakes, slow answers, and less-recent practice. |
 | LEFT | 50 | Random left-hand consonant keys. |
 | RIGHT | 50 | Random right-hand consonant keys. |
-| TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
-| Multi- | 10 | Ten distinct two-stroke words from 20 verified common Lapwing outlines. |
-| COLUMNS | 50 | Paired keys: TK, PW, HR, -FR, -PB, -LG, -TS, and -DZ. |
+| COLUMNS | 50 | Paired keys: TK, PW, HR, FR, PB, LG, TS, and DZ. |
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
+| Multi- | 10 | Ten distinct two-stroke words from 20 verified common Lapwing outlines. |
+| TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
 Practice opens a menu with a divider above the star-key and start controls. Select any of the seven drills with the left/right star keys, then tap a vowel thumb (A, O, E, or U) to start. The menu has three visible rows and scrolls to keep the selected drill visible. After a run, tap a vowel thumb to return to the menu.
 
 TROUBLE uses the same 300-word pool and saved history as WORDS. A word qualifies after a mistake in its first few completions, with first-try accuracy below 90%, or with an average response slower than four seconds. Unseen words are excluded. With fewer than ten qualifying words, it repeats them, avoiding consecutive repeats when at least two are available. With ten or more, each prompt is distinct. As accuracy and speed improve, words leave the Trouble pool. An empty pool shows **Try Words**; tapping a vowel thumb starts WORDS directly. Trouble shares WORDS history and uses the same XP and results rules.
 
-**Multi-** shows a word and the current stroke hint (`1: HE`, then `2: HROE` for HELLO). Release each chord separately. The first stroke waits without being graded; the second checks the two-stroke outline through the active dictionaries and Lapwing fallback. A wrong pair shows RETRY and starts again at stroke one. Only complete two-stroke outlines count; one-stroke briefs do not satisfy this drill. Stars still change drills and clear a partial outline.
+**Multi-** shows a word and the current stroke hint (`1: HE`, then `2: HROE` for HELLO). Release each chord separately. The first stroke must match its displayed Lapwing hint: a mistake shows **RETRY 1** immediately. A correct first stroke advances to hint two. The second checks the full two-stroke outline through the active dictionaries and Lapwing fallback. A wrong second stroke shows **RETRY 2** and keeps the correct first stroke, so only the second needs retrying. Only complete two-stroke outlines count; one-stroke briefs do not satisfy this drill. Stars still change drills and clear a partial outline.
 
-**COLUMNS** checks both keys together as a raw chord, with no dictionary lookup. It uses the hand-drill streak and XP rules. **SPEED** starts its 30-second clock when the start thumb is released. Correct words advance immediately; mistakes stay on the word and the clock keeps running. Ten correct words before the deadline win. Expiry shows **Time up** and the completed count, keeps XP already earned, and awards no completion bonus. Late chords cannot score, and a held key released after expiry cannot dismiss the results. The next vowel press returns to the menu.
+**COLUMNS** checks both keys together as a raw chord, with no dictionary lookup. Its prompts omit handedness hyphens (for example, **DZ**), while scoring still requires the correct physical keys. It uses the hand-drill streak and XP rules. **SPEED** starts its 30-second clock when the start thumb is released. Correct words advance immediately; mistakes stay on the word and the clock keeps running. Ten correct words before the deadline win. Expiry shows **Time up** and the completed count, keeps XP already earned, and awards no completion bonus. Late chords cannot score, and a held key released after expiry cannot dismiss the results. The next vowel press returns to the menu.
 
 Multi- uses the word-drill XP rules but does not add per-word history to the 300-word pool. Speed updates that existing history and can feed Trouble. The new drills keep the current saved stats/XP and record format unchanged. Both halves need this update for the new timer and partial-stroke display flags.
 

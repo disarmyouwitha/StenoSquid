@@ -122,7 +122,8 @@ steno_squid_practice_receive(struct steno_squid_practice_receiver *rx,
       steno_squid_practice_get(rx->bytes + length - 4, 4) !=
           steno_squid_practice_checksum(rx->bytes, length - 4))
     return -1;
-  struct steno_squid_practice_view next = {0};
+  struct steno_squid_practice_view next;
+  memset(&next, 0, sizeof(next));
   next.state = steno_squid_practice_get(rx->bytes, 4);
   next.progress = steno_squid_practice_get(rx->bytes + 4, 8);
   const unsigned drill = (next.state & STENO_SQUID_PRACTICE_DRILL_MASK) >>
@@ -145,7 +146,8 @@ steno_squid_practice_receive(struct steno_squid_practice_receiver *rx,
       (!timeout &&
        ((round == total) != (feedback == STENO_SQUID_PRACTICE_DONE))) ||
       (partial && (menu || drill != STENO_SQUID_PRACTICE_MULTI ||
-                   feedback != STENO_SQUID_PRACTICE_PROMPT)) ||
+                   (feedback != STENO_SQUID_PRACTICE_PROMPT &&
+                    feedback != STENO_SQUID_PRACTICE_INCORRECT))) ||
       steno_squid_practice_seconds(next.progress) > STENO_SQUID_SPEED_SECONDS ||
       (steno_squid_practice_seconds(next.progress) &&
        (!speed || menu || feedback == STENO_SQUID_PRACTICE_DONE)) ||

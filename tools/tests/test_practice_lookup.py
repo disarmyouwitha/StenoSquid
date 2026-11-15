@@ -13,6 +13,9 @@ while depth:
     depth += (source[end] == '{') - (source[end] == '}')
     end += 1
 function = source[start:end]
+first_start=source.index('static bool practice_first_stroke_correct(')
+first_end=source.index('\n}\n',first_start)+2
+function=source[first_start:first_end]+'\n'+function
 prefix = r'''
 #include <cassert>
 #include <cstdio>
@@ -22,6 +25,7 @@ prefix = r'''
 #include "split_status.h"
 #include "practice_words.h"
 #include "practice_multi.h"
+#include "practice_view.h"
 struct StenoStroke {
   std::string outline;
   void Set(const char *s) { outline=s; }
@@ -67,6 +71,8 @@ int main() {
   base_available=true;base.text="cat";
   assert(practice_correct(stroke)); // Trouble uses word translation/fallback too.
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
+  stroke.Set("K");assert(!practice_first_stroke_correct(stroke));
+  stroke.Set("HE");assert(practice_first_stroke_correct(stroke));
   active.text="hello";
   assert(practice_correct(stroke) && outline_count==2);
   active.text="wrong";base.text="hello";

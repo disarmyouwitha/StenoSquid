@@ -91,6 +91,8 @@ void clear_tape() {}
 void queue_refresh() {}
 int lookups;
 bool answer_correct = true;
+bool first_correct = true;
+static bool practice_first_stroke_correct(const StenoStroke &) { return first_correct; }
 static bool practice_correct(const StenoStroke &) { ++lookups; return answer_correct; }
 static void practice_refresh_dictionary();
 '''
@@ -107,18 +109,16 @@ int main() {
   tap(StenoKey::KL);  // Menu does not score strokes.
   assert(lookups == 0 && practice.menu);
   tap(StenoKey::STAR1);
-  assert(practice.drill == STENO_SQUID_PRACTICE_SPEED);
-  for(unsigned i=0;i<3;i++)tap(StenoKey::STAR1);
   assert(practice.drill == STENO_SQUID_PRACTICE_TROUBLE && practice.menu);
   tap(StenoKey::A);
   assert(!practice.menu && progress_model.run.active && practice.drill==STENO_SQUID_PRACTICE_WORDS);
   assert(lookups==0); // Try Words starts a Words round without scoring the start key.
-  for(unsigned i=0;i<4;i++)tap(StenoKey::STAR1); // Back to Trouble.
+  tap(StenoKey::STAR1); // Back to Trouble.
   assert(practice.menu && practice.drill==STENO_SQUID_PRACTICE_TROUBLE);
   progress_model.record.words[42].misses=1;
   tap(StenoKey::A);
   assert(!practice.menu && practice_prompt()==42);
-  for(unsigned i=0;i<4;i++)tap(StenoKey::STAR3); // Through new drills back to Words.
+  tap(StenoKey::STAR3); // Trouble wraps forward to Words.
   assert(practice.drill == STENO_SQUID_PRACTICE_WORDS && practice.menu);
   tap(StenoKey::STAR4);
   assert(practice.drill == STENO_SQUID_PRACTICE_LEFT);
@@ -148,27 +148,35 @@ int main() {
     tap(key);  // Keep celebration until an explicit return to menu.
     assert(practice.menu && practice.round == 0);
   }
-  // Multi consumes the first stroke without grading; a wrong pair resets it.
+  // Multi rejects a wrong first stroke immediately, then keeps a good prefix.
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
   practice_switch_drill(0);tap(StenoKey::A);
   const unsigned before_multi=lookups;
-  tap(StenoKey::KL);
+  first_correct=false;tap(StenoKey::KL);
+  assert(practice.multi_count==0 && lookups==before_multi && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
+  assert(progress_model.run.errors==1 && progress_model.record.xp>0);
+  first_correct=true;tap(StenoKey::KL);
   assert(practice.multi_count==1 && lookups==before_multi && practice.round==0);
   assert(practice_screen&STENO_SQUID_PRACTICE_PARTIAL);
   struct steno_squid_practice_view partial;
   steno_squid_practice_view_snapshot(&partial);
   assert(!strncmp(partial.outline,"2: ",3));
   answer_correct=false;tap(StenoKey::PL);
-  assert(practice.multi_count==0 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
-  answer_correct=true;tap(StenoKey::KL);tap(StenoKey::PL);
+  assert(practice.multi_count==1 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
+  assert(practice_screen&STENO_SQUID_PRACTICE_PARTIAL);
+  answer_correct=true;tap(StenoKey::PL);
   assert(practice.feedback==STENO_SQUID_PRACTICE_CORRECT);
   now+=250;practice_advance(nullptr);
   assert(practice.round==1 && practice.multi_count==0);
   tap(StenoKey::KL); // Switching clears the partial outline.
-  tap(StenoKey::STAR3);
+  tap(StenoKey::STAR1);tap(StenoKey::STAR1);
   assert(practice.drill==STENO_SQUID_PRACTICE_COLUMNS && practice.multi_count==0 && practice.menu);
   // Columns still uses full released chords, including extra-key errors.
   tap(StenoKey::A);assert(!practice.menu);
+  practice.hand_prompt=7;
+  steno_squid_practice_view_snapshot(&partial);
+  assert(!strcmp(partial.prompt,"DZ"));
+  assert(!strcmp(steno_squid_practice_outline(practice.drill,7),"-DZ"));
   answer_correct=false;tap(StenoKey::KL);
   assert(practice.feedback==STENO_SQUID_PRACTICE_INCORRECT && practice.round==0);
   answer_correct=true;
