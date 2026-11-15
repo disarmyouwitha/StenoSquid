@@ -108,7 +108,9 @@ Use the Boardsource artifacts from one successful workflow run:
 
 1. `boardsource-probe` for the initial rail, JEDEC and single-line read checks.
 2. `boardsource-quad` for quad-read comparison after the initial checks pass.
-3. `boardsource-right-default` for the portrait display peripheral.
+3. `boardsource-right-default` for the portrait display peripheral. Without a
+   nice!view, use `boardsource-right-no-display` and, for everyday use,
+   `boardsource-left-no-display`.
 4. `boardsource-left-logging` for dictionary provisioning. With matching images
    prepared under `build/`, `upload.py PORT` installs missing configured images.
    Use `upload.py PORT --status` for a read-only status query.

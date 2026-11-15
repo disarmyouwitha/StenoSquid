@@ -99,7 +99,8 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies:
 | **left-logging** | The diagnostic left half. It has the serial port for installing dictionaries, the boot log and the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
 
 The Boardsource Wireless Corne SMT builds follow the same pairing: **boardsource-left-default** with
-**boardsource-right-default**, and **boardsource-left-logging** for diagnostics. **boardsource-probe** and
+**boardsource-right-default**, **boardsource-left-no-display** with **boardsource-right-no-display** for a
+keyboard without a nice!view, and **boardsource-left-logging** for diagnostics. **boardsource-probe** and
 **boardsource-quad** read the flash chip on first power-up and write nothing. The
 [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers all of them.
 

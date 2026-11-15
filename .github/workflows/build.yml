@@ -113,6 +113,14 @@ jobs:
             dictionaries: true
           - name: boardsource-right-default
             boardsource: right
+          - name: boardsource-left-no-display
+            boardsource: left
+            snippet: studio-rpc-usb-uart
+            dictionaries: true
+            no_display: true
+          - name: boardsource-right-no-display
+            boardsource: right
+            no_display: true
           # Left-side flash probes for first power-up. They read the flash
           # chip and write nothing. Run them before the left firmware.
           - name: boardsource-probe
@@ -184,16 +192,24 @@ jobs:
           case "${{ matrix.boardsource }}" in
             left)
               board=blecorne_left
+              conf="$split/corne.conf;$split/corne_left.conf"
+              if [ "${{ matrix.no_display }}" = "true" ]; then
+                conf="$conf;$split/left-no-display.conf"
+              fi
               args+=("-DBOARD_ROOT=$GITHUB_WORKSPACE/vendor"
                      "-DZMK_CONFIG=$repo/config/boardsource-wireless-corne"
-                     "-DEXTRA_CONF_FILE=$split/corne.conf;$split/corne_left.conf")
+                     "-DEXTRA_CONF_FILE=$conf")
               ;;
             right)
               board=blecorne_right
-              args+=("-DSHIELD=nice_view"
-                     "-DBOARD_ROOT=$GITHUB_WORKSPACE/vendor"
-                     "-DZMK_CONFIG=$repo/config/boardsource-wireless-corne"
-                     "-DEXTRA_CONF_FILE=$split/corne.conf;$split/right-nice-view.conf")
+              args+=("-DBOARD_ROOT=$GITHUB_WORKSPACE/vendor"
+                     "-DZMK_CONFIG=$repo/config/boardsource-wireless-corne")
+              if [ "${{ matrix.no_display }}" = "true" ]; then
+                args+=("-DEXTRA_CONF_FILE=$split/corne.conf")
+              else
+                args+=("-DSHIELD=nice_view"
+                       "-DEXTRA_CONF_FILE=$split/corne.conf;$split/right-nice-view.conf")
+              fi
               ;;
             probe)
               board=blecorne_left
