@@ -1,3 +1,18 @@
+# Sets <prefix>_BYTES and <prefix>_CRC in the caller's scope from a dictionary
+# image, and reconfigures when the image changes.
+function(javelin_image_size_crc prefix image)
+  file(SIZE "${image}" bytes)
+  execute_process(
+    COMMAND ${PYTHON_EXECUTABLE} -c
+      "import pathlib,sys,zlib; print(hex(zlib.crc32(pathlib.Path(sys.argv[1]).read_bytes())))"
+      "${image}"
+    OUTPUT_VARIABLE crc OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${image}")
+  set(${prefix}_BYTES "${bytes}" PARENT_SCOPE)
+  set(${prefix}_CRC "${crc}" PARENT_SCOPE)
+endfunction()
+
 if(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
   if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     target_sources(app PRIVATE src/steno_squid/split_status_central.c)
@@ -84,15 +99,9 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       endif()
       set(QSPI_SRC "${CMAKE_CURRENT_LIST_DIR}/tools/steno-squid-qspi/src")
       set(LAPWING_SRC "${CMAKE_CURRENT_LIST_DIR}/src/steno_squid")
-      file(SIZE "${ZMK_JAVELIN_LAPWING_IMAGE}" LAPWING_BYTES)
-      execute_process(
-        COMMAND ${PYTHON_EXECUTABLE} -c
-          "import pathlib,sys,zlib; print(hex(zlib.crc32(pathlib.Path(sys.argv[1]).read_bytes())))"
-          "${ZMK_JAVELIN_LAPWING_IMAGE}"
-        OUTPUT_VARIABLE LAPWING_CRC OUTPUT_STRIP_TRAILING_WHITESPACE
-        COMMAND_ERROR_IS_FATAL ANY)
+      javelin_image_size_crc(LAPWING "${ZMK_JAVELIN_LAPWING_IMAGE}")
       set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${ZMK_JAVELIN_LAPWING_IMAGE}" "${QSPI_SRC}/prepare_xip_reader.py")
+        "${QSPI_SRC}/prepare_xip_reader.py")
       set(PATCHED_COMPACT_MAP "${CMAKE_CURRENT_BINARY_DIR}/lapwing/compact_map_dictionary.cc")
       configure_file("${JAVELIN_COMPACT_MAP_SRC}" "${PATCHED_COMPACT_MAP}" COPYONLY)
       execute_process(
@@ -127,14 +136,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       set(PLOVER_BYTES 0)
       set(PLOVER_CRC 0)
       if(ZMK_JAVELIN_PLOVER_IMAGE)
-        file(SIZE "${ZMK_JAVELIN_PLOVER_IMAGE}" PLOVER_BYTES)
-        execute_process(
-          COMMAND ${PYTHON_EXECUTABLE} -c
-            "import pathlib,sys,zlib; print(hex(zlib.crc32(pathlib.Path(sys.argv[1]).read_bytes())))"
-            "${ZMK_JAVELIN_PLOVER_IMAGE}"
-          OUTPUT_VARIABLE PLOVER_CRC OUTPUT_STRIP_TRAILING_WHITESPACE
-          COMMAND_ERROR_IS_FATAL ANY)
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ZMK_JAVELIN_PLOVER_IMAGE}")
+        javelin_image_size_crc(PLOVER "${ZMK_JAVELIN_PLOVER_IMAGE}")
       endif()
       target_compile_definitions(app PRIVATE PLOVER_BYTES=${PLOVER_BYTES} PLOVER_CRC=${PLOVER_CRC})
       # Optional image of the smaller Lapwing dictionaries. Once a build names
@@ -142,14 +144,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       set(EXTRAS_BYTES 0)
       set(EXTRAS_CRC 0)
       if(ZMK_JAVELIN_EXTRAS_IMAGE)
-        file(SIZE "${ZMK_JAVELIN_EXTRAS_IMAGE}" EXTRAS_BYTES)
-        execute_process(
-          COMMAND ${PYTHON_EXECUTABLE} -c
-            "import pathlib,sys,zlib; print(hex(zlib.crc32(pathlib.Path(sys.argv[1]).read_bytes())))"
-            "${ZMK_JAVELIN_EXTRAS_IMAGE}"
-          OUTPUT_VARIABLE EXTRAS_CRC OUTPUT_STRIP_TRAILING_WHITESPACE
-          COMMAND_ERROR_IS_FATAL ANY)
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ZMK_JAVELIN_EXTRAS_IMAGE}")
+        javelin_image_size_crc(EXTRAS "${ZMK_JAVELIN_EXTRAS_IMAGE}")
       endif()
       target_compile_definitions(app PRIVATE EXTRAS_BYTES=${EXTRAS_BYTES} EXTRAS_CRC=${EXTRAS_CRC})
     endif()
@@ -293,11 +288,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       src/platform/zmk_flash_shim.cc
       src/platform/zmk_console_shim.cc
       src/platform/zmk_stubs.cc
-    )
-
-    # ZMK behavior driver (C, not C++)
-    set(ZMK_BEHAVIOR_SRC
-      src/behaviors/behavior_javelin_steno.c
     )
 
     # Engine initialization
