@@ -107,6 +107,7 @@ jobs:
             boardsource: left
             snippet: zmk-usb-logging
             dictionaries: true
+            diagnostics: true
           - name: Boardsource-Left-Default
             boardsource: left
             snippet: studio-rpc-usb-uart
@@ -195,6 +196,10 @@ jobs:
               conf="$split/corne.conf;$split/corne_left.conf"
               if [ "${{ matrix.no_display }}" = "true" ]; then
                 conf="$conf;$split/left-no-display.conf"
+              fi
+              if [ "${{ matrix.diagnostics }}" = "true" ]; then
+                conf="$conf;$split/logging.conf"
+                args+=("-DEXTRA_DTC_OVERLAY_FILE=$repo/config/boardsource-wireless-corne/logging.overlay")
               fi
               args+=("-DBOARD_ROOT=$GITHUB_WORKSPACE/vendor"
                      "-DZMK_CONFIG=$repo/config/boardsource-wireless-corne"

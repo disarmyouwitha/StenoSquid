@@ -1,0 +1,18 @@
+/* Extras for the diagnostic left build (Boardsource-Left-Logging): the flash
+ * partition for the battery logger. Use it with config/steno-squid-split/
+ * logging.conf; see tools/steno-squid-battery/README.md.
+ *
+ * Takes the top 128 KiB of the vendor board's code partition (0x1000-0xD3FFF)
+ * for the log. The vendor storage partition at 0xD4000 and the bootloader at
+ * 0xF4000 keep their addresses.
+ */
+&code_partition {
+    reg = <0x1000 0xb3000>;
+};
+
+&{/soc/flash-controller@4001e000/flash@0/partitions} {
+    battery_log_partition: partition@b4000 {
+        label = "battery-log";
+        reg = <0xb4000 0x20000>;
+    };
+};

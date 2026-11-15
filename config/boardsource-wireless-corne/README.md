@@ -111,7 +111,7 @@ Use the Boardsource artifacts from one successful workflow run:
 3. `Boardsource-Right-Default` for the portrait display peripheral. Without a
    nice!view, use `Boardsource-Right-No-Display` and, for everyday use,
    `Boardsource-Left-No-Display`.
-4. `Boardsource-Left-Logging` for dictionary provisioning. With matching images
+4. `Boardsource-Left-Logging` for dictionary provisioning and battery logging (the [battery logger](../../tools/steno-squid-battery/README.md) keeps its log in the top 128 KiB of the application partition, `0xB4000-0xD3FFF`). With matching images
    prepared under `build/`, `upload.py PORT` installs missing configured images.
    Use `upload.py PORT --status` for a read-only status query.
 5. `Boardsource-Left-Default` for everyday use.

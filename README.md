@@ -98,12 +98,12 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies. Install 
 | **Boardsource-Right-Default** | Right half with the portrait display, squid, stroke tape and Practice UI. |
 | **Boardsource-Left-No-Display** | Left half for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **Boardsource-Right-No-Display**. |
 | **Boardsource-Right-No-Display** | Right half without the display. |
-| **Boardsource-Left-Logging** | Diagnostic left half: the serial port for installing dictionaries, the boot log and the `--diag` tools. Not for everyday use. |
+| **Boardsource-Left-Logging** | Diagnostic left half: the serial port for installing dictionaries, the boot log, the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
 | **Boardsource-Probe**, **Boardsource-Quad-Probe** | Read the flash chip on first power-up and write nothing. Run them before the left firmware. |
 
 The [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers them in order.
 
-**nice!nano v2 (the handwired prototype)** builds the same set with a **NiceNano-** prefix: **NiceNano-Left-Default** with **NiceNano-Right-Default**, **NiceNano-Left-No-Display** with **NiceNano-Right-No-Display**, and **NiceNano-Left-Logging**. The nice!nano diagnostic build also has the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash.
+**nice!nano v2 (the handwired prototype)** builds the same set with a **NiceNano-** prefix: **NiceNano-Left-Default** with **NiceNano-Right-Default**, **NiceNano-Left-No-Display** with **NiceNano-Right-No-Display**, and **NiceNano-Left-Logging**. Its diagnostic build has the battery logger too.
 
 Download artifacts from a successful run. Double-tap RESET on the intended controller and copy its UF2 to the **NICENANO** drive. Install matching left and right firmware when updating Practice or split-display features. [Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
 

@@ -1,11 +1,13 @@
 # Steno Squid battery logging trial
 
-The battery logger is part of the diagnostic left build, **NiceNano-Left-Logging**. To
-build it yourself, use `-S zmk-usb-logging` and these CMake arguments:
+The battery logger is part of the diagnostic left builds, **Boardsource-Left-Logging** and
+**NiceNano-Left-Logging**. To build one yourself, use `-S zmk-usb-logging`, add
+`config/steno-squid-split/logging.conf` to `EXTRA_CONF_FILE`, and pass the overlay for your
+board as `EXTRA_DTC_OVERLAY_FILE`:
 
 ```
--DEXTRA_CONF_FILE=config/steno-squid-split/logging.conf
--DEXTRA_DTC_OVERLAY_FILE=config/steno-squid-split/logging.overlay
+-DEXTRA_DTC_OVERLAY_FILE=config/steno-squid-split/logging.overlay           # nice!nano
+-DEXTRA_DTC_OVERLAY_FILE=config/boardsource-wireless-corne/logging.overlay  # Boardsource
 ```
 
 The overlay takes 128 KiB from the top of the application partition for a
