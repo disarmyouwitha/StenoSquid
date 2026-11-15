@@ -25,7 +25,6 @@
 
 #define QSPI_NODE DT_NODELABEL(qspi)
 #define XIP_BASE DT_REG_ADDR_BY_NAME(QSPI_NODE, qspi_mm)
-#define FLASH_BYTES (16U * 1024U * 1024U)
 #define SECTOR_BYTES 4096U
 #define PAGE_BYTES 256U
 #define CHUNK_BYTES (2U * PAGE_BYTES)
@@ -99,7 +98,7 @@ static atomic_t mapped_ready;
 /* Set once a bring-up attempt has finished, whatever its result. */
 static atomic_t checked;
 /* The last chip ID read, for the status command. */
-static uint8_t last_jedec[3] __maybe_unused;
+static uint8_t last_jedec[3];
 
 /* Called whenever the dictionaries become usable or a bring-up gives up.
  * Runs on the flash worker with the flash lock held: only submit work.
@@ -110,7 +109,7 @@ static uint8_t readback[CHUNK_BYTES] __aligned(4);
 /* Both bases passed a full CRC since this controller last lost power. The
  * flash cannot change while its rail is off, so later bring-ups may be quick.
  */
-static bool trusted __maybe_unused;
+static bool trusted;
 
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 static atomic_t flash_powered;
@@ -140,18 +139,24 @@ static void note_use(void) {
 }
 #endif
 
-/* GPREGRET2 survives System OFF and resets, and clears when power is lost.
- * Deep sleep leaves a marker tied to the expected images, so the wake that
- * follows can skip the two full CRC passes. Anything else verifies in full.
+/* One value that changes with any of the expected images. Two records are
+ * tied to it, so a quick check is only taken for the images this firmware
+ * expects:
+ * - GPREGRET2 survives System OFF and resets, and clears when power is lost.
+ *   Deep sleep leaves a marker, so the wake that follows can skip the full
+ *   CRC passes.
+ * - A full CRC pass over every base leaves a record in the keyboard's
+ *   settings. While it is there, a cold boot runs the quick check too. The
+ *   bases only change through serial provisioning, which removes the record
+ *   before it writes.
+ * Anything else verifies in full.
  */
-/* One value that changes with any of the expected images. */
-static uint32_t images_hash(void) {
-    return LAPWING_CRC ^ LAPWING_BYTES ^ (PLOVER_CRC * 31U) ^ PLOVER_BYTES ^
-           (EXTRAS_CRC * 131U) ^ (EXTRAS_BYTES * 7U);
-}
+#define IMAGES_HASH (LAPWING_CRC ^ LAPWING_BYTES ^ (PLOVER_CRC * 31U) ^ PLOVER_BYTES ^ \
+                     (EXTRAS_CRC * 131U) ^ (EXTRAS_BYTES * 7U))
+#define IMAGE_FINGERPRINT (IMAGES_HASH ? IMAGES_HASH : 0xa5a5a5a5U)
 
 static uint8_t trust_marker(void) {
-    uint32_t value = images_hash();
+    uint32_t value = IMAGES_HASH;
 
     value ^= value >> 16;
     value ^= value >> 8;
@@ -159,18 +164,7 @@ static uint8_t trust_marker(void) {
     return value ? (uint8_t)value : 0xa5;
 }
 
-/* A full CRC pass over both bases leaves a record in the keyboard's settings,
- * tied to the images this firmware expects. While it is there, a cold boot
- * runs the quick check too. The bases only change through serial
- * provisioning, which removes the record before it writes.
- */
 #define TRUST_SETTING "lapwing/verified"
-
-static uint32_t image_fingerprint(void) {
-    const uint32_t value = images_hash();
-
-    return value ? value : 0xa5a5a5a5U;
-}
 
 #if IS_ENABLED(CONFIG_SETTINGS)
 static int read_trust(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg,
@@ -191,11 +185,11 @@ static bool stored_trust(void) {
      * answer is no, which only costs a full check.
      */
     return settings_load_subtree_direct(TRUST_SETTING, read_trust, &value) == 0 &&
-           value == image_fingerprint();
+           value == IMAGE_FINGERPRINT;
 }
 
 static void store_trust(void) {
-    const uint32_t value = image_fingerprint();
+    const uint32_t value = IMAGE_FINGERPRINT;
 
     if (!stored_trust() && settings_save_one(TRUST_SETTING, &value, sizeof(value)) != 0) {
         printk("Could not record the verified dictionaries\n");
@@ -423,19 +417,42 @@ static bool start_qspi(nrfx_qspi_config_t *config) {
     return id[0] == 0xef && id[1] == 0x40 && id[2] == 0x18;
 }
 
-static bool read_image_crc(const struct base_image *image) {
+/* CRC of one base, a chunk at a time. Raw reads use the QSPI EasyDMA path.
+ * Mapped reads go through the memory window one word at a time, each load
+ * followed by a DSB (nRF52840 erratum 216). Yields after every chunk. Only a
+ * raw read can fail; failed_at then holds the offset of the chunk that did.
+ */
+static bool image_crc(const struct base_image *image, bool mapped, uint32_t *crc_out,
+                      uint32_t *failed_at) {
+    const volatile uint32_t *window = (const volatile uint32_t *)(XIP_BASE + image->offset);
     uint32_t crc = 0;
 
     for (uint32_t offset = 0; offset < image->bytes; offset += CHUNK_BYTES) {
         const size_t size = MIN(CHUNK_BYTES, image->bytes - offset);
 
-        if (nrfx_qspi_read(readback, size, image->offset + offset) != NRFX_SUCCESS) {
+        if (mapped) {
+            for (size_t index = 0; index < size; index += sizeof(uint32_t)) {
+                const uint32_t word = window[(offset + index) / sizeof(uint32_t)];
+                __DSB();
+                memcpy(readback + index, &word, sizeof(word));
+            }
+        } else if (nrfx_qspi_read(readback, size, image->offset + offset) != NRFX_SUCCESS) {
+            if (failed_at) {
+                *failed_at = offset;
+            }
             return false;
         }
         crc = crc32_ieee_update(crc, readback, size);
         k_yield();
     }
-    return crc == image->crc;
+    *crc_out = crc;
+    return true;
+}
+
+static bool read_image_crc(const struct base_image *image) {
+    uint32_t crc;
+
+    return image_crc(image, false, &crc, NULL) && crc == image->crc;
 }
 
 /* Four data lines for every read that follows, raw or mapped. */
@@ -459,17 +476,8 @@ static bool enable_verified_mapping(nrfx_qspi_config_t *config, bool quick) {
     for (size_t i = 0; !quick && i < ARRAY_SIZE(images); i++) {
         const struct base_image *image = &images[i];
         uint32_t crc = 0;
-        const volatile uint32_t *mapped = (const volatile uint32_t *)(XIP_BASE + image->offset);
-        for (size_t offset = 0; offset < image->bytes; offset += CHUNK_BYTES) {
-            const size_t size = MIN(CHUNK_BYTES, image->bytes - offset);
-            for (size_t index = 0; index < size; index += sizeof(uint32_t)) {
-                const uint32_t word = mapped[(offset + index) / sizeof(uint32_t)];
-                __DSB();
-                memcpy(readback + index, &word, sizeof(word));
-            }
-            crc = crc32_ieee_update(crc, readback, size);
-            k_yield();
-        }
+
+        (void)image_crc(image, true, &crc, NULL);
         if (crc != image->crc) {
             diag_log("%s mapped CRC mismatch: %08x\n", image->name, crc);
             return false;
@@ -577,17 +585,7 @@ static void verify_image(const struct base_image *image) {
      */
     const bool was_mapped = atomic_cas(&mapped_ready, 1, 0);
 
-    for (uint32_t offset = 0; read_ok && offset < image->bytes; offset += CHUNK_BYTES) {
-        const size_t size = MIN(CHUNK_BYTES, image->bytes - offset);
-
-        if (nrfx_qspi_read(readback, size, image->offset + offset) != NRFX_SUCCESS) {
-            read_ok = false;
-            failed_at = offset;
-            break;
-        }
-        crc = crc32_ieee_update(crc, readback, size);
-        k_yield();
-    }
+    read_ok = read_ok && image_crc(image, false, &crc, &failed_at);
     if (was_mapped) {
         atomic_set(&mapped_ready, 1);
     }
@@ -916,7 +914,7 @@ static void rail_test(void) {
         }
     } else if (low_reads && !high_reads) {
         diag_printf(console, "RAIL LOW enables the rail. The firmware drives it the wrong way: "
-                             "change GPIO_ACTIVE_HIGH in qspi.dtsi");
+                             "change GPIO_ACTIVE_HIGH in src/steno_squid/qspi.overlay");
     } else if (!low_reads && !high_reads) {
         diag_printf(console, "RAIL no rail seen at either level. Check that the 10 k from CS to "
                              "VCC is fitted, the chip is wired, and P0.31 is the rail enable");
