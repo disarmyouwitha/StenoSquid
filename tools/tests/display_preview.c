@@ -23,12 +23,16 @@ static void save(const char *name) {
     for(unsigned i=0;i<sizeof(saved);i++) saved[i]=saved[i]>=128?255:0;
     fwrite(saved,1,sizeof(saved),out);fclose(out);
 }
+/* Sprites are A1: row-major, 6 bytes per 48-pixel row, bit 7 is the leftmost pixel. */
+static bool sprite_px(const uint8_t *sprite, unsigned x, unsigned y) {
+    return sprite[y * A1_STRIDE(PET_SIZE) + x / 8] >> (7 - x % 8) & 1;
+}
 /* Pupils may float inside the mask. Every lower tentacle must join the mantle. */
 static void check_tentacles_connected(void) {
     bool seen[48*48] = {0};
     unsigned queue[48*48], read = 0, count = 0;
     for (unsigned i = 0; i < 48*48; i++) {
-        if (idle_pixels[i]) { queue[count++] = i; seen[i] = true; break; }
+        if (sprite_px(idle_pixels, i % 48, i / 48)) { queue[count++] = i; seen[i] = true; break; }
     }
     while (read < count) {
         const unsigned i = queue[read++], x = i % 48, y = i / 48;
@@ -36,12 +40,128 @@ static void check_tentacles_connected(void) {
                                  y ? (int)i-48 : -1, y < 47 ? (int)i+48 : -1};
         for (unsigned n = 0; n < 4; n++) {
             const int j = neighbors[n];
-            if (j >= 0 && idle_pixels[j] && !seen[j]) {
+            if (j >= 0 && sprite_px(idle_pixels, j % 48, j / 48) && !seen[j]) {
                 queue[count++] = j; seen[j] = true;
             }
         }
     }
-    for (unsigned i = 34*48; i < 48*48; i++) assert(!idle_pixels[i] || seen[i]);
+    for (unsigned i = 34*48; i < 48*48; i++) assert(!sprite_px(idle_pixels, i % 48, i / 48) || seen[i]);
+}
+
+/* Draw a known 68x10 A1 pattern (68 is not a multiple of 8, so rows are padded to 72 bits) and
+ * compare every rendered pixel: checks MSB-first bit order and the row stride. */
+#define A1_TEST_W 68
+#define A1_TEST_H 10
+static bool a1_test_bit(unsigned x, unsigned y) {
+    return (x == 0 && y == 0) || (x == A1_TEST_W - 1 && y == 1) || ((x * 7 + y * 3) % 5 < 2);
+}
+static lv_obj_t *check_a1_draw(void) {
+    static uint8_t bits[A1_STRIDE(A1_TEST_W) * A1_TEST_H];
+    for (unsigned y = 0; y < A1_TEST_H; y++)
+        for (unsigned x = 0; x < A1_TEST_W; x++)
+            if (a1_test_bit(x, y)) bits[y * A1_STRIDE(A1_TEST_W) + x / 8] |= 0x80 >> (x % 8);
+    static const lv_image_dsc_t image = {
+        .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_A1, .w = A1_TEST_W,
+                   .h = A1_TEST_H, .stride = A1_STRIDE(A1_TEST_W)},
+        .data_size = sizeof(bits), .data = bits,
+    };
+    lv_obj_t *screen = lv_obj_create(NULL);
+    lv_obj_remove_style_all(screen);
+    lv_obj_set_style_bg_color(screen, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_t *img = lv_image_create(screen);
+    lv_obj_remove_style_all(img);
+    lv_obj_set_pos(img, 0, 0);
+    lv_obj_set_style_image_recolor(img, lv_color_black(), 0);
+    lv_image_set_src(img, &image);
+    lv_screen_load(screen);
+    lv_refr_now(NULL);
+    unsigned set = 0;
+    for (unsigned y = 0; y < A1_TEST_H; y++)
+        for (unsigned x = 0; x < A1_TEST_W; x++) {
+            const bool on = a1_test_bit(x, y);
+            set += on;
+            assert(saved[y * 68 + x] == (on ? 0 : 255));
+        }
+    assert(set > 100 && set < A1_TEST_W * A1_TEST_H - 100);
+    for (unsigned x = 0; x < 68; x++) assert(saved[A1_TEST_H * 68 + x] == 255);
+    return screen;
+}
+
+/* Representative production states for documentation renders. */
+static void save_gallery_states(void) {
+    static const struct {
+        unsigned mode;
+        const char *name;
+    } modes[] = {
+        {STENO_SQUID_MODE_TYPING, "gallery-qwerty"},
+        {STENO_SQUID_MODE_SYMBOLS, "gallery-numpad"},
+        {STENO_SQUID_MODE_JAVELIN, "gallery-javelin"},
+        {STENO_SQUID_MODE_PLOVER, "gallery-plover"},
+        {STENO_SQUID_MODE_LOADING, "gallery-loading"},
+        {STENO_SQUID_MODE_NO_DICTIONARY, "gallery-no-dict"},
+    };
+    steno_squid_pet_set_powered(false);
+    for (unsigned i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
+        steno_squid_screen_update(modes[i].mode, NULL, 0, 85, false);
+        steno_squid_pet_set_state(PET_IDLE);
+        save(modes[i].name);
+    }
+
+    steno_squid_screen_update(STENO_SQUID_MODE_TYPING, NULL, 0, 85, false);
+    steno_squid_pet_set_state(PET_IDLE);
+    steno_squid_pet_set_state(PET_TYPING);
+    advance_frame(frame_timer);
+    save("gallery-pop-typing");
+    steno_squid_pet_set_state(PET_SLEEP);
+    save("gallery-pop-sleep");
+    steno_squid_pet_set_powered(true);
+    advance_frame(frame_timer);
+    advance_frame(frame_timer);
+    save("gallery-pop-usb");
+    steno_squid_pet_set_powered(false);
+    steno_squid_pet_set_state(PET_GREETING);
+    advance_frame(frame_timer);
+    advance_frame(frame_timer);
+    save("gallery-pop-hi");
+    steno_squid_screen_update(STENO_SQUID_MODE_SYMBOLS, NULL, 0, 85, false);
+    advance_frame(frame_timer);
+    save("gallery-pop-layer");
+
+    static const struct {
+        unsigned drill;
+        const char *name;
+        const char *prompt;
+        const char *outline;
+    } practice[] = {
+        {STENO_SQUID_PRACTICE_WORDS, "gallery-words", "CAT", "KAT"},
+        {STENO_SQUID_PRACTICE_LEFT, "gallery-left", "K", "Tap key"},
+        {STENO_SQUID_PRACTICE_RIGHT, "gallery-right", "-G", "Tap key"},
+        {STENO_SQUID_PRACTICE_COLUMNS, "gallery-vowels", "AO", "Chord keys"},
+    };
+    for (unsigned i = 0; i < sizeof(practice) / sizeof(practice[0]); ++i) {
+        const uint32_t status = STENO_SQUID_PRACTICE_ACTIVE |
+            (practice[i].drill << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
+            (4u << STENO_SQUID_PRACTICE_ROUND_SHIFT) |
+            (3u << STENO_SQUID_PRACTICE_STREAK_SHIFT);
+        struct steno_squid_practice_view view = {.state = status};
+        snprintf(view.prompt, sizeof(view.prompt), "%s", practice[i].prompt);
+        snprintf(view.outline, sizeof(view.outline), "%s", practice[i].outline);
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL, status, 85, false);
+        save(practice[i].name);
+        if (practice[i].drill == STENO_SQUID_PRACTICE_WORDS) {
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL,
+                status | (STENO_SQUID_PRACTICE_CORRECT << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT), 85, false);
+            save("gallery-words-correct");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL,
+                status | (STENO_SQUID_PRACTICE_INCORRECT << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT), 85, false);
+            save("gallery-words-retry");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL,
+                status | STENO_SQUID_PRACTICE_NO_DICTIONARY, 85, false);
+            save("gallery-words-no-dict");
+        }
+    }
 }
 
 int main(void) {
@@ -49,16 +169,18 @@ int main(void) {
     // Closing the eyes must also fill the old upper eye-mask patches.
     for (unsigned y=14; y<16; y++) {
         unsigned left=48, right=0;
-        for(unsigned x=0;x<48;x++) if(idle_pixels[y*48+x]) {
+        for(unsigned x=0;x<48;x++) if(sprite_px(idle_pixels,x,y)) {
             if(left==48) left=x; right=x;
         }
-        for(unsigned x=left;x<=right && x<48;x++) assert(sleep_pixels[y*48+x]);
+        for(unsigned x=left;x<=right && x<48;x++) assert(sprite_px(sleep_pixels,x,y));
     }
     lv_init();lv_display_t *d=lv_display_create(68,160);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_L8);
     lv_display_set_buffers(d,pixels,NULL,sizeof(pixels),LV_DISPLAY_RENDER_MODE_FULL);
     lv_display_set_flush_cb(d,flush);
+    lv_obj_t *a1_screen = check_a1_draw();
     lv_screen_load(steno_squid_screen_create());
+    lv_obj_delete(a1_screen);
     steno_squid_screen_update(STENO_SQUID_MODE_SYMBOLS,NULL,0,85,false);
     assert(!strcmp(lv_label_get_text(mode_below),"Numpad"));
     save("numpad");
@@ -120,7 +242,6 @@ int main(void) {
         snprintf(tape.text,sizeof(tape.text),"%s","cat");
         steno_squid_screen_set_tape(&tape);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,0,85,false);
-#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_TRANSLATION
         assert(!lv_obj_has_flag(tape_text,LV_OBJ_FLAG_HIDDEN));
         assert(!lv_obj_has_flag(tape_stroke,LV_OBJ_FLAG_HIDDEN));
         assert(!lv_obj_has_flag(tape_wpm,LV_OBJ_FLAG_HIDDEN));
@@ -132,13 +253,6 @@ int main(void) {
         assert(lv_obj_get_y(tape_text) + lv_obj_get_height(tape_text) <= lv_obj_get_y(tape_stroke));
         assert(lv_obj_get_y(tape_stroke) + lv_obj_get_height(tape_stroke) <= 48);
         save("tape-word");
-#else
-        assert(lv_obj_has_flag(tape_text,LV_OBJ_FLAG_HIDDEN));
-        assert(lv_obj_has_flag(tape_stroke,LV_OBJ_FLAG_HIDDEN));
-        assert(lv_obj_has_flag(tape_wpm,LV_OBJ_FLAG_HIDDEN));
-        assert(headroom); // Both translation and hints off: animations get the space.
-        save("tape-disabled");
-#endif
         /* The widest text each row can be given. */
         snprintf(tape.text,sizeof(tape.text),"%s","WWWWWWWWWWWW");
         tape.mask=STENO_SQUID_TAPE_KEYS_MASK;
@@ -165,12 +279,6 @@ int main(void) {
         steno_squid_screen_set_tape(&tape);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,0,85,false);
         save("tape-shortcut");
-#ifndef CONFIG_ZMK_STENO_SQUID_STROKE_TRANSLATION
-        tape.hint_count=0;
-        steno_squid_screen_set_tape(&tape);
-        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,0,85,false);
-        assert(headroom); // Clearing the hint restores animations immediately.
-#endif
         /* Other layers and Practice hide the tape. */
         steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
         assert(lv_obj_has_flag(tape_text,LV_OBJ_FLAG_HIDDEN));
@@ -372,6 +480,7 @@ int main(void) {
         save("speed-timeout");
         result_tick(results_timer);assert(!strcmp(lv_label_get_text(best_label),"+30 XP"));
     }
+    save_gallery_states();
     for (unsigned pass=0; pass<30; pass++) {
         for (unsigned mode=0; mode<STENO_SQUID_MODE_COUNT; mode++) {
             steno_squid_screen_update(mode,NULL,0,pass+65,false);

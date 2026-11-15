@@ -47,14 +47,12 @@ static nrfx_err_t verify_erased(bool *blank)
 	return NRFX_SUCCESS;
 }
 
-#ifndef JAVELIN_PROBE
 static void fill_pattern(uint8_t pattern)
 {
 	for (size_t i = 0; i < sizeof(page); i++) {
 		page[i] = (uint8_t)i ^ pattern;
 	}
 }
-#endif
 
 static const char *program_and_read(uint32_t address, nrfx_err_t *rc)
 {
@@ -130,19 +128,7 @@ void run_scratch_probe(nrfx_qspi_config_t *config, struct scratch_result *result
 		return;
 	}
 
-#ifdef JAVELIN_PROBE
-	const size_t fixture_size = javelin_fixture_end - javelin_fixture_start;
-	if (fixture_size == 0 || fixture_size > sizeof(page)) {
-		result->outcome = "FAIL: Javelin fixture does not fit scratch page";
-		return;
-	}
-	memset(page, 0xff, sizeof(page));
-	memcpy(page, javelin_fixture_start, fixture_size);
-	printk("Staging %u-byte JSC4 fixture in the external scratch sector\n",
-	       (unsigned int)fixture_size);
-#else
 	fill_pattern(SCRATCH_FIRST_PATTERN);
-#endif
 	result->outcome = program_and_read(SCRATCH_ADDRESS, &result->error);
 #ifdef XIP_PROBE
 	quad->mapped.second_address = SCRATCH_ADDRESS + SECTOR_BYTES - PAGE_BYTES;
@@ -161,10 +147,6 @@ void run_scratch_probe(nrfx_qspi_config_t *config, struct scratch_result *result
 	}
 #ifdef XIP_PROBE
 	if (quad->mapped.reactivation_failed) {
-#elif defined(JAVELIN_PROBE)
-	if (quad->javelin_reactivation_failed) {
-#endif
-#if defined(XIP_PROBE) || defined(JAVELIN_PROBE)
 		result->cleanup = "SKIP: QSPI reactivation failed; scratch data may remain";
 		result->cleanup_error = NRFX_ERROR_TIMEOUT;
 		return;

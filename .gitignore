@@ -4,3 +4,5 @@ dicts/*.bin
 
 javelin/
 /build/
+
+.DS_Store

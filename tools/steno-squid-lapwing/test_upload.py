@@ -23,7 +23,7 @@ import zlib
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.modules.setdefault("serial", types.SimpleNamespace(Serial=object))
 import upload  # noqa: E402
 
@@ -193,6 +193,24 @@ class UploadTest(unittest.TestCase):
         self.assertIsNone(code)
         self.assertEqual(self.programmed(kb), ["LAPWING", "PLOVER", "EXTRAS"])
         self.assertTrue(kb.mapped())
+
+    def test_install_prepares_missing_images_and_verifies_all(self):
+        self.paths["EXTRAS"].unlink()
+        kb = self.keyboard(installed=("LAPWING",))
+        with mock.patch.object(upload, "prepare_base") as prepare:
+            prepare.side_effect = lambda name, _: self.paths[name].write_bytes(self.images[name])
+            code, _ = self.run_script(kb, "--install")
+        self.assertIsNone(code)
+        prepare.assert_called_once_with("EXTRAS", (len(self.images["EXTRAS"]), zlib.crc32(self.images["EXTRAS"])))
+        self.assertEqual(self.programmed(kb), ["PLOVER", "EXTRAS"])
+        self.assertEqual([n for n, action in kb.log if action == "verify"], list(self.images))
+
+    def test_install_checks_all_files_before_any_write(self):
+        self.paths["EXTRAS"].write_bytes(make_image(9))
+        kb = self.keyboard()
+        code, _ = self.run_script(kb, "--install")
+        self.assertIn("is not the EXTRAS image", str(code))
+        self.assertEqual(self.programmed(kb), [])
 
     def test_installed_images_are_left_alone(self):
         kb = self.keyboard(installed=("LAPWING", "PLOVER", "EXTRAS"))

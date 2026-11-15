@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-source = (ROOT / 'src/engine_init.cc').read_text()
+source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text()
 start = source.index('static bool practice_correct(')
 brace = source.index('{', start)
 depth, end = 1, brace + 1
@@ -23,6 +23,7 @@ prefix = r'''
 #include <strings.h>
 #include <string>
 #include "split_status.h"
+#include "practice_types.h"
 #include "practice_words.h"
 #include "practice_multi.h"
 #include "practice_build.h"
@@ -104,6 +105,21 @@ int main() {
   const unsigned lookups=active.calls;
   stroke.Set("S");assert(practice_correct(stroke));
   stroke.Set("K");assert(!practice_correct(stroke));
+  const auto check_vowel = [&](steno_squid_practice_drill drill, const char *vowel,
+                               const char *pair) {
+    practice.drill=drill;
+    const unsigned count=steno_squid_practice_prompt_count(drill);
+    for(prompt_id=0;prompt_id<count;++prompt_id)
+      if(std::string(steno_squid_practice_outline(drill,prompt_id))==vowel)
+        break;
+    assert(prompt_id<count);
+    stroke.Set(vowel);assert(practice_correct(stroke));
+    stroke.Set(pair);assert(!practice_correct(stroke));
+  };
+  check_vowel(STENO_SQUID_PRACTICE_LEFT,"A","AO");
+  check_vowel(STENO_SQUID_PRACTICE_LEFT,"O","AO");
+  check_vowel(STENO_SQUID_PRACTICE_RIGHT,"E","EU");
+  check_vowel(STENO_SQUID_PRACTICE_RIGHT,"U","EU");
   assert(active.calls==lookups); // Raw hand drills never touch dictionaries.
   puts("Practice lookup: alternate active outlines, Lapwing fallback, unavailable base and raw hand drills passed");
 }

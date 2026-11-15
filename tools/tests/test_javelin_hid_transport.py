@@ -64,7 +64,7 @@ class Console { public: static constexpr size_t BUFFER_SIZE=2048; };
 
 HARNESS = r'''
 #define CONFIG_ZMK_JAVELIN_STENO_BLE_HID 1
-#define CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT 1
+#define CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS 1
 #include "stubs.h"
 extern "C" bool zmk_usb_is_hid_ready() { return usb_ready; }
 std::vector<std::string> commands;
@@ -116,6 +116,16 @@ int main() {
     reset();ble("c02 flash_erase\n");run();assert(commands.empty());
     std::string reply;for(auto &r:ble_tx) for(auto c:r) if(c) reply+=(char)c;
     assert(reply.find("ERR Command unavailable")!=std::string::npos);
+
+    reset();
+    const std::string import_line = "user_dictionary_import data 0 " + std::string(512, 'a') + "\n";
+    for (size_t off=0; off<import_line.size(); off+=59)
+        usb("c14 " + import_line.substr(off, 59));
+    ble("c15 user_dictionary_import commit\n");
+    run();
+    assert(commands == std::vector<std::string>{
+        "c14 " + import_line});
+    assert(!ble_tx.empty());
 
     reset();
     console_ready = false;

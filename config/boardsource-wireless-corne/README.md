@@ -58,7 +58,7 @@ build_left() {
 build_left boardsource-left -S studio-rpc-usb-uart
 build_left boardsource-provision -S zmk-usb-logging
 
-west build -s zmk/app -d "$repo/build/boardsource-right" -b blecorne_right -- \
+west build -s zmk/app -d "$repo/build/boardsource-right-default" -b blecorne_right -- \
   -DSHIELD=nice_view "-DBOARD_ROOT=$vendor" "-DZephyr_DIR=$zephyr_cmake" \
   "-DZMK_CONFIG=$target" "-DZMK_EXTRA_MODULES=$repo" \
   "-DEXTRA_CONF_FILE=$split/corne.conf;$split/right-nice-view.conf"
@@ -80,7 +80,7 @@ build_probe boardsource-quad -DQUAD_PROBE=ON
 | --- | --- |
 | `boardsource-probe/zephyr/zephyr.uf2` | First left-side probe. JEDEC and single-line FASTREAD only. |
 | `boardsource-quad/zephyr/zephyr.uf2` | Follow-up left probe. Compares single-line and quad reads, using a volatile QE update when required. |
-| `boardsource-right/zephyr/zmk.uf2` | Right split peripheral with nice!view. |
+| `boardsource-right-default/zephyr/zmk.uf2` | Right split peripheral with nice!view. |
 | `boardsource-left/zephyr/zmk.uf2` | Everyday left central, including browser HID over USB and Bluetooth. |
 | `boardsource-provision/zephyr/zmk.uf2` | Same left target with USB logging and the serial base-dictionary uploader interface. |
 
@@ -102,49 +102,17 @@ Compilation and generated pin/partition checks cover the firmware configuration.
 
 The first adapter can leave the WS2812C-2020-V6 unpopulated. The left header uses all six signal pins for QSPI, and P0.31 controls the shared accessory rail. Keep the LED data off the flash signals. An independently powered or locally controlled LED could provide standalone effects, with its own power budget and voltage requirements. For firmware-controlled effects, a future board revision can expose a dedicated data pin and an appropriate LED supply. A simple rail indicator could instead use a low-current LED and resistor, at the cost of extra current whenever flash power is on.
 
-## Locked-map local build evidence
-
-The four local builds in [locked-pin-map-build.json](locked-pin-map-build.json) record the firmware commit, pinned dependency commits, SDK/compiler version, UF2 size and SHA-256 for left, right, read-only probe and quad probe. The generated devicetrees for the three left-side targets contain SCK P0.19, IO1 P0.23 and IO3 P0.12 in both active and sleep groups. Builds used the pinned workspace and Zephyr SDK 0.16.9.
-
-These are compilation results pending target-hardware testing. They predate the merge of `main` on 2026-11-11.
-
-## Current main integration
-
-This branch includes main through `551f9dd`, including the 300-word adaptive
-trainer, Trouble, Build-Up, Multi-, Speed, 30-prompt LEFT/RIGHT/COLUMNS drills,
-AO/EU vowel columns, persistent progress and XP, and the larger unnumbered
-Multi- hints. Practice text streams from the central rather than duplicating
-word pools on the peripheral. ASCII display fallbacks, the Plover label, and
-USB Boot protocol support remain included.
-The right build also enables deep sleep in its board configuration, matching
-the tested split. The locked hardware pin and rail definitions are unchanged.
-
-The Plover HID dependency is the owner's fork at
-`73b112ccab30d2a9bf40609657daef35560575f1`. It supplies Studio labels and named
-physical steno keys. The locked QSPI pinctrl, probe overlay, right display
-overlay, vendor board revision and partitions retain the same definitions.
+## Builds
 
 Use the Boardsource artifacts from one successful workflow run:
 
 1. `boardsource-probe` for the initial rail, JEDEC and single-line read checks.
 2. `boardsource-quad` for quad-read comparison after the initial checks pass.
-3. `boardsource-right` for the portrait display peripheral.
+3. `boardsource-right-default` for the portrait display peripheral.
 4. `boardsource-left-logging` for dictionary provisioning. With matching images
    prepared under `build/`, `upload.py PORT` installs missing configured images.
    Use `upload.py PORT --status` for a read-only status query.
-5. `boardsource-left-studio` for everyday use.
-
-The earlier integration through `1e07854` built all five targets locally against the pinned dependencies. The table below records those earlier builds, not a new build of `551f9dd`. Generated devicetrees matched the locked active/sleep QSPI pins,
-P0.31 power control and vendor partitions. UF2 payloads fit entirely inside the
-application partition.
-
-| Target | Application flash | RAM |
-| --- | ---: | ---: |
-| boardsource-left-studio | 457,500 B | 240,718 B |
-| boardsource-left-logging | 514,576 B | 250,902 B |
-| boardsource-right | 464,868 B | 63,768 B |
-| boardsource-probe | 48,160 B | 15,592 B |
-| boardsource-quad | 49,760 B | 16,104 B |
+5. `boardsource-left-default` for everyday use.
 
 These firmware builds still need physical verification on the Boardsource
 pair, starting with recovery, accessory rail voltage/polarity, and read-only

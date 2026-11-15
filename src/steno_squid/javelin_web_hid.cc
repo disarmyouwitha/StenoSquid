@@ -29,22 +29,7 @@ struct Report {
 K_MSGQ_DEFINE(received_reports, sizeof(Report), 40, 4);
 alignas(4) Report transmit_report;
 
-// Javelin's vendor console collection, separate from keyboard and Plover HID.
-constexpr uint8_t descriptor[] = {
-    0x06, 0x31, 0xff, // Usage Page 0xFF31
-    0x09, 0x74,       // Usage 0x74
-    0xa1, 0x01,       // Application collection
-    0x15, 0x00,       // Logical minimum 0
-    0x26, 0xff, 0x00, // Logical maximum 255
-    0x75, 0x08,       // Eight bits per field
-    0x95, REPORT_BYTES,
-    0x09, 0x75,
-    0x81, 0x02,       // Input, data, variable
-    0x95, REPORT_BYTES,
-    0x09, 0x76,
-    0x91, 0x02,       // Output, data, variable
-    0xc0,
-};
+constexpr uint8_t descriptor[] = {JAVELIN_HID_REPORT_MAP};
 
 void input_complete(const device *) {
     k_sem_give(&transmit_ready);
@@ -82,6 +67,8 @@ public:
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
     void CountCommand() const { steno_squid_battery_log_editor_command(bluetooth); }
 #endif
+
+    bool IsUsb() const { return !bluetooth; }
 
     void Write(const char *text, size_t size) override {
         if (bluetooth) {
@@ -145,7 +132,7 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
                              "add_user_entry", "remove_user_entry", "reset_user_dictionary",
                              "user_dictionary_status",
                              "enable_dictionary", "disable_dictionary", "toggle_dictionary",
-#ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
                              "get_parameter", "set_host_layout",
 #endif
     };
@@ -157,6 +144,7 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
     for (const char *name : allowed) {
         forward = forward || is_command(command, name);
     }
+    forward = forward || (writer.IsUsb() && is_command(command, "user_dictionary_import"));
     if (forward && steno_squid_javelin_console_line(line, size, writer)) {
         return;
     }
@@ -179,7 +167,11 @@ struct CommandBuffer {
     uint32_t session = 0;
     char line[Console::BUFFER_SIZE];
 };
-CommandBuffer buffers[4];
+// One slot per command split across reports. A command that fits in one report
+// frees its slot at once, so a third command arriving while two others are half
+// received (over USB, Bluetooth or separate channels) is answered with
+// "ERR Too many console channels".
+CommandBuffer buffers[2];
 
 void reset_buffer(CommandBuffer &buffer) {
     buffer.channel = -2;

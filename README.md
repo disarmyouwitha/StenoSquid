@@ -1,7 +1,7 @@
-# Steno Squid
+# StenoSquid
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
-(But it should work with any with any nRF52840 microcontroller with a 16 MiB W25Q128 QSPI flash chip!)
+(But it should work with any nRF52840 microcontroller with a 16 MiB W25Q128 QSPI flash chip!)
 
 ✅ZMK Wireless Keyboard\
 ✅PloverHID\
@@ -9,13 +9,11 @@
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!
 
+![Pop](docs/assets/screens/pop-hi.png) — ![Tape](docs/assets/screens/tape-shortcut.png) — ![Practice](docs/assets/screens/practice-menu.png) — ![BuildUp](docs/assets/screens/drill-build-reveal.png) — ![XPk](docs/assets/screens/results-xp.png)
+
 [ZMK](https://github.com/zmkfirmware/zmk) handles the keyboard, Bluetooth, power management, and keymap editing. [Javelin](https://github.com/jthlim/javelin-steno) handles onboard steno translation.
 
-The `steno-squid/locked-pin-map` branch also targets the Boardsource Wireless
-Corne SMT with the locked Steno Squid expansion pinout. This hardware port is
-awaiting on-device bring-up. [Boardsource build and pinout](config/boardsource-wireless-corne/README.md)
-
-## Keyboard modes and controls
+## Keyboard modes
 
 | Mode | Output |
 | --- | --- |
@@ -23,6 +21,7 @@ awaiting on-device bring-up. [Boardsource build and pinout](config/boardsource-w
 | **Numpad** | Arrow keys, a number pad, and Bluetooth controls. Hold the middle left thumb to use it. |
 | **Javelin** | Onboard dictionary translation, including spelling rules, repeat, and undo. Works with Plover closed. |
 | **Plover** | Raw steno strokes sent over Plover HID to Plover on the computer, using Plover's dictionaries. |
+| **Practice** | Offline practice drills using only your keyboard, no PC required! |
 
 ## Onboard dictionaries
 
@@ -36,7 +35,7 @@ awaiting on-device bring-up. [Boardsource build and pinout](config/boardsource-w
 | Lapwing Base | On |
 | Plover Base | **Off** |
 
-Personal entries have highest priority, followed by the other dictionaries in order. Selections and personal edits survive reboot and firmware updates. Enable Plover Base and disable Lapwing Base to switch bases. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
+Personal entries have highest priority, followed by the other dictionaries in order. Selections and personal edits survive reboot and firmware updates. Enable Plover Base and disable Lapwing dictionaries to switch bases. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
 ## Practice Mode
 
@@ -45,15 +44,16 @@ From the Javelin or Plover layer, tap the outer right thumb
 | Drill | Prompts | Checks |
 | --- | ---: | --- |
 | WORDS | 10 | Ten different words from a verified pool of 300 common Lapwing words, weighted toward mistakes, slow answers, and less-recent practice. |
-| LEFT | 30 | Random left-hand consonant keys. |
-| RIGHT | 30 | Random right-hand consonant keys. |
+| LEFT | 30 | Random left-hand keys. |
+| RIGHT | 30 | Random right-hand keys. |
 | COLUMNS | 30 | Paired keys: TK, PW, HR, FR, PB, LG, TS, DZ, AO, and EU. |
 | Build-Up | 10 | Three growing chords per ladder, then a word reveal: K → KA → KA-T → CAT. |
 | Multi- | 10 | Ten distinct two-stroke words from 20 verified common Lapwing outlines. |
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
-## Default Keymap
+## Default Keymap 
+(Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid/edit/main/README.md#zmk-studio-edit-keymap))
 
 ### Qwerty
 
@@ -67,7 +67,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](docs/keymap/javelin-68ed47c7832b.svg)
 
-## ZMK Studio (Edit keymap)
+## ZMK Studio
 ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
 
 Javelin and Plover HID bindings have separate parameters for the visible key label and the actual steno key. Change the steno identity to change what a key sends.
@@ -82,16 +82,9 @@ https://zmk.studio/
 3. Use **Active Dictionaries** to change selections and **Dictionary Management → View** to add, replace, remove, or export personal entries.
 4. Use **Host Layout** to select **Mac U.S.** or **Windows U.S. (plain text)**. The keyboard remembers the choice.
 
-Mac U.S. supports accents using the U.S./ABC input source. Windows U.S. uses ordinary U.S. keystrokes and converts accented Latin letters to plain equivalents, such as **ç → c**.
+**Windows U.S. (plain text)** is the default for a standard U.S. input layout. It uses ordinary U.S. keystrokes and converts accented Latin letters to plain equivalents, such as **ç → c**. On a Mac, select **Mac U.S.** with the U.S. or ABC input source to type accents.
 
 https://lim.au/#/software/javelin-steno-tools
-
-## External Memory Map
-The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
-
-![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](docs/assets/qspi-flash-map.png)
-
-The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
 
 ## Build and install
 
@@ -99,26 +92,52 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies:
 
 | Artifact | Use |
 | --- | --- |
-| **left-studio** | Everyday left-half firmware with Studio over USB and Bluetooth. |
-| **left-logging** | Left-half firmware with the serial port used for dictionary installation and diagnostics. |
-| **right-nice-view** | Right-half firmware with the portrait display, squid, and Practice UI. |
-| **right** | Right-half firmware without the display. |
+| **left-default** | Everyday left-half firmware. Install it with **right-default**. |
+| **right-default** | Right-half firmware with the portrait display, squid, stroke tape and Practice UI. Install it with **left-default**. |
+| **left-no-display** | Left-half firmware for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **right-no-display**. |
+| **right-no-display** | Right-half firmware without the display. Install it with **left-no-display**. |
+| **left-logging** | The diagnostic left half. It has the serial port for installing dictionaries, the boot log and the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
 
-This branch also builds **boardsource-left-studio**, **boardsource-left-logging**,
-**boardsource-right**, **boardsource-probe**, and **boardsource-quad** for the
-Boardsource hardware. Follow the linked bring-up guide for those targets.
+The Boardsource Wireless Corne SMT builds follow the same pairing: **boardsource-left-default** with
+**boardsource-right-default**, and **boardsource-left-logging** for diagnostics. **boardsource-probe** and
+**boardsource-quad** read the flash chip on first power-up and write nothing. The
+[Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers all of them.
 
 Download artifacts from a successful run. Double-tap RESET on the intended controller and copy its UF2 to the **NICENANO** drive. Install matching left and right firmware when updating Practice or split-display features. [Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
 
-For a new keyboard, prepare the dictionary images using the build guides, flash **left-logging**, and install them through its diagnostics port using Python with the `pyserial` package. Substitute the actual serial device path:
+### Provision a new keyboard
+
+1. Flash the matching **left-logging** UF2. Let the left half reboot and keep it connected by USB.
+2. From the repository, run:
+
+   ```sh
+   python3 -m pip install pyserial
+   python3 upload.py --install
+   ```
+
+3. When verification passes, flash **left-default** for everyday use and flash the matching right-half UF2.
+
+If USB detection is ambiguous, pass the port explicitly with `upload.py --install PORT`.
+
+### Import a personal Plover dictionary
+
+With the current **left-default** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
-python3 tools/steno-squid-lapwing/upload.py /dev/cu.usbmodem14501
+python3 -m pip install hidapi
+python3 upload.py --import user.json
 ```
 
-The uploader installs missing configured images from `build/`. Use `--status` to inspect them or `--verify` for a full CRC check. After provisioning, flash **left-studio** for everyday use. Dictionary images are uploaded separately from the UF2 firmware.
+The file's translations win for matching outlines. Other personal entries stay in the dictionary. The importer verifies one complete snapshot before publishing it. Keep USB connected through verification and use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
 
 Local builds must use this checkout's west manifest. If the workspace keeps a separate manifest copy, synchronize it before running `west update`. The compiled dictionary format depends on the pinned Javelin engine. [Dependency manifest](config/west.yml)
+
+## External Memory Map
+The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
+
+![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](docs/assets/qspi-flash-map.png)
+
+The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
 
 ## License
 

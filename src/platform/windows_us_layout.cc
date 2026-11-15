@@ -1,5 +1,5 @@
 #include "windows_us_layout.h"
-#include "host_layout.h"
+#include "const_host_layout.h"
 
 #include <stddef.h>
 
@@ -556,23 +556,17 @@ constexpr struct { uint16_t unicode; char ascii; } plain_characters[] = {
     {0x203a, '>'},
 };
 
-struct WindowsHostLayout {
-    HostLayout header = HostLayout::ansi;
-    HostLayoutEntry entries[sizeof(plain_characters) / sizeof(plain_characters[0])];
+constexpr size_t plain_count = sizeof(plain_characters) / sizeof(plain_characters[0]);
 
-    WindowsHostLayout() {
-        size_t index = 0;
-        for (const auto &entry : plain_characters) {
-            entries[index++] = {entry.unicode, 1, {header.asciiKeyCodes[entry.ascii]}};
-        }
-        header.entries.SetCount(index);
+// Constant data in flash: the entries are filled in at compile time.
+constexpr host_layout::Const<plain_count> layout([](auto &entries, const auto &ascii) {
+    size_t index = 0;
+    for (const auto &entry : plain_characters) {
+        entries[index++] = {entry.unicode, 1, {ascii[entry.ascii]}};
     }
-};
-
-static_assert(offsetof(WindowsHostLayout, entries) == sizeof(HostLayout));
+});
 } // namespace
 
 const HostLayout &zmk_javelin_windows_us_layout() {
-    static const WindowsHostLayout layout;
-    return layout.header;
+    return layout.layout();
 }
