@@ -64,9 +64,11 @@ static inline bool steno_squid_practice_no_trouble(uint64_t progress) { return (
 static inline unsigned steno_squid_practice_seconds(uint64_t progress) { return (progress >> 46) & 31u; }
 static inline uint32_t steno_squid_practice_xp(uint64_t progress) { return progress & 0xfffffu; }
 
-static const char *const steno_squid_practice_left[] = {"S", "T", "K", "P", "W", "H", "R"};
+static const char *const steno_squid_practice_left[] = {
+    "S", "T", "K", "P", "W", "H", "R", "A", "O",
+};
 static const char *const steno_squid_practice_right[] = {
-    "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z",
+    "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z", "E", "U",
 };
 
 static const char *const steno_squid_practice_columns[] = {

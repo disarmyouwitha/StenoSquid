@@ -153,8 +153,8 @@ Multi- draws ten distinct words from 20 verified two-stroke Lapwing outlines. Bo
 
 COLUMNS tests simultaneous TK/PW/HR/FR/PB/LG/TS/DZ/AO/EU pairs, independently of dictionaries, using hand-drill XP. Prompts hide the handedness hyphens; scoring still checks the actual keys. SPEED gives ten adaptive single-stroke words in 30 seconds, advances immediately on correct answers, and updates word history. The clock starts on the start-thumb release. Expiry keeps earned XP, skips the completion bonus, and shows Time up; only a new vowel press dismisses it. Both halves must be updated for the new display flags. Existing progress and dictionary images stay valid.
 
-**LEFT** and **RIGHT** use the corresponding consonant banks from
-[StenoJig's keyboard drills](https://joshuagrams.github.io/steno-jig/learn-keyboard.html).
+**LEFT** and **RIGHT** test their respective consonant banks and vowel thumbs.
+LEFT includes A and O. RIGHT includes E and U.
 Tap the displayed steno key and release it. A leading hyphen indicates a
 right-hand key, such as `-F`. The lower left key is `S`. The key above it is the Lapwing `#` key.
 The hand drills check raw strokes and work with all dictionaries disabled.
