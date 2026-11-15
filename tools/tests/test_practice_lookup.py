@@ -20,6 +20,7 @@ prefix = r'''
 #include <strings.h>
 #include <string>
 #include "split_status.h"
+#include "practice_words.h"
 struct StenoStroke {
   std::string outline;
   void Set(const char *s) { outline=s; }

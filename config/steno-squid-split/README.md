@@ -134,9 +134,9 @@ Practice opens a **Practice** screen listing **WORDS (10)**, **LEFT (50)**,
 the next, then tap a vowel thumb (**A**, **O**, **E**, or **U**) to start. The start
 key is consumed before scoring begins.
 
-The left central checks each completed chord through Javelin’s active dictionaries and the verified Lapwing base, without regard to letter case. WORDS samples ten different words from a verified pool of 100, favoring missed, slower, and less-recently practised words. Per-word performance and Pop’s XP are stored compactly in ZMK settings on the left controller.
+The left central checks each completed chord through Javelin’s active dictionaries and the verified Lapwing base, without regard to letter case. WORDS samples ten different words from a verified pool of 300, favoring missed, slower, and less-recently practised words. Per-word performance and Pop’s XP are stored compactly in ZMK settings on the left controller.
 
-TROUBLE reuses the same 100 words and persistent stats. It targets early mistakes, first-try accuracy below 90%, and response averages above four seconds. It repeats eligible words to fill ten prompts (without consecutive repeats when possible), or selects ten different targets when enough qualify. With no weak words recorded, it shows **Try Words**; tapping a vowel thumb starts WORDS directly. Improving accuracy and speed clears words from the pool. The stored record format and existing progress are unchanged.
+TROUBLE reuses the same 300 words and persistent stats. It targets early mistakes, first-try accuracy below 90%, and response averages above four seconds. It repeats eligible words to fill ten prompts (without consecutive repeats when possible), or selects ten different targets when enough qualify. With no weak words recorded, it shows **Try Words**; tapping a vowel thumb starts WORDS directly. Improving accuracy and speed clears words from the pool. Trouble shares WORDS history rather than keeping a separate set of word statistics.
 
 Practice runs on the steno layer. From Qwerty, hold the middle left thumb for
 Numpad and tap the outer right thumb, then release both. The outer right thumb
@@ -144,7 +144,7 @@ also starts Practice directly from Javelin or Plover. During Practice it
 returns to ordinary Javelin. The former left-hand Practice key is unbound. Tap either left star by itself to go to the previous
 drill, or either right star to go to the next. The order wraps through
 **WORDS → LEFT → RIGHT → TROUBLE**. You can switch before, during, or after a run.
-Switching returns to the Practice menu with the new drill selected; start it with a vowel thumb. A new run resets the streak. WORDS samples 10 distinct prompts from 100 common words; LEFT and RIGHT have 50 each and avoid immediate repeats. Update both halves together for the expanded Practice protocol.
+Switching returns to the Practice menu with the new drill selected; start it with a vowel thumb. A new run resets the streak. WORDS samples 10 distinct prompts from 300 common words; LEFT and RIGHT have 50 each and avoid immediate repeats. Update both halves together for the Practice text protocol. LHS now sends the prompt and outline text; RHS does not store the word pool. Later word additions within the text limits only need LHS firmware. This expansion starts fresh stats/XP and retains other settings.
 
 **LEFT** and **RIGHT** use the corresponding consonant banks from
 [StenoJig's keyboard drills](https://joshuagrams.github.io/steno-jig/learn-keyboard.html).

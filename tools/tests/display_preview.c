@@ -1,3 +1,4 @@
+#include "../../src/steno_squid/practice_words.h"
 /* Native LVGL render regression using the real screen, drill and squid widgets. */
 #include <assert.h>
 #include <stdio.h>
@@ -180,18 +181,27 @@ int main(void) {
     }
     /* Every word ID must render on one line without covering the hint. */
     for (unsigned word=0;word<STENO_SQUID_WORD_COUNT;word++) {
-        const uint32_t snapshot=STENO_SQUID_PRACTICE_ACTIVE|steno_squid_practice_pack_prompt(word);
+        const uint32_t snapshot=STENO_SQUID_PRACTICE_ACTIVE;
+        struct steno_squid_practice_view view={.state=snapshot};
+        snprintf(view.prompt,sizeof(view.prompt),"%s",steno_squid_words[word].word);
+        snprintf(view.outline,sizeof(view.outline),"%s",steno_squid_words[word].outline);
+        steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,snapshot,85,false);
         lv_refr_now(NULL);
         assert(!strcmp(lv_label_get_text(prompt_label),steno_squid_words[word].word));
+        assert(lv_text_get_width(lv_label_get_text(prompt_label),strlen(lv_label_get_text(prompt_label)),
+                                lv_obj_get_style_text_font(prompt_label,0),0)<=66);
         assert(lv_obj_get_y(prompt_label)+lv_obj_get_height(prompt_label)<=lv_obj_get_y(outline_label));
         assert(lv_obj_get_y(outline_label)+lv_obj_get_height(outline_label)<=lv_obj_get_y(feedback_label));
         if(!strcmp(steno_squid_words[word].word,"PEOPLE"))save("adaptive-word");
+        if(!strcmp(steno_squid_words[word].word,"EVERYTHING"))save("practice-300-long-word");
     }
     {
         const uint64_t summary=232 | (uint64_t)8<<20 | (uint64_t)3<<24 | (uint64_t)27<<30 |
-                               (uint64_t)104<<39 | (uint64_t)99<<46;
-        steno_squid_practice_widget_set_progress(summary);
+                               (uint64_t)104<<39;
+        struct steno_squid_practice_view view={.progress=summary};
+        strcpy(view.review,"GOOD");
+        steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,
             STENO_SQUID_PRACTICE_ACTIVE|STENO_SQUID_PRACTICE_MENU,85,false);
         assert(!strcmp(lv_label_get_text(navigation_label)," *-/-*v"));
@@ -207,8 +217,9 @@ int main(void) {
         steno_squid_practice_widget_set_progress(summary|((uint64_t)1<<53));
         assert(!strcmp(lv_label_get_text(start_label),"Try Words"));
         save("trouble-empty");
-        steno_squid_practice_widget_set_progress(summary);
-        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,trouble|steno_squid_practice_pack_prompt(99),85,false);
+        strcpy(view.prompt,"GOOD");strcpy(view.outline,"TKPWAOD");
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,trouble,85,false);
         assert(!strcmp(lv_label_get_text(drill_label),"TROUBLE"));
         assert(!strcmp(lv_label_get_text(prompt_label),"GOOD"));
         save("trouble-word");
@@ -230,7 +241,7 @@ int main(void) {
             save(card==1 ? "adaptive-results-review" : "adaptive-results-level");
         }
         const uint64_t maximum=0xfffff | (uint64_t)10<<20 | (uint64_t)63<<24 |
-                               (uint64_t)511<<30 | (uint64_t)120<<39 | (uint64_t)99<<46;
+                               (uint64_t)511<<30 | (uint64_t)120<<39;
         steno_squid_practice_widget_set_progress(maximum);
         for(unsigned card=0;card<4;card++) {
             lv_refr_now(NULL);
@@ -242,7 +253,7 @@ int main(void) {
         }
         steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
         assert(lv_timer_get_paused(results_timer));
-        const uint64_t hands=342 | (uint64_t)15<<30 | (uint64_t)110<<39 | (uint64_t)127<<46;
+        const uint64_t hands=342 | (uint64_t)15<<30 | (uint64_t)110<<39;
         steno_squid_practice_widget_set_progress(hands);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_LEFT<<STENO_SQUID_PRACTICE_DRILL_SHIFT)|

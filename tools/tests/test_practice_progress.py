@@ -43,7 +43,7 @@ HARNESS = r'''
 #include <stdio.h>
 #include <string.h>
 #include "practice_progress.c"
-static uint8_t disk[2048];
+static uint8_t disk[4096];
 static size_t disk_size;
 static unsigned writes;
 static bool failed, race;
@@ -69,7 +69,7 @@ int main(void) {
     assert(!steno_squid_trouble_begin() && generation==0);
     steno_squid_words_begin();
     for(unsigned i=0;i<10;i++) {
-        assert(steno_squid_words_prompt(i)<100);
+        assert(steno_squid_words_prompt(i)<300);
         steno_squid_words_answer(i,true,1500);
         assert(writes==0 && queued==0); // Never queue a write on every key/chord.
     }
@@ -79,7 +79,7 @@ int main(void) {
     assert(steno_squid_practice_first_try(summary)==10);
     assert(steno_squid_practice_average(summary)==15);
     assert(steno_squid_practice_xp_earned(summary)==120);
-    assert(steno_squid_practice_review(summary)==127);
+    assert(steno_squid_practice_review_word()==UINT16_MAX);
     save_progress(&save_progress_work);
     assert(writes==1 && saved_generation==generation);
     save_progress(&save_progress_work);assert(writes==1);
@@ -90,6 +90,7 @@ int main(void) {
     assert(!memcmp(model.record.words,expected.words,sizeof(expected.words)));
     assert(registered_load("other",disk_size,read_disk,NULL)==-ENOENT);
     assert(registered_load("progress",disk_size-1,read_disk,NULL)==-EINVAL);
+    assert(registered_load("progress",1224,read_disk,NULL)==-EINVAL); // Old pool starts fresh.
     assert(registered_load("progress",disk_size,read_short,NULL)==-EINVAL);
     assert(registered_load("progress",disk_size,read_error,NULL)==-EIO);
     disk[20]^=1;
@@ -157,6 +158,11 @@ def main():
                         '-O2', '-I' + str(output), str(ROOT / 'tools/tests/test_practice_model.c'),
                         '-o', str(model_binary)], check=True)
         subprocess.run([str(model_binary)], check=True)
+        view_binary = output / 'view-test'
+        subprocess.run(['clang', '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-O2',
+                        '-I' + str(output), str(ROOT / 'tools/tests/test_practice_view.c'),
+                        '-o', str(view_binary)], check=True)
+        subprocess.run([str(view_binary)], check=True)
 
 
 if __name__ == '__main__':

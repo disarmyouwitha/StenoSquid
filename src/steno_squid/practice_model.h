@@ -8,7 +8,7 @@
 
 #define STENO_SQUID_PROGRESS_MAGIC 0x31505453u /* STP1 */
 #define STENO_SQUID_XP_MAX 0xfffffu
-#define STENO_SQUID_NO_REVIEW 127u
+#define STENO_SQUID_NO_REVIEW UINT16_MAX
 
 struct steno_squid_word_stats {
     uint16_t completed;
@@ -29,13 +29,13 @@ struct steno_squid_progress_record {
 };
 
 struct steno_squid_word_run {
-    uint8_t deck[STENO_SQUID_WORD_ROUNDS];
+    uint16_t deck[STENO_SQUID_WORD_ROUNDS];
     uint8_t position;
     uint8_t first_try;
     uint8_t errors;
     uint8_t word_errors;
     uint8_t earned;
-    uint8_t review;
+    uint16_t review;
     uint8_t review_errors;
     uint8_t timed_count;
     uint32_t response_ds;
@@ -240,16 +240,4 @@ static inline bool steno_squid_model_finish(struct steno_squid_practice_model *m
                            ? STENO_SQUID_XP_MAX : model->record.xp + 20;
     if (model->record.rounds < UINT32_MAX) model->record.rounds++;
     return true;
-}
-
-/* Level 1 starts at zero; each next level costs level * 100 XP. */
-static inline unsigned steno_squid_pop_level(uint32_t xp, unsigned *into, unsigned *needed) {
-    unsigned level = 1;
-    while (xp >= level * 100u) {
-        xp -= level * 100u;
-        level++;
-    }
-    if (into) *into = xp;
-    if (needed) *needed = level * 100u;
-    return level;
 }

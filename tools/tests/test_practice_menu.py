@@ -28,6 +28,8 @@ PREFIX = r'''
 #include "split_status.h"
 #include "practice_model.h"
 #include "practice_progress.h"
+#include "practice_view.h"
+#include "stroke_feed.h"
 // The display receiver is C; allow its integer-to-enum calls in this C++ harness.
 unsigned steno_squid_practice_prompt_count(unsigned drill) {
   return steno_squid_practice_prompt_count(static_cast<steno_squid_practice_drill>(drill));
@@ -58,6 +60,8 @@ void k_work_cancel_delayable(int *) {}
 void k_work_reschedule(int *, int64_t) {}
 uint32_t sys_rand32_get() { return 3; }
 static steno_squid_practice_model progress_model;
+uint64_t steno_squid_practice_progress() { return 0; }
+unsigned steno_squid_practice_review_word() { return progress_model.run.review; }
 void steno_squid_words_begin() { steno_squid_model_begin(&progress_model, sys_rand32_get); }
 bool steno_squid_trouble_begin() { return steno_squid_model_trouble_begin(&progress_model,sys_rand32_get); }
 void steno_squid_hands_begin() { steno_squid_model_hands_begin(&progress_model); }
@@ -72,7 +76,8 @@ using k_spinlock_key_t = int;
 int k_spin_lock(k_spinlock *) { return 0; }
 void k_spin_unlock(k_spinlock *, int) {}
 k_spinlock progress_lock;
-uint64_t practice_progress;
+struct steno_squid_practice_view practice_view;
+struct steno_squid_practice_receiver practice_receiver;
 extern "C" void steno_squid_split_status_refresh() {}
 struct zmk_behavior_binding { uint32_t param1, param2; };
 struct zmk_behavior_binding_event {};
@@ -139,35 +144,32 @@ int main() {
     tap(key);  // Keep celebration until an explicit return to menu.
     assert(practice.menu && practice.round == 0);
   }
-  // Menu packets, extended word IDs and malformed packets remain distinct.
-  zmk_behavior_binding packet{practice_screen, STENO_SQUID_PRACTICE_PROTOCOL};
-  assert(status_received(&packet, {}) == 0);
-  const auto snapshot = practice_screen;
-  zmk_behavior_binding host_packet{1, STENO_SQUID_HOST_STATUS_PROTOCOL};
-  assert(status_received(&host_packet, {}) == 0 && host_disconnected);
-  assert(practice_screen == snapshot);
-  host_packet.param1 = 0;
-  assert(status_received(&host_packet, {}) == 0 && !host_disconnected);
-  packet.param1 |= 1u << STENO_SQUID_PRACTICE_ROUND_SHIFT;
-  assert(status_received(&packet, {}) == -EINVAL);
-  packet = {STENO_SQUID_PRACTICE_ACTIVE | steno_squid_practice_pack_prompt(99), STENO_SQUID_PRACTICE_PROTOCOL};
-  assert(status_received(&packet, {}) == 0);
-  assert(steno_squid_practice_prompt_value(practice_screen)==99);
-  packet.param1 = STENO_SQUID_PRACTICE_ACTIVE | steno_squid_practice_pack_prompt(100);
-  assert(status_received(&packet, {}) == -EINVAL);
-  for(unsigned id=0;id<100;id++) {
-    packet.param1=STENO_SQUID_PRACTICE_ACTIVE|steno_squid_practice_pack_prompt(id);
+  // Exercise actual engine -> text encoder -> display receiver, atomically.
+  struct steno_squid_practice_view sent;
+  practice.drill=STENO_SQUID_PRACTICE_WORDS;
+  practice.menu=false;
+  practice.round=0;
+  progress_model.run.deck[0]=299;
+  practice_publish();
+  steno_squid_practice_view_snapshot(&sent);
+  assert(!strcmp(sent.prompt,steno_squid_words[299].word));
+  uint8_t bytes[STENO_SQUID_PRACTICE_FRAME_MAX];
+  const unsigned size=steno_squid_practice_encode(&sent,bytes);
+  atomic_set(&practice_screen,0);
+  for(unsigned i=0;i<(size+4)/5;i++) {
+    zmk_behavior_binding packet{};
+    steno_squid_practice_fragment(bytes,size,1,i,&packet.param1,&packet.param2);
     assert(status_received(&packet,{})==0);
-    assert(steno_squid_practice_prompt_value(practice_screen)==id);
+    if(i+1<(size+4)/5)assert(practice_screen==0);
   }
-  const uint64_t stats=120 | (uint64_t(8)<<20) | (uint64_t(3)<<24) | (uint64_t(27)<<30) |
-                       (uint64_t(104)<<39) | (uint64_t(99)<<46);
-  packet={uint32_t(stats),STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL | (uint32_t(stats>>32)<<8)};
-  assert(status_received(&packet,{})==0 && practice_progress==stats);
-  packet.param2 |= 0x20000000; // Valid no-trouble flag in payload bit 53.
-  assert(status_received(&packet,{})==0 && steno_squid_practice_no_trouble(practice_progress));
-  packet.param2 |= 0x40000000;
-  assert(status_received(&packet,{})==-EINVAL);
+  assert(practice_view.state==sent.state && practice_screen==sent.state);
+  assert(!strcmp(practice_view.prompt,steno_squid_words[299].word));
+  zmk_behavior_binding host_packet{1,STENO_SQUID_HOST_STATUS_PROTOCOL};
+  assert(status_received(&host_packet,{})==0 && host_disconnected);
+  host_packet.param1=0;
+  assert(status_received(&host_packet,{})==0 && !host_disconnected);
+  zmk_behavior_binding layer_packet{0,STENO_SQUID_LAYER_NAME_PROTOCOL|STENO_SQUID_PRACTICE_VIEW_PROTOCOL};
+  assert(status_received(&layer_packet,{})==0 && mode==MODE_LAYER_NAME);
   practice.active = false;
   assert(!practice_process_key(int(StenoKey::KL), true));
   puts("Practice menu, navigation, start, feedback and replay checks passed");

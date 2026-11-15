@@ -19,6 +19,7 @@
 #include "stroke_feed.h"
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
 #include "practice_progress.h"
+#include "practice_view.h"
 #endif
 #if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
 #include "lapwing_flash.h"
@@ -122,6 +123,11 @@ static void pack_layer_name(const char *name, struct zmk_behavior_binding *bindi
     binding->param2 = (uint32_t)(packed >> 32) | STENO_SQUID_LAYER_NAME_PROTOCOL;
 }
 
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
+static void retry_practice(struct k_work *work);
+K_WORK_DELAYABLE_DEFINE(practice_retry_work, retry_practice);
+#endif
+
 static void send_status(struct k_work *work) {
     if (!atomic_get(&connected)) {
         return;
@@ -139,23 +145,35 @@ static void send_status(struct k_work *work) {
         pack_layer_name(name, &binding);
     }
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-    uint32_t practice = steno_squid_practice_snapshot();
-    if (practice & STENO_SQUID_PRACTICE_ACTIVE) {
-        binding.param1 = practice;
-        binding.param2 = STENO_SQUID_PRACTICE_PROTOCOL;
+    struct steno_squid_practice_view view;
+    steno_squid_practice_view_snapshot(&view);
+    if (view.state & STENO_SQUID_PRACTICE_ACTIVE) {
+        static uint8_t sequence;
+        uint8_t bytes[STENO_SQUID_PRACTICE_FRAME_MAX];
+        const unsigned length = steno_squid_practice_encode(&view, bytes);
+        ++sequence;
+        struct zmk_behavior_binding_event event = {.timestamp = k_uptime_get()};
+        for (unsigned part=0; part<(length+4)/5; part++) {
+            steno_squid_practice_fragment(bytes, length, sequence, part, &binding.param1, &binding.param2);
+            zmk_split_central_invoke_behavior(0, &binding, event, true);
+        }
+        /* One prompt/results repeat repairs a dropped fragment promptly.
+         * Correct feedback already advances in 250 ms and needs no repeat. */
+        if (work != &practice_retry_work.work &&
+            steno_squid_practice_feedback_value(view.state) != STENO_SQUID_PRACTICE_CORRECT) {
+            k_work_reschedule(&practice_retry_work, K_MSEC(150));
+        }
+        return;
     }
+    k_work_cancel_delayable(&practice_retry_work);
 #endif
     struct zmk_behavior_binding_event event = {.timestamp = k_uptime_get()};
     zmk_split_central_invoke_behavior(0, &binding, event, true);
-#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-    if (practice & STENO_SQUID_PRACTICE_ACTIVE) {
-        const uint64_t progress = steno_squid_practice_progress();
-        binding.param1 = progress;
-        binding.param2 = STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL | ((uint32_t)(progress >> 32) << 8);
-        zmk_split_central_invoke_behavior(0, &binding, event, true);
-    }
-#endif
 }
+
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
+static void retry_practice(struct k_work *work) { send_status(work); }
+#endif
 
 K_WORK_DEFINE(send_status_work, send_status);
 

@@ -18,6 +18,10 @@ static struct steno_squid_practice_model model = {
     .run = {.review = STENO_SQUID_NO_REVIEW},
 };
 static uint32_t generation, saved_generation;
+/* One NVS value must fit within a 4 KB sector, including its name/metadata.
+ * The system and startup stacks are 8 KB; this 3,624-byte record stays on the
+ * stack only during load/save, never on the key/BT receive threads. */
+BUILD_ASSERT(sizeof(struct steno_squid_progress_record) <= 3800);
 
 static bool valid_record(const struct steno_squid_progress_record *record) {
     if (record->magic != STENO_SQUID_PROGRESS_MAGIC || record->pool != STENO_SQUID_WORD_SET_ID ||
@@ -82,6 +86,12 @@ bool steno_squid_trouble_begin(void) {
     k_mutex_unlock(&progress_mutex);
     return started;
 }
+unsigned steno_squid_practice_review_word(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    const unsigned word = model.run.review;
+    k_mutex_unlock(&progress_mutex);
+    return word;
+}
 unsigned steno_squid_words_prompt(unsigned round) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     const unsigned word = round < STENO_SQUID_WORD_ROUNDS ? model.run.deck[round] : model.run.deck[STENO_SQUID_WORD_ROUNDS - 1];
@@ -124,7 +134,7 @@ uint64_t steno_squid_practice_progress(void) {
     const uint64_t packed = (uint64_t)model.record.xp |
         ((uint64_t)run->first_try << 20) | ((uint64_t)run->errors << 24) |
         ((uint64_t)(average > 511 ? 511 : average) << 30) |
-        ((uint64_t)run->earned << 39) | ((uint64_t)run->review << 46) |
+        ((uint64_t)run->earned << 39) |
         ((uint64_t)(steno_squid_trouble_count(&model.record) == 0) << 53);
     k_mutex_unlock(&progress_mutex);
     return packed;

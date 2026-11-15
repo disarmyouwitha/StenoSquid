@@ -111,6 +111,8 @@ static uint8_t dictionary_selection = 3 | EXTRAS_SELECTION_DEFAULT;
 
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
 #include "steno_squid/practice_progress.h"
+#include "steno_squid/practice_words.h"
+#include "steno_squid/practice_view.h"
 K_MUTEX_DEFINE(practice_mutex);
 static atomic_t practice_screen;
 static StenoKeyState practice_pending_releases;
@@ -156,7 +158,6 @@ static void practice_publish() {
     snapshot = STENO_SQUID_PRACTICE_ACTIVE |
                (practice.menu ? STENO_SQUID_PRACTICE_MENU : 0) |
                (practice.no_dictionary ? STENO_SQUID_PRACTICE_NO_DICTIONARY : 0) |
-               steno_squid_practice_pack_prompt(practice_prompt()) |
                (uint32_t(practice.feedback) << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT) |
                (uint32_t(practice.round) << STENO_SQUID_PRACTICE_ROUND_SHIFT) |
                (uint32_t(practice.streak) << STENO_SQUID_PRACTICE_STREAK_SHIFT) |
@@ -165,6 +166,25 @@ static void practice_publish() {
   }
   atomic_set(&practice_screen, snapshot);
   steno_squid_split_status_refresh();
+}
+
+void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) {
+  k_mutex_lock(&practice_mutex, K_FOREVER);
+  memset(view, 0, sizeof(*view));
+  view->state = atomic_get(&practice_screen);
+  view->progress = steno_squid_practice_progress();
+  if (practice.active && !practice.menu && practice.feedback != STENO_SQUID_PRACTICE_DONE) {
+    const unsigned id = practice_prompt();
+    const bool words = steno_squid_practice_word_drill(practice.drill);
+    const char *outline = words ? steno_squid_words[id].outline : steno_squid_practice_outline(practice.drill, id);
+    snprintf(view->prompt, sizeof(view->prompt), "%s", words ? steno_squid_words[id].word : outline);
+    snprintf(view->outline, sizeof(view->outline), "%s", words ? outline : "Tap key");
+  }
+  const unsigned review = steno_squid_practice_review_word();
+  if (practice.feedback == STENO_SQUID_PRACTICE_DONE && review < STENO_SQUID_WORD_COUNT) {
+    snprintf(view->review, sizeof(view->review), "%s", steno_squid_words[review].word);
+  }
+  k_mutex_unlock(&practice_mutex);
 }
 
 static void practice_advance(struct k_work *) {
