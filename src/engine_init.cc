@@ -532,12 +532,15 @@ static void practice_dictionary_changed() {
 
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 #ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
+// These indexes are stored in ZMK settings.
+static constexpr uint8_t HOST_PROFILE_MAC = 0;
+static constexpr uint8_t HOST_PROFILE_WINDOWS = 1;
 static constexpr const char *host_profiles[] = {"Mac U.S.", "Windows U.S. (plain text)"};
-static uint8_t host_profile = 0;
+static uint8_t host_profile = HOST_PROFILE_WINDOWS;
 
 static void apply_host_profile() {
-  HostLayouts::SetActiveLayout(host_profile == 0 ? zmk_javelin_macos_us_layout()
-                                                : zmk_javelin_windows_us_layout());
+  HostLayouts::SetActiveLayout(host_profile == HOST_PROFILE_MAC ? zmk_javelin_macos_us_layout()
+                                                               : zmk_javelin_windows_us_layout());
 }
 
 static void get_host_parameter(void *, const char *line) {

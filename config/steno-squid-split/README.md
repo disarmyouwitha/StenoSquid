@@ -329,8 +329,8 @@ With Javelin Steno Tools connected over HID, open **Host Layout** and select the
 
 | Profile | Host setup | Character output |
 | --- | --- | --- |
-| Mac U.S. (default) | Use the U.S. or ABC input source. | Option and dead-key sequences, such as Option+C for ç. |
-| Windows U.S. (plain text) | Use the standard U.S. input layout. | Plain Latin letters for accents, such as c for ç and e for é. Common curly quotes and dashes become ASCII punctuation. |
+| Windows U.S. (plain text, default) | Use the standard U.S. input layout. | Plain Latin letters for accents, such as c for ç and e for é. Common curly quotes and dashes become ASCII punctuation. |
+| Mac U.S. | Use the U.S. or ABC input source. | Option and dead-key sequences, such as Option+C for ç. |
 
 Try `SA / SRA` in a blank editor. Mac produces “ça va” and Windows plain text produces “ca va.” The Windows profile sends ordinary ASCII keys and has no Num Lock dependency. Latin-1 characters without a one-character ASCII mapping use a question mark. Each mapped character emits one character to keep undo counts aligned. The picker selects firmware-supplied profiles. The page's layout update section refers to uploading new definitions and can still show that uploads are unavailable.
 
