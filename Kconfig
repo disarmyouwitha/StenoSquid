@@ -125,17 +125,18 @@ config ZMK_STENO_SQUID_STROKE_TAPE
       longer than four characters.
 
 config ZMK_STENO_SQUID_STROKE_TRANSLATION
-    bool "Show stroke and translation above the squid"
+    bool
     depends on ZMK_STENO_SQUID_STROKE_TAPE && !ZMK_SPLIT_ROLE_CENTRAL
     default y
     help
-      Set this on the right display half. Hints are controlled independently
-      on the left half. If neither is showing, upper animations resume.
+      Show the stroke, translation, and WPM above the squid on the right
+      display half when stroke tape is enabled.
 
 config ZMK_STENO_SQUID_STROKE_HINT
-    bool "Also show a shorter outline when one exists"
+    bool
     depends on ZMK_STENO_SQUID_STROKE_TAPE && ZMK_JAVELIN_STENO && ZMK_SPLIT_ROLE_CENTRAL
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    default y
     help
       Suggest a one-stroke shortcut using the sorted index in freshly compiled
       external dictionary images. Personal dictionaries use native reverse
