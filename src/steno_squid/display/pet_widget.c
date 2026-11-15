@@ -4,24 +4,27 @@
 #include <zmk/activity.h>
 
 #define PET_SIZE 48
+/* All art is 1 bit per pixel (A1): bit 7 of each byte is the leftmost pixel and rows are padded
+ * to whole bytes. The pet colour comes from the image recolor style set in steno_squid_pet_create. */
+#define A1_STRIDE(width) (((width) + 7) / 8)
 #define PET_IMAGE(name)                                                                            \
-    BUILD_ASSERT(sizeof(name##_pixels) == PET_SIZE * PET_SIZE, #name " sprite size");              \
+    BUILD_ASSERT(sizeof(name##_pixels) == A1_STRIDE(PET_SIZE) * PET_SIZE, #name " sprite size");              \
     static const lv_image_dsc_t name##_image = {                                                     \
-        .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_A8, .w = PET_SIZE,            \
-                   .h = PET_SIZE, .stride = PET_SIZE},                                                \
+        .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_A1, .w = PET_SIZE,            \
+                   .h = PET_SIZE, .stride = A1_STRIDE(PET_SIZE)},                                                \
         .data_size = sizeof(name##_pixels),                                                         \
         .data = name##_pixels,                                                                     \
     }
 #include "pet_sprites.h"
 #undef PET_IMAGE
 
-BUILD_ASSERT(sizeof(idle_pixels) == PET_SIZE * PET_SIZE);
+BUILD_ASSERT(sizeof(idle_pixels) == A1_STRIDE(PET_SIZE) * PET_SIZE);
 
 #define FX_SIZED_IMAGE(name, width, height)                                                         \
-    BUILD_ASSERT(sizeof(name##_pixels) == (width) * (height), #name " effect size");               \
+    BUILD_ASSERT(sizeof(name##_pixels) == A1_STRIDE(width) * (height), #name " effect size");               \
     static const lv_image_dsc_t name##_image = {                                                    \
-        .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_A8,                         \
-                   .w = width, .h = height, .stride = width},                                      \
+        .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_A1,\
+                   .w = width, .h = height, .stride = A1_STRIDE(width)},                                      \
         .data_size = sizeof(name##_pixels), .data = name##_pixels,                                  \
     }
 #define FX_IMAGE(name) FX_SIZED_IMAGE(name, 48, 30)

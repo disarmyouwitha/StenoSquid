@@ -1,10 +1,7 @@
 /* Pop traced from the original concept crop in tools/artwork/pop-source.png.
- * Native 48x48 binary alpha; all previous revisions remain in their own branches.
+ * Native 48x48 binary alpha stored as 1 bit per pixel (LVGL A1), MSB first.
  */
-#define PIXEL(bits, bit) (((bits) & (1u << (bit))) ? 255 : 0)
-#define BYTE(bits) PIXEL(bits,7), PIXEL(bits,6), PIXEL(bits,5), PIXEL(bits,4), \
-                   PIXEL(bits,3), PIXEL(bits,2), PIXEL(bits,1), PIXEL(bits,0)
-#define ROW(a,b,c,d,e,f) BYTE(a), BYTE(b), BYTE(c), BYTE(d), BYTE(e), BYTE(f)
+#define ROW(a,b,c,d,e,f) a, b, c, d, e, f
 
 static const uint8_t idle_pixels[] = {
     ROW(0x00,0x00,0x00,0x00,0x00,0x00), /* ................................................ */
@@ -371,5 +368,3 @@ static const uint8_t sleep_pixels[] = {
 PET_IMAGE(sleep);
 
 #undef ROW
-#undef BYTE
-#undef PIXEL

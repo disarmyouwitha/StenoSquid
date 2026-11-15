@@ -125,14 +125,6 @@ config ZMK_STENO_SQUID_STROKE_TAPE
       small write on the split link per stroke, plus one for a translation
       longer than four characters.
 
-config ZMK_STENO_SQUID_STROKE_TRANSLATION
-    bool
-    depends on ZMK_STENO_SQUID_STROKE_TAPE && !ZMK_SPLIT_ROLE_CENTRAL
-    default y
-    help
-      Show the stroke, translation, and WPM above the squid on the right
-      display half when stroke tape is enabled.
-
 config ZMK_STENO_SQUID_STROKE_HINT
     bool
     depends on ZMK_STENO_SQUID_STROKE_TAPE && ZMK_JAVELIN_STENO && ZMK_SPLIT_ROLE_CENTRAL
@@ -141,14 +133,10 @@ config ZMK_STENO_SQUID_STROKE_HINT
     help
       Suggest a one-stroke shortcut using the sorted index in freshly compiled
       external dictionary images. Personal dictionaries use native reverse
-      lookup. Work runs on the key thread; logging builds report its timing.
+      lookup. Work runs on the key thread. With ZMK_JAVELIN_DIAG (the logging
+      build) each stroke's handling time is logged.
 
 config ZMK_STENO_SQUID_PRACTICE
     bool "Offline single-stroke practice on the right nice!view"
     depends on SETTINGS
     depends on ZMK_STENO_SQUID_SPLIT_STATUS && ZMK_JAVELIN_STENO && ZMK_SPLIT_ROLE_CENTRAL
-
-config ZMK_STENO_SQUID_FONT_SAMPLER
-    bool "Show a font sampler on the right nice!view"
-    select LV_FONT_MONTSERRAT_20
-    depends on ZMK_STENO_SQUID_SPLIT_STATUS && !ZMK_SPLIT_ROLE_CENTRAL

@@ -34,12 +34,9 @@ spark=shift(idle,-1)
 for y,x in [(1,3),(1,44),(5,1),(5,46)]:spark[y][x]=1
 sprites={'idle':idle,'blink':blink,'typing':shift(idle,1),'jump':shift(idle,-1),'spark':spark,'land':shift(blink,1),'sleep':blink}
 header='''/* Pop traced from the original concept crop in tools/artwork/pop-source.png.
- * Native 48x48 binary alpha; all previous revisions remain in their own branches.
+ * Native 48x48 binary alpha stored as 1 bit per pixel (LVGL A1), MSB first.
  */
-#define PIXEL(bits, bit) (((bits) & (1u << (bit))) ? 255 : 0)
-#define BYTE(bits) PIXEL(bits,7), PIXEL(bits,6), PIXEL(bits,5), PIXEL(bits,4), \\
-                   PIXEL(bits,3), PIXEL(bits,2), PIXEL(bits,1), PIXEL(bits,0)
-#define ROW(a,b,c,d,e,f) BYTE(a), BYTE(b), BYTE(c), BYTE(d), BYTE(e), BYTE(f)
+#define ROW(a,b,c,d,e,f) a, b, c, d, e, f
 '''
 for name,grid in sprites.items():
     header+=f'\nstatic const uint8_t {name}_pixels[] = {{\n'
@@ -47,5 +44,5 @@ for name,grid in sprites.items():
         values=[int(''.join(map(str,row[x:x+8])),2) for x in range(0,48,8)]
         header+='    ROW('+','.join(f'0x{v:02x}' for v in values)+'), /* '+''.join('#' if v else '.' for v in row)+' */\n'
     header+='};\nPET_IMAGE('+name+');\n'
-header+='\n#undef ROW\n#undef BYTE\n#undef PIXEL\n'
+header+='\n#undef ROW\n'
 (ROOT/'src/steno_squid/display/pet_sprites.h').write_text(header)
