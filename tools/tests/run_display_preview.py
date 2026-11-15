@@ -47,7 +47,8 @@ def main():
     (stubs / 'zmk/activity.h').write_text('''enum zmk_activity_state {
     ZMK_ACTIVITY_ACTIVE, ZMK_ACTIVITY_IDLE
 };
-static enum zmk_activity_state zmk_activity_get_state(void) { return ZMK_ACTIVITY_ACTIVE; }
+static enum zmk_activity_state preview_activity = ZMK_ACTIVITY_ACTIVE;
+static enum zmk_activity_state zmk_activity_get_state(void) { return preview_activity; }
 ''')
     cmake_conf = 'set(LV_CONF_PATH ' + json.dumps(chr(34) + str(output / 'lv_conf.h') + chr(34)) + ')'
     (output / 'CMakeLists.txt').write_text(f'''cmake_minimum_required(VERSION 3.20)

@@ -17,3 +17,5 @@ void steno_squid_pet_set_state(enum pet_state state);
 void steno_squid_pet_set_visible(bool visible);
 void steno_squid_pet_set_powered(bool powered);
 void steno_squid_pet_set_headroom(bool available);
+/* Hold an awake resting pose on the unconfirmed results screen. */
+void steno_squid_pet_set_awake_hold(bool hold);

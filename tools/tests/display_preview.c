@@ -200,6 +200,7 @@ int main(void) {
             (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
             (10<<STENO_SQUID_PRACTICE_ROUND_SHIFT),85,false);
         assert(!strcmp(lv_label_get_text(prompt_label),"8/10"));
+        assert(!strcmp(lv_label_get_text(progress_label),"Lv 2"));
         assert(lv_obj_get_style_text_decor(drill_label,0)==LV_TEXT_DECOR_UNDERLINE);
         assert(!lv_timer_get_paused(results_timer));
         lv_refr_now(NULL);
@@ -218,6 +219,7 @@ int main(void) {
         for(unsigned card=0;card<4;card++) {
             lv_refr_now(NULL);
             assert(lv_obj_get_y(best_label)+lv_obj_get_height(best_label)<=130);
+            assert(lv_obj_get_y(progress_label)+lv_obj_get_height(progress_label)<=lv_obj_get_y(best_label));
             assert(lv_text_get_width(lv_label_get_text(best_label),strlen(lv_label_get_text(best_label)),
                                     lv_obj_get_style_text_font(best_label,0),0)<=66);
             result_tick(results_timer);
@@ -236,6 +238,26 @@ int main(void) {
         result_tick(results_timer);
         assert(!strcmp(lv_label_get_text(best_label),"Best 50"));
         save("adaptive-hands-streak");
+        /* A finished celebration must not pick the idle keyboard's sleep pose
+         * or USB sparkles while its score/menu text is still on screen. */
+        preview_activity=ZMK_ACTIVITY_IDLE;
+        steno_squid_pet_set_powered(false);
+        assert(awake_hold);
+        for(unsigned i=0;i<20 && state==PET_LEVEL_UP;i++)advance_frame(frame_timer);
+        assert(state==PET_IDLE);
+        assert(lv_obj_has_flag(effect_image,LV_OBJ_FLAG_HIDDEN));
+        steno_squid_pet_set_state(PET_SLEEP);
+        assert(state==PET_IDLE);
+        steno_squid_pet_set_powered(true);
+        assert(state==PET_IDLE);
+        save("adaptive-win-awake");
+        steno_squid_pet_set_powered(false);
+        steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
+        assert(!awake_hold);
+        steno_squid_pet_set_state(PET_SLEEP);
+        assert(state==PET_SLEEP && !lv_obj_has_flag(effect_image,LV_OBJ_FLAG_HIDDEN));
+        preview_activity=ZMK_ACTIVITY_ACTIVE;
+        steno_squid_pet_set_state(PET_IDLE);
     }
     for (unsigned pass=0; pass<30; pass++) {
         for (unsigned mode=0; mode<STENO_SQUID_MODE_COUNT; mode++) {
