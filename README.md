@@ -93,9 +93,10 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies:
 | Artifact | Use |
 | --- | --- |
 | **left-studio** | Everyday left-half firmware with Studio over USB and Bluetooth. |
+| **left-studio-no-display** | Everyday left-half firmware for a keyboard without a nice!view: it sends the right half no status, and Practice is off. Pair it with **right**. |
 | **left-logging** | Left-half firmware with the serial port used for dictionary installation and diagnostics. |
 | **right-nice-view** | Right-half firmware with the portrait display, squid, and Practice UI. |
-| **right** | Right-half firmware without the display. |
+| **right** | Right-half firmware without the display. Works with any left build, but only **left-studio-no-display** skips the status messages it would ignore. |
 
 Download artifacts from a successful run. Double-tap RESET on the intended controller and copy its UF2 to the **NICENANO** drive. Install matching left and right firmware when updating Practice or split-display features. [Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
 
