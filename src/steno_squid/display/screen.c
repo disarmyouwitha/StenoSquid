@@ -167,22 +167,11 @@ static bool show_tape(bool show) {
     steno_squid_stroke_to_text(tape->mask, stroke);
     set_fitted_text(tape_stroke, stroke, tape_stroke_fonts, FONT_COUNT(tape_stroke_fonts));
     set_fitted_text(tape_text, tape->text, tape_text_fonts, FONT_COUNT(tape_text_fonts));
-#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_TRANSLATION
-    const bool translation = true;
-#else
-    const bool translation = false;
-#endif
-    if (translation) {
-        lv_obj_remove_flag(tape_stroke, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(tape_text, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(tape_stroke, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(tape_text, LV_OBJ_FLAG_HIDDEN);
-    }
+    lv_obj_remove_flag(tape_stroke, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(tape_text, LV_OBJ_FLAG_HIDDEN);
 
-    /* Keep both large rows above Pop. A hint/speed fits below the layer name;
-     * hints-only mode can instead use the free upper area. */
-    lv_obj_set_y(tape_hint, translation ? 123 : 17);
+    /* Keep both large rows above Pop. A hint or the speed fits below the layer name. */
+    lv_obj_set_y(tape_hint, 123);
     if (tape->hint_count) {
         char hint[STENO_SQUID_TAPE_STROKE_TEXT_MAX + 8];
         char first[STENO_SQUID_TAPE_STROKE_TEXT_MAX + 1];
@@ -191,7 +180,7 @@ static bool show_tape(bool show) {
         set_fitted_text(tape_hint, hint, tape_hint_fonts, FONT_COUNT(tape_hint_fonts));
         lv_obj_remove_flag(tape_hint, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(tape_wpm, LV_OBJ_FLAG_HIDDEN);
-    } else if (translation && tape->wpm) {
+    } else if (tape->wpm) {
         char speed[12];
         snprintf(speed, sizeof(speed), "%u WPM", tape->wpm);
         if (strcmp(speed, lv_label_get_text(tape_wpm)) != 0) {
@@ -203,7 +192,7 @@ static bool show_tape(bool show) {
         lv_obj_add_flag(tape_wpm, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(tape_hint, LV_OBJ_FLAG_HIDDEN);
     }
-    return translation || tape->hint_count;
+    return true;
 }
 
 void steno_squid_screen_set_tape(const struct steno_squid_tape *tape) {
@@ -232,31 +221,6 @@ lv_obj_t *steno_squid_screen_create(void) {
     lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(screen, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
-
-#ifdef CONFIG_ZMK_STENO_SQUID_FONT_SAMPLER
-    static const struct {
-        int y;
-        const lv_font_t *font;
-        const char *text;
-        bool bold;
-    } samples[] = {
-        {5, &lv_font_montserrat_20, "Plover", false},
-        {44, &lv_font_montserrat_16, "Qwerty", false},
-        {77, &lv_font_montserrat_16, "Qwerty", true},
-        {110, &lv_font_montserrat_16, "Plover\nHID", true},
-    };
-    for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
-        lv_obj_t *label = steno_squid_display_label(screen, samples[i].y, samples[i].font);
-        lv_label_set_text_static(label, samples[i].text);
-        if (samples[i].bold) {
-            /* A one-pixel overstrike thickens strokes without changing advance. */
-            lv_obj_t *overstrike = steno_squid_display_label(screen, samples[i].y, samples[i].font);
-            lv_obj_set_x(overstrike, 1);
-            lv_label_set_text_static(overstrike, samples[i].text);
-        }
-    }
-    return screen;
-#endif
 
     status_page = lv_obj_create(screen);
     lv_obj_remove_style_all(status_page);
@@ -301,9 +265,6 @@ lv_obj_t *steno_squid_screen_create(void) {
 
 void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t practice, unsigned charge,
                          bool host_disconnected) {
-#ifdef CONFIG_ZMK_STENO_SQUID_FONT_SAMPLER
-    return;
-#endif
     static const char *const mode_names[] = {
         [STENO_SQUID_MODE_UNKNOWN] = "Waiting\nFor Left",
         [STENO_SQUID_MODE_TYPING] = "Qwerty",

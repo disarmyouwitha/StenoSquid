@@ -242,7 +242,6 @@ int main(void) {
         snprintf(tape.text,sizeof(tape.text),"%s","cat");
         steno_squid_screen_set_tape(&tape);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,0,85,false);
-#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_TRANSLATION
         assert(!lv_obj_has_flag(tape_text,LV_OBJ_FLAG_HIDDEN));
         assert(!lv_obj_has_flag(tape_stroke,LV_OBJ_FLAG_HIDDEN));
         assert(!lv_obj_has_flag(tape_wpm,LV_OBJ_FLAG_HIDDEN));
@@ -254,13 +253,6 @@ int main(void) {
         assert(lv_obj_get_y(tape_text) + lv_obj_get_height(tape_text) <= lv_obj_get_y(tape_stroke));
         assert(lv_obj_get_y(tape_stroke) + lv_obj_get_height(tape_stroke) <= 48);
         save("tape-word");
-#else
-        assert(lv_obj_has_flag(tape_text,LV_OBJ_FLAG_HIDDEN));
-        assert(lv_obj_has_flag(tape_stroke,LV_OBJ_FLAG_HIDDEN));
-        assert(lv_obj_has_flag(tape_wpm,LV_OBJ_FLAG_HIDDEN));
-        assert(headroom); // Both translation and hints off: animations get the space.
-        save("tape-disabled");
-#endif
         /* The widest text each row can be given. */
         snprintf(tape.text,sizeof(tape.text),"%s","WWWWWWWWWWWW");
         tape.mask=STENO_SQUID_TAPE_KEYS_MASK;
@@ -287,12 +279,6 @@ int main(void) {
         steno_squid_screen_set_tape(&tape);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,0,85,false);
         save("tape-shortcut");
-#ifndef CONFIG_ZMK_STENO_SQUID_STROKE_TRANSLATION
-        tape.hint_count=0;
-        steno_squid_screen_set_tape(&tape);
-        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,0,85,false);
-        assert(headroom); // Clearing the hint restores animations immediately.
-#endif
         /* Other layers and Practice hide the tape. */
         steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
         assert(lv_obj_has_flag(tape_text,LV_OBJ_FLAG_HIDDEN));
