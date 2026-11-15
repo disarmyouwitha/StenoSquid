@@ -103,7 +103,7 @@ https://lim.au/#/software/javelin-steno-tools
 
 ### Provision a new keyboard
 
-1. Flash the matching **Left-Default** and **Right-Default** UF2s. Use the **No-Display** pair if you don't have a nice!view.
+1. Flash the matching **Left** and **Right** UF2s. Use the **No-Display** pair if you don't have a nice!view.
 2. Plug the left half in over USB, close any Javelin browser connection, and run these commands from this repository.
 
    ```sh
@@ -114,15 +114,12 @@ https://lim.au/#/software/javelin-steno-tools
    The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
 
 If the installer reports a conflict, run `python3 upload.py --repair` to check
-all configured base images and replace the ones that need repair. Add
-`--base lapwing`, `--base plover`, or `--base extras` to check only that image.
+all configured base images and replace the ones that need repair.
 The personal dictionary stays intact.
-Use `python3 upload.py --status` to check which bases are ready, or
-`python3 upload.py --verify` to read them back and check their CRCs.
 
 ### Import a personal Plover dictionary
 
-With the current **Left-Default** firmware connected by USB, close the Javelin browser connection and run:
+With the current **Left** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
 python3 upload.py --import user.json
