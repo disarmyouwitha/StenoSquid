@@ -102,13 +102,30 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies:
 
 Download artifacts from a successful run. Double-tap RESET on the intended controller and copy its UF2 to the **NICENANO** drive. Install matching left and right firmware when updating Practice or split-display features. [Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
 
-For a new keyboard, prepare the dictionary images using the build guides, flash **left-logging**, and install them through its diagnostics port using Python with the `pyserial` package. Substitute the actual serial device path:
+### Provision a new keyboard
+
+1. Flash the matching **left-logging** UF2. Let the left half reboot and keep it connected by USB.
+2. From the repository, run:
+
+   ```sh
+   python3 -m pip install pyserial
+   python3 upload.py --install
+   ```
+
+3. When verification passes, flash **left-studio** for everyday use and flash the matching right-half UF2.
+
+On the locked-pin branch, use the matching `boardsource-*` artifacts. The installer prepares the three bundled dictionary images from pinned sources when needed. If USB detection is ambiguous, pass the port explicitly with `upload.py --install PORT`.
+
+### Import a personal Plover dictionary
+
+With the current **left-studio** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
-python3 tools/steno-squid-lapwing/upload.py /dev/cu.usbmodem14501
+python3 -m pip install hidapi
+python3 upload.py --import user.json
 ```
 
-The uploader installs missing configured images from `build/`. Use `--status` to inspect them or `--verify` for a full CRC check. After provisioning, flash **left-studio** for everyday use. Dictionary images are uploaded separately from the UF2 firmware.
+The file's translations win for matching outlines. Other personal entries stay in the dictionary. The importer verifies one complete snapshot before publishing it. Keep USB connected through verification and use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
 
 Local builds must use this checkout's west manifest. If the workspace keeps a separate manifest copy, synchronize it before running `west update`. The compiled dictionary format depends on the pinned Javelin engine. [Dependency manifest](config/west.yml)
 

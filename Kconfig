@@ -28,7 +28,7 @@ config ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
     default y
     help
       Needed only to write or check the Lapwing and Plover base images with
-      tools/steno-squid-lapwing/upload.py. Build with the zmk-usb-logging snippet
+      upload.py. Build with the zmk-usb-logging snippet
       to get it. Everyday builds can leave the snippet out: the bases already
       in flash still load, and the browser editor runs over HID.
 

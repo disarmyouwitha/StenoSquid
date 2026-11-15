@@ -291,6 +291,84 @@ void reset_entries(void *, const char *) {
   if (can_edit())
     finish_edit(dictionary.Edit(Entry{}, nullptr, true));
 }
+bool read_number(const char *&line, uint32_t &number) {
+  if (*line++ != ' ' || *line < '0' || *line > '9')
+    return false;
+  number = 0;
+  while (*line >= '0' && *line <= '9') {
+    const uint32_t digit = *line++ - '0';
+    if (number > (UINT32_MAX - digit) / 10)
+      return false;
+    number = number * 10 + digit;
+  }
+  return true;
+}
+
+int hex_digit(char value) {
+  if (value >= '0' && value <= '9')
+    return value - '0';
+  if (value >= 'a' && value <= 'f')
+    return value - 'a' + 10;
+  return -1;
+}
+
+void bulk_import(void *, const char *line) {
+  if (!can_edit())
+    return;
+  constexpr char command[] = "user_dictionary_import ";
+  if (strncmp(line, command, sizeof(command) - 1) != 0) {
+    Console::Printf("ERR Missing import operation\n\n");
+    return;
+  }
+  const char *args = line + sizeof(command) - 1;
+  if (strcmp(args, "abort") == 0) {
+    store.AbortImport();
+    Console::SendOk();
+    return;
+  }
+  if (!reactivate_after_xip()) {
+    Console::Printf("ERR QSPI activation failed\n\n");
+    return;
+  }
+  qspi_device.mapped = false;
+  bool ok = false;
+  if (strncmp(args, "begin ", 6) == 0) {
+    args += 5;
+    uint32_t generation, count, bytes, maximum, crc;
+    ok = read_number(args, generation) && read_number(args, count) &&
+         read_number(args, bytes) && read_number(args, maximum) &&
+         read_number(args, crc) && !*args &&
+         store.BeginImport(generation, count, bytes, maximum, crc);
+  } else if (strncmp(args, "data ", 5) == 0) {
+    args += 4;
+    uint32_t offset;
+    alignas(4) uint8_t page[256];
+    if (read_number(args, offset) && *args == ' ') {
+      ++args;
+      const size_t length = strlen(args);
+      bool valid = length && !(length & 1) && length <= 2 * sizeof(page);
+      for (size_t i = 0; valid && i < length / 2; ++i) {
+        const int hi = hex_digit(args[2 * i]);
+        const int lo = hex_digit(args[2 * i + 1]);
+        valid = hi >= 0 && lo >= 0;
+        if (valid)
+          page[i] = (hi << 4) | lo;
+      }
+      ok = valid && store.ImportChunk(offset, page, length / 2);
+    }
+  } else if (strcmp(args, "commit") == 0) {
+    ok = store.FinishImport();
+    if (ok)
+      dictionary.Refresh();
+  }
+  qspi_device.mapped = true;
+  if (ok)
+    Console::SendOk();
+  else
+    Console::Printf("ERR Import failed or dictionary changed. Retry from the "
+                    "beginning.\n\n");
+}
+
 void lookup_outline(void *, const char *line) {
   StrokeListParser parser;
   if (!parse_outline(line, parser))
@@ -316,7 +394,7 @@ void store_status(void *, const char *) {
   Console::Printf(
       "{\"format\":2,\"available\":%s,\"entries\":%u,\"used_bytes\":%u,"
       "\"slot_bytes\":%u,\"generation\":%u,\"last_save_ms\":%u,"
-      "\"ram_mirror_bytes\":0,\"valid_copies\":%u}\n\n",
+      "\"ram_mirror_bytes\":0,\"valid_copies\":%u,\"bulk_import\":1}\n\n",
       store_available ? "true" : "false", store.Count(), store.Used(),
       SLOT_BYTES, store.Generation(), last_save_ms, store.ValidCopies());
 }
@@ -346,6 +424,8 @@ StenoDictionary *steno_squid_user_dictionary_open() {
 void steno_squid_user_dictionary_register(Console &console,
                                           StenoDictionary &root) {
   parent = &root;
+  console.RegisterCommand("user_dictionary_import", "Import a QSPI snapshot",
+                          bulk_import, nullptr);
   console.RegisterCommand("user_dictionary_status",
                           "Read personal snapshot usage", store_status,
                           nullptr);

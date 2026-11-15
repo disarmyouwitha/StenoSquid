@@ -118,6 +118,16 @@ int main() {
     assert(reply.find("ERR Command unavailable")!=std::string::npos);
 
     reset();
+    const std::string import_line = "user_dictionary_import data 0 " + std::string(512, 'a') + "\n";
+    for (size_t off=0; off<import_line.size(); off+=59)
+        usb("c14 " + import_line.substr(off, 59));
+    ble("c15 user_dictionary_import commit\n");
+    run();
+    assert(commands == std::vector<std::string>{
+        "c14 " + import_line});
+    assert(!ble_tx.empty());
+
+    reset();
     console_ready = false;
     ble("c09 list_dictionaries\n");
     usb("c10 lookup_stroke KAT\n");

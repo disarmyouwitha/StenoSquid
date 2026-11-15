@@ -1,4 +1,4 @@
-"""Install, check, verify or repair the dictionary images over USB serial.
+"""Install the base dictionaries or import a personal Plover JSON file over USB.
 
 With no options it installs every image the firmware knows that is not
 installed yet, from the files under build/. Name one image with --base to
@@ -6,17 +6,31 @@ act on it alone; --repair and --verify are the usual reasons to.
 """
 
 import argparse
+import hashlib
+import os
 from pathlib import Path
 import re
+import ssl
+import subprocess
 import sys
 import time
 import zlib
 
-from serial import Serial
+from urllib.request import urlopen
+
+
+def Serial(*args, **kwargs):
+    try:
+        from serial import Serial as open_port
+    except ImportError:
+        raise SystemExit("Install the USB serial dependency with: python3 -m pip install pyserial") from None
+    return open_port(*args, **kwargs)
 
 
 CHUNK_BYTES = 512
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parent
+DICTIONARY_TOOLS = REPO / "tools" / "steno-squid-lapwing"
+sys.path.insert(0, str(DICTIONARY_TOOLS))
 # Where the prepare scripts and the Lapwing build instructions write each image.
 DEFAULT_IMAGES = {
     "LAPWING": REPO / "build" / "lapwing" / "lapwing-base.bin",
@@ -209,6 +223,87 @@ def upload_all(port, paths):
         raise SystemExit("The firmware reported no dictionary images")
 
 
+def prepare_base(name, expected=None):
+    path = DEFAULT_IMAGES[name]
+    env = os.environ.copy()
+    # Python.org macOS installs may lack an OpenSSL certificate bundle.
+    system_certs = Path("/etc/ssl/cert.pem")
+    context = None
+    if (sys.platform == "darwin" and not ssl.get_default_verify_paths().cafile
+            and not env.get("SSL_CERT_FILE") and system_certs.is_file()):
+        env["SSL_CERT_FILE"] = str(system_certs)
+        context = ssl.create_default_context(cafile=system_certs)
+    if name in ("PLOVER", "EXTRAS"):
+        subprocess.run([sys.executable, str(DICTIONARY_TOOLS / f"prepare_{name.lower()}.py"),
+                        "--output-dir", str(path.parent)], check=True, env=env)
+        return
+
+    from prepare_extras import URL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    source_path = path.with_suffix(".json")
+    with urlopen(URL + source_path.name, timeout=60, context=context) as response:
+        source = response.read()
+    if hashlib.sha256(source).hexdigest() != "2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484":
+        raise RuntimeError("Pinned Lapwing source checksum mismatch.")
+    source_path.write_bytes(source)
+    command = [sys.executable, str(REPO / "tools/dict_compiler/compile_dict.py"),
+               str(source_path), "--base-addr", "0x12000000", "-o", str(path)]
+    subprocess.run(command, check=True)
+    image = path.read_bytes()
+    if expected and (len(image), zlib.crc32(image)) != expected:
+        # Local builds have also used the display name inside the same image.
+        fallback = path.with_suffix(".alternate.bin")
+        try:
+            subprocess.run(command + ["-n", "Lapwing Base", "-o", str(fallback)], check=True)
+            candidate = fallback.read_bytes()
+            if (len(candidate), zlib.crc32(candidate)) == expected:
+                fallback.replace(path)
+        finally:
+            fallback.unlink(missing_ok=True)
+
+
+def install(port):
+    # Validate every required build image before beginning the first write.
+    missing = {}
+    for name, path in DEFAULT_IMAGES.items():
+        expected = present(port, name)
+        if expected is None:
+            raise RuntimeError(f"Could not read {name} metadata. Flash the matching left-logging UF2 and reconnect USB.")
+        state, _ = query(port, name)
+        if state in ("MAPPED", "VERIFIED"):
+            print(f"{name}: already installed")
+            continue
+        if state != "UNPROVISIONED":
+            raise RuntimeError(f"{name}: {state}. Use --repair --base {name.lower()} with the matching image.")
+        if not path.exists():
+            print(f"Preparing {name} from the pinned dictionary sources…", flush=True)
+            prepare_base(name, expected)
+        image = read_image(path)
+        check_matches_firmware(image, name, *expected, path)
+        missing[name] = image
+    for name, image in missing.items():
+        print(f"Installing {name}…", flush=True)
+        program(port, image, name)
+    print("Verifying the three base images…", flush=True)
+    for name in DEFAULT_IMAGES:
+        if not verify(port, name):
+            raise RuntimeError(f"{name} verification failed. Use --repair --base {name.lower()}.")
+    print("Base dictionaries are ready. Flash the matching left-studio UF2 for everyday use.")
+
+
+def find_port():
+    try:
+        from serial.tools import list_ports
+    except ImportError:
+        raise SystemExit("Install the USB serial dependency with: python3 -m pip install pyserial") from None
+    ports = list(list_ports.comports())
+    matches = [port for port in ports if port.product == "Steno Squid"]
+    if len(matches) == 1:
+        return matches[0].device
+    available = ", ".join(port.device for port in (matches or ports)) or "none"
+    raise RuntimeError(f"Connect one left half running left-logging, or supply its serial port. Available: {available}.")
+
+
 def status(port):
     seen = 0
     for name in COMMANDS:
@@ -257,7 +352,12 @@ def diag(port, what):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("port", help="USB CDC device path")
+    parser.add_argument("port", nargs="?", help="USB CDC device path; --install can detect it")
+    parser.add_argument("--install", action="store_true",
+                        help="Prepare, install and verify all missing bundled base images")
+    parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON",
+                        help="Merge a Plover JSON file into the connected keyboard over USB HID")
+    parser.add_argument("--serial", help="Select a USB keyboard by serial number for --import")
     parser.add_argument("image", type=Path, nargs="?",
                         help="JSC4 image for a single --base. Default: the file under build/ "
                              "that the prepare script wrote")
@@ -278,6 +378,25 @@ def main():
                              "the flash rail both ways and time its rise and fall. bench: "
                              "power-cycle the flash ten times through the wake path")
     args = parser.parse_args()
+    if args.install or args.personal:
+        if args.install and args.personal or any((args.base, args.image, args.repair, args.verify,
+                                                 args.status, args.diag)):
+            parser.error("--install and --import are standalone actions")
+    if args.serial and not args.personal:
+        parser.error("--serial goes with --import")
+    if args.personal:
+        if args.port:
+            parser.error("--import uses USB HID; omit the serial port path")
+        from import_personal import import_file
+        import_file(args.personal, args.serial)
+        return
+    if args.install:
+        with Serial(args.port or find_port(), 115200, timeout=0.25,
+                    write_timeout=5, exclusive=True) as port:
+            install(port)
+        return
+    if not args.port:
+        parser.error("Specify a serial port, --install, or --import USER.JSON")
     base = (args.base or "all").upper()
     if args.diag:
         if args.repair or args.verify or args.status or args.image:
@@ -339,4 +458,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
+        sys.exit(f"Error: {error}")
+    except KeyboardInterrupt:
+        sys.exit("Cancelled. Reconnect the keyboard and check the dictionary before retrying.")

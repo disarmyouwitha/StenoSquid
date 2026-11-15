@@ -1,7 +1,7 @@
 #include "../../tools/steno-squid-qspi/qspi.overlay"
 
 &kscan0 {
-#include "../steno-squid-left/left-matrix.dtsi"
+#include "left-matrix.dtsi"
 };
 
 &uart0 { status = "disabled"; };

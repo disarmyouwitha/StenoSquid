@@ -104,7 +104,71 @@ static std::string lookup(Store &s, Entry k) {
   text.pop_back();
   return text;
 }
-int main() {
+// Python supplies a compiled snapshot body and its four metadata words.
+static void test_host_import(const char *path) {
+  FILE *file = fopen(path, "rb");
+  assert(file);
+  uint32_t count, size, maximum, crc;
+  assert(fread(&count, 4, 1, file) == 1 && fread(&size, 4, 1, file) == 1 &&
+         fread(&maximum, 4, 1, file) == 1 && fread(&crc, 4, 1, file) == 1);
+  std::vector<uint8_t> body(size);
+  assert(fread(body.data(), 1, size, file) == size);
+  fclose(file);
+
+  Rows original;
+  original.Add({8}, "old");
+  original.Prepare();
+  Flash flash;
+  Store store(flash);
+  assert(store.Save(original));
+  const auto baseline = flash.bytes;
+  auto transfer = [&](Store &target, uint32_t checksum) {
+    if (!target.BeginImport(target.Generation(), count, size, maximum,
+                            checksum))
+      return false;
+    for (uint32_t offset = 0; offset < size; offset += 256)
+      if (!target.ImportChunk(offset, body.data() + offset,
+                              std::min(256u, size - offset)))
+        return false;
+    return target.FinishImport();
+  };
+  assert(!store.BeginImport(store.Generation() - 1, count, size, maximum, crc));
+  assert(!transfer(store, crc ^ 1) && lookup(store, key(8)) == "old");
+  flash.mutations = 0;
+  assert(transfer(store, crc));
+  const int operations = flash.mutations;
+  assert(store.Count() == count && lookup(store, key(8)) == "new");
+  Entry multi{};
+  multi.length = 2;
+  multi.strokes[0] = 8;
+  multi.strokes[1] = 16;
+  assert(lookup(store, multi) == "ça va");
+
+  for (int failure = 0; failure < operations; ++failure) {
+    flash.bytes = baseline;
+    flash.mutations = 0;
+    flash.fail = failure;
+    Store before(flash);
+    assert(before.Open() && !transfer(before, crc));
+    Store reboot(flash);
+    assert(reboot.Open() && lookup(reboot, key(8)) == "old");
+  }
+  flash.fail = -1;
+  Store reboot(flash);
+  assert(reboot.Open());
+  assert(reboot.BeginImport(reboot.Generation(), count, size, maximum, crc));
+  assert(!reboot.ImportChunk(256, body.data(), 256));
+  assert(!reboot.FinishImport());
+  assert(reboot.Save(original)); // An ordinary edit cancels the staged import.
+  assert(!reboot.ImportChunk(0, body.data(), 256));
+  printf("PASS: Python snapshot import, stale generation, invalid CRC, and %d "
+         "interrupted writes\n",
+         operations);
+}
+
+int main(int argc, char **argv) {
+  if (argc == 2)
+    test_host_import(argv[1]);
   assert(crc32(0, "123456789", 9) == 0xcbf43926);
   Flash flash;
   Store store(flash);

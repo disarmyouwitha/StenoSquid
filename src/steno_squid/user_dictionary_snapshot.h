@@ -84,6 +84,7 @@ public:
   uint32_t Generation() const { return header.generation; }
   unsigned ValidCopies() const { return valid_copies; }
   bool Open() {
+    AbortImport();
     active = -1;
     header = {};
     valid_copies = 0;
@@ -130,9 +131,59 @@ public:
     }
     return lo;
   }
+  // Bulk imports write a host-built body into the inactive slot. The
+  // published header is always constructed and verified by firmware.
+  bool BeginImport(uint32_t generation, uint32_t count, uint32_t bytes,
+                   uint32_t maximum, uint32_t body_crc) {
+    Header candidate{MAGIC,
+                     VERSION,
+                     header.generation + 1,
+                     count,
+                     SECTOR + bytes,
+                     maximum,
+                     body_crc,
+                     0};
+    if (generation != Generation() || bytes > SLOT_BYTES - SECTOR ||
+        !ValidShape(candidate) || !count || !maximum)
+      return false;
+    import = {};
+    valid_copies = active < 0 ? 0 : 1;
+    if (!device.Erase(Base(Inactive())))
+      return false;
+    import = candidate;
+    import_offset = SECTOR;
+    return true;
+  }
+
+  bool ImportChunk(uint32_t offset, const void *bytes, uint32_t size) {
+    if (!import.magic || offset != import_offset - SECTOR || !size ||
+        size > 256 || (size & 3) || size > import.used - import_offset ||
+        (size != 256 && size != import.used - import_offset))
+      return false;
+    const uint32_t address = Base(Inactive()) + import_offset;
+    if ((import_offset % SECTOR == 0 && !device.Erase(address)) ||
+        !WriteVerified(address, bytes, size)) {
+      import = {};
+      return false;
+    }
+    import_offset += size;
+    return true;
+  }
+
+  bool FinishImport() {
+    if (!import.magic || import_offset != import.used)
+      return false;
+    Header candidate = import;
+    import = {};
+    return Validate(Base(Inactive()), candidate) && Publish(candidate);
+  }
+
+  void AbortImport() { import = {}; }
+
   // Erase only occupied sectors; invalidate target header first, commit last.
   // Failure never changes the currently active slot.
   bool Save(Source &source) {
+    AbortImport();
     Header next{
         MAGIC, VERSION, header.generation + 1, source.Count(), SECTOR, 0, 0, 0};
     if (next.count > (SLOT_BYTES - SECTOR) / 32)
@@ -193,30 +244,35 @@ public:
     }
     if (!BodyCrc(base, next, next.body_crc) || !Validate(base, next))
       return false;
-    next.header_crc = crc32(0, &next, offsetof(Header, header_crc));
-    if (!WriteVerified(base, &next, sizeof(next)))
-      return false;
-    Header check{};
-    if (!device.Read(base, &check, sizeof(check)) ||
-        memcmp(&check, &next, sizeof(next)))
-      return false;
-    ++valid_copies;
-    active = target;
-    header = next;
-    return true;
+    return Publish(next);
   }
 
 private:
   Device &device;
   int active = -1;
   unsigned valid_copies = 0;
-  Header header{};
+  Header header{}, import{};
+  uint32_t import_offset = 0;
+  int Inactive() const { return active == 0 ? 1 : 0; }
   static uint32_t Base(int slot) { return SLOT_START + slot * SLOT_BYTES; }
+  bool Publish(Header &next) {
+    const int target = Inactive();
+    next.header_crc = crc32(0, &next, offsetof(Header, header_crc));
+    if (!WriteVerified(Base(target), &next, sizeof(next)))
+      return false;
+    ++valid_copies;
+    active = target;
+    header = next;
+    return true;
+  }
+  static bool ValidShape(const Header &h) {
+    return h.used >= SECTOR && h.used <= SLOT_BYTES && !(h.used & 3) &&
+           h.count <= (h.used - SECTOR) / 32 && h.maximum <= MAX_STROKES;
+  }
   static bool ValidHeader(const Header &h) {
     return h.magic == MAGIC && h.version == VERSION &&
            h.header_crc == crc32(0, &h, offsetof(Header, header_crc)) &&
-           h.used >= SECTOR && h.used <= SLOT_BYTES && !(h.used & 3) &&
-           h.count <= (h.used - SECTOR) / 32 && h.maximum <= MAX_STROKES;
+           ValidShape(h);
   }
   static bool ValidEntry(const Entry &e) {
     return e.length && e.length <= MAX_STROKES && e.text_bytes &&

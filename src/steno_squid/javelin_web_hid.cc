@@ -83,6 +83,8 @@ public:
     void CountCommand() const { steno_squid_battery_log_editor_command(bluetooth); }
 #endif
 
+    bool IsUsb() const { return !bluetooth; }
+
     void Write(const char *text, size_t size) override {
         if (bluetooth) {
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BLE_HID
@@ -157,6 +159,7 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
     for (const char *name : allowed) {
         forward = forward || is_command(command, name);
     }
+    forward = forward || (writer.IsUsb() && is_command(command, "user_dictionary_import"));
     if (forward && steno_squid_javelin_console_line(line, size, writer)) {
         return;
     }
