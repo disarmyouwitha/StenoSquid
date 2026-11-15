@@ -6,9 +6,6 @@
 #ifdef XIP_PROBE
 #include "mapped.h"
 #endif
-#ifdef JAVELIN_PROBE
-#include "javelin_lookup.h"
-#endif
 
 struct quad_result {
 	const char *outcome;
@@ -18,11 +15,6 @@ struct quad_result {
 	uint8_t lane_coverage;
 #ifdef XIP_PROBE
 	struct mapped_result mapped;
-#endif
-#ifdef JAVELIN_PROBE
-	const char *javelin_outcome;
-	char phrase[JAVELIN_PHRASE_SIZE];
-	bool javelin_reactivation_failed;
 #endif
 };
 

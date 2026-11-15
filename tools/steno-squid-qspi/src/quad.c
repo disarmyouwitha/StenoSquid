@@ -2,10 +2,6 @@
 #ifdef TRACE_PROBE
 #include "trace.h"
 #endif
-#ifdef JAVELIN_PROBE
-#include "mapped.h"
-#include <zephyr/devicetree.h>
-#endif
 
 #include <string.h>
 #include <zephyr/kernel.h>
@@ -120,16 +116,6 @@ void run_quad_probe(nrfx_qspi_config_t *config, struct quad_result *result,
 #ifdef XIP_PROBE
 			run_mapped_probe(&result->mapped, address);
 			if (result->mapped.reactivation_failed) {
-				return;
-			}
-#endif
-#ifdef JAVELIN_PROBE
-			const uintptr_t mapped_address =
-				DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi), qspi_mm) + address;
-			printk("Opening external JSC4 at 0x%08x\n", (unsigned int)mapped_address);
-			result->javelin_outcome = javelin_lookup_phrase(mapped_address, result->phrase);
-			if (!reactivate_after_xip()) {
-				result->javelin_reactivation_failed = true;
 				return;
 			}
 #endif
