@@ -32,10 +32,8 @@
 #include <zephyr/sys/atomic.h>
 #endif
 
-#ifdef CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
 #include "lapwing_dictionary.h"
 #include "lapwing_flash.h"
-#endif
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 #include "user_dictionary_store.h"
 #endif
@@ -59,7 +57,9 @@ static StenoProcessor *processor = nullptr;
 
 static bool initialized = false;
 
-#if defined(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING) && defined(CONFIG_ZMK_SLEEP)
+// Held across every engine access. It keeps the external dictionary flash
+// powered, and reports false while the flash is asleep, unprovisioned or still
+// being verified.
 class JavelinEngineLock {
 public:
   JavelinEngineLock() : held(lapwing_flash_acquire()) {}
@@ -73,33 +73,23 @@ public:
 private:
   bool held;
 };
-#elif defined(CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY)
-K_MUTEX_DEFINE(javelin_engine_mutex);
 
-class JavelinEngineLock {
-public:
-  JavelinEngineLock() { k_mutex_lock(&javelin_engine_mutex, K_FOREVER); }
-  ~JavelinEngineLock() { k_mutex_unlock(&javelin_engine_mutex); }
-  explicit operator bool() const { return true; }
-};
-#else
-class JavelinEngineLock {
-public:
-  explicit operator bool() const { return true; }
-};
-#endif
-
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-// Versioned ZMK settings record. Preserve selection independently of base images
-// and personal dictionary snapshots. A fresh keyboard starts with Lapwing.
-// personal=1, Lapwing=2, Plover=4, then the Lapwing extras from bit 3 up.
+// The saved dictionary selection is one ZMK settings byte, kept independently of
+// the base images and personal dictionary snapshots. A fresh keyboard starts
+// with Lapwing. personal=1, Lapwing=2, Plover=4, then the Lapwing extras from
+// bit 3 up.
 #define EXTRAS_SELECTION_SHIFT 3
 #define EXTRAS_SELECTION_BIT(index) (uint8_t(1) << (EXTRAS_SELECTION_SHIFT + (index)))
 // Commands, numbers and proper nouns start on. UK additions start off.
 #define EXTRAS_SELECTION_DEFAULT                                                                   \
   (EXTRAS_SELECTION_BIT(EXTRAS_COMMANDS) | EXTRAS_SELECTION_BIT(EXTRAS_NUMBERS) |                  \
    EXTRAS_SELECTION_BIT(EXTRAS_PROPER_NOUNS))
+#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 static uint8_t dictionary_selection = 3 | EXTRAS_SELECTION_DEFAULT;
+static bool dictionary_enabled(uint8_t bit, bool) { return dictionary_selection & bit; }
+#else
+// Without the browser tool nothing can change the selection.
+static bool dictionary_enabled(uint8_t, bool fallback) { return fallback; }
 #endif
 
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
@@ -281,13 +271,9 @@ static void practice_advance(struct k_work *) {
 K_WORK_DELAYABLE_DEFINE(practice_advance_work, practice_advance);
 
 static const StenoDictionary *practice_fallback_dictionary() {
-#ifdef CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
   // WORDS is a Lapwing drill. Use the verified base locally even when its
   // checkbox is off; never change the engine's saved dictionary selection.
   return lapwing_dictionary();
-#else
-  return nullptr;
-#endif
 }
 
 static void practice_refresh_dictionary() {
@@ -584,19 +570,12 @@ static int javelin_settings_set(const char *name, size_t length,
   if (strcmp(name, "dictionaries") != 0) {
     return -ENOENT;
   }
-  // Version 1 predates the Lapwing extras and holds the first three bits.
-  // Version 2 holds all seven.
-  uint8_t record[2];
-  if (length != sizeof(record) || read(argument, record, sizeof(record)) != sizeof(record)) {
+  uint8_t selection;
+  if (length != sizeof(selection) || read(argument, &selection, sizeof(selection)) != sizeof(selection) ||
+      (selection & 0x80)) {
     return -EINVAL;
   }
-  if (record[0] == 1 && !(record[1] & ~7)) {
-    dictionary_selection = record[1] | EXTRAS_SELECTION_DEFAULT;
-  } else if (record[0] == 2 && !(record[1] & 0x80)) {
-    dictionary_selection = record[1];
-  } else {
-    return -EINVAL;
-  }
+  dictionary_selection = selection;
   return 0;
 }
 
@@ -637,9 +616,8 @@ static void select_dictionary(void *, const char *line) {
   }
   // Persist before acknowledging or changing the active engine. On failure the
   // previous selection remains active and the browser receives an error.
-  const uint8_t record[] = {2, selected};
   if (selected != dictionary_selection &&
-      settings_save_one("javelin/dictionaries", record, sizeof(record)) != 0) {
+      settings_save_one("javelin/dictionaries", &selected, sizeof(selected)) != 0) {
     Console::Printf("ERR Unable to save dictionary selection\n\n");
     return;
   }
@@ -668,31 +646,18 @@ static bool load_dictionary_collection() {
     entries.Add(StenoDictionaryListEntry(personal, dictionary_selection & 1));
   }
 #endif
-#ifdef CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
   // The Lapwing extras rank above the bases, in the order Plover gives them.
   for (size_t i = 0; i < EXTRAS_DICTIONARY_COUNT; i++) {
     if (auto *extra = extras_dictionary(i)) {
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-      entries.Add(StenoDictionaryListEntry(extra, dictionary_selection & EXTRAS_SELECTION_BIT(i)));
-#else
-      entries.Add(StenoDictionaryListEntry(extra, i != EXTRAS_UK_ADDITIONS));
-#endif
+      entries.Add(StenoDictionaryListEntry(
+          extra, dictionary_enabled(EXTRAS_SELECTION_BIT(i), i != EXTRAS_UK_ADDITIONS)));
     }
   }
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), dictionary_selection & 2));
-#else
-  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), true));
-#endif
+  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), dictionary_enabled(2, true)));
   if (auto *plover = plover_dictionary()) {
     // Personal overrides remain first. Fresh settings default to Lapwing.
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-    entries.Add(StenoDictionaryListEntry(plover, dictionary_selection & 4));
-#else
-    entries.Add(StenoDictionaryListEntry(plover, false));
-#endif
+    entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(4, false)));
   }
-#endif
 
   if (entries.IsEmpty()) {
     LOG_ERR("Steno dict collection empty");
@@ -751,12 +716,10 @@ void zmk_javelin_steno_init(void) {
   if (!lock || initialized) {
     return;
   }
-#ifdef CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
   if (!lapwing_dictionary()) {
     LOG_WRN("External Lapwing dictionary is unavailable");
     return;
   }
-#endif
   initialized = true;
   printk("[JAV] lazy init start; thread=%s\n", k_thread_name_get(k_current_get()));
 
