@@ -23,12 +23,16 @@ static void save(const char *name) {
     for(unsigned i=0;i<sizeof(saved);i++) saved[i]=saved[i]>=128?255:0;
     fwrite(saved,1,sizeof(saved),out);fclose(out);
 }
+/* Sprites are A1: row-major, 6 bytes per 48-pixel row, bit 7 is the leftmost pixel. */
+static bool sprite_px(const uint8_t *sprite, unsigned x, unsigned y) {
+    return sprite[y * A1_STRIDE(PET_SIZE) + x / 8] >> (7 - x % 8) & 1;
+}
 /* Pupils may float inside the mask. Every lower tentacle must join the mantle. */
 static void check_tentacles_connected(void) {
     bool seen[48*48] = {0};
     unsigned queue[48*48], read = 0, count = 0;
     for (unsigned i = 0; i < 48*48; i++) {
-        if (idle_pixels[i]) { queue[count++] = i; seen[i] = true; break; }
+        if (sprite_px(idle_pixels, i % 48, i / 48)) { queue[count++] = i; seen[i] = true; break; }
     }
     while (read < count) {
         const unsigned i = queue[read++], x = i % 48, y = i / 48;
@@ -36,12 +40,12 @@ static void check_tentacles_connected(void) {
                                  y ? (int)i-48 : -1, y < 47 ? (int)i+48 : -1};
         for (unsigned n = 0; n < 4; n++) {
             const int j = neighbors[n];
-            if (j >= 0 && idle_pixels[j] && !seen[j]) {
+            if (j >= 0 && sprite_px(idle_pixels, j % 48, j / 48) && !seen[j]) {
                 queue[count++] = j; seen[j] = true;
             }
         }
     }
-    for (unsigned i = 34*48; i < 48*48; i++) assert(!idle_pixels[i] || seen[i]);
+    for (unsigned i = 34*48; i < 48*48; i++) assert(!sprite_px(idle_pixels, i % 48, i / 48) || seen[i]);
 }
 
 /* Representative production states for documentation renders. */
@@ -125,10 +129,10 @@ int main(void) {
     // Closing the eyes must also fill the old upper eye-mask patches.
     for (unsigned y=14; y<16; y++) {
         unsigned left=48, right=0;
-        for(unsigned x=0;x<48;x++) if(idle_pixels[y*48+x]) {
+        for(unsigned x=0;x<48;x++) if(sprite_px(idle_pixels,x,y)) {
             if(left==48) left=x; right=x;
         }
-        for(unsigned x=left;x<=right && x<48;x++) assert(sleep_pixels[y*48+x]);
+        for(unsigned x=left;x<=right && x<48;x++) assert(sprite_px(sleep_pixels,x,y));
     }
     lv_init();lv_display_t *d=lv_display_create(68,160);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_L8);
