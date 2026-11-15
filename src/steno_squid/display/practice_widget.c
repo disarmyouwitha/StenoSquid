@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 
-#include "../split_status.h"
 #include "../practice_types.h"
 #include "../practice_menu.h"
 #include <string.h>

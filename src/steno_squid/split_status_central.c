@@ -17,6 +17,7 @@
 
 #include "layer_control.h"
 #include "split_status.h"
+#include "practice_types.h"
 #include "stroke_feed.h"
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
 #include "practice_progress.h"

@@ -11,6 +11,7 @@
 #include "practice_build.h"
 #include "practice_multi.h"
 #include "practice_progress.h"
+#include "practice_types.h"
 #include "practice_view.h"
 #include "practice_words.h"
 #include "split_status.h"

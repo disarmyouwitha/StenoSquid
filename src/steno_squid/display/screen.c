@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../split_status.h"
+#include "../practice_types.h"
 #include "pet_widget.h"
 #include "portrait.h"
 
