@@ -86,21 +86,21 @@ jobs:
             shield: corne_left
             snippet: zmk-usb-logging
             dictionaries: true
-          - name: left-studio
+          - name: left-nice-view
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
-          - name: left-battery
+          - name: left-logging-battery
             shield: corne_left
             snippet: zmk-usb-logging
             dictionaries: true
             battery_log: true
-          - name: left-studio-no-display
+          - name: left-no-display
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
             extra: "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/left-no-display.conf"
-          - name: right
+          - name: right-no-display
             shield: corne_right
           - name: right-nice-view
             shield: corne_right nice_view_adapter nice_view

@@ -288,7 +288,7 @@ def install(port):
     for name in DEFAULT_IMAGES:
         if not verify(port, name):
             raise RuntimeError(f"{name} verification failed. Use --repair --base {name.lower()}.")
-    print("Base dictionaries are ready. Flash the matching left-studio UF2 for everyday use.")
+    print("Base dictionaries are ready. Flash the everyday left UF2 (left-nice-view, or left-no-display without a nice!view).")
 
 
 def find_port():

@@ -9,7 +9,7 @@ directory:
 -DEXTRA_DTC_OVERLAY_FILE=config/steno-squid-split/battery-log.overlay
 ```
 
-The `left-battery` CI job builds this variant. The overlay takes 128 KiB from
+The `left-logging-battery` CI job builds this variant. The overlay takes 128 KiB from
 the top of the application partition for a circular log, so the logger build
 has less room for code than the everyday build. The everyday build keeps the
 full partition and leaves the logger out. The left half

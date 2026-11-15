@@ -96,7 +96,7 @@ config ZMK_JAVELIN_BATTERY_LOG
       Needs the battery-log partition from
       config/steno-squid-split/battery-log.overlay, which shrinks the
       application partition by 128 KiB. Build with that overlay and
-      battery-log.conf together, as the left-battery CI job does.
+      battery-log.conf together, as the left-logging-battery CI job does.
 
 config ZMK_JAVELIN_STENO_HOST_LAYOUTS
     bool "Choose the host layout (Mac U.S. or Windows U.S.) from the browser tool"

@@ -92,11 +92,12 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies:
 
 | Artifact | Use |
 | --- | --- |
-| **left-studio** | Everyday left-half firmware with Studio over USB and Bluetooth. |
-| **left-studio-no-display** | Everyday left-half firmware for a keyboard without a nice!view: it sends the right half no status, and Practice is off. Pair it with **right**. |
-| **left-logging** | Left-half firmware with the serial port used for dictionary installation and diagnostics. |
-| **right-nice-view** | Right-half firmware with the portrait display, squid, and Practice UI. |
-| **right** | Right-half firmware without the display. Works with any left build, but only **left-studio-no-display** skips the status messages it would ignore. |
+| **left-nice-view** | Everyday left-half firmware. Install it with **right-nice-view**. |
+| **right-nice-view** | Right-half firmware with the portrait display, squid, stroke tape and Practice UI. Install it with **left-nice-view**. |
+| **left-no-display** | Left-half firmware for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **right-no-display**. |
+| **right-no-display** | Right-half firmware without the display. Install it with **left-no-display**. |
+| **left-logging** | Diagnostic left half with the serial port used for dictionary installation, the boot log and the `--diag` tools. Not for everyday use. |
+| **left-logging-battery** | **left-logging** plus the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash for battery tests. Not for everyday use. |
 
 Download artifacts from a successful run. Double-tap RESET on the intended controller and copy its UF2 to the **NICENANO** drive. Install matching left and right firmware when updating Practice or split-display features. [Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
 
@@ -110,13 +111,13 @@ Download artifacts from a successful run. Double-tap RESET on the intended contr
    python3 upload.py --install
    ```
 
-3. When verification passes, flash **left-studio** for everyday use and flash the matching right-half UF2.
+3. When verification passes, flash **left-nice-view** for everyday use and flash the matching right-half UF2.
 
 If USB detection is ambiguous, pass the port explicitly with `upload.py --install PORT`.
 
 ### Import a personal Plover dictionary
 
-With the current **left-studio** firmware connected by USB, close the Javelin browser connection and run:
+With the current **left-nice-view** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
 python3 -m pip install hidapi
