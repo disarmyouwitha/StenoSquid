@@ -119,7 +119,7 @@ streak separate lines beneath the celebration.
 For a Corne Ultralight right half with a nice!view fitted to its display socket, use this right-half build with the left-half build above. The overlay sets display chip select to D0 (P0.08) to match the Ultralight PCB.
 
 ```sh
-west build -s zmk/app -d "$repo/build/right-nice-view" -b nice_nano//zmk -- \
+west build -s zmk/app -d "$repo/build/right-default" -b nice_nano//zmk -- \
   "-DSHIELD=corne_right nice_view_adapter nice_view" \
   "-DZMK_CONFIG=$repo/config/steno-squid-split" "-DZMK_EXTRA_MODULES=$repo" \
   "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/right-nice-view.conf" \

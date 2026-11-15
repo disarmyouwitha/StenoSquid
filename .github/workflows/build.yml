@@ -98,7 +98,7 @@ jobs:
             extra: "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/left-no-display.conf"
           - name: right-no-display
             shield: corne_right
-          - name: right-nice-view
+          - name: right-default
             shield: corne_right nice_view_adapter nice_view
             nice_view: true
     steps:

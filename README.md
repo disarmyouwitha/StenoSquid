@@ -92,8 +92,8 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies:
 
 | Artifact | Use |
 | --- | --- |
-| **left-default** | Everyday left-half firmware. Install it with **right-nice-view**. |
-| **right-nice-view** | Right-half firmware with the portrait display, squid, stroke tape and Practice UI. Install it with **left-default**. |
+| **left-default** | Everyday left-half firmware. Install it with **right-default**. |
+| **right-default** | Right-half firmware with the portrait display, squid, stroke tape and Practice UI. Install it with **left-default**. |
 | **left-no-display** | Left-half firmware for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **right-no-display**. |
 | **right-no-display** | Right-half firmware without the display. Install it with **left-no-display**. |
 | **left-logging** | The diagnostic left half. It has the serial port for installing dictionaries, the boot log and the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
