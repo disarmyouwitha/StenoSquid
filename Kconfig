@@ -8,17 +8,9 @@ config ZMK_JAVELIN_STENO
 
 if ZMK_JAVELIN_STENO
 
-config ZMK_JAVELIN_STENO_DICT_PLOVER
-    bool "Include Plover dictionary (standard English)"
-    default y
-
-config ZMK_JAVELIN_STENO_DICT_LAPWING
-    bool "Include Lapwing dictionary (modern, recommended for new learners)"
-    default n
-
 config ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
     bool "Use the Steno Squid's external QSPI Lapwing dictionary"
-    depends on SOC_NRF52840
+    depends on SOC_NRF52840 && ZMK_SLEEP
     select NRFX_QSPI
     select CRC
 
@@ -68,7 +60,7 @@ config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
 
 config ZMK_JAVELIN_STENO_FLASH_IDLE_OFF
     bool "Power the external flash down while the dictionaries are idle"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_SLEEP
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
     default y
     help
       Switch the flash rail and QSPI off after a period with no dictionary

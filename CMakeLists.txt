@@ -74,6 +74,12 @@ if(CONFIG_ZMK_JAVELIN_STENO)
         "${JAVELIN_SRC_DIR}/engine_normal_mode.cc" "${JAVELIN_NORMAL_MODE_SRC}"
       COMMAND_ERROR_IS_FATAL ANY)
 
+    if(NOT CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
+      message(FATAL_ERROR
+        "Onboard Javelin reads its dictionaries from the external QSPI flash: "
+        "enable ZMK_JAVELIN_STENO_EXTERNAL_LAPWING (which needs ZMK_SLEEP)")
+    endif()
+
     set(JAVELIN_COMPACT_MAP_SRC "${JAVELIN_SRC_DIR}/dictionary/compact_map_dictionary.cc")
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
       if(NOT EXISTS "${ZMK_JAVELIN_LAPWING_IMAGE}")
@@ -298,7 +304,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       src/platform/zmk_key_shim.cc
       src/platform/zmk_clock_shim.cc
       src/platform/zmk_flash_shim.cc
-      src/platform/zmk_connection_shim.cc
       src/platform/zmk_console_shim.cc
       src/platform/zmk_stubs.cc
     )
@@ -375,9 +380,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
           target_sources(app PRIVATE "${LAPWING_SRC}/javelin_ble_hid.c")
         endif()
       endif()
-    else()
-      # The test fixture uses link-time relocations for native Javelin pointers.
-      target_sources(app PRIVATE ${CMAKE_CURRENT_LIST_DIR}/dicts/cat-test.S)
     endif()
 
   endif() # central role check

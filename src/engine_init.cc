@@ -3,11 +3,8 @@
 #include "console.h"
 #include "button_script_manager.h"
 #include "container/list.h"
-#include "dictionary/dictionary_definition.h"
 #include "dictionary/dictionary_list.h"
-#include "dictionary/user_dictionary.h"
 #include "engine.h"
-#include "flash.h"
 #include "orthography.h"
 #include "english_orthography.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
@@ -52,10 +49,6 @@
 #endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
-
-// Linker symbols for embedded dictionary binary (dict_embed.S)
-extern "C" const uint8_t _javelin_dict_start[];
-extern "C" const uint8_t _javelin_dict_end[];
 
 static JavelinStaticAllocate<StenoCompiledOrthography> compiledOrthography;
 static JavelinStaticAllocate<StenoDictionaryList> dictionaryList;
@@ -699,27 +692,6 @@ static bool load_dictionary_collection() {
     entries.Add(StenoDictionaryListEntry(plover, false));
 #endif
   }
-#else
-  const auto *collection =
-      reinterpret_cast<const StenoDictionaryCollection *>(_javelin_dict_start);
-
-  if (collection->magic != STENO_MAP_DICTIONARY_COLLECTION_MAGIC) {
-    LOG_ERR("Steno dict magic mismatch: 0x%08x (expected 0x%08x)",
-            collection->magic, STENO_MAP_DICTIONARY_COLLECTION_MAGIC);
-    return false;
-  }
-
-  if (!collection->HasMatchingTimestamp()) {
-    LOG_ERR("Steno dict timestamp mismatch");
-    return false;
-  }
-
-  printk("[JAV] header and timestamp valid\n");
-
-  // Load dictionaries from collection
-  printk("[JAV] creating native dictionary objects\n");
-  collection->AddDictionariesToList(entries);
-  printk("[JAV] native dictionary objects created\n");
 #endif
 
   if (entries.IsEmpty()) {
@@ -729,23 +701,6 @@ static bool load_dictionary_collection() {
 
   new (dictionaryList)
       StenoDictionaryList(static_cast<List<StenoDictionaryListEntry> &&>(entries));
-
-#ifndef CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
-  // Exercise the ACTUAL engine constructor/cache/lookup path before translation.
-  const struct { uint32_t stroke; const char *text; } checks[] = {
-      {0x14, "if"}, {0x80000, "the"}, {0x80108, "cat"}, {0x2, "is"}};
-  for (const auto &check : checks) {
-    const StenoStroke stroke(check.stroke);
-    auto result = dictionaryList.value.Lookup(StenoDictionaryLookup(&stroke, 1));
-    if (!result.IsValid() || strcmp(result.GetText(), check.text) != 0) {
-      printk("[JAV] native lookup FAILED for 0x%x\n", check.stroke);
-      result.Destroy();
-      return false;
-    }
-    printk("[JAV] native lookup 0x%x -> %s\n", check.stroke, result.GetText());
-    result.Destroy();
-  }
-#endif
 
   printk("[JAV] initializing orthography\n");
   new (compiledOrthography) StenoCompiledOrthography(english_orthography);
@@ -758,7 +713,6 @@ static bool load_dictionary_collection() {
 #endif
 
   printk("[JAV] constructing engine\n");
-  // Construct engine with the read-only test dictionary
   new (StenoEngine::container) StenoEngine(
       dictionaryList.value,
       nullptr,
@@ -785,9 +739,6 @@ static bool load_dictionary_collection() {
   }
 #endif
   StenoEngine::container.value.AddConsoleCommands(Console::instance);
-#ifndef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-  Flash::AddConsoleCommands(Console::instance);
-#endif
 
   LOG_INF("Steno engine initialized");
   return true;
