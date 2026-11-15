@@ -262,7 +262,7 @@ static void test_save_integrity() {
   Store store(flash);
   Rows rows;
   rows.Add({8}, "cat");
-  rows.Add({2, 4}, "ç" "a va");
+  rows.Add({2, 4}, "\xe7" "a va");
   rows.Prepare();
   assert(store.Save(rows));
   Header h{};
