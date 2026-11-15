@@ -53,6 +53,19 @@ static void fit_text(lv_obj_t *label, const char *text, bool large) {
     lv_label_set_text(label, text);
 }
 
+/* The footer sits just above the battery, leaving a taller outline area. */
+static void fit_outline(lv_obj_t *label, const char *text) {
+    static const lv_font_t *const fonts[] = {
+        &lv_font_montserrat_20, &lv_font_montserrat_16, &lv_font_montserrat_14};
+    fit_text(label, text, false);
+    for (unsigned i=0; i<sizeof(fonts)/sizeof(fonts[0]); i++) {
+        if (lv_text_get_width(text, strlen(text), fonts[i], 0) <= 66) {
+            lv_obj_set_style_text_font(label, fonts[i], 0);
+            break;
+        }
+    }
+}
+
 static void progress_labels(void) {
     if (!best_label) return;
     char text[32];
@@ -200,8 +213,8 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
     drill_label = steno_squid_display_label(run_page, 0, &lv_font_montserrat_12);
     drill_separator = menu_separator(run_page, 16);
     prompt_label = steno_squid_display_label(run_page, 19, &lv_font_montserrat_28);
-    outline_label = steno_squid_display_label(run_page, 52, &lv_font_montserrat_12);
-    feedback_label = steno_squid_display_label(run_page, 67, &lv_font_unscii_8);
+    outline_label = steno_squid_display_label(run_page, 58, &lv_font_montserrat_12);
+    feedback_label = steno_squid_display_label(run_page, 86, &lv_font_unscii_8);
     lv_obj_set_x(feedback_label, 1);
     lv_obj_set_width(feedback_label, 66);
     lv_obj_set_style_pad_ver(feedback_label, 2, 0);
@@ -209,8 +222,8 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(feedback_label, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(feedback_label, LV_OPA_COVER, 0);
 
-    progress_bar = steno_squid_display_bar(run_page, 4, 86, 60, 8);
-    progress_label = steno_squid_display_label(run_page, 97, &lv_font_montserrat_8);
+    progress_bar = steno_squid_display_bar(run_page, 4, 103, 60, 8);
+    progress_label = steno_squid_display_label(run_page, 115, &lv_font_montserrat_8);
     best_label = steno_squid_display_label(run_page, 113, &lv_font_montserrat_12);
     progress_labels();
     results_timer = lv_timer_create(result_tick, 2500, NULL);
@@ -277,8 +290,8 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     lv_obj_set_style_text_decor(drill_label, done ? LV_TEXT_DECOR_UNDERLINE : LV_TEXT_DECOR_NONE, 0);
     lv_obj_set_style_text_font(prompt_label, done ? &lv_font_montserrat_16 : &lv_font_montserrat_28, 0);
     fit_text(prompt_label, done ? "DONE" : prompt, !done);
-    fit_text(outline_label, no_dictionary ? "Enable dict" : outline, false);
-    lv_obj_set_y(progress_label, done ? 91 : 97);
+    fit_outline(outline_label, no_dictionary ? "Enable dict" : outline);
+    lv_obj_set_y(progress_label, done ? 91 : 115);
     lv_obj_set_style_text_font(progress_label,
                                done ? &lv_font_montserrat_16 : &lv_font_montserrat_8, 0);
     lv_obj_set_y(prompt_label, done ? 15 : 19);
