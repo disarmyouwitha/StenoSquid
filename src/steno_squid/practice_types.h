@@ -24,8 +24,7 @@
 #define STENO_SQUID_PRACTICE_DRILL_SHIFT 25
 #define STENO_SQUID_PRACTICE_DRILL_MASK (15u << STENO_SQUID_PRACTICE_DRILL_SHIFT)
 #define STENO_SQUID_PRACTICE_MENU (1u << 29)
-#define STENO_SQUID_PRACTICE_ROUNDS STENO_SQUID_HAND_ROUNDS
-BUILD_ASSERT(STENO_SQUID_PRACTICE_ROUNDS <= STENO_SQUID_PRACTICE_COUNTER_MASK,
+BUILD_ASSERT(STENO_SQUID_HAND_ROUNDS <= STENO_SQUID_PRACTICE_COUNTER_MASK,
              "A practice counter field cannot hold the round count");
 
 enum steno_squid_practice_drill {
@@ -114,7 +113,7 @@ static inline const char *steno_squid_practice_outline(enum steno_squid_practice
 
 static inline unsigned steno_squid_practice_rounds(enum steno_squid_practice_drill drill) {
     return steno_squid_practice_is_word_like(drill)
-               ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_PRACTICE_ROUNDS;
+               ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_HAND_ROUNDS;
 }
 
 static inline unsigned steno_squid_practice_feedback_value(uint32_t snapshot) {
