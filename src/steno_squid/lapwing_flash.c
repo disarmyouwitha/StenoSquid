@@ -1,5 +1,5 @@
 #include "lapwing_flash.h"
-#include "quad.h"
+#include "w25q_quad.h"
 #include "diag.h"
 #ifdef CONFIG_ZMK_JAVELIN_DIAG
 #include <hal/nrf_gpio.h>

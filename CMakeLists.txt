@@ -97,7 +97,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
           "${PATCHED_COMPACT_MAP}" --copy-lookup-text
         COMMAND_ERROR_IS_FATAL ANY)
       set(JAVELIN_COMPACT_MAP_SRC "${PATCHED_COMPACT_MAP}")
-      target_sources(app PRIVATE "${LAPWING_SRC}/lapwing_flash.c" "${QSPI_SRC}/quad.c")
+      target_sources(app PRIVATE "${LAPWING_SRC}/lapwing_flash.c" "${LAPWING_SRC}/w25q_quad.c")
       if(CONFIG_ZMK_JAVELIN_DIAG)
         # Build id shown by the S command: the CI commit, else git describe.
         set(JAVELIN_BUILD_ID "unknown")
@@ -118,7 +118,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
         target_sources(app PRIVATE "${LAPWING_SRC}/diag.c")
       endif()
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_BATTERY_LOG app PRIVATE "${LAPWING_SRC}/battery_log.c")
-      target_include_directories(app PRIVATE "${QSPI_SRC}")
+      target_include_directories(app PRIVATE "${LAPWING_SRC}")
       target_compile_definitions(app PRIVATE LAPWING_BYTES=${LAPWING_BYTES} LAPWING_CRC=${LAPWING_CRC})
       # Optional second base, provisioned separately without rewriting Lapwing.
       set(PLOVER_BYTES 0)
@@ -366,7 +366,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
       zephyr_library_sources("${LAPWING_SRC}/lapwing_dictionary.cc")
       zephyr_library_include_directories(
-        "${JAVELIN_SRC_DIR}/dictionary" "${QSPI_SRC}" "${LAPWING_SRC}")
+        "${JAVELIN_SRC_DIR}/dictionary" "${LAPWING_SRC}")
       zephyr_library_compile_definitions(LAPWING_BYTES=${LAPWING_BYTES} PLOVER_BYTES=${PLOVER_BYTES}
         EXTRAS_BYTES=${EXTRAS_BYTES})
       if(CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY)

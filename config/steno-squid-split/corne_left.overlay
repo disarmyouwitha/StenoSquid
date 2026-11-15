@@ -1,4 +1,4 @@
-#include "../../tools/steno-squid-qspi/qspi.overlay"
+#include "../../src/steno_squid/qspi.overlay"
 
 &kscan0 {
 #include "left-matrix.dtsi"
