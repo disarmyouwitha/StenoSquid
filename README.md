@@ -88,7 +88,8 @@ https://lim.au/#/software/javelin-steno-tools
 
 ## Build and install
 
-GitHub Actions builds these UF2 artifacts from the pinned dependencies. Install a left half with the right half that goes with it.
+⭐️ GitHub Actions builds these UF2 artifacts from the pinned dependencies. Install a left half with the right half that goes with it.\
+[Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
 
 **Boardsource Wireless Corne SMT with the Steno Squid flash board**
 
@@ -103,9 +104,7 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies. Install 
 
 The [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers them in order.
 
-**nice!nano v2 (the handwired prototype)** builds the same set with a **NiceNano-** prefix: **NiceNano-Left-Default** with **NiceNano-Right-Default**, **NiceNano-Left-No-Display** with **NiceNano-Right-No-Display**, and **NiceNano-Left-Logging**. Its diagnostic build has the battery logger too.
-
-Download artifacts from a successful run. Double-tap RESET on the intended controller and copy its UF2 to the **NICENANO** drive. Install matching left and right firmware when updating Practice or split-display features. [Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
+**nice!nano v2 (the handwired prototype)** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`, and `NiceNano-Left-Logging`.
 
 ### Provision a new keyboard
 
