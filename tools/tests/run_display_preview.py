@@ -60,11 +60,16 @@ add_executable(preview "{ROOT / 'tools/tests/display_preview.c'}")
 target_include_directories(preview PRIVATE "${{CMAKE_CURRENT_SOURCE_DIR}}/stubs")
 target_link_libraries(preview PRIVATE lvgl m)
 ''')
-    with (output / 'build.log').open('w') as log:
-        subprocess.run(['cmake', '-S', str(output), '-B', str(output / 'out'), '-G', 'Ninja'],
-                       stdout=log, stderr=subprocess.STDOUT, check=True)
-        subprocess.run(['cmake', '--build', str(output / 'out'), '-j', '8'],
-                       stdout=log, stderr=subprocess.STDOUT, check=True)
+    log_path = output / 'build.log'
+    try:
+        with log_path.open('w') as log:
+            subprocess.run(['cmake', '-S', str(output), '-B', str(output / 'out'), '-G', 'Ninja'],
+                           stdout=log, stderr=subprocess.STDOUT, check=True)
+            subprocess.run(['cmake', '--build', str(output / 'out'), '-j', '8'],
+                           stdout=log, stderr=subprocess.STDOUT, check=True)
+    except subprocess.CalledProcessError:
+        print(''.join(log_path.read_text(errors='replace').splitlines(True)[-80:]))
+        raise
     subprocess.run([str(output / 'out/preview')], cwd=output, check=True, timeout=30)
     print(f'Rendered screenshots: {output}')
 
