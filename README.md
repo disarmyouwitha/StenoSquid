@@ -78,7 +78,7 @@ https://zmk.studio/
 
 ## Javelin Wireless Dictionary Management
 1. Connect the left half by USB or Bluetooth!
-2. Open Javelin Steno Tools in Chrome, choose **Connect via HID**, and select the keyboard.
+2. Open Javelin Steno Tools in **Chrome**, choose **Connect via HID**, and select the keyboard.
 3. Use **Active Dictionaries** to change selections and **Dictionary Management → View** to add, replace, remove, or export personal entries.
 4. Use **Host Layout** to select **Mac U.S.** or **Windows U.S. (plain text)**. The keyboard remembers the choice.
 
