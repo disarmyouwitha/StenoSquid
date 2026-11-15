@@ -54,10 +54,9 @@ static StenoProcessor *processor = nullptr;
 
 static bool initialized = false;
 
-// The saved dictionary selection is one ZMK settings byte, kept independently of
-// the base images and personal dictionary snapshots. A fresh keyboard starts
-// with Lapwing. personal=1, Lapwing=2, Plover=4, then the Lapwing extras from
-// bit 3 up.
+// Dictionary selections are stored separately from base images and personal
+// snapshots. A fresh keyboard starts with Lapwing. Personal=1, Lapwing=2,
+// Plover=4, then the Lapwing extras from bit 3 up.
 #define EXTRAS_SELECTION_SHIFT 3
 #define EXTRAS_SELECTION_BIT(index) (uint8_t(1) << (EXTRAS_SELECTION_SHIFT + (index)))
 // Commands, numbers and proper nouns start on. UK additions start off.
@@ -65,6 +64,7 @@ static bool initialized = false;
   (EXTRAS_SELECTION_BIT(EXTRAS_COMMANDS) | EXTRAS_SELECTION_BIT(EXTRAS_NUMBERS) |                  \
    EXTRAS_SELECTION_BIT(EXTRAS_PROPER_NOUNS))
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+static constexpr uint8_t DICTIONARY_SELECTION_VERSION = 2;
 static uint8_t dictionary_selection = 3 | EXTRAS_SELECTION_DEFAULT;
 static bool dictionary_enabled(uint8_t bit, bool) { return dictionary_selection & bit; }
 #else
@@ -145,12 +145,22 @@ static int javelin_settings_set(const char *name, size_t length,
   if (strcmp(name, "dictionaries") != 0) {
     return -ENOENT;
   }
-  uint8_t selection;
-  if (length != sizeof(selection) || read(argument, &selection, sizeof(selection)) != sizeof(selection) ||
-      (selection & 0x80)) {
+  uint8_t record[2];
+  if ((length != 1 && length != sizeof(record)) ||
+      read(argument, record, length) != static_cast<ssize_t>(length)) {
     return -EINVAL;
   }
-  dictionary_selection = selection;
+  if (length == 1 && !(record[0] & 0x80)) {
+    // The cleanup build saved the seven selection bits without a version.
+    dictionary_selection = record[0];
+  } else if (length == sizeof(record) && record[0] == 1 && !(record[1] & ~7)) {
+    dictionary_selection = record[1] | EXTRAS_SELECTION_DEFAULT;
+  } else if (length == sizeof(record) && record[0] == DICTIONARY_SELECTION_VERSION &&
+             !(record[1] & 0x80)) {
+    dictionary_selection = record[1];
+  } else {
+    return -EINVAL;
+  }
   return 0;
 }
 
@@ -191,8 +201,9 @@ static void select_dictionary(void *, const char *line) {
   }
   // Persist before acknowledging or changing the active engine. On failure the
   // previous selection remains active and the browser receives an error.
+  const uint8_t record[] = {DICTIONARY_SELECTION_VERSION, selected};
   if (selected != dictionary_selection &&
-      settings_save_one("javelin/dictionaries", &selected, sizeof(selected)) != 0) {
+      settings_save_one("javelin/dictionaries", record, sizeof(record)) != 0) {
     Console::Printf("ERR Unable to save dictionary selection\n\n");
     return;
   }
