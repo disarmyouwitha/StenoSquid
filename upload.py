@@ -321,13 +321,13 @@ def install_hid(console, repair_base=None):
             raise RuntimeError(reply)
 
     _, images = hid_install_status(console)
-    if repair_base and repair_base not in images:
+    if repair_base not in (None, "ALL") and repair_base not in images:
         raise RuntimeError(f"{repair_base} is not configured in this firmware.")
     missing = {}
     for name, (size, crc, verified) in images.items():
-        if repair_base and name != repair_base:
+        if repair_base not in (None, "ALL", name):
             continue
-        if verified:
+        if verified and (not repair_base or read_hid_crc(console, name) == crc):
             print(f"{name}: already installed")
             continue
         path = DEFAULT_IMAGES[name]
@@ -379,12 +379,20 @@ def install_hid(console, repair_base=None):
             raise
 
     ready, images = hid_install_status(console)
-    if repair_base and images[repair_base][2] and not ready:
+    if repair_base not in (None, "ALL") and images[repair_base][2] and not ready:
         print(f"{repair_base} verified. Run python3 upload.py --install for the remaining bases.")
         return
     if not ready or not all(verified for _, _, verified in images.values()):
         raise RuntimeError("The keyboard did not map all verified base dictionaries.")
     print("Base dictionaries are installed and ready. You can start using Javelin.")
+
+
+def read_hid_crc(console, name):
+    reply = console.command(f"base_install verify {name}", timeout=120)
+    state, _, value = reply.partition(" ")
+    if state not in ("OK", "MISMATCH"):
+        raise RuntimeError(f"{name}: {reply}. Check that Left-Default supports USB HID verification.")
+    return int(value)
 
 
 def inspect_hid(console, base, verify=False):
@@ -401,12 +409,8 @@ def inspect_hid(console, base, verify=False):
 
     failed = False
     for name in names:
-        reply = console.command(f"base_install verify {name}", timeout=120)
-        state, _, value = reply.partition(" ")
-        if state not in ("OK", "MISMATCH"):
-            raise RuntimeError(f"{name}: {reply}. Check that Left-Default supports USB HID verification.")
-        crc = int(value)
-        if state == "OK" and crc == images[name][1]:
+        crc = read_hid_crc(console, name)
+        if crc == images[name][1]:
             print(f"{name}: OK, CRC32 {crc:08x}")
         else:
             print(f"{name}: FAILED, flash CRC32 {crc:08x}, expected {images[name][1]:08x}")
@@ -488,10 +492,10 @@ def main():
     parser.add_argument("--base", choices=("lapwing", "plover", "extras", "all"),
                         help="Image to act on. With no --base, an upload installs every "
                              "image that is not installed yet and --verify checks all of "
-                             "them. --repair needs one image")
+                             "them. Over USB HID, --repair checks all bases by default")
     parser.add_argument("--repair", action="store_true",
-                        help="Replace a conflicting base over wired USB HID. With a serial port, "
-                             "force an erase and rewrite even if the base verifies.")
+                        help="Check and repair all bundled bases over wired USB HID, or select one with --base. "
+                             "With a serial port, --base selects one base for a forced rewrite.")
     parser.add_argument("--verify", action="store_true",
                         help="Read the whole image and check its CRC. Writes nothing")
     parser.add_argument("--status", action="store_true",
@@ -516,8 +520,8 @@ def main():
     if sum([args.repair, args.verify, args.status]) > 1:
         parser.error("Use only one of --repair, --verify and --status")
     base = (args.base or "all").upper()
-    if args.repair and base == "ALL":
-        parser.error("--repair needs --base lapwing, plover or extras")
+    if args.repair and args.port and base == "ALL":
+        parser.error("Serial --repair needs --base lapwing, plover or extras")
 
     if args.install and args.port:
         with Serial(args.port, 115200, timeout=0.25, write_timeout=5,

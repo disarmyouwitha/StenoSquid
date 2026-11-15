@@ -77,6 +77,26 @@ static const lv_image_dsc_t *const upload_effects[] = {
 };
 BUILD_ASSERT(ARRAY_SIZE(upload_effects) == ARRAY_SIZE(upload_frames));
 
+static const struct pet_frame repair_frames[] = {
+    {&idle_image, 220}, {&jump_image, 200}, {&typing_image, 90},
+    {&land_image, 120}, {&blink_image, 140}, {&idle_image, 280},
+};
+static const lv_image_dsc_t *const repair_effects[] = {
+    &repair_0_image, &repair_1_image, &repair_2_image,
+    &repair_3_image, &repair_4_image, &repair_5_image,
+};
+BUILD_ASSERT(ARRAY_SIZE(repair_effects) == ARRAY_SIZE(repair_frames));
+
+static const struct pet_frame install_frames[] = {
+    {&idle_image, 250}, {&typing_image, 200}, {&idle_image, 250}, {&typing_image, 200},
+    {&idle_image, 250}, {&typing_image, 200}, {&jump_image, 300}, {&blink_image, 500},
+};
+static const lv_image_dsc_t *const install_effects[] = {
+    &install_0_image, &install_1_image, &install_2_image, &install_3_image,
+    &install_4_image, &install_5_image, &install_6_image, &install_7_image,
+};
+BUILD_ASSERT(ARRAY_SIZE(install_effects) == ARRAY_SIZE(install_frames));
+
 static const struct pet_frame powered_frames[] = {
     {&idle_image, 220}, {&idle_image, 180}, {&jump_image, 180}, {&idle_image, 180},
     {&idle_image, 180}, {&blink_image, 130}, {&idle_image, 180}, {&idle_image, 1400},
@@ -110,6 +130,8 @@ static const struct pet_animation animations[] = {
     [PET_LAYER_CHANGE] = ANIMATION(layer_change_frames, layer_change_effects, 10, 12),
     [PET_WAIT_TAP] = ANIMATION(wait_tap_frames, NULL, 0, 0),
     [PET_UPLOAD] = ANIMATION(upload_frames, upload_effects, 26, 29),
+    [PET_REPAIR] = ANIMATION(repair_frames, repair_effects, 14, 21),
+    [PET_INSTALL] = ANIMATION(install_frames, install_effects, 14, 18),
 };
 
 static lv_obj_t *pet_image;
@@ -121,7 +143,7 @@ static bool usb_powered;
 static bool pet_visible = true;
 static bool headroom = true;
 static bool awake_hold;
-static bool upload_active;
+static enum pet_state transfer_animation;
 
 static void update_effect(void) {
     if (pet_visible && headroom && state == PET_SLEEP) {
@@ -165,7 +187,7 @@ static enum pet_state resting_state(void) {
 static void advance_frame(lv_timer_t *timer) {
     frame_index++;
     if (frame_index == animations[state].count) {
-        if (state == PET_POWERED || state == PET_UPLOAD) {
+        if (state == PET_POWERED || state == transfer_animation) {
             frame_index = 0;
             show_frame();
         } else {
@@ -199,8 +221,8 @@ void steno_squid_pet_set_state(enum pet_state next) {
 
     if (!pet_visible) {
         next = PET_IDLE;
-    } else if (upload_active) {
-        next = PET_UPLOAD;
+    } else if (transfer_animation != PET_IDLE) {
+        next = transfer_animation;
     } else if (awake_hold && (next == PET_SLEEP || next == PET_POWERED)) {
         next = PET_IDLE;
     } else if (usb_powered && !awake_hold && (next == PET_IDLE || next == PET_SLEEP)) {
@@ -216,7 +238,7 @@ void steno_squid_pet_set_state(enum pet_state next) {
     if (next == PET_GREETING && state == PET_LEVEL_UP) {
         return;
     }
-    if (next == state && (state == PET_IDLE || state == PET_SLEEP || state == PET_POWERED || state == PET_UPLOAD)) {
+    if (next == state && (state == PET_IDLE || state == PET_SLEEP || state == PET_POWERED || state == transfer_animation)) {
         return;
     }
     state = next;
@@ -270,10 +292,10 @@ void steno_squid_pet_set_awake_hold(bool hold) {
 }
 
 
-void steno_squid_pet_set_uploading(bool uploading) {
-    if (upload_active == uploading) {
+void steno_squid_pet_set_transfer_animation(enum pet_state animation) {
+    if (transfer_animation == animation) {
         return;
     }
-    upload_active = uploading;
-    steno_squid_pet_set_state(uploading ? PET_UPLOAD : resting_state());
+    transfer_animation = animation;
+    steno_squid_pet_set_state(animation != PET_IDLE ? animation : resting_state());
 }

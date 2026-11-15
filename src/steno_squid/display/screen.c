@@ -325,7 +325,10 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
     }
     steno_squid_pet_set_headroom(done || (!practicing && !tape_visible &&
                             lv_obj_has_flag(mode_above, LV_OBJ_FLAG_HIDDEN)));
-    steno_squid_pet_set_uploading(uploading);
+    const enum pet_state transfer_pet = mode == STENO_SQUID_MODE_INSTALL ? PET_INSTALL :
+                                        mode == STENO_SQUID_MODE_REPAIR ? PET_REPAIR :
+                                        uploading ? PET_UPLOAD : PET_IDLE;
+    steno_squid_pet_set_transfer_animation(transfer_pet);
     if (layer_changed) {
         steno_squid_pet_set_state(PET_LAYER_CHANGE);
     }

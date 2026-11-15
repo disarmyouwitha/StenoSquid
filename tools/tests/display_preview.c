@@ -220,13 +220,39 @@ int main(void) {
         steno_squid_screen_update(STENO_SQUID_MODE_INSTALL+i,"Custom",0,85,true);
         assert(!strcmp(lv_label_get_text(mode_below), upload_labels[i]));
         assert(lv_obj_has_flag(mode_above, LV_OBJ_FLAG_HIDDEN));
-        assert(state == PET_UPLOAD && !lv_obj_has_flag(effect_image, LV_OBJ_FLAG_HIDDEN));
+        const enum pet_state expected = i == 0 ? PET_INSTALL : i == 1 ? PET_REPAIR : PET_UPLOAD;
+        assert(state == expected && !lv_obj_has_flag(effect_image, LV_OBJ_FLAG_HIDDEN));
     }
     for (unsigned i = 0; i < ARRAY_SIZE(upload_frames); ++i) advance_frame(frame_timer);
     assert(state == PET_UPLOAD && frame_index == 0);
     steno_squid_pet_set_state(PET_TYPING);
     assert(state == PET_UPLOAD);
     save("pop-upload");
+    steno_squid_screen_update(STENO_SQUID_MODE_REPAIR,NULL,0,85,false);
+    for (unsigned i = 0; i < ARRAY_SIZE(repair_frames); ++i) {
+        char name[24];
+        assert(state == PET_REPAIR && frame_index == i);
+        assert(lv_image_get_src(effect_image) == repair_effects[i]);
+        snprintf(name, sizeof(name), "pop-repair-%u", i);
+        save(name);
+        advance_frame(frame_timer);
+    }
+    assert(state == PET_REPAIR && frame_index == 0);
+    steno_squid_pet_set_state(PET_SLEEP);
+    assert(state == PET_REPAIR && frame_index == 0);
+
+    steno_squid_screen_update(STENO_SQUID_MODE_INSTALL,NULL,0,85,false);
+    for (unsigned i = 0; i < ARRAY_SIZE(install_frames); ++i) {
+        char name[24];
+        assert(state == PET_INSTALL && frame_index == i);
+        assert(lv_image_get_src(effect_image) == install_effects[i]);
+        snprintf(name, sizeof(name), "pop-install-%u", i);
+        save(name);
+        advance_frame(frame_timer);
+    }
+    assert(state == PET_INSTALL && frame_index == 0);
+    steno_squid_pet_set_state(PET_TYPING);
+    assert(state == PET_INSTALL && frame_index == 0);
     steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
     assert(state != PET_LAYER_CHANGE); // Reconnection keeps the greeting path.
     steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,true);

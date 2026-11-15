@@ -301,6 +301,44 @@ class UploadTest(unittest.TestCase):
         self.assertEqual(self.paths["PLOVER"].read_bytes(), old_image)
         self.assertIn("remaining bases", output.getvalue())
 
+    def test_hid_repair_all_checks_healthy_bases_and_repairs_each_failure(self):
+        import import_personal
+
+        for args in (["--repair"], ["--repair", "--base", "all"]):
+            with self.subTest(args=args):
+                verified = {"LAPWING", "PLOVER"}  # Plover has a stale verification flag.
+                corrupted = {"PLOVER"}
+                repaired = []
+                console = mock.Mock()
+
+                def command(text, timeout=30):
+                    _, operation, *parts = text.split()
+                    if operation == "status":
+                        state = "READY" if len(verified) == len(self.images) else "INSTALL"
+                        return "\n".join([f"1 {state}"] + [
+                            f"{name} {len(image)} {zlib.crc32(image)} {int(name in verified)}"
+                            for name, image in self.images.items()
+                        ])
+                    if operation == "verify":
+                        name, = parts
+                        return "MISMATCH 0" if name in corrupted else f"OK {zlib.crc32(self.images[name])}"
+                    if operation == "repair":
+                        repaired.extend(parts)
+                    if operation == "commit":
+                        verified.add(repaired[-1])
+                        corrupted.discard(repaired[-1])
+                    return "OK"
+
+                console.command.side_effect = command
+                with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)), \
+                        mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), \
+                        mock.patch.object(sys, "argv", ["upload.py", *args]), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    upload.main()
+                self.assertEqual(repaired, ["PLOVER", "EXTRAS"])
+                self.assertIn("LAPWING: already installed", output.getvalue())
+                self.assertIn("installed and ready", output.getvalue())
+
     def test_verify_and_status_default_to_hid(self):
         import import_personal
 
@@ -399,7 +437,7 @@ class UploadTest(unittest.TestCase):
         self.assertIn("Nothing was erased", str(caught.exception))
         self.assertEqual([a for _, a in kb.log if a == "erase"], [])
 
-    def test_repair_needs_a_single_base(self):
+    def test_serial_repair_needs_a_single_base(self):
         code, _ = self.run_script(self.keyboard(), "--repair")
         self.assertEqual(code, 2)
 

@@ -116,6 +116,17 @@ static void show_transfer(uint32_t timeout_ms) {
                             timeout_ms);
 }
 
+static struct base_image *find_base(const char *name) {
+    for (size_t i = 0; i < ARRAY_SIZE(lf_images); i++) {
+        const size_t length = strlen(lf_images[i].name);
+        if (strncmp(name, lf_images[i].name, length) == 0 &&
+            strcmp(name + length, "\n") == 0) {
+            return &lf_images[i];
+        }
+    }
+    return NULL;
+}
+
 static const char *handle_command(const char *command, char *reply, size_t reply_size) {
     if (strcmp(command, "status\n") == 0) {
         const enum lapwing_flash_state state = lapwing_flash_status();
@@ -136,31 +147,44 @@ static const char *handle_command(const char *command, char *reply, size_t reply
         return "OK";
     }
 
-    if (!lf_provisioning_ready || lf_suspended || lf_provisioning_recheck ||
-        atomic_get(&lf_mapped_ready)) {
+    if (!lf_provisioning_ready || lf_suspended || lf_provisioning_recheck) {
         return "ERR Flash is unavailable for installation";
     }
 
     const bool repair = strncmp(command, "repair ", 7) == 0;
     if (repair || strncmp(command, "begin ", 6) == 0) {
-        const char *name = command + (repair ? 7 : 6);
-        for (size_t i = 0; i < ARRAY_SIZE(lf_images); i++) {
-            struct base_image *image = &lf_images[i];
-            const size_t length = strlen(image->name);
-            if (strncmp(name, image->name, length) == 0 &&
-                strcmp(name + length, "\n") == 0 && !image->verified &&
-                reactivate_after_xip()) {
-                transfer.image = image;
-                transfer.offset = 0;
-                transfer.crc = 0;
-                transfer.writing = false;
-                transfer.repair = repair;
-                transfer.deadline = k_uptime_get() + TRANSFER_TIMEOUT_MS;
-                show_transfer(TRANSFER_TIMEOUT_MS);
-                return "OK";
-            }
+        struct base_image *image = find_base(command + (repair ? 7 : 6));
+        if (!image || (!repair && (image->verified || atomic_get(&lf_mapped_ready))) ||
+            !reactivate_after_xip()) {
+            return "ERR Base is unknown, already verified, or unavailable";
         }
-        return "ERR Base is unknown, already verified, or unavailable";
+        if (image->verified) {
+            /* A quick boot check can retain a stale verified flag. Require a
+             * fresh raw CRC mismatch before taking a live image offline. */
+            const bool mapped = atomic_clear(&lf_mapped_ready);
+            uint32_t crc = 0;
+            const bool read_ok = lf_image_crc(image, false, &crc, NULL);
+            if (!read_ok || crc == image->crc || !lf_clear_trust()) {
+                if (mapped) {
+                    atomic_set(&lf_mapped_ready, 1);
+                }
+                return "ERR Base repair requires a readable checksum mismatch and writable settings";
+            }
+            lf_trusted = false;
+            NRF_POWER->GPREGRET2 = 0;
+            image->verified = false;
+        }
+        transfer.image = image;
+        transfer.offset = 0;
+        transfer.crc = 0;
+        transfer.writing = false;
+        transfer.repair = repair;
+        transfer.deadline = k_uptime_get() + TRANSFER_TIMEOUT_MS;
+        show_transfer(TRANSFER_TIMEOUT_MS);
+        return "OK";
+    }
+    if (atomic_get(&lf_mapped_ready)) {
+        return "ERR Flash is unavailable for installation";
     }
     if (!transfer.image || k_uptime_get() >= transfer.deadline) {
         transfer.image = NULL;
@@ -218,15 +242,7 @@ static void verify_base(const char *name, char *reply, size_t reply_size) {
     if (!lapwing_flash_acquire()) {
         k_mutex_lock(&flash_lock, K_FOREVER);
     }
-    const struct base_image *image = NULL;
-    for (size_t i = 0; i < ARRAY_SIZE(lf_images); i++) {
-        const size_t length = strlen(lf_images[i].name);
-        if (strncmp(name, lf_images[i].name, length) == 0 &&
-            strcmp(name + length, "\n") == 0) {
-            image = &lf_images[i];
-            break;
-        }
-    }
+    const struct base_image *image = find_base(name);
 
     if (image && lf_provisioning_ready && !lf_suspended && (!transfer.image || k_uptime_get() >= transfer.deadline) &&
         reactivate_after_xip()) {
@@ -254,7 +270,10 @@ void lf_provision_command(const char *command, char *reply, size_t reply_size) {
         verify_base(command + 7, reply, reply_size);
         return;
     }
-    k_mutex_lock(&flash_lock, K_FOREVER);
+    /* An explicitly requested repair may have to recheck an idle mapping. */
+    if (strncmp(command, "repair ", 7) != 0 || !lapwing_flash_acquire()) {
+        k_mutex_lock(&flash_lock, K_FOREVER);
+    }
     const char *result = handle_command(command, reply, reply_size);
     if (result) {
         snprintk(reply, reply_size, "%s", result);

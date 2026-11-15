@@ -100,7 +100,7 @@ https://lim.au/#/software/javelin-steno-tools
 | **Boardsource-Left-No-Display** | Left half for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **Boardsource-Right-No-Display**. |
 | **Boardsource-Right-No-Display** | Right half without the display. |
 
-**nice!nano v2 (the handwired prototype)** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, or `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`.
+**nice!nano v2** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, or `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`.
 
 ### Provision a new keyboard
 
@@ -114,9 +114,10 @@ https://lim.au/#/software/javelin-steno-tools
 
    The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
 
-If the installer reports a conflicting base, run the repair command it prints.
-For example, `python3 upload.py --repair --base lapwing` replaces only Lapwing Base
-over USB HID and keeps your other bases and personal dictionary.
+If the installer reports a conflict, run `python3 upload.py --repair` to check
+all configured base images and replace the ones that need repair. Add
+`--base lapwing`, `--base plover`, or `--base extras` to check only that image.
+The personal dictionary stays intact.
 Use `python3 upload.py --status` to check which bases are ready, or
 `python3 upload.py --verify` to read them back and check their CRCs.
 

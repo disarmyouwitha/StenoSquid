@@ -203,6 +203,26 @@ int main(void) {
     assert(lf_mapped_ready && upload_mode == 0 && writes == 4 && erases == 1);
     for (size_t i = 12; i < sizeof(nor); i++)
         if ((i < 16 || i >= 20) && i != 24) assert(nor[i] == 0xff);
+
+    /* A boot-time verification flag can be stale. Never erase a healthy image
+     * or take it offline when a direct repair request is made against it. */
+    lf_checked = true;
+    lf_provisioning_recheck = false;
+    expect("repair LAPWING\n", "ERR Base repair requires");
+    assert(lf_mapped_ready && erases == 1);
+    nor[0] = 0;
+    expect("verify LAPWING\n", "MISMATCH ");
+    assert(lf_mapped_ready && lf_images[0].verified && erases == 1);
+    expect("repair LAPWING\n", "OK");
+    assert(!lf_mapped_ready && !lf_images[0].verified && erases == 1);
+    expect(first, "OK");
+    expect(last, "OK");
+    assert(erases == 3 && !memcmp(nor + 16, plover, sizeof(plover)) && nor[24] == 0x55);
+    expect(first, "OK");
+    expect(last, "OK");
+    expect("commit\n", "OK");
+    assert(lf_images[0].verified && restarts == 2);
+
 }
 '''
 

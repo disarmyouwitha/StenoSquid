@@ -231,8 +231,9 @@ The installer detects the wired HID device and prepares missing images from pinn
 
 Provisioning checks the complete transfer before programming, reads back each chunk, then checks the raw and mapped CRCs and native Javelin lookups. It writes only inside the configured base regions and rejects conflicting pre-existing bits. Rerun the installer to resume a partial transfer. Personal snapshots stay in place, and Javelin starts once every configured image verifies.
 
-Left-Default can also replace a conflicting image over wired HID with
-`python3 upload.py --repair --base lapwing` (or `plover` or `extras`).
+On Left-Default, `python3 upload.py --repair` checks all configured images
+over wired HID and replaces only the ones that need repair. Use
+`--repair --base lapwing` (or `plover` or `extras`) to check just one image.
 The replacement must match the firmware checksum before the selected region is erased.
 
 For hardware recovery with a Left-Diagnostic build, `upload.py --install PORT` selects the serial installer. `upload.py PORT --status` shows the state of each base. Use `--repair --base lapwing|plover|extras` to explicitly erase and rewrite a single conflicting base.
