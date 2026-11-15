@@ -87,26 +87,26 @@ int main(void) {
     assert(sizeof(model.record)==3624); // New 300-word record fits one NVS sector.
     const struct steno_squid_word_stats empty_words[300]={{0}};
     assert(!steno_squid_model_answer(&model,0,true,1000));
-    for(unsigned round=0;round<50;round++) {
+    for(unsigned round=0;round<30;round++) {
         const unsigned before=model.record.xp;
         assert(steno_squid_model_hands_answer(&model,round,true,1000));
         assert(model.record.xp>before);
         assert(!steno_squid_model_hands_answer(&model,round,true,1000));
     }
-    assert(model.run.earned==90 && model.run.hand_streak==50);
+    assert(model.run.earned==50 && model.run.hand_streak==30);
     assert(steno_squid_model_finish(&model));
-    assert(model.run.earned==110 && model.record.xp==110);
+    assert(model.run.earned==70 && model.record.xp==70);
     assert(!steno_squid_model_finish(&model));
     assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
     steno_squid_model_hands_begin(&model);
     const unsigned previous=model.record.xp;
-    for(unsigned round=0;round<50;round++) {
+    for(unsigned round=0;round<30;round++) {
         assert(!steno_squid_model_hands_answer(&model,round,false,100));
         assert(model.record.xp==previous+round);
         assert(steno_squid_model_hands_answer(&model,round,true,1000));
     }
     assert(steno_squid_model_finish(&model));
-    assert(model.run.earned==70 && model.record.xp==previous+70);
+    assert(model.run.earned==50 && model.record.xp==previous+50);
     assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
     steno_squid_model_multi_begin(&model,random_word);
     bool multi_seen[STENO_SQUID_MULTI_COUNT]={false};

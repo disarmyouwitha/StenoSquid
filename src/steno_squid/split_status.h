@@ -70,7 +70,7 @@ static const char *const steno_squid_practice_right[] = {
 };
 
 static const char *const steno_squid_practice_columns[] = {
-    "TK", "PW", "HR", "-FR", "-PB", "-LG", "-TS", "-DZ",
+    "TK", "PW", "HR", "-FR", "-PB", "-LG", "-TS", "-DZ", "AO", "EU",
 };
 
 static inline unsigned steno_squid_practice_prompt_count(enum steno_squid_practice_drill drill) {

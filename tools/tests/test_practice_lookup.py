@@ -50,7 +50,8 @@ static bool base_available=true;
 struct Engine { StenoDictionary &GetDictionary() { return active; } };
 namespace StenoEngine { static struct { Engine value; } container; }
 static struct { steno_squid_practice_drill drill=STENO_SQUID_PRACTICE_WORDS; StenoStroke multi_strokes[2]; unsigned build_stage=0; } practice;
-static unsigned practice_prompt() { return 0; }
+static unsigned prompt_id;
+static unsigned practice_prompt() { return prompt_id; }
 static const StenoDictionary *practice_fallback_dictionary() { return base_available?&base:nullptr; }
 '''
 cases = r'''
@@ -93,6 +94,12 @@ int main() {
   stroke.Set("TK");assert(practice_correct(stroke));
   stroke.Set("TKP");assert(!practice_correct(stroke));
   assert(active.calls==calls);
+  prompt_id=8;stroke.Set("AO");assert(practice_correct(stroke));
+  stroke.Set("A");assert(!practice_correct(stroke));
+  prompt_id=9;stroke.Set("EU");assert(practice_correct(stroke));
+  stroke.Set("E");assert(!practice_correct(stroke));
+  assert(active.calls==calls);
+  prompt_id=0;
   practice.drill=STENO_SQUID_PRACTICE_LEFT;
   const unsigned lookups=active.calls;
   stroke.Set("S");assert(practice_correct(stroke));

@@ -14,7 +14,7 @@ static lv_obj_t *drill_choices[PRACTICE_MENU_ROWS];
 static lv_obj_t *navigation_label;
 static lv_obj_t *start_label;
 static unsigned menu_first;
-static const char *const choices[] = {"WORDS 10", "LEFT 50", "RIGHT 50", "COLUMNS", "Build-Up", "Multi-", "SPEED", "TROUBLE"};
+static const char *const choices[] = {"WORDS 10", "LEFT 30", "RIGHT 30", "COLUMNS", "Build-Up", "Multi-", "SPEED", "TROUBLE"};
 BUILD_ASSERT(sizeof(choices) / sizeof(choices[0]) == STENO_SQUID_PRACTICE_DRILL_COUNT);
 static lv_obj_t *drill_label;
 static lv_obj_t *drill_separator;
@@ -67,10 +67,10 @@ static void fit_outline(lv_obj_t *label, const char *text) {
     }
 }
 
-static void fit_dual_outline(lv_obj_t *label, const char *text) {
-    static const lv_font_t *const fonts[] = {&lv_font_montserrat_16, &lv_font_montserrat_14};
+static void fit_multi_text(lv_obj_t *label, const char *text, bool stroke) {
+    static const lv_font_t *const fonts[] = {&lv_font_montserrat_20, &lv_font_montserrat_16, &lv_font_montserrat_14};
     fit_text(label, text, false);
-    for (unsigned i=0; i<sizeof(fonts)/sizeof(fonts[0]); i++) {
+    for (unsigned i=stroke ? 0 : 1; i<sizeof(fonts)/sizeof(fonts[0]); i++) {
         if (lv_text_get_width(text, strlen(text), fonts[i], 0) <= 66) {
             lv_obj_set_style_text_font(label, fonts[i], 0);
             break;
@@ -226,9 +226,9 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
     drill_separator = menu_separator(run_page, 16);
     prompt_label = steno_squid_display_label(run_page, 19, &lv_font_montserrat_28);
     outline_label = steno_squid_display_label(run_page, 58, &lv_font_montserrat_12);
-    outline_second = steno_squid_display_label(run_page, 65, &lv_font_montserrat_12);
+    outline_second = steno_squid_display_label(run_page, 62, &lv_font_montserrat_12);
     lv_obj_add_flag(outline_second, LV_OBJ_FLAG_HIDDEN);
-    feedback_label = steno_squid_display_label(run_page, 86, &lv_font_unscii_8);
+    feedback_label = steno_squid_display_label(run_page, 88, &lv_font_unscii_8);
     lv_obj_set_x(feedback_label, 1);
     lv_obj_set_width(feedback_label, 66);
     lv_obj_set_style_pad_ver(feedback_label, 2, 0);
@@ -313,12 +313,12 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     const char *slash = drill == STENO_SQUID_PRACTICE_MULTI ? strchr(outline, '/') : NULL;
     if (!done && !no_dictionary && slash) {
         char first[32], second[32];
-        snprintf(first,sizeof(first),"1: %.*s",(int)(slash-outline),outline);
-        snprintf(second,sizeof(second),"2: %s",slash+1);
-        fit_outline(prompt_label,prompt); // Cap the word at 20 px to fit both hints.
-        lv_obj_set_y(outline_label,46);
-        fit_dual_outline(outline_label,first);
-        fit_dual_outline(outline_second,second);
+        snprintf(first,sizeof(first),"%.*s",(int)(slash-outline),outline);
+        snprintf(second,sizeof(second),"%s",slash+1);
+        fit_multi_text(prompt_label,prompt,false); // Reserve two 20 px stroke rows.
+        lv_obj_set_y(outline_label,38);
+        fit_multi_text(outline_label,first,true);
+        fit_multi_text(outline_second,second,true);
         lv_obj_remove_flag(outline_second,LV_OBJ_FLAG_HIDDEN);
         if (feedback != STENO_SQUID_PRACTICE_CORRECT) {
             lv_obj_set_style_text_decor((practice & STENO_SQUID_PRACTICE_PARTIAL) ? outline_second : outline_label,
@@ -330,7 +330,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     lv_obj_set_y(progress_label, done ? 91 : 115);
     lv_obj_set_style_text_font(progress_label,
                                done ? &lv_font_montserrat_16 : &lv_font_montserrat_8, 0);
-    lv_obj_set_y(prompt_label, done ? 15 : 19);
+    lv_obj_set_y(prompt_label, done ? 15 : (slash && !no_dictionary ? 18 : 19));
     if (done) {
         lv_obj_add_flag(drill_separator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(outline_label, LV_OBJ_FLAG_HIDDEN);

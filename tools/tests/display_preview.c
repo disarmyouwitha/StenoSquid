@@ -255,17 +255,17 @@ int main(void) {
         }
         steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
         assert(lv_timer_get_paused(results_timer));
-        const uint64_t hands=342 | (uint64_t)15<<30 | (uint64_t)110<<39;
+        const uint64_t hands=342 | (uint64_t)15<<30 | (uint64_t)70<<39;
         steno_squid_practice_widget_set_progress(hands);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
             (STENO_SQUID_PRACTICE_LEFT<<STENO_SQUID_PRACTICE_DRILL_SHIFT)|
             (STENO_SQUID_PRACTICE_DONE<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT)|
-            (50<<STENO_SQUID_PRACTICE_ROUND_SHIFT)|(50<<STENO_SQUID_PRACTICE_BEST_SHIFT),85,false);
-        assert(!strcmp(lv_label_get_text(prompt_label),"50/50"));
-        assert(!strcmp(lv_label_get_text(best_label),"+110 XP"));
+            (30<<STENO_SQUID_PRACTICE_ROUND_SHIFT)|(30<<STENO_SQUID_PRACTICE_BEST_SHIFT),85,false);
+        assert(!strcmp(lv_label_get_text(prompt_label),"30/30"));
+        assert(!strcmp(lv_label_get_text(best_label),"+70 XP"));
         save("adaptive-hands-xp");
         result_tick(results_timer);
-        assert(!strcmp(lv_label_get_text(best_label),"Best 50"));
+        assert(!strcmp(lv_label_get_text(best_label),"Best 30"));
         save("adaptive-hands-streak");
         /* A finished celebration must not pick the idle keyboard's sleep pose
          * or USB sparkles while its score/menu text is still on screen. */
@@ -316,7 +316,7 @@ int main(void) {
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_PARTIAL,85,false);
             assert(!strcmp(lv_label_get_text(feedback_label),"STROKE 2"));
             assert(lv_obj_get_style_text_decor(outline_second,0)==LV_TEXT_DECOR_UNDERLINE);
-            assert(lv_label_get_text(outline_label)[0]=='1' && lv_label_get_text(outline_second)[0]=='2');
+            assert(strchr(lv_label_get_text(outline_label),':')==NULL && strchr(lv_label_get_text(outline_second),':')==NULL);
             if(i==0)save("multi-stroke-two");
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_SECOND_ERROR|
                 (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);

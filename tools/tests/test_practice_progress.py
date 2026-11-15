@@ -113,7 +113,7 @@ int main(void) {
     const int previous=queued;practice_activity(&idle);assert(queued>previous);
     // Restored word stats and XP survive adding hand rewards to the same record.
     steno_squid_hands_begin();
-    for(unsigned i=0;i<50;i++) steno_squid_hands_answer(i,true,1000);
+    for(unsigned i=0;i<30;i++) steno_squid_hands_answer(i,true,1000);
     steno_squid_practice_finish();
     const uint32_t hand_xp=model.record.xp;
     save_progress(&save_progress_work);

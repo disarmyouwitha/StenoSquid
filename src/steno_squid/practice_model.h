@@ -229,7 +229,7 @@ static inline void steno_squid_model_build_begin(struct steno_squid_practice_mod
 }
 
 /* One XP for a correct key. Every fifth consecutive correct key adds a bonus
- * of 1, 2, 3, 4, then 5 XP (capped there). A clean 50-key run totals 110 XP
+ * of 1, 2, 3, 4, then 5 XP (capped there). A clean 30-key run totals 70 XP
  * including completion, fitting the same bounded result packet as WORDS. */
 static inline bool steno_squid_model_hands_answer(struct steno_squid_practice_model *model,
                                                  unsigned round, bool correct, uint32_t elapsed_ms) {
