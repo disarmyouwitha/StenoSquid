@@ -82,14 +82,14 @@ https://zmk.studio/
 3. Use **Active Dictionaries** to change selections and **Dictionary Management → View** to add, replace, remove, or export personal entries.
 4. Use **Host Layout** to select **Mac U.S.** or **Windows U.S. (plain text)**. The keyboard remembers the choice.
 
-**Windows U.S. (plain text)** is the default for a standard U.S. input layout. It uses ordinary U.S. keystrokes and converts accented Latin letters to plain equivalents, such as **ç → c**. On a Mac, select **Mac U.S.** with the U.S. or ABC input source to type accents.
+**Windows U.S. (plain text)** is the default for a standard U.S. input layout. It uses ordinary U.S. keystrokes and converts accented Latin letters to plain equivalents, such as **ç → c**. (On a Mac, select **Mac U.S.** with the U.S. or ABC input source to type accents.)
 
 https://lim.au/#/software/javelin-steno-tools
 
 ## Build and install
 
 ⭐️ GitHub Actions builds these UF2 artifacts from the pinned dependencies. Install a left half with the right half that goes with it.\
-[Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
+**[Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)**
 
 **Boardsource Wireless Corne SMT with the Steno Squid flash board**
 
@@ -99,9 +99,6 @@ https://lim.au/#/software/javelin-steno-tools
 | **Boardsource-Right-Default** | Right half with the portrait display, squid, stroke tape and Practice UI. |
 | **Boardsource-Left-No-Display** | Left half for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **Boardsource-Right-No-Display**. |
 | **Boardsource-Right-No-Display** | Right half without the display. |
-| **Boardsource-Probe**, **Boardsource-Quad-Probe** | Read the flash chip on first power-up and write nothing. Run them before the left firmware. |
-
-The [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers them in order.
 
 **nice!nano v2 (the handwired prototype)** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, or `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`.
 
@@ -122,7 +119,6 @@ The [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) co
 With the current **Left-Default** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
-python3 -m pip install hidapi
 python3 upload.py --import user.json
 ```
 
