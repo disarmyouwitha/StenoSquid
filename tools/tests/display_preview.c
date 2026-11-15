@@ -44,6 +44,82 @@ static void check_tentacles_connected(void) {
     for (unsigned i = 34*48; i < 48*48; i++) assert(!idle_pixels[i] || seen[i]);
 }
 
+/* Representative production states for documentation renders. */
+static void save_gallery_states(void) {
+    static const struct {
+        unsigned mode;
+        const char *name;
+    } modes[] = {
+        {STENO_SQUID_MODE_TYPING, "gallery-qwerty"},
+        {STENO_SQUID_MODE_SYMBOLS, "gallery-numpad"},
+        {STENO_SQUID_MODE_JAVELIN, "gallery-javelin"},
+        {STENO_SQUID_MODE_PLOVER, "gallery-plover"},
+        {STENO_SQUID_MODE_LOADING, "gallery-loading"},
+        {STENO_SQUID_MODE_NO_DICTIONARY, "gallery-no-dict"},
+    };
+    steno_squid_pet_set_powered(false);
+    for (unsigned i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
+        steno_squid_screen_update(modes[i].mode, NULL, 0, 85, false);
+        steno_squid_pet_set_state(PET_IDLE);
+        save(modes[i].name);
+    }
+
+    steno_squid_screen_update(STENO_SQUID_MODE_TYPING, NULL, 0, 85, false);
+    steno_squid_pet_set_state(PET_IDLE);
+    steno_squid_pet_set_state(PET_TYPING);
+    advance_frame(frame_timer);
+    save("gallery-pop-typing");
+    steno_squid_pet_set_state(PET_SLEEP);
+    save("gallery-pop-sleep");
+    steno_squid_pet_set_powered(true);
+    advance_frame(frame_timer);
+    advance_frame(frame_timer);
+    save("gallery-pop-usb");
+    steno_squid_pet_set_powered(false);
+    steno_squid_pet_set_state(PET_GREETING);
+    advance_frame(frame_timer);
+    advance_frame(frame_timer);
+    save("gallery-pop-hi");
+    steno_squid_screen_update(STENO_SQUID_MODE_SYMBOLS, NULL, 0, 85, false);
+    advance_frame(frame_timer);
+    save("gallery-pop-layer");
+
+    static const struct {
+        unsigned drill;
+        const char *name;
+        const char *prompt;
+        const char *outline;
+    } practice[] = {
+        {STENO_SQUID_PRACTICE_WORDS, "gallery-words", "CAT", "KAT"},
+        {STENO_SQUID_PRACTICE_LEFT, "gallery-left", "K", "Tap key"},
+        {STENO_SQUID_PRACTICE_RIGHT, "gallery-right", "-G", "Tap key"},
+        {STENO_SQUID_PRACTICE_COLUMNS, "gallery-vowels", "AO", "Chord keys"},
+    };
+    for (unsigned i = 0; i < sizeof(practice) / sizeof(practice[0]); ++i) {
+        const uint32_t status = STENO_SQUID_PRACTICE_ACTIVE |
+            (practice[i].drill << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
+            (4u << STENO_SQUID_PRACTICE_ROUND_SHIFT) |
+            (3u << STENO_SQUID_PRACTICE_STREAK_SHIFT);
+        struct steno_squid_practice_view view = {.state = status};
+        snprintf(view.prompt, sizeof(view.prompt), "%s", practice[i].prompt);
+        snprintf(view.outline, sizeof(view.outline), "%s", practice[i].outline);
+        steno_squid_practice_widget_set_view(&view);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL, status, 85, false);
+        save(practice[i].name);
+        if (practice[i].drill == STENO_SQUID_PRACTICE_WORDS) {
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL,
+                status | (STENO_SQUID_PRACTICE_CORRECT << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT), 85, false);
+            save("gallery-words-correct");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL,
+                status | (STENO_SQUID_PRACTICE_INCORRECT << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT), 85, false);
+            save("gallery-words-retry");
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN, NULL,
+                status | STENO_SQUID_PRACTICE_NO_DICTIONARY, 85, false);
+            save("gallery-words-no-dict");
+        }
+    }
+}
+
 int main(void) {
     check_tentacles_connected();
     // Closing the eyes must also fill the old upper eye-mask patches.
@@ -372,6 +448,7 @@ int main(void) {
         save("speed-timeout");
         result_tick(results_timer);assert(!strcmp(lv_label_get_text(best_label),"+30 XP"));
     }
+    save_gallery_states();
     for (unsigned pass=0; pass<30; pass++) {
         for (unsigned mode=0; mode<STENO_SQUID_MODE_COUNT; mode++) {
             steno_squid_screen_update(mode,NULL,0,pass+65,false);
