@@ -1,4 +1,4 @@
-/* Extras for the diagnostic left build (NiceNano-Left-Logging): the flash partition
+/* Extras for the diagnostic left build (NiceNano-Left-Diagnostic): the flash partition
  * for the battery logger. Use it with logging.conf; see
  * tools/steno-squid-battery/README.md.
  *

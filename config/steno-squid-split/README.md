@@ -217,7 +217,7 @@ The existing website supplies these controls. Firmware support handles listing, 
 
 Plover source: [official main.json at the pinned revision](https://github.com/openstenoproject/plover/blob/8a52c5296c502507f9a46820a4a947ca25f998e6/plover/assets/main.json). Source SHA256: `6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92`. Compiled padded image SHA256: `6d74757af03ad1769f6f2d587afcc8957a5486b3e31ed3e20f00410c2624e2c4`.
 
-After flashing **NiceNano-Left-Logging**, let the keyboard reboot and run:
+After flashing **NiceNano-Left-Diagnostic**, let the keyboard reboot and run:
 
 ```sh
 python3 upload.py --install

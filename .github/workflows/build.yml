@@ -83,7 +83,7 @@ jobs:
       matrix:
         include:
           # Steno Squid left with a Corne Ultralight right, on nice!nano v2.
-          - name: NiceNano-Left-Logging
+          - name: NiceNano-Left-Diagnostic
             shield: corne_left
             snippet: zmk-usb-logging
             dictionaries: true
@@ -103,7 +103,7 @@ jobs:
             shield: corne_right nice_view_adapter nice_view
             nice_view: true
           # Boardsource Wireless Corne SMT with the Steno Squid flash board.
-          - name: Boardsource-Left-Logging
+          - name: Boardsource-Left-Diagnostic
             boardsource: left
             snippet: zmk-usb-logging
             dictionaries: true

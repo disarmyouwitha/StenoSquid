@@ -99,16 +99,16 @@ https://lim.au/#/software/javelin-steno-tools
 | **Boardsource-Right-Default** | Right half with the portrait display, squid, stroke tape and Practice UI. |
 | **Boardsource-Left-No-Display** | Left half for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **Boardsource-Right-No-Display**. |
 | **Boardsource-Right-No-Display** | Right half without the display. |
-| **Boardsource-Left-Logging** | Diagnostic left half: the serial port for installing dictionaries, the boot log, the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
+| **Boardsource-Left-Diagnostic** | Diagnostic left half: the serial port for installing dictionaries, the boot log, the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
 | **Boardsource-Probe**, **Boardsource-Quad-Probe** | Read the flash chip on first power-up and write nothing. Run them before the left firmware. |
 
 The [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers them in order.
 
-**nice!nano v2 (the handwired prototype)** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`, and `NiceNano-Left-Logging`.
+**nice!nano v2 (the handwired prototype)** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`, and `NiceNano-Left-Diagnostic`.
 
 ### Provision a new keyboard
 
-1. Flash the matching **Left-Logging** UF2 for your board (**Boardsource-Left-Logging** or **NiceNano-Left-Logging**). Let the left half reboot and keep it connected by USB.
+1. Flash the matching **Left-Diagnostic** UF2 for your board (**Boardsource-Left-Diagnostic** or **NiceNano-Left-Diagnostic**). Let the left half reboot and keep it connected by USB.
 2. From the repository, run:
 
    ```sh
