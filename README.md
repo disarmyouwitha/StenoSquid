@@ -53,7 +53,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
 ## Default Keymap 
-(Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid/edit/main/README.md#zmk-studio-edit-keymap))
+Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid/edit/main/README.md#zmk-studio-edit-keymap)
 
 ### Qwerty
 
