@@ -124,6 +124,14 @@ int main(void) {
     assert(steno_squid_model_timeout(&model));
     assert(model.record.xp==speed_xp+10 && model.run.earned==10);
     assert(!steno_squid_model_finish(&model) && !steno_squid_model_timeout(&model));
+    steno_squid_model_build_begin(&model,random_word);
+    bool build_seen[STENO_SQUID_BUILD_COUNT]={false};
+    for(unsigned i=0;i<10;i++) {
+        assert(model.run.deck[i]<STENO_SQUID_BUILD_COUNT && !build_seen[model.run.deck[i]]);
+        build_seen[model.run.deck[i]]=true;
+        assert(steno_squid_model_hands_answer(&model,i,true,3000));
+    }
+    assert(steno_squid_model_finish(&model) && model.run.earned==120);
     /* Trouble never invents history or resets the persisted record. */
     steno_squid_model_init(&model);
     assert(!steno_squid_model_trouble_begin(&model,random_word));

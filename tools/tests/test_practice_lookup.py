@@ -25,6 +25,7 @@ prefix = r'''
 #include "split_status.h"
 #include "practice_words.h"
 #include "practice_multi.h"
+#include "practice_build.h"
 #include "practice_view.h"
 struct StenoStroke {
   std::string outline;
@@ -48,7 +49,7 @@ static StenoDictionary active, base;
 static bool base_available=true;
 struct Engine { StenoDictionary &GetDictionary() { return active; } };
 namespace StenoEngine { static struct { Engine value; } container; }
-static struct { steno_squid_practice_drill drill=STENO_SQUID_PRACTICE_WORDS; StenoStroke multi_strokes[2]; } practice;
+static struct { steno_squid_practice_drill drill=STENO_SQUID_PRACTICE_WORDS; StenoStroke multi_strokes[2]; unsigned build_stage=0; } practice;
 static unsigned practice_prompt() { return 0; }
 static const StenoDictionary *practice_fallback_dictionary() { return base_available?&base:nullptr; }
 '''
@@ -70,6 +71,14 @@ int main() {
   practice.drill=STENO_SQUID_PRACTICE_TROUBLE;
   base_available=true;base.text="cat";
   assert(practice_correct(stroke)); // Trouble uses word translation/fallback too.
+  practice.drill=STENO_SQUID_PRACTICE_BUILD;
+  stroke.Set("KA");assert(!practice_correct(stroke));
+  stroke.Set("K");assert(practice_correct(stroke));
+  practice.build_stage=1;
+  stroke.Set("K");assert(!practice_correct(stroke));
+  stroke.Set("KA");assert(practice_correct(stroke));
+  practice.build_stage=2;
+  stroke.Set("KAT");assert(practice_correct(stroke));
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
   stroke.Set("K");assert(!practice_first_stroke_correct(stroke));
   stroke.Set("HE");assert(practice_first_stroke_correct(stroke));

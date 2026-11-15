@@ -15,6 +15,8 @@
 #define STENO_SQUID_PRACTICE_ACTIVE (1u << 31)
 #define STENO_SQUID_PRACTICE_TIMEOUT (1u << 30)
 #define STENO_SQUID_PRACTICE_PARTIAL 1u
+#define STENO_SQUID_PRACTICE_BUILD_SHIFT 1
+#define STENO_SQUID_PRACTICE_BUILD_MASK (3u << STENO_SQUID_PRACTICE_BUILD_SHIFT)
 #define STENO_SQUID_PRACTICE_FEEDBACK_SHIFT 4
 #define STENO_SQUID_PRACTICE_ROUND_SHIFT 6
 #define STENO_SQUID_PRACTICE_STREAK_SHIFT 12
@@ -34,6 +36,7 @@ enum steno_squid_practice_drill {
     STENO_SQUID_PRACTICE_RIGHT,
     STENO_SQUID_PRACTICE_COLUMNS,
     STENO_SQUID_PRACTICE_SPEED,
+    STENO_SQUID_PRACTICE_BUILD,
     STENO_SQUID_PRACTICE_MULTI,
     STENO_SQUID_PRACTICE_TROUBLE,
     STENO_SQUID_PRACTICE_DRILL_COUNT,
@@ -95,7 +98,7 @@ static inline const char *steno_squid_practice_outline(enum steno_squid_practice
 }
 
 static inline unsigned steno_squid_practice_rounds(enum steno_squid_practice_drill drill) {
-    return steno_squid_practice_word_drill(drill) || drill == STENO_SQUID_PRACTICE_MULTI
+    return steno_squid_practice_word_drill(drill) || (drill == STENO_SQUID_PRACTICE_MULTI || drill == STENO_SQUID_PRACTICE_BUILD)
                ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_PRACTICE_ROUNDS;
 }
 

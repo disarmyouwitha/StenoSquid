@@ -6,6 +6,7 @@
 #include <string.h>
 #include "practice_words.h"
 #include "practice_multi.h"
+#include "practice_build.h"
 
 #define STENO_SQUID_PROGRESS_MAGIC 0x31505453u /* STP1 */
 #define STENO_SQUID_XP_MAX 0xfffffu
@@ -204,18 +205,27 @@ static inline void steno_squid_model_hands_begin(struct steno_squid_practice_mod
     model->run.limit = STENO_SQUID_HAND_ROUNDS;
 }
 
-static inline void steno_squid_model_multi_begin(struct steno_squid_practice_model *model,
-                                                uint32_t (*random_word)(void)) {
+static inline void steno_squid_model_sequence_begin(struct steno_squid_practice_model *model,
+                                                   unsigned count, uint32_t (*random_word)(void)) {
     steno_squid_model_hands_begin(model);
     model->run.multi = true;
     model->run.limit = STENO_SQUID_WORD_ROUNDS;
     bool used[STENO_SQUID_MULTI_COUNT] = {false};
     for (unsigned i=0;i<STENO_SQUID_WORD_ROUNDS;i++) {
-        unsigned choice = ((uint64_t)random_word() * (STENO_SQUID_MULTI_COUNT-i)) >> 32;
-        for (unsigned j=0;j<STENO_SQUID_MULTI_COUNT;j++) {
+        unsigned choice = ((uint64_t)random_word() * (count-i)) >> 32;
+        for (unsigned j=0;j<count;j++) {
             if (!used[j] && choice-- == 0) { used[j]=true;model->run.deck[i]=j;break; }
         }
     }
+}
+
+static inline void steno_squid_model_multi_begin(struct steno_squid_practice_model *model,
+                                                uint32_t (*random_word)(void)) {
+    steno_squid_model_sequence_begin(model, STENO_SQUID_MULTI_COUNT, random_word);
+}
+static inline void steno_squid_model_build_begin(struct steno_squid_practice_model *model,
+                                                uint32_t (*random_word)(void)) {
+    steno_squid_model_sequence_begin(model, STENO_SQUID_BUILD_COUNT, random_word);
 }
 
 /* One XP for a correct key. Every fifth consecutive correct key adds a bonus

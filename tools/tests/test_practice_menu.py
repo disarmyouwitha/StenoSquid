@@ -64,6 +64,7 @@ uint64_t steno_squid_practice_progress() { return 0; }
 unsigned steno_squid_practice_review_word() { return progress_model.run.review; }
 void steno_squid_words_begin() { steno_squid_model_begin(&progress_model, sys_rand32_get); }
 bool steno_squid_trouble_begin() { return steno_squid_model_trouble_begin(&progress_model,sys_rand32_get); }
+void steno_squid_build_begin() { steno_squid_model_build_begin(&progress_model,sys_rand32_get); }
 void steno_squid_multi_begin() { steno_squid_model_multi_begin(&progress_model,sys_rand32_get); }
 void steno_squid_speed_timeout() { steno_squid_model_timeout(&progress_model); }
 void steno_squid_hands_begin() { steno_squid_model_hands_begin(&progress_model); }
@@ -148,6 +149,27 @@ int main() {
     tap(key);  // Keep celebration until an explicit return to menu.
     assert(practice.menu && practice.round == 0);
   }
+  // Build-Up credits only complete ladders; mistakes retain the current step.
+  practice.drill=STENO_SQUID_PRACTICE_BUILD;practice_switch_drill(0);tap(StenoKey::A);
+  const unsigned build_xp=progress_model.record.xp;
+  struct steno_squid_practice_view build_view;
+  steno_squid_practice_view_snapshot(&build_view);
+  assert(!strcmp(build_view.prompt,"K"));
+  answer_correct=false;tap(StenoKey::KL);
+  assert(practice.build_stage==0 && practice.round==0 && progress_model.record.xp==build_xp);
+  answer_correct=true;tap(StenoKey::KL);
+  assert(practice.feedback==STENO_SQUID_PRACTICE_CORRECT && progress_model.run.position==0);
+  now+=250;practice_advance(nullptr);
+  assert(practice.build_stage==1 && practice.round==0);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"KA"));
+  answer_correct=false;tap(StenoKey::KL);assert(practice.build_stage==1);
+  answer_correct=true;tap(StenoKey::KL);now+=250;practice_advance(nullptr);
+  assert(practice.build_stage==2 && progress_model.record.xp==build_xp);
+  tap(StenoKey::KL);
+  assert(progress_model.record.xp==build_xp+2 && progress_model.run.position==1);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"CAT"));
+  now+=250;practice_advance(nullptr);assert(practice.round==0);
+  now+=350;practice_advance(nullptr);assert(practice.round==1 && practice.build_stage==0);
   // Multi rejects a wrong first stroke immediately, then keeps a good prefix.
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
   practice_switch_drill(0);tap(StenoKey::A);
@@ -160,7 +182,7 @@ int main() {
   assert(practice_screen&STENO_SQUID_PRACTICE_PARTIAL);
   struct steno_squid_practice_view partial;
   steno_squid_practice_view_snapshot(&partial);
-  assert(!strncmp(partial.outline,"2: ",3));
+  assert(!strcmp(partial.outline,steno_squid_multi[practice_prompt()].outline));
   answer_correct=false;tap(StenoKey::PL);
   assert(practice.multi_count==1 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
   assert(practice_screen&STENO_SQUID_PRACTICE_PARTIAL);
@@ -169,7 +191,7 @@ int main() {
   now+=250;practice_advance(nullptr);
   assert(practice.round==1 && practice.multi_count==0);
   tap(StenoKey::KL); // Switching clears the partial outline.
-  tap(StenoKey::STAR1);tap(StenoKey::STAR1);
+  tap(StenoKey::STAR1);tap(StenoKey::STAR1);tap(StenoKey::STAR1);
   assert(practice.drill==STENO_SQUID_PRACTICE_COLUMNS && practice.multi_count==0 && practice.menu);
   // Columns still uses full released chords, including extra-key errors.
   tap(StenoKey::A);assert(!practice.menu);

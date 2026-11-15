@@ -25,3 +25,10 @@ for word,outline in multi:
     assert outline.count('/')==1 and entries[outline].upper()==word,(word,outline)
     assert len(word)<16 and len(outline)<24
 print('Multi drill: 20 common two-stroke outlines verified against Lapwing')
+
+build_header=(ROOT / 'src/steno_squid/practice_build.h').read_text()
+ladders=re.findall(r'\{"([A-Z]+)",\s*\{"([A-Z-]+)",\s*"([A-Z-]+)",\s*"([A-Z-]+)"\}\}',build_header)
+assert len(ladders)==10
+for word,*strokes in ladders:
+    assert entries[strokes[-1]].upper()==word,(word,strokes)
+print('Build-Up: 10 three-step ladders end in verified Lapwing words')

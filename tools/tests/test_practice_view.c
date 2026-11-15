@@ -1,5 +1,7 @@
+#include "../../src/steno_squid/practice_build.h"
 #include "../../src/steno_squid/practice_view.h"
 #include "../../src/steno_squid/practice_words.h"
+#include "../../src/steno_squid/stroke_feed.h"
 #include <assert.h>
 #include <stdio.h>
 static int deliver(struct steno_squid_practice_receiver *rx,
@@ -90,6 +92,24 @@ int main(void) {
     assert(!strcmp(out.prompt, steno_squid_words[id].word));
     assert(!strcmp(out.review, steno_squid_words[id].word));
   }
+  for (unsigned id = 0; id < STENO_SQUID_BUILD_COUNT; id++) {
+    uint32_t previous = 0;
+    for (unsigned stage = 0; stage < STENO_SQUID_BUILD_STEPS; stage++) {
+      uint32_t mask;
+      assert(steno_squid_stroke_from_text(steno_squid_build[id].strokes[stage],
+                                          &mask));
+      assert(mask != previous && (mask & previous) == previous);
+      previous = mask;
+      in.state =
+          STENO_SQUID_PRACTICE_ACTIVE |
+          (STENO_SQUID_PRACTICE_BUILD << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
+          (stage << STENO_SQUID_PRACTICE_BUILD_SHIFT);
+      n = steno_squid_practice_encode(&in, bytes);
+      memset(&rx, 0, sizeof(rx));
+      for (unsigned i = 0; i < (n + 4) / 5; i++)
+        assert(deliver(&rx, bytes, n, 1, i, &out) == (i + 1 == (n + 4) / 5));
+    }
+  }
   // Speed can finish short of its goal only with an explicit timeout; partial
   // outlines are accepted only in an active Multi- prompt.
   for (unsigned scenario = 0; scenario < 5; scenario++) {
@@ -112,7 +132,8 @@ int main(void) {
       if (scenario == 3)
         in.state |= STENO_SQUID_PRACTICE_MENU;
       if (scenario == 4)
-        in.state |= STENO_SQUID_PRACTICE_INCORRECT << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT;
+        in.state |= STENO_SQUID_PRACTICE_INCORRECT
+                    << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT;
     }
     n = steno_squid_practice_encode(&in, bytes);
     memset(&rx, 0, sizeof(rx));
