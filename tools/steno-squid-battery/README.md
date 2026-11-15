@@ -1,6 +1,6 @@
 # Steno Squid battery logging trial
 
-The battery logger is part of the diagnostic left build, **left-logging**. To
+The battery logger is part of the diagnostic left build, **NiceNano-Left-Logging**. To
 build it yourself, use `-S zmk-usb-logging` and these CMake arguments:
 
 ```

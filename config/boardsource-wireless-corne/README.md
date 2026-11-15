@@ -55,10 +55,10 @@ build_left() {
     "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin" \
     "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin"
 }
-build_left boardsource-left -S studio-rpc-usb-uart
+build_left Boardsource-Left-Default -S studio-rpc-usb-uart
 build_left boardsource-provision -S zmk-usb-logging
 
-west build -s zmk/app -d "$repo/build/boardsource-right-default" -b blecorne_right -- \
+west build -s zmk/app -d "$repo/build/Boardsource-Right-Default" -b blecorne_right -- \
   -DSHIELD=nice_view "-DBOARD_ROOT=$vendor" "-DZephyr_DIR=$zephyr_cmake" \
   "-DZMK_CONFIG=$target" "-DZMK_EXTRA_MODULES=$repo" \
   "-DEXTRA_CONF_FILE=$split/corne.conf;$split/right-nice-view.conf"
@@ -72,16 +72,16 @@ build_probe() {
     "-DKCONFIG_ROOT=$probe/Kconfig.boardsource" \
     "-DEXTRA_CONF_FILE=$probe/boardsource.conf" "$@"
 }
-build_probe boardsource-probe
-build_probe boardsource-quad -DQUAD_PROBE=ON
+build_probe Boardsource-Probe
+build_probe Boardsource-Quad-Probe -DQUAD_PROBE=ON
 ```
 
 | Output under `build/` | Use |
 | --- | --- |
-| `boardsource-probe/zephyr/zephyr.uf2` | First left-side probe. JEDEC and single-line FASTREAD only. |
-| `boardsource-quad/zephyr/zephyr.uf2` | Follow-up left probe. Compares single-line and quad reads, using a volatile QE update when required. |
-| `boardsource-right-default/zephyr/zmk.uf2` | Right split peripheral with nice!view. |
-| `boardsource-left/zephyr/zmk.uf2` | Everyday left central, including browser HID over USB and Bluetooth. |
+| `Boardsource-Probe/zephyr/zephyr.uf2` | First left-side probe. JEDEC and single-line FASTREAD only. |
+| `Boardsource-Quad-Probe/zephyr/zephyr.uf2` | Follow-up left probe. Compares single-line and quad reads, using a volatile QE update when required. |
+| `Boardsource-Right-Default/zephyr/zmk.uf2` | Right split peripheral with nice!view. |
+| `Boardsource-Left-Default/zephyr/zmk.uf2` | Everyday left central, including browser HID over USB and Bluetooth. |
 | `boardsource-provision/zephyr/zmk.uf2` | Same left target with USB logging and the serial base-dictionary uploader interface. |
 
 The factory application partition is `0x1000–0xD3FFF`. The settings partition starts at `0xD4000` and the UF2 bootloader starts at `0xF4000`. The vendor board keeps USB HID on the central and uses ADC channel 2 for its battery divider. This port shares the split keymap and settings in [steno-squid-split](../steno-squid-split), so ZMK Studio is on and starts unlocked, and battery test logging is left out. The everyday left build adds Studio over USB with the `studio-rpc-usb-uart` snippet; every left build has Studio over Bluetooth.
@@ -106,15 +106,15 @@ The first adapter can leave the WS2812C-2020-V6 unpopulated. The left header use
 
 Use the Boardsource artifacts from one successful workflow run:
 
-1. `boardsource-probe` for the initial rail, JEDEC and single-line read checks.
-2. `boardsource-quad` for quad-read comparison after the initial checks pass.
-3. `boardsource-right-default` for the portrait display peripheral. Without a
-   nice!view, use `boardsource-right-no-display` and, for everyday use,
-   `boardsource-left-no-display`.
-4. `boardsource-left-logging` for dictionary provisioning. With matching images
+1. `Boardsource-Probe` for the initial rail, JEDEC and single-line read checks.
+2. `Boardsource-Quad-Probe` for quad-read comparison after the initial checks pass.
+3. `Boardsource-Right-Default` for the portrait display peripheral. Without a
+   nice!view, use `Boardsource-Right-No-Display` and, for everyday use,
+   `Boardsource-Left-No-Display`.
+4. `Boardsource-Left-Logging` for dictionary provisioning. With matching images
    prepared under `build/`, `upload.py PORT` installs missing configured images.
    Use `upload.py PORT --status` for a read-only status query.
-5. `boardsource-left-default` for everyday use.
+5. `Boardsource-Left-Default` for everyday use.
 
 These firmware builds still need physical verification on the Boardsource
 pair, starting with recovery, accessory rail voltage/polarity, and read-only

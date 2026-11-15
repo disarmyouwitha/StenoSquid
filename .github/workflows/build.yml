@@ -83,49 +83,49 @@ jobs:
       matrix:
         include:
           # Steno Squid left with a Corne Ultralight right, on nice!nano v2.
-          - name: left-logging
+          - name: NiceNano-Left-Logging
             shield: corne_left
             snippet: zmk-usb-logging
             dictionaries: true
             diagnostics: true
-          - name: left-default
+          - name: NiceNano-Left-Default
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
-          - name: left-no-display
+          - name: NiceNano-Left-No-Display
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
             extra: "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/left-no-display.conf"
-          - name: right-no-display
+          - name: NiceNano-Right-No-Display
             shield: corne_right
-          - name: right-default
+          - name: NiceNano-Right-Default
             shield: corne_right nice_view_adapter nice_view
             nice_view: true
           # Boardsource Wireless Corne SMT with the Steno Squid flash board.
-          - name: boardsource-left-logging
+          - name: Boardsource-Left-Logging
             boardsource: left
             snippet: zmk-usb-logging
             dictionaries: true
-          - name: boardsource-left-default
+          - name: Boardsource-Left-Default
             boardsource: left
             snippet: studio-rpc-usb-uart
             dictionaries: true
-          - name: boardsource-right-default
+          - name: Boardsource-Right-Default
             boardsource: right
-          - name: boardsource-left-no-display
+          - name: Boardsource-Left-No-Display
             boardsource: left
             snippet: studio-rpc-usb-uart
             dictionaries: true
             no_display: true
-          - name: boardsource-right-no-display
+          - name: Boardsource-Right-No-Display
             boardsource: right
             no_display: true
           # Left-side flash probes for first power-up. They read the flash
           # chip and write nothing. Run them before the left firmware.
-          - name: boardsource-probe
+          - name: Boardsource-Probe
             boardsource: probe
-          - name: boardsource-quad
+          - name: Boardsource-Quad-Probe
             boardsource: probe
             quad: true
     steps:

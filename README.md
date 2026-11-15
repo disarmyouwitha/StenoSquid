@@ -88,27 +88,28 @@ https://lim.au/#/software/javelin-steno-tools
 
 ## Build and install
 
-GitHub Actions builds these UF2 artifacts from the pinned dependencies:
+GitHub Actions builds these UF2 artifacts from the pinned dependencies. Install a left half with the right half that goes with it.
+
+**Boardsource Wireless Corne SMT with the Steno Squid flash board**
 
 | Artifact | Use |
 | --- | --- |
-| **left-default** | Everyday left-half firmware. Install it with **right-default**. |
-| **right-default** | Right-half firmware with the portrait display, squid, stroke tape and Practice UI. Install it with **left-default**. |
-| **left-no-display** | Left-half firmware for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **right-no-display**. |
-| **right-no-display** | Right-half firmware without the display. Install it with **left-no-display**. |
-| **left-logging** | The diagnostic left half. It has the serial port for installing dictionaries, the boot log and the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
+| **Boardsource-Left-Default** | Everyday left half. Install it with **Boardsource-Right-Default**. |
+| **Boardsource-Right-Default** | Right half with the portrait display, squid, stroke tape and Practice UI. |
+| **Boardsource-Left-No-Display** | Left half for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **Boardsource-Right-No-Display**. |
+| **Boardsource-Right-No-Display** | Right half without the display. |
+| **Boardsource-Left-Logging** | Diagnostic left half: the serial port for installing dictionaries, the boot log and the `--diag` tools. Not for everyday use. |
+| **Boardsource-Probe**, **Boardsource-Quad-Probe** | Read the flash chip on first power-up and write nothing. Run them before the left firmware. |
 
-The Boardsource Wireless Corne SMT builds follow the same pairing: **boardsource-left-default** with
-**boardsource-right-default**, **boardsource-left-no-display** with **boardsource-right-no-display** for a
-keyboard without a nice!view, and **boardsource-left-logging** for diagnostics. **boardsource-probe** and
-**boardsource-quad** read the flash chip on first power-up and write nothing. The
-[Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers all of them.
+The [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers them in order.
+
+**nice!nano v2 (the handwired prototype)** builds the same set with a **NiceNano-** prefix: **NiceNano-Left-Default** with **NiceNano-Right-Default**, **NiceNano-Left-No-Display** with **NiceNano-Right-No-Display**, and **NiceNano-Left-Logging**. The nice!nano diagnostic build also has the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash.
 
 Download artifacts from a successful run. Double-tap RESET on the intended controller and copy its UF2 to the **NICENANO** drive. Install matching left and right firmware when updating Practice or split-display features. [Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)
 
 ### Provision a new keyboard
 
-1. Flash the matching **left-logging** UF2. Let the left half reboot and keep it connected by USB.
+1. Flash the matching **Left-Logging** UF2 for your board (**Boardsource-Left-Logging** or **NiceNano-Left-Logging**). Let the left half reboot and keep it connected by USB.
 2. From the repository, run:
 
    ```sh
@@ -116,13 +117,13 @@ Download artifacts from a successful run. Double-tap RESET on the intended contr
    python3 upload.py --install
    ```
 
-3. When verification passes, flash **left-default** for everyday use and flash the matching right-half UF2.
+3. When verification passes, flash the **Left-Default** UF2 for your board (**Boardsource-** or **NiceNano-**) for everyday use and flash the matching right-half UF2.
 
 If USB detection is ambiguous, pass the port explicitly with `upload.py --install PORT`.
 
 ### Import a personal Plover dictionary
 
-With the current **left-default** firmware connected by USB, close the Javelin browser connection and run:
+With the current **Left-Default** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
 python3 -m pip install hidapi

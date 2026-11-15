@@ -268,7 +268,7 @@ def install(port):
     for name, path in DEFAULT_IMAGES.items():
         expected = present(port, name)
         if expected is None:
-            raise RuntimeError(f"Could not read {name} metadata. Flash the matching left-logging UF2 and reconnect USB.")
+            raise RuntimeError(f"Could not read {name} metadata. Flash the matching Left-Logging UF2 and reconnect USB.")
         state, _ = query(port, name)
         if state in ("MAPPED", "VERIFIED"):
             print(f"{name}: already installed")
@@ -288,7 +288,7 @@ def install(port):
     for name in DEFAULT_IMAGES:
         if not verify(port, name):
             raise RuntimeError(f"{name} verification failed. Use --repair --base {name.lower()}.")
-    print("Base dictionaries are ready. Flash the everyday left UF2 (left-default, or left-no-display without a nice!view).")
+    print("Base dictionaries are ready. Flash the everyday Left-Default UF2 (or Left-No-Display without a nice!view).")
 
 
 def find_port():
@@ -301,7 +301,7 @@ def find_port():
     if len(matches) == 1:
         return matches[0].device
     available = ", ".join(port.device for port in (matches or ports)) or "none"
-    raise RuntimeError(f"Connect one left half running left-logging, or supply its serial port. Available: {available}.")
+    raise RuntimeError(f"Connect one left half running a Left-Logging build, or supply its serial port. Available: {available}.")
 
 
 def status(port):
@@ -347,7 +347,7 @@ def diag(port, what):
         if line.startswith(end):
             return
     raise SystemExit("No diagnostics reply. This needs the logging build with "
-                     "CONFIG_ZMK_JAVELIN_DIAG, which the default left-logging build has")
+                     "CONFIG_ZMK_JAVELIN_DIAG, which the Left-Logging builds have")
 
 
 def main():
