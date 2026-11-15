@@ -99,6 +99,17 @@ int main(void) {
       assert(steno_squid_stroke_from_text(steno_squid_build[id].strokes[stage],
                                           &mask));
       assert(mask != previous && (mask & previous) == previous);
+      char shown[16];
+      uint32_t formatted_mask;
+      steno_squid_build_format(shown, sizeof(shown),
+                               steno_squid_build[id].strokes[stage]);
+      /* The extra dash is a visual hand boundary, not dictionary syntax.
+       * Removing it must reproduce the exact canonical scoring outline. */
+      char canonical[16]; unsigned ncanonical=0;
+      for(unsigned k=0;shown[k];k++)if(shown[k]!='-')canonical[ncanonical++]=shown[k];
+      canonical[ncanonical]=0;
+      assert(!strcmp(canonical,steno_squid_build[id].strokes[stage]));
+      assert(steno_squid_stroke_from_text(canonical, &formatted_mask) && formatted_mask == mask);
       previous = mask;
       in.state =
           STENO_SQUID_PRACTICE_ACTIVE |
@@ -132,8 +143,11 @@ int main(void) {
       if (scenario == 3)
         in.state |= STENO_SQUID_PRACTICE_MENU;
       if (scenario == 4)
-        in.state |= STENO_SQUID_PRACTICE_INCORRECT
-                    << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT;
+        in.state =
+            STENO_SQUID_PRACTICE_ACTIVE | STENO_SQUID_PRACTICE_SECOND_ERROR |
+            (STENO_SQUID_PRACTICE_MULTI << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
+            (STENO_SQUID_PRACTICE_INCORRECT
+             << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT);
     }
     n = steno_squid_practice_encode(&in, bytes);
     memset(&rx, 0, sizeof(rx));

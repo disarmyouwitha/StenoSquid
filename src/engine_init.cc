@@ -130,6 +130,7 @@ static struct {
   uint8_t multi_count;
   uint8_t build_stage;
   bool timed_out;
+  bool multi_second_error;
   StenoStroke multi_strokes[2];
   int64_t deadline;
   int64_t advance_at;
@@ -166,6 +167,7 @@ static void practice_publish() {
     snapshot = STENO_SQUID_PRACTICE_ACTIVE |
                (practice.menu ? STENO_SQUID_PRACTICE_MENU : 0) |
                (practice.timed_out ? STENO_SQUID_PRACTICE_TIMEOUT : 0) |
+               (practice.multi_second_error ? STENO_SQUID_PRACTICE_SECOND_ERROR : 0) |
                (practice.multi_count == 1 ? STENO_SQUID_PRACTICE_PARTIAL : 0) |
                (uint32_t(practice.build_stage) << STENO_SQUID_PRACTICE_BUILD_SHIFT) |
                (practice.no_dictionary ? STENO_SQUID_PRACTICE_NO_DICTIONARY : 0) |
@@ -230,9 +232,9 @@ void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) 
     } else if (practice.drill == STENO_SQUID_PRACTICE_BUILD) {
       const bool reveal = practice.build_stage == STENO_SQUID_BUILD_STEPS - 1 &&
                           practice.feedback == STENO_SQUID_PRACTICE_CORRECT;
-      snprintf(view->prompt, sizeof(view->prompt), "%s", reveal ? steno_squid_build[id].word :
-          steno_squid_build[id].strokes[practice.build_stage]);
-      if (reveal) snprintf(view->outline, sizeof(view->outline), "%s", steno_squid_build[id].strokes[practice.build_stage]);
+      if (reveal) snprintf(view->prompt, sizeof(view->prompt), "%s", steno_squid_build[id].word);
+      else steno_squid_build_format(view->prompt, sizeof(view->prompt), steno_squid_build[id].strokes[practice.build_stage]);
+      if (reveal) steno_squid_build_format(view->outline, sizeof(view->outline), steno_squid_build[id].strokes[practice.build_stage]);
       else snprintf(view->outline, sizeof(view->outline), "Step %u/%u", practice.build_stage + 1, STENO_SQUID_BUILD_STEPS);
     } else {
       const char *outline = words ? steno_squid_words[id].outline : steno_squid_practice_outline(practice.drill, id);
@@ -319,8 +321,8 @@ static void practice_switch_drill(int direction) {
   practice_publish();
 }
 
-/* The first chord follows the displayed learning outline. Keep the correct
- * prefix across a second-chord retry so the feedback identifies the mistake. */
+/* The first chord follows the displayed learning outline. Both failed strokes
+ * restart at the first chord; a separate flag identifies a second-chord error. */
 static bool practice_first_stroke_correct(const StenoStroke &stroke) {
   const char *outline = steno_squid_multi[practice_prompt()].outline;
   const char *slash = strchr(outline, '/');
@@ -465,6 +467,7 @@ static bool practice_process_key(int index, bool pressed) {
         const StenoStroke stroke = practice.chord.ToStroke();
         const bool first_error = practice.drill == STENO_SQUID_PRACTICE_MULTI &&
             practice.multi_count == 0 && !practice_first_stroke_correct(stroke);
+        practice.multi_second_error = false;
         if (practice.drill == STENO_SQUID_PRACTICE_MULTI && !first_error) {
           practice.multi_strokes[practice.multi_count++] = stroke;
         }
@@ -472,7 +475,8 @@ static bool practice_process_key(int index, bool pressed) {
           practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
         } else {
           const bool correct = !first_error && practice_correct(stroke);
-          practice.multi_count = practice.drill == STENO_SQUID_PRACTICE_MULTI && !correct && !first_error ? 1 : 0;
+          practice.multi_second_error = practice.drill == STENO_SQUID_PRACTICE_MULTI && !correct && !first_error;
+          practice.multi_count = 0;
           const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
           const uint32_t elapsed_ms = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
           if (steno_squid_practice_word_drill(practice.drill)) {

@@ -130,7 +130,7 @@ Check **Qwerty** after connection, **Numpad** while holding the middle left thum
 ## Offline practice
 
 Practice opens a **Practice** screen listing **WORDS (10)**, **LEFT (50)**,
-**RIGHT (50)**, **COLUMNS (50)**, **SPEED (10 in 30 seconds)**, **Build-Up (10)**, **Multi- (10)**, and **TROUBLE (10)** in a scrolling three-row menu. Tap a left star to select the previous drill or a right star for
+**RIGHT (50)**, **COLUMNS (50)**, **Build-Up (10)**, **Multi- (10)**, **SPEED (10 in 30 seconds)**, and **TROUBLE (10)** in a scrolling three-row menu. Tap a left star to select the previous drill or a right star for
 the next, then tap a vowel thumb (**A**, **O**, **E**, or **U**) to start. The start
 key is consumed before scoring begins.
 
@@ -143,12 +143,12 @@ Numpad and tap the outer right thumb, then release both. The outer right thumb
 also starts Practice directly from Javelin or Plover. During Practice it
 returns to ordinary Javelin. The former left-hand Practice key is unbound. Tap either left star by itself to go to the previous
 drill, or either right star to go to the next. The order wraps through
-**WORDS → LEFT → RIGHT → COLUMNS → SPEED → Build-Up → Multi- → TROUBLE**. You can switch before, during, or after a run.
+**WORDS → LEFT → RIGHT → COLUMNS → Build-Up → Multi- → SPEED → TROUBLE**. You can switch before, during, or after a run.
 Switching returns to the Practice menu with the new drill selected; start it with a vowel thumb. A new run resets the streak. WORDS samples 10 distinct prompts from 300 common words; LEFT and RIGHT have 50 each and avoid immediate repeats. Update both halves together for the Practice text protocol. LHS now sends the prompt and outline text; RHS does not store the word pool. Later word additions within the text limits only need LHS firmware. This expansion starts fresh stats/XP and retains other settings.
 
-Build-Up presents ten distinct three-step ladders. Release K, then KA, then KAT to reveal CAT; each target adds physical keys. Mistakes stay on the current step. Correct intermediate steps pause 250 ms, and the word reveal lasts 600 ms. Only complete ladders earn word-drill XP and count toward the streak. It works without dictionaries, keeps the saved record format unchanged, and does not add to the single-stroke word history.
+Build-Up presents ten distinct three-step ladders. Release K, then KA, then KA-T to reveal CAT; each target adds physical keys. A hyphen explicitly separates right-hand consonants in Build-Up prompts. Mistakes stay on the current step. Correct intermediate steps pause 250 ms, and the word reveal lasts 600 ms. Only complete ladders earn word-drill XP and count toward the streak. It works without dictionaries, keeps the saved record format unchanged, and does not add to the single-stroke word history.
 
-Multi- draws ten distinct words from 20 verified two-stroke Lapwing outlines. Both numbered strokes stay visible, with the current stroke underlined. The first stroke is checked immediately against hint one; a mistake shows **RETRY 1**. A correct first stroke advances to hint two. A wrong second stroke shows **RETRY 2**, retaining the first stroke for another attempt. Stars clear a partial outline and select another drill. Multi- earns word-drill XP without changing the 300 single-stroke word records.
+Multi- draws ten distinct words from 20 verified two-stroke Lapwing outlines. Both numbered strokes stay visible, with the current stroke underlined. The first stroke is checked immediately against hint one; a mistake shows **RETRY 1**. A correct first stroke advances to hint two. A wrong second stroke shows **RETRY 2** and resets to stroke one, with the first hint underlined. Stars clear a partial outline and select another drill. Multi- earns word-drill XP without changing the 300 single-stroke word records.
 
 COLUMNS tests simultaneous TK/PW/HR/FR/PB/LG/TS/DZ pairs, independently of dictionaries, using hand-drill XP. Prompts hide the handedness hyphens; scoring still checks the actual keys. SPEED gives ten adaptive single-stroke words in 30 seconds, advances immediately on correct answers, and updates word history. The clock starts on the start-thumb release. Expiry keeps earned XP, skips the completion bonus, and shows Time up; only a new vowel press dismisses it. Both halves must be updated for the new display flags. Existing progress and dictionary images stay valid.
 

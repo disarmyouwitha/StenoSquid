@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define STENO_SQUID_PRACTICE_VIEW_PROTOCOL 12u
+#define STENO_SQUID_PRACTICE_VIEW_PROTOCOL 13u
 #define STENO_SQUID_PRACTICE_TEXT_SIZE 16u
 #define STENO_SQUID_PRACTICE_OUTLINE_SIZE 24u
 #define STENO_SQUID_PRACTICE_FRAME_MAX 72u
@@ -136,12 +136,13 @@ steno_squid_practice_receive(struct steno_squid_practice_receiver *rx,
   const bool menu = next.state & STENO_SQUID_PRACTICE_MENU;
   const bool timeout = next.state & STENO_SQUID_PRACTICE_TIMEOUT;
   const bool partial = next.state & STENO_SQUID_PRACTICE_PARTIAL;
+  const bool second_error = next.state & STENO_SQUID_PRACTICE_SECOND_ERROR;
   const bool speed = drill == STENO_SQUID_PRACTICE_SPEED;
   const unsigned build_stage = (next.state & STENO_SQUID_PRACTICE_BUILD_MASK) >>
                                STENO_SQUID_PRACTICE_BUILD_SHIFT;
   if (!(next.state & STENO_SQUID_PRACTICE_ACTIVE) ||
-      drill >= STENO_SQUID_PRACTICE_DRILL_COUNT || (next.state & 0x00000008u) ||
-      round > total || build_stage > 2 ||
+      drill >= STENO_SQUID_PRACTICE_DRILL_COUNT || round > total ||
+      build_stage > 2 ||
       (build_stage && (drill != STENO_SQUID_PRACTICE_BUILD || menu ||
                        feedback == STENO_SQUID_PRACTICE_DONE)) ||
       (menu && (round || feedback != STENO_SQUID_PRACTICE_PROMPT)) ||
@@ -150,8 +151,10 @@ steno_squid_practice_receive(struct steno_squid_practice_receiver *rx,
       (!timeout &&
        ((round == total) != (feedback == STENO_SQUID_PRACTICE_DONE))) ||
       (partial && (menu || drill != STENO_SQUID_PRACTICE_MULTI ||
-                   (feedback != STENO_SQUID_PRACTICE_PROMPT &&
-                    feedback != STENO_SQUID_PRACTICE_INCORRECT))) ||
+                   feedback != STENO_SQUID_PRACTICE_PROMPT)) ||
+      (second_error &&
+       (menu || partial || drill != STENO_SQUID_PRACTICE_MULTI ||
+        feedback != STENO_SQUID_PRACTICE_INCORRECT)) ||
       steno_squid_practice_seconds(next.progress) > STENO_SQUID_SPEED_SECONDS ||
       (steno_squid_practice_seconds(next.progress) &&
        (!speed || menu || feedback == STENO_SQUID_PRACTICE_DONE)) ||

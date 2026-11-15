@@ -165,6 +165,7 @@ int main() {
   answer_correct=false;tap(StenoKey::KL);assert(practice.build_stage==1);
   answer_correct=true;tap(StenoKey::KL);now+=250;practice_advance(nullptr);
   assert(practice.build_stage==2 && progress_model.record.xp==build_xp);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"KA-T"));
   tap(StenoKey::KL);
   assert(progress_model.record.xp==build_xp+2 && progress_model.run.position==1);
   steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"CAT"));
@@ -184,14 +185,15 @@ int main() {
   steno_squid_practice_view_snapshot(&partial);
   assert(!strcmp(partial.outline,steno_squid_multi[practice_prompt()].outline));
   answer_correct=false;tap(StenoKey::PL);
-  assert(practice.multi_count==1 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
-  assert(practice_screen&STENO_SQUID_PRACTICE_PARTIAL);
-  answer_correct=true;tap(StenoKey::PL);
+  assert(practice.multi_count==0 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
+  assert(!(practice_screen&STENO_SQUID_PRACTICE_PARTIAL));
+  assert(practice_screen&STENO_SQUID_PRACTICE_SECOND_ERROR);
+  answer_correct=true;tap(StenoKey::KL);tap(StenoKey::PL);
   assert(practice.feedback==STENO_SQUID_PRACTICE_CORRECT);
   now+=250;practice_advance(nullptr);
   assert(practice.round==1 && practice.multi_count==0);
   tap(StenoKey::KL); // Switching clears the partial outline.
-  tap(StenoKey::STAR1);tap(StenoKey::STAR1);tap(StenoKey::STAR1);
+  tap(StenoKey::STAR1);tap(StenoKey::STAR1);
   assert(practice.drill==STENO_SQUID_PRACTICE_COLUMNS && practice.multi_count==0 && practice.menu);
   // Columns still uses full released chords, including extra-key errors.
   tap(StenoKey::A);assert(!practice.menu);

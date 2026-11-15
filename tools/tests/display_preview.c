@@ -318,9 +318,10 @@ int main(void) {
             assert(lv_obj_get_style_text_decor(outline_second,0)==LV_TEXT_DECOR_UNDERLINE);
             assert(lv_label_get_text(outline_label)[0]=='1' && lv_label_get_text(outline_second)[0]=='2');
             if(i==0)save("multi-stroke-two");
-            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_PARTIAL|
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_SECOND_ERROR|
                 (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
             assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 2"));
+            assert(lv_obj_get_style_text_decor(outline_label,0)==LV_TEXT_DECOR_UNDERLINE);
             if(i==0)save("multi-retry-two");
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|
                 (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
@@ -330,7 +331,7 @@ int main(void) {
             (STENO_SQUID_PRACTICE_BUILD<<STENO_SQUID_PRACTICE_DRILL_SHIFT);
         for(unsigned i=0;i<STENO_SQUID_BUILD_COUNT;i++) {
             for(unsigned stage=0;stage<3;stage++) {
-                snprintf(view.prompt,sizeof(view.prompt),"%s",steno_squid_build[i].strokes[stage]);
+                steno_squid_build_format(view.prompt,sizeof(view.prompt),steno_squid_build[i].strokes[stage]);
                 snprintf(view.outline,sizeof(view.outline),"Step %u/3",stage+1);
                 steno_squid_practice_widget_set_view(&view);
                 steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,build|(stage<<STENO_SQUID_PRACTICE_BUILD_SHIFT),85,false);
@@ -340,7 +341,7 @@ int main(void) {
                 }
             }
         }
-        strcpy(view.prompt,"CAT");strcpy(view.outline,"KAT");
+        strcpy(view.prompt,"CAT");strcpy(view.outline,"KA-T");
         steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,build|
             (2<<STENO_SQUID_PRACTICE_BUILD_SHIFT)|(STENO_SQUID_PRACTICE_CORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
