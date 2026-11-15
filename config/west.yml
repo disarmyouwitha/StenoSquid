@@ -11,9 +11,11 @@ manifest:
       remote: zmkfirmware
       revision: 4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85
       import: app/west.yml
+    # Fork of jthlim/javelin-steno at 2272667, plus the firmware's changes as
+    # commits (branch steno-squid).
     - name: javelin-steno
-      remote: jthlim
-      revision: 22726675b2dcf3b8b6ba1e20898f25e324b2260a
+      remote: disarmyouwitha
+      revision: de5a629bb383581882dfd6a5b2b5b9b44b71dc9c
       path: javelin-steno
     # Fork of petercpark/zmk-hid-io-plover-hid at d895457, plus key names
     # for ZMK Studio (branch studio-key-names).

@@ -47,7 +47,8 @@ if(CONFIG_ZMK_JAVELIN_STENO)
   # Only compile on central side of split keyboards (or non-split)
   if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 
-    # Patch javelin source for Zephyr compatibility
+    # The engine is the javelin-steno fork named in config/west.yml. It carries
+    # the firmware's changes as commits, so it is built as it is.
     set(JAVELIN_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/javelin")
     if(NOT EXISTS "${JAVELIN_SRC_DIR}/engine.h")
       # When this repository is the build module, west checks the engine out
@@ -55,41 +56,11 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       set(JAVELIN_SRC_DIR "${ZEPHYR_BASE}/../javelin-steno")
     endif()
     if(NOT EXISTS "${JAVELIN_SRC_DIR}/engine.h")
-      message(FATAL_ERROR "Pinned Javelin engine not found; see config/west.yml")
+      message(FATAL_ERROR "Javelin engine not found; see config/west.yml")
     endif()
-    # Patch a private copy so the pinned west checkout stays clean.
-    set(JAVELIN_PRIVATE_DIR "${CMAKE_CURRENT_BINARY_DIR}/javelin-engine")
-    file(COPY "${JAVELIN_SRC_DIR}/" DESTINATION "${JAVELIN_PRIVATE_DIR}" PATTERN ".git" EXCLUDE)
-    set(JAVELIN_SRC_DIR "${JAVELIN_PRIVATE_DIR}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-      "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_engine.py")
-    execute_process(
-      COMMAND ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_engine.py"
-              "${JAVELIN_SRC_DIR}"
-      COMMAND_ERROR_IS_FATAL ANY
-    )
-
     zephyr_include_directories(${JAVELIN_SRC_DIR})
-
-    # Keep behavioral compatibility patches private to this build.
-    set(JAVELIN_SEGMENT_BUILDER_SRC "${CMAKE_CURRENT_BINARY_DIR}/compat/segment_builder.cc")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/compat")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-      "${JAVELIN_SRC_DIR}/segment_builder.cc"
-      "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_segment_builder.py")
-    execute_process(
-      COMMAND ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_segment_builder.py"
-        "${JAVELIN_SRC_DIR}/segment_builder.cc" "${JAVELIN_SEGMENT_BUILDER_SRC}"
-      COMMAND_ERROR_IS_FATAL ANY)
-
-    set(JAVELIN_NORMAL_MODE_SRC "${CMAKE_CURRENT_BINARY_DIR}/compat/engine_normal_mode.cc")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-      "${JAVELIN_SRC_DIR}/engine_normal_mode.cc"
-      "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_engine_normal_mode.py")
-    execute_process(
-      COMMAND ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_engine_normal_mode.py"
-        "${JAVELIN_SRC_DIR}/engine_normal_mode.cc" "${JAVELIN_NORMAL_MODE_SRC}"
-      COMMAND_ERROR_IS_FATAL ANY)
+    set(JAVELIN_SEGMENT_BUILDER_SRC "${JAVELIN_SRC_DIR}/segment_builder.cc")
+    set(JAVELIN_NORMAL_MODE_SRC "${JAVELIN_SRC_DIR}/engine_normal_mode.cc")
 
     if(NOT CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
       message(FATAL_ERROR
@@ -102,18 +73,8 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       if(NOT EXISTS "${ZMK_JAVELIN_LAPWING_IMAGE}")
         message(FATAL_ERROR "Set ZMK_JAVELIN_LAPWING_IMAGE to the mapped Lapwing JSC4 image")
       endif()
-      set(QSPI_SRC "${CMAKE_CURRENT_LIST_DIR}/tools/steno-squid-qspi/src")
       set(LAPWING_SRC "${CMAKE_CURRENT_LIST_DIR}/src/steno_squid")
       javelin_image_size_crc(LAPWING "${ZMK_JAVELIN_LAPWING_IMAGE}")
-      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${QSPI_SRC}/prepare_xip_reader.py")
-      set(PATCHED_COMPACT_MAP "${CMAKE_CURRENT_BINARY_DIR}/lapwing/compact_map_dictionary.cc")
-      configure_file("${JAVELIN_COMPACT_MAP_SRC}" "${PATCHED_COMPACT_MAP}" COPYONLY)
-      execute_process(
-        COMMAND ${PYTHON_EXECUTABLE} "${QSPI_SRC}/prepare_xip_reader.py"
-          "${PATCHED_COMPACT_MAP}" --copy-lookup-text
-        COMMAND_ERROR_IS_FATAL ANY)
-      set(JAVELIN_COMPACT_MAP_SRC "${PATCHED_COMPACT_MAP}")
       target_sources(app PRIVATE
         "${LAPWING_SRC}/lapwing_flash.c"
         "${LAPWING_SRC}/lapwing_flash_power.c"
@@ -352,9 +313,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       JAVELIN_BOARD_CONFIG=<stddef.h>
       M_PI=3.14159265358979323846
     )
-    # tools/build/prepare_engine.py strips Javelin's unit tests and turns the
-    # orthography cache off in the private engine copy.
-
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
       zephyr_library_sources("${LAPWING_SRC}/lapwing_dictionary.cc")
       zephyr_library_include_directories(
