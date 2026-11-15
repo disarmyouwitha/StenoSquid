@@ -86,7 +86,7 @@ jobs:
             shield: corne_left
             snippet: zmk-usb-logging
             dictionaries: true
-          - name: left-nice-view
+          - name: left-default
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true

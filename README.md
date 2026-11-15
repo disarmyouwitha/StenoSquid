@@ -92,8 +92,8 @@ GitHub Actions builds these UF2 artifacts from the pinned dependencies:
 
 | Artifact | Use |
 | --- | --- |
-| **left-nice-view** | Everyday left-half firmware. Install it with **right-nice-view**. |
-| **right-nice-view** | Right-half firmware with the portrait display, squid, stroke tape and Practice UI. Install it with **left-nice-view**. |
+| **left-default** | Everyday left-half firmware. Install it with **right-nice-view**. |
+| **right-nice-view** | Right-half firmware with the portrait display, squid, stroke tape and Practice UI. Install it with **left-default**. |
 | **left-no-display** | Left-half firmware for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **right-no-display**. |
 | **right-no-display** | Right-half firmware without the display. Install it with **left-no-display**. |
 | **left-logging** | Diagnostic left half with the serial port used for dictionary installation, the boot log and the `--diag` tools. Not for everyday use. |
@@ -111,13 +111,13 @@ Download artifacts from a successful run. Double-tap RESET on the intended contr
    python3 upload.py --install
    ```
 
-3. When verification passes, flash **left-nice-view** for everyday use and flash the matching right-half UF2.
+3. When verification passes, flash **left-default** for everyday use and flash the matching right-half UF2.
 
 If USB detection is ambiguous, pass the port explicitly with `upload.py --install PORT`.
 
 ### Import a personal Plover dictionary
 
-With the current **left-nice-view** firmware connected by USB, close the Javelin browser connection and run:
+With the current **left-default** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
 python3 -m pip install hidapi
