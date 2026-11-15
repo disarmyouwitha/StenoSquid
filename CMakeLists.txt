@@ -297,6 +297,9 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     if(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
       list(APPEND ZMK_INIT_SRC src/steno_squid/stroke_feed.cc)
     endif()
+    if(CONFIG_ZMK_STENO_SQUID_PRACTICE)
+      list(APPEND ZMK_INIT_SRC src/steno_squid/practice_engine.cc)
+    endif()
 
     # Pure Javelin sources (no ZMK deps) → separate library for C++23
     set(JAVELIN_LIB_SRC
