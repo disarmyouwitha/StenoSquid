@@ -110,10 +110,11 @@ These are compilation results pending target-hardware testing. They predate the 
 
 ## Current main integration
 
-This branch includes main through `1e07854`, including the portrait nice!view,
-bold labels, squid reactions and USB animation, 50-prompt randomized hand
-drills, dictionary extras, Studio, and flash startup retries. The right build
-also enables deep sleep in its board configuration, matching the tested split.
+This branch includes main through `8813a45`, including the 100-word adaptive
+trainer, persistent progress and XP, LEFT/RIGHT streak rewards, revised Practice
+results, ASCII display fallbacks, the Plover label, and USB Boot protocol support.
+The right build also enables deep sleep in its board configuration, matching
+the tested split. The locked hardware pin and rail definitions are unchanged.
 
 The Plover HID dependency is the owner's fork at
 `73b112ccab30d2a9bf40609657daef35560575f1`. It supplies Studio labels and named
@@ -130,8 +131,7 @@ Use the Boardsource artifacts from one successful workflow run:
    Use `upload.py PORT --status` for a read-only status query.
 5. `boardsource-left-studio` for everyday use.
 
-All five targets built locally against the pinned dependencies after this
-integration. Generated devicetrees matched the locked active/sleep QSPI pins,
+The earlier integration through `1e07854` built all five targets locally against the pinned dependencies. The table below records those earlier builds, not a new build of `8813a45`. Generated devicetrees matched the locked active/sleep QSPI pins,
 P0.31 power control and vendor partitions. UF2 payloads fit entirely inside the
 application partition.
 
