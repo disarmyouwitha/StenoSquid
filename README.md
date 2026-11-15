@@ -1,7 +1,7 @@
 # StenoSquid
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
-(But it should work with any nRF52840 (Nice!Nano) microcontroller with a 16 MiB W25Q128 QSPI flash chip!)
+(But it should work with any nRF52840 (Nice!Nano) microcontroller + a 16 MiB W25Q128 QSPI flash chip!)
 
 ✅ZMK Wireless Keyboard\
 ✅PloverHID\
