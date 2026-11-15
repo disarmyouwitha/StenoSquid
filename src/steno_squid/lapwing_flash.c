@@ -1,5 +1,6 @@
 #include "lapwing_flash_internal.h"
 #include "diag.h"
+#include "split_status.h"
 
 #include <zephyr/sys/printk.h>
 
@@ -134,6 +135,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
                     lf_store_trust();
                 }
                 atomic_set(&lf_checked, 1);
+                steno_squid_upload_status(STENO_SQUID_MODE_UNKNOWN, 0);
                 lapwing_flash_ready_changed();
             }
 #endif

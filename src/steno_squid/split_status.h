@@ -46,5 +46,27 @@ enum steno_squid_mode {
     /* A steno or practice layer is selected, but the dictionaries are not usable. */
     STENO_SQUID_MODE_LOADING,
     STENO_SQUID_MODE_NO_DICTIONARY,
+    STENO_SQUID_MODE_INSTALL,
+    STENO_SQUID_MODE_REPAIR,
+    STENO_SQUID_MODE_IMPORT,
+    STENO_SQUID_MODE_VERIFY,
     STENO_SQUID_MODE_COUNT,
 };
+
+
+static inline bool steno_squid_upload_mode(unsigned mode) {
+    return mode >= STENO_SQUID_MODE_INSTALL && mode <= STENO_SQUID_MODE_VERIFY;
+}
+
+/* A zero timeout clears the upload label. Timeout recovers from a USB disconnect. */
+#if defined(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
+#ifdef __cplusplus
+extern "C"
+#endif
+void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms);
+#else
+static inline void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms) {
+    (void)mode;
+    (void)timeout_ms;
+}
+#endif

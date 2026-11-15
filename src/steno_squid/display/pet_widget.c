@@ -48,6 +48,13 @@ struct pet_animation {
 static const struct pet_frame typing_frames[] = {
     {&typing_image, 110}, {&idle_image, 110}, {&blink_image, 110}, {&idle_image, 90},
 };
+/* A little hop that stays between the Waiting and For Left labels. */
+static const struct pet_frame wait_tap_frames[] = {
+    {&blink_image, 80}, {&jump_image, 130}, {&land_image, 100}, {&idle_image, 80},
+};
+static const int8_t wait_tap_bob[] = {0, -6, 0, 0};
+BUILD_ASSERT(ARRAY_SIZE(wait_tap_bob) == ARRAY_SIZE(wait_tap_frames));
+
 static const struct pet_frame level_up_frames[] = {
     {&jump_image, 120}, {&spark_image, 180}, {&land_image, 100}, {&blink_image, 120},
 };
@@ -61,6 +68,14 @@ static const lv_image_dsc_t *const layer_change_effects[] = {
     &layer_flip_0_image, &layer_flip_1_image, &layer_flip_2_image,
 };
 BUILD_ASSERT(ARRAY_SIZE(layer_change_effects) == ARRAY_SIZE(layer_change_frames));
+
+static const struct pet_frame upload_frames[] = {
+    {&typing_image, 140}, {&jump_image, 140}, {&idle_image, 140}, {&blink_image, 140},
+};
+static const lv_image_dsc_t *const upload_effects[] = {
+    &upload_0_image, &upload_1_image, &upload_2_image, &upload_3_image,
+};
+BUILD_ASSERT(ARRAY_SIZE(upload_effects) == ARRAY_SIZE(upload_frames));
 
 static const struct pet_frame powered_frames[] = {
     {&idle_image, 220}, {&idle_image, 180}, {&jump_image, 180}, {&idle_image, 180},
@@ -93,6 +108,8 @@ static const struct pet_animation animations[] = {
     [PET_POWERED] = ANIMATION(powered_frames, powered_effects, 10, 12),
     [PET_GREETING] = ANIMATION(greeting_frames, greeting_effects, 10, 12),
     [PET_LAYER_CHANGE] = ANIMATION(layer_change_frames, layer_change_effects, 10, 12),
+    [PET_WAIT_TAP] = ANIMATION(wait_tap_frames, NULL, 0, 0),
+    [PET_UPLOAD] = ANIMATION(upload_frames, upload_effects, 26, 29),
 };
 
 static lv_obj_t *pet_image;
@@ -104,6 +121,7 @@ static bool usb_powered;
 static bool pet_visible = true;
 static bool headroom = true;
 static bool awake_hold;
+static bool upload_active;
 
 static void update_effect(void) {
     if (pet_visible && headroom && state == PET_SLEEP) {
@@ -124,7 +142,13 @@ static void show_frame(void) {
     const struct pet_animation *animation = &animations[state];
     const struct pet_frame *frame = &animation->frames[frame_index];
     lv_image_set_src(pet_image, frame->image);
-    lv_obj_set_y(pet_image, 51 + (state == PET_POWERED ? powered_bob[frame_index] : 0));
+    int8_t bob = 0;
+    if (state == PET_POWERED) {
+        bob = powered_bob[frame_index];
+    } else if (state == PET_WAIT_TAP) {
+        bob = wait_tap_bob[frame_index];
+    }
+    lv_obj_set_y(pet_image, 51 + bob);
     update_effect();
     lv_timer_set_period(frame_timer, frame->duration_ms);
     lv_timer_reset(frame_timer);
@@ -141,7 +165,7 @@ static enum pet_state resting_state(void) {
 static void advance_frame(lv_timer_t *timer) {
     frame_index++;
     if (frame_index == animations[state].count) {
-        if (state == PET_POWERED) {
+        if (state == PET_POWERED || state == PET_UPLOAD) {
             frame_index = 0;
             show_frame();
         } else {
@@ -175,6 +199,8 @@ void steno_squid_pet_set_state(enum pet_state next) {
 
     if (!pet_visible) {
         next = PET_IDLE;
+    } else if (upload_active) {
+        next = PET_UPLOAD;
     } else if (awake_hold && (next == PET_SLEEP || next == PET_POWERED)) {
         next = PET_IDLE;
     } else if (usb_powered && !awake_hold && (next == PET_IDLE || next == PET_SLEEP)) {
@@ -184,10 +210,13 @@ void steno_squid_pet_set_state(enum pet_state next) {
     if (next == PET_TYPING && state != PET_IDLE && state != PET_POWERED) {
         return;
     }
+    if (next == PET_WAIT_TAP && state == PET_WAIT_TAP) {
+        return;
+    }
     if (next == PET_GREETING && state == PET_LEVEL_UP) {
         return;
     }
-    if (next == state && (state == PET_IDLE || state == PET_SLEEP || state == PET_POWERED)) {
+    if (next == state && (state == PET_IDLE || state == PET_SLEEP || state == PET_POWERED || state == PET_UPLOAD)) {
         return;
     }
     state = next;
@@ -238,4 +267,13 @@ void steno_squid_pet_set_awake_hold(bool hold) {
     if (state == PET_IDLE || state == PET_SLEEP || state == PET_POWERED) {
         steno_squid_pet_set_state(resting_state());
     }
+}
+
+
+void steno_squid_pet_set_uploading(bool uploading) {
+    if (upload_active == uploading) {
+        return;
+    }
+    upload_active = uploading;
+    steno_squid_pet_set_state(uploading ? PET_UPLOAD : resting_state());
 }

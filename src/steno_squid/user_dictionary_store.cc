@@ -2,6 +2,7 @@
 #include "console.h"
 #include "dictionary/dictionary.h"
 #include "lapwing_flash.h"
+#include "split_status.h"
 #include "stroke_list_parser.h"
 #include "user_dictionary_snapshot.h"
 #include "xip_load.h"
@@ -344,22 +345,28 @@ void bulk_import(void *, const char *line) {
   const char *args = line + sizeof(command) - 1;
   if (strcmp(args, "abort") == 0) {
     store.AbortImport();
+    steno_squid_upload_status(STENO_SQUID_MODE_IMPORT, 0);
     Console::SendOk();
     return;
   }
   if (!reactivate_after_xip()) {
+    steno_squid_upload_status(STENO_SQUID_MODE_IMPORT, 0);
     Console::Printf("ERR QSPI activation failed\n\n");
     return;
   }
   qspi_device.mapped = false;
   bool ok = false;
+  const bool commit = strcmp(args, "commit") == 0;
   if (strncmp(args, "begin ", 6) == 0) {
     args += 5;
     uint32_t generation, count, bytes, maximum, crc;
     ok = read_number(args, generation) && read_number(args, count) &&
          read_number(args, bytes) && read_number(args, maximum) &&
-         read_number(args, crc) && !*args &&
-         store.BeginImport(generation, count, bytes, maximum, crc);
+         read_number(args, crc) && !*args;
+    if (ok) {
+      steno_squid_upload_status(STENO_SQUID_MODE_IMPORT, 30000);
+      ok = store.BeginImport(generation, count, bytes, maximum, crc);
+    }
   } else if (strncmp(args, "data ", 5) == 0) {
     args += 4;
     uint32_t offset;
@@ -377,12 +384,14 @@ void bulk_import(void *, const char *line) {
       }
       ok = valid && store.ImportChunk(offset, page, length / 2);
     }
-  } else if (strcmp(args, "commit") == 0) {
+  } else if (commit) {
+    steno_squid_upload_status(STENO_SQUID_MODE_IMPORT, 600000);
     ok = store.FinishImport();
     if (ok)
       dictionary.Refresh();
   }
   qspi_device.mapped = true;
+  steno_squid_upload_status(STENO_SQUID_MODE_IMPORT, ok && !commit ? 30000 : 0);
   if (ok)
     Console::SendOk();
   else

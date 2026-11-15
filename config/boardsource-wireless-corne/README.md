@@ -46,17 +46,23 @@ cd "$ws"
 
 build_left() {
   output="$1"
-  shift
-  west build -s zmk/app -d "$repo/build/$output" -b blecorne_left "$@" -- \
+  snippet="$2"
+  shift 2
+  conf="$split/corne.conf;$split/corne_left.conf"
+  if [ "$snippet" = zmk-usb-logging ]; then
+    conf="$conf;$split/logging.conf"
+  fi
+  west build -s zmk/app -d "$repo/build/$output" -b blecorne_left -S "$snippet" -- \
     "-DBOARD_ROOT=$vendor" "-DZephyr_DIR=$zephyr_cmake" \
     "-DZMK_CONFIG=$target" "-DZMK_EXTRA_MODULES=$repo" \
-    "-DEXTRA_CONF_FILE=$split/corne.conf;$split/corne_left.conf" \
+    "-DEXTRA_CONF_FILE=$conf" "$@" \
     "-DZMK_JAVELIN_LAPWING_IMAGE=$repo/build/lapwing/lapwing-base.bin" \
     "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin" \
     "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin"
 }
-build_left Boardsource-Left-Default -S studio-rpc-usb-uart
-build_left boardsource-provision -S zmk-usb-logging
+build_left Boardsource-Left-Default studio-rpc-usb-uart
+build_left Boardsource-Left-Diagnostic zmk-usb-logging \
+  "-DEXTRA_DTC_OVERLAY_FILE=$target/logging.overlay"
 
 west build -s zmk/app -d "$repo/build/Boardsource-Right-Default" -b blecorne_right -- \
   -DSHIELD=nice_view "-DBOARD_ROOT=$vendor" "-DZephyr_DIR=$zephyr_cmake" \

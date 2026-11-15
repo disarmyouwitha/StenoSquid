@@ -16,6 +16,9 @@ STUB = """
 #include <stdio.h>
 #include <string.h>
 
+#define SECTOR_BYTES 8
+#define NRF_QSPI_ERASE_LEN_4KB 0
+#define ROUND_UP(value, alignment) (((value) + (alignment) - 1) & ~((alignment) - 1))
 #define PAGE_BYTES 4
 #define CHUNK_BYTES 8
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -36,7 +39,7 @@ static struct { uint32_t GPREGRET2; } power;
 static bool lf_provisioning_ready = true, lf_provisioning_recheck, lf_suspended;
 static bool lf_mapped_ready, lf_checked = true, lf_trusted;
 static bool trust_can_clear = true;
-static int flash_lock, writes, restarts;
+static int flash_lock, writes, erases, restarts;
 static int64_t now;
 
 static inline int64_t k_uptime_get(void) { return now; }
@@ -47,7 +50,17 @@ static inline void k_mutex_lock(int *lock, int timeout) {
 }
 static inline void k_mutex_unlock(int *lock) { assert(*lock); *lock = 0; }
 static inline bool atomic_get(bool *value) { return *value; }
-static inline void atomic_clear(bool *value) { *value = false; }
+static inline bool atomic_clear(bool *value) {
+    bool previous = *value;
+    *value = false;
+    return previous;
+}
+static inline void atomic_set(bool *value, bool next) { *value = next; }
+static inline bool lapwing_flash_acquire(void) {
+    if (!lf_mapped_ready) return false;
+    k_mutex_lock(&flash_lock, K_FOREVER);
+    return true;
+}
 static inline bool reactivate_after_xip(void) { return true; }
 static inline void lf_request_restart(void) { assert(flash_lock); restarts++; }
 static inline bool lf_clear_trust(void) { return trust_can_clear; }
@@ -68,11 +81,24 @@ static inline int nrfx_qspi_write(const void *data, size_t size, uint32_t offset
     writes++;
     return NRFX_SUCCESS;
 }
+static inline int nrfx_qspi_erase(int kind, uint32_t offset) {
+    assert(kind == NRF_QSPI_ERASE_LEN_4KB && flash_lock && !lf_trusted && !power.GPREGRET2);
+    assert(offset % SECTOR_BYTES == 0 && offset + SECTOR_BYTES <= sizeof(nor));
+    memset(nor + offset, 0xff, SECTOR_BYTES);
+    erases++;
+    return NRFX_SUCCESS;
+}
 static inline int nrfx_qspi_mem_busy_check(void) { return NRFX_SUCCESS; }
 /* The stub needs only an incremental checksum for transfer-state tests. */
 static inline uint32_t crc32_ieee_update(uint32_t crc, const uint8_t *data, size_t size) {
     for (size_t i = 0; i < size; i++) crc = crc * 31 + data[i];
     return crc;
+}
+static inline bool lf_image_crc(const struct base_image *img, bool mapped,
+                                uint32_t *crc, uint32_t *failed_at) {
+    assert(flash_lock && !mapped && !failed_at && !lf_mapped_ready);
+    *crc = crc32_ieee_update(0, nor + img->offset, img->bytes);
+    return true;
 }
 static inline bool lf_read_image_crc(const struct base_image *img) {
     return crc32_ieee_update(0, nor + img->offset, img->bytes) == img->crc;
@@ -113,8 +139,11 @@ int main(void) {
     memset(nor, 0xff, sizeof(nor));
 
     expect("status\n", "1 INSTALL\nLAPWING 12 ");
+    expect("verify LAPWING\n", "MISMATCH ");
+    assert(upload_mode == 0 && writes == 0 && erases == 0);
     expect("begin PERSONAL\n", "ERR");
     expect("begin LAPWING\n", "OK");
+    assert(upload_mode == STENO_SQUID_MODE_INSTALL);
     expect("data 4294967296 0102030405060708\n", "ERR");
     expect(first, "OK");
     nor[11] = 0;
@@ -153,14 +182,27 @@ int main(void) {
     assert(writes == 3 && restarts == 0 && lf_images[0].verified);
     expect("begin LAPWING\n", "ERR");
 
-    expect("begin PLOVER\n", "OK");
+    nor[16] = 0;
+    nor[24] = 0x55;
+    expect("repair LAPWING\n", "ERR");
+    expect("repair PERSONAL\n", "ERR");
+    expect("repair PLOVER\n", "OK");
+    assert(upload_mode == STENO_SQUID_MODE_REPAIR);
+    expect("data 0 ffffffff\n", "ERR Image checksum mismatch");
+    assert(erases == 0 && nor[16] == 0);
+    expect("repair PLOVER\n", "OK");
     expect("data 0 0d0e0f10\n", "OK");
+    assert(erases == 1 && nor[16] == 0xff && nor[24] == 0x55);
+    assert(memcmp(nor, lapwing, sizeof(lapwing)) == 0);
     expect("data 0 0d0e0f10\n", "OK");
     expect("commit\n", "OK");
     assert(restarts == 1 && lf_provisioning_recheck && !lf_checked);
     expect("status\n", "1 LOADING");
+    lf_mapped_ready = true;
+    expect("verify LAPWING\n", "OK ");
+    assert(lf_mapped_ready && upload_mode == 0 && writes == 4 && erases == 1);
     for (size_t i = 12; i < sizeof(nor); i++)
-        if (i < 16 || i >= 20) assert(nor[i] == 0xff);
+        if ((i < 16 || i >= 20) && i != 24) assert(nor[i] == 0xff);
 }
 '''
 
@@ -171,6 +213,15 @@ def main():
         for name in ("lapwing_flash_provision.c", "lapwing_flash_provision.h"):
             shutil.copy(SOURCE / name, root)
         (root / "lapwing_flash_internal.h").write_text(STUB)
+        (root / "split_status.h").write_text("""
+enum steno_squid_mode {
+    STENO_SQUID_MODE_INSTALL = 1, STENO_SQUID_MODE_REPAIR, STENO_SQUID_MODE_VERIFY
+};
+static enum steno_squid_mode upload_mode;
+static inline void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout) {
+    upload_mode = timeout ? mode : 0;
+}
+""")
         for name in ("w25q_quad.h", "zephyr/sys/crc.h", "zephyr/sys/printk.h"):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +230,7 @@ def main():
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", temp,
                         str(root / "test.c"), "-o", str(root / "test")], check=True)
         subprocess.run([str(root / "test")], check=True)
-    print("PASS: base provisioning preflight, interrupted retry, image bounds, and final recheck")
+    print("PASS: base provisioning preflight, interrupted retry, image bounds, checksum-gated repair, and final recheck")
 
 
 if __name__ == "__main__":

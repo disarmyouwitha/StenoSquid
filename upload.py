@@ -13,6 +13,7 @@ import re
 import ssl
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 import time
 import zlib
 
@@ -223,8 +224,8 @@ def upload_all(port, paths):
         raise SystemExit("The firmware reported no dictionary images")
 
 
-def prepare_base(name, expected=None):
-    path = DEFAULT_IMAGES[name]
+def prepare_base(name, expected=None, output_path=None):
+    path = output_path or DEFAULT_IMAGES[name]
     env = os.environ.copy()
     # Python.org macOS installs may lack an OpenSSL certificate bundle.
     system_certs = Path("/etc/ssl/cert.pem")
@@ -248,7 +249,7 @@ def prepare_base(name, expected=None):
     source_path.write_bytes(source)
     command = [sys.executable, str(REPO / "tools/dict_compiler/compile_dict.py"),
                str(source_path), "--base-addr", "0x12000000", "-o", str(path)]
-    subprocess.run(command, check=True)
+    subprocess.run(command + ["--name", "lapwing-base"], check=True)
     image = path.read_bytes()
     if expected and (len(image), zlib.crc32(image)) != expected:
         # Local builds have also used the display name inside the same image.
@@ -313,15 +314,19 @@ def hid_install_status(console):
     raise TimeoutError("The keyboard did not finish checking dictionary flash.")
 
 
-def install_hid(console):
+def install_hid(console, repair_base=None):
     def send(command, timeout=30):
         reply = console.command("base_install " + command, timeout=timeout)
         if reply != "OK":
             raise RuntimeError(reply)
 
     _, images = hid_install_status(console)
+    if repair_base and repair_base not in images:
+        raise RuntimeError(f"{repair_base} is not configured in this firmware.")
     missing = {}
     for name, (size, crc, verified) in images.items():
+        if repair_base and name != repair_base:
+            continue
         if verified:
             print(f"{name}: already installed")
             continue
@@ -330,32 +335,84 @@ def install_hid(console):
             print(f"Preparing {name} from the pinned dictionary sources…", flush=True)
             prepare_base(name, (size, crc))
         image = read_image(path)
+        if (len(image), zlib.crc32(image)) != (size, crc):
+            # Keep custom and older build files intact. Try the pinned sources
+            # in a separate directory before asking the keyboard to write.
+            print(f"Preparing the firmware's {name} image from the pinned sources…", flush=True)
+            with TemporaryDirectory() as directory:
+                prepared = Path(directory) / path.name
+                prepare_base(name, (size, crc), prepared)
+                image = read_image(prepared)
         check_matches_firmware(image, name, size, crc, path)
         missing[name] = image
 
     for name, image in missing.items():
-        print(f"Installing {name}…", flush=True)
-        send(f"begin {name}")
+        if repair_base:
+            print(f"Repairing {name}. Only its base flash region will be erased.", flush=True)
+            send(f"repair {name}")
+        else:
+            print(f"Installing {name}…", flush=True)
+            send(f"begin {name}")
         try:
             for stage in ("Preflight", "Write and read back"):
                 for offset in range(0, len(image), CHUNK_BYTES):
                     chunk = image[offset:offset + CHUNK_BYTES]
-                    send(f"data {offset} {chunk.hex()}")
                     end = offset + len(chunk)
+                    erasing = repair_base and stage == "Preflight" and end == len(image)
+                    if erasing:
+                        print("Checking replacement checksum and erasing the selected base…", flush=True)
+                    send(f"data {offset} {chunk.hex()}", timeout=600 if erasing else 30)
                     if end == len(image) or end % (64 * 1024) == 0:
                         print(f"{stage}: {end:,}/{len(image):,} bytes", flush=True)
             send("commit", timeout=120)
-        except (Exception, KeyboardInterrupt):
+        except (Exception, KeyboardInterrupt) as error:
             try:
                 send("abort", timeout=2)
             except Exception:
                 pass
+            if (not repair_base and isinstance(error, RuntimeError) and
+                    str(error).startswith("ERR Base region holds different data")):
+                raise RuntimeError(
+                    f"{name} conflicts with the image in flash. To replace just this base, "
+                    f"run: python3 upload.py --repair --base {name.lower()}"
+                ) from None
             raise
 
     ready, images = hid_install_status(console)
+    if repair_base and images[repair_base][2] and not ready:
+        print(f"{repair_base} verified. Run python3 upload.py --install for the remaining bases.")
+        return
     if not ready or not all(verified for _, _, verified in images.values()):
         raise RuntimeError("The keyboard did not map all verified base dictionaries.")
     print("Base dictionaries are installed and ready. You can start using Javelin.")
+
+
+def inspect_hid(console, base, verify=False):
+    ready, images = hid_install_status(console)
+    names = list(images) if base == "ALL" else [base]
+    if base != "ALL" and base not in images:
+        raise RuntimeError(f"{base} is not configured in this firmware.")
+    if not verify:
+        for name in names:
+            size, crc, verified = images[name]
+            state = ("MAPPED" if ready else "VERIFIED") if verified else "UNPROVISIONED"
+            print(f"{name}: {state}, {size:,} bytes, expected CRC32 {crc:08x}")
+        return
+
+    failed = False
+    for name in names:
+        reply = console.command(f"base_install verify {name}", timeout=120)
+        state, _, value = reply.partition(" ")
+        if state not in ("OK", "MISMATCH"):
+            raise RuntimeError(f"{name}: {reply}. Check that Left-Default supports USB HID verification.")
+        crc = int(value)
+        if state == "OK" and crc == images[name][1]:
+            print(f"{name}: OK, CRC32 {crc:08x}")
+        else:
+            print(f"{name}: FAILED, flash CRC32 {crc:08x}, expected {images[name][1]:08x}")
+            failed = True
+    if failed:
+        raise SystemExit(1)
 
 
 def find_port():
@@ -424,7 +481,7 @@ def main():
                         help="Install and verify bundled dictionaries over wired USB HID")
     parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON",
                         help="Merge a Plover JSON file into the connected keyboard over USB HID")
-    parser.add_argument("--serial", help="Select a USB keyboard by serial number for --install or --import")
+    parser.add_argument("--serial", help="Select a wired USB keyboard by serial number")
     parser.add_argument("image", type=Path, nargs="?",
                         help="JSC4 image for a single --base. Default: the file under build/ "
                              "that the prepare script wrote")
@@ -433,8 +490,8 @@ def main():
                              "image that is not installed yet and --verify checks all of "
                              "them. --repair needs one image")
     parser.add_argument("--repair", action="store_true",
-                        help="Erase this image and write it again, even if the keyboard "
-                             "reports it as verified or cannot load it")
+                        help="Replace a conflicting base over wired USB HID. With a serial port, "
+                             "force an erase and rewrite even if the base verifies.")
     parser.add_argument("--verify", action="store_true",
                         help="Read the whole image and check its CRC. Writes nothing")
     parser.add_argument("--status", action="store_true",
@@ -447,26 +504,38 @@ def main():
         if args.install and args.personal or any((args.base, args.image, args.repair, args.verify,
                                                  args.status, args.diag)):
             parser.error("--install and --import are standalone actions")
-    if args.serial and (args.port or not (args.personal or args.install)):
-        parser.error("--serial selects a HID device for --install or --import")
+    if args.serial and (args.port or not (args.personal or args.install or args.repair or
+                                          args.verify or args.status)):
+        parser.error("--serial selects a keyboard for a wired USB HID command")
     if args.personal:
         if args.port:
             parser.error("--import uses USB HID; omit the serial port path")
         from import_personal import import_file
         import_file(args.personal, args.serial)
         return
-    if args.install:
-        if args.port:
-            with Serial(args.port, 115200, timeout=0.25, write_timeout=5,
-                        exclusive=True) as port:
-                install(port)
-        else:
-            from import_personal import open_console
-            try:
-                with open_console(args.serial) as console:
-                    install_hid(console)
-            except (OSError, ValueError, RuntimeError) as error:
-                raise SystemExit(f"Dictionary installation failed: {error}") from None
+    if sum([args.repair, args.verify, args.status]) > 1:
+        parser.error("Use only one of --repair, --verify and --status")
+    base = (args.base or "all").upper()
+    if args.repair and base == "ALL":
+        parser.error("--repair needs --base lapwing, plover or extras")
+
+    if args.install and args.port:
+        with Serial(args.port, 115200, timeout=0.25, write_timeout=5,
+                    exclusive=True) as port:
+            install(port)
+        return
+    if not args.port and (args.install or args.repair or args.verify or args.status):
+        if args.image or args.diag:
+            parser.error("Use a serial port for a custom image or diagnostics")
+        from import_personal import open_console
+        try:
+            with open_console(args.serial) as console:
+                if args.verify or args.status:
+                    inspect_hid(console, base, verify=args.verify)
+                else:
+                    install_hid(console, base if args.repair else None)
+        except (OSError, ValueError, RuntimeError) as error:
+            raise SystemExit(str(error)) from None
         return
     if args.diag:
         if args.repair or args.verify or args.status or args.image or args.base:
@@ -480,12 +549,7 @@ def main():
                 diag(port, section)
         return
     if not args.port:
-        parser.error("Specify a serial port, --install, --import USER.JSON, or --diag")
-    base = (args.base or "all").upper()
-    if sum([args.repair, args.verify, args.status]) > 1:
-        parser.error("Use only one of --repair, --verify and --status")
-    if args.repair and base == "ALL":
-        parser.error("--repair needs --base lapwing, plover or extras")
+        parser.error("Specify --install, --repair, --verify, --status, --import USER.JSON, or --diag")
     if args.image and base == "ALL":
         parser.error("An image path goes with a single --base")
     if args.image and (args.verify or args.status):

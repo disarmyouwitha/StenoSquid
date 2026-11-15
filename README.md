@@ -114,6 +114,12 @@ https://lim.au/#/software/javelin-steno-tools
 
    The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
 
+If the installer reports a conflicting base, run the repair command it prints.
+For example, `python3 upload.py --repair --base lapwing` replaces only Lapwing Base
+over USB HID and keeps your other bases and personal dictionary.
+Use `python3 upload.py --status` to check which bases are ready, or
+`python3 upload.py --verify` to read them back and check their CRCs.
+
 ### Import a personal Plover dictionary
 
 With the current **Left-Default** firmware connected by USB, close the Javelin browser connection and run:

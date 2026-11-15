@@ -10,6 +10,8 @@ enum pet_state {
     PET_POWERED,
     PET_GREETING,
     PET_LAYER_CHANGE,
+    PET_WAIT_TAP,
+    PET_UPLOAD,
 };
 
 void steno_squid_pet_create(lv_obj_t *parent);
@@ -19,3 +21,5 @@ void steno_squid_pet_set_powered(bool powered);
 void steno_squid_pet_set_headroom(bool available);
 /* Hold an awake resting pose on the unconfirmed results screen. */
 void steno_squid_pet_set_awake_hold(bool hold);
+
+void steno_squid_pet_set_uploading(bool uploading);

@@ -50,6 +50,39 @@ BUILD_ASSERT(sizeof(STENO_SQUID_STATUS_BEHAVIOR) <= ZMK_SPLIT_RUN_BEHAVIOR_DEV_L
 static atomic_t connected;
 static atomic_t sync_attempts;
 
+static atomic_t upload_mode;
+static uint32_t upload_deadline;
+static struct k_spinlock upload_lock;
+
+static void expire_upload(struct k_work *work) {
+    k_spinlock_key_t key = k_spin_lock(&upload_lock);
+    const bool expired = atomic_get(&upload_mode) &&
+                         (int32_t)(k_uptime_get_32() - upload_deadline) >= 0;
+    if (expired) {
+        atomic_clear(&upload_mode);
+    }
+    k_spin_unlock(&upload_lock, key);
+    if (expired) {
+        steno_squid_split_status_refresh();
+    }
+}
+K_WORK_DELAYABLE_DEFINE(upload_expiry, expire_upload);
+
+void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms) {
+    k_spinlock_key_t key = k_spin_lock(&upload_lock);
+    const atomic_val_t previous = atomic_set(&upload_mode, timeout_ms ? mode : 0);
+    if (timeout_ms) {
+        upload_deadline = k_uptime_get_32() + timeout_ms;
+        k_work_reschedule(&upload_expiry, K_MSEC(timeout_ms));
+    } else {
+        k_work_cancel_delayable(&upload_expiry);
+    }
+    k_spin_unlock(&upload_lock, key);
+    if (previous != (timeout_ms ? (atomic_val_t)mode : 0)) {
+        steno_squid_split_status_refresh();
+    }
+}
+
 /* A layer that needs the dictionaries says so while they are not usable. */
 static enum steno_squid_mode dictionary_mode(enum steno_squid_mode ready) {
 #if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
@@ -116,21 +149,22 @@ static void send_status(struct k_work *work) {
         return;
     }
 
+    const unsigned upload = atomic_get(&upload_mode);
     struct zmk_behavior_binding binding = {
         .behavior_dev = STENO_SQUID_STATUS_BEHAVIOR,
-        .param1 = current_mode(),
+        .param1 = upload ? upload : current_mode(),
         .param2 = STENO_SQUID_STATUS_PROTOCOL,
     };
     /* Loading and No dictionary take the place of a layer's name. */
     const char *name = custom_layer_name();
-    if (name && binding.param1 != STENO_SQUID_MODE_LOADING &&
+    if (!upload && name && binding.param1 != STENO_SQUID_MODE_LOADING &&
         binding.param1 != STENO_SQUID_MODE_NO_DICTIONARY) {
         pack_layer_name(name, &binding);
     }
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
     struct steno_squid_practice_view view;
     steno_squid_practice_view_snapshot(&view);
-    if (view.state & STENO_SQUID_PRACTICE_ACTIVE) {
+    if (!upload && (view.state & STENO_SQUID_PRACTICE_ACTIVE)) {
         static uint8_t sequence;
         uint8_t bytes[STENO_SQUID_PRACTICE_FRAME_MAX];
         const unsigned length = steno_squid_practice_encode(&view, bytes);

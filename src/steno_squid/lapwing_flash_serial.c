@@ -1,5 +1,6 @@
 #include "lapwing_flash_internal.h"
 #include "diag.h"
+#include "split_status.h"
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"
 #endif
@@ -11,6 +12,8 @@
 
 const struct device *const lf_console = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
 static uint8_t incoming[CHUNK_BYTES] __aligned(4);
+static const struct base_image *repairing;
+
 
 static void reply(const struct base_image *image, const char *message, uint32_t value) {
     char line[64];
@@ -170,19 +173,28 @@ static void handle_command(uint8_t command, nrfx_qspi_config_t *config, bool qsp
             if (!qspi_ok) {
                 reply(image, "QSPI_ERROR", 0);
             } else {
+                steno_squid_upload_status(STENO_SQUID_MODE_VERIFY, 120000);
                 verify_image(image);
+                steno_squid_upload_status(STENO_SQUID_MODE_VERIFY, 0);
             }
             continue;
         }
         if (command == image->erase) {
             if (!qspi_ok) {
                 reply(image, "QSPI_ERROR", 0);
-            } else if (erase_image(image)) {
-                diag_note(DIAG_ERASE);
-                *mapping_failed = false;
-                reply(image, "ERASED", image->bytes);
             } else {
-                reply(image, "ERASE_ERROR", 0);
+                steno_squid_upload_status(STENO_SQUID_MODE_REPAIR, 600000);
+                if (erase_image(image)) {
+                    repairing = image;
+                    steno_squid_upload_status(STENO_SQUID_MODE_REPAIR, 30000);
+                    diag_note(DIAG_ERASE);
+                    *mapping_failed = false;
+                    reply(image, "ERASED", image->bytes);
+                } else {
+                    repairing = NULL;
+                    steno_squid_upload_status(STENO_SQUID_MODE_REPAIR, 0);
+                    reply(image, "ERASE_ERROR", 0);
+                }
             }
             lapwing_flash_ready_changed();
             continue;
@@ -198,7 +210,15 @@ static void handle_command(uint8_t command, nrfx_qspi_config_t *config, bool qsp
             reply(image, "VERIFIED", image->bytes);
         } else if (command == image->query) {
             reply(image, "UNPROVISIONED", image->bytes);
-        } else if (transfer_and_program(image)) {
+        } else {
+            const enum steno_squid_mode mode =
+                image == repairing ? STENO_SQUID_MODE_REPAIR : STENO_SQUID_MODE_INSTALL;
+            repairing = NULL;
+            steno_squid_upload_status(mode, 600000);
+            if (!transfer_and_program(image)) {
+                steno_squid_upload_status(mode, 0);
+                continue;
+            }
             diag_note(DIAG_PROGRAM);
             image->verified = lf_read_image_crc(image);
             if (!image->verified) {
@@ -213,6 +233,7 @@ static void handle_command(uint8_t command, nrfx_qspi_config_t *config, bool qsp
             } else {
                 reply(image, "VERIFIED", image->bytes);
             }
+            steno_squid_upload_status(mode, 0);
         }
     }
 }

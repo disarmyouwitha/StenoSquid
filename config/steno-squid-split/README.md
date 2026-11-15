@@ -19,7 +19,7 @@ curl --fail --location \
   https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-base.json \
   -o "$repo/build/lapwing/lapwing-base.json"
 python3 "$repo/tools/dict_compiler/compile_dict.py" "$repo/build/lapwing/lapwing-base.json" \
-  --base-addr 0x12000000 -o "$repo/build/lapwing/lapwing-base.bin"
+  --name lapwing-base --base-addr 0x12000000 -o "$repo/build/lapwing/lapwing-base.bin"
 python3 "$repo/tools/steno-squid-lapwing/prepare_plover.py"
 python3 "$repo/tools/steno-squid-lapwing/prepare_extras.py"
 ```
@@ -44,7 +44,10 @@ west build -s zmk/app -d "$repo/build/split-right" -b nice_nano//zmk -- \
   "-DZephyr_DIR=$ZEPHYR_BASE/share/zephyr-package/cmake"
 ```
 
-`-S zmk-usb-logging` on the left build adds the diagnostics serial port that `upload.py` uses to write and check the base dictionaries. Once both bases are provisioned, leave the snippet out for everyday use. The bases still load and the browser editor runs over HID. Send `W` to the diagnostics port to read the most recent flash check path, `CHECK_QUICK` or `CHECK_FULL`, followed by how long that check took in milliseconds.
+The Left-Diagnostic build combines `-S zmk-usb-logging` with `logging.conf` for
+legacy serial provisioning and diagnostics. Left-Default uses wired HID for
+dictionary maintenance. Send `W` to the diagnostics port for the last flash
+check path (`CHECK_QUICK` or `CHECK_FULL`) and its time in milliseconds.
 
 On a Left-Diagnostic build, `python3 upload.py --diag` detects the USB serial port and runs the status, boot log, rail test, and wake bench in one report. Use `--diag status`, `--diag log`, `--diag rail`, `--diag bench`, or `--diag clear` to run a single command. To select a port, put its path before `--diag`.
 
@@ -228,6 +231,10 @@ The installer detects the wired HID device and prepares missing images from pinn
 
 Provisioning checks the complete transfer before programming, reads back each chunk, then checks the raw and mapped CRCs and native Javelin lookups. It writes only inside the configured base regions and rejects conflicting pre-existing bits. Rerun the installer to resume a partial transfer. Personal snapshots stay in place, and Javelin starts once every configured image verifies.
 
+Left-Default can also replace a conflicting image over wired HID with
+`python3 upload.py --repair --base lapwing` (or `plover` or `extras`).
+The replacement must match the firmware checksum before the selected region is erased.
+
 For hardware recovery with a Left-Diagnostic build, `upload.py --install PORT` selects the serial installer. `upload.py PORT --status` shows the state of each base. Use `--repair --base lapwing|plover|extras` to explicitly erase and rewrite a single conflicting base.
 
 ### Lapwing extras
@@ -255,7 +262,7 @@ Eight of the command entries are Plover application commands, such as lookup and
 
 ### Verify or repair a base dictionary
 
-Both commands need the left build with `-S zmk-usb-logging`.
+Left-Default runs both commands over USB HID without a port argument. The port examples below select the legacy serial tools on Left-Diagnostic.
 
 ```sh
 python3 upload.py /dev/cu.usbmodem14501 --verify

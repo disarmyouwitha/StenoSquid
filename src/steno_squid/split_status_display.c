@@ -94,7 +94,9 @@ static void refresh_status(struct k_work *work) {
     steno_squid_screen_update(shown, name, practice, zmk_battery_state_of_charge(),
                          atomic_get(&host_disconnected));
     if (!practicing) {
-        if (zmk_activity_get_state() != ZMK_ACTIVITY_ACTIVE) {
+        if (typing && shown == STENO_SQUID_MODE_UNKNOWN) {
+            steno_squid_pet_set_state(PET_WAIT_TAP);
+        } else if (zmk_activity_get_state() != ZMK_ACTIVITY_ACTIVE) {
             steno_squid_pet_set_state(PET_SLEEP);
         } else if (typing) {
             steno_squid_pet_set_state(PET_TYPING);

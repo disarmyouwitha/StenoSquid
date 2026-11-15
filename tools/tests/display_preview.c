@@ -201,6 +201,32 @@ int main(void) {
     assert(!strcmp(lv_label_get_text(mode_above),"Waiting"));
     assert(lv_obj_get_y(mode_below)==99);
     assert(!strcmp(lv_label_get_text(mode_below),"For Left"));
+    assert(!headroom);
+    steno_squid_pet_set_state(PET_WAIT_TAP);
+    advance_frame(frame_timer);
+    lv_obj_update_layout(lv_screen_active());
+    assert(state == PET_WAIT_TAP && frame_index == 1);
+    assert(lv_obj_get_y(pet_image) < 51);
+    assert(lv_obj_get_y(pet_image) >= lv_obj_get_y(mode_above) + lv_obj_get_height(mode_above));
+    assert(lv_obj_get_y(pet_image) + PET_SIZE <= lv_obj_get_y(mode_below));
+    assert(lv_obj_has_flag(effect_image, LV_OBJ_FLAG_HIDDEN));
+    save("waiting-pop-hop");
+    steno_squid_pet_set_state(PET_WAIT_TAP);
+    assert(frame_index == 1); // Rapid keypresses let the hop finish.
+    advance_frame(frame_timer);advance_frame(frame_timer);advance_frame(frame_timer);
+    assert(state == PET_IDLE && lv_timer_get_paused(frame_timer));
+    const char *upload_labels[] = {"Install", "Repair", "Import", "Verify"};
+    for (unsigned i = 0; i < ARRAY_SIZE(upload_labels); ++i) {
+        steno_squid_screen_update(STENO_SQUID_MODE_INSTALL+i,"Custom",0,85,true);
+        assert(!strcmp(lv_label_get_text(mode_below), upload_labels[i]));
+        assert(lv_obj_has_flag(mode_above, LV_OBJ_FLAG_HIDDEN));
+        assert(state == PET_UPLOAD && !lv_obj_has_flag(effect_image, LV_OBJ_FLAG_HIDDEN));
+    }
+    for (unsigned i = 0; i < ARRAY_SIZE(upload_frames); ++i) advance_frame(frame_timer);
+    assert(state == PET_UPLOAD && frame_index == 0);
+    steno_squid_pet_set_state(PET_TYPING);
+    assert(state == PET_UPLOAD);
+    save("pop-upload");
     steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,false);
     assert(state != PET_LAYER_CHANGE); // Reconnection keeps the greeting path.
     steno_squid_screen_update(STENO_SQUID_MODE_TYPING,NULL,0,85,true);

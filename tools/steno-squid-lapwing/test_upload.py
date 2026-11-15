@@ -260,6 +260,70 @@ class UploadTest(unittest.TestCase):
         self.assertEqual([name for name, _ in transfers], ["PLOVER", "EXTRAS"])
         self.assertIn("installed and ready", output.getvalue())
 
+    def test_hid_install_conflict_gives_scoped_repair_command(self):
+        image = self.images["PLOVER"]
+        console = mock.Mock()
+        console.command.side_effect = [
+            f"1 INSTALL\nPLOVER {len(image)} {zlib.crc32(image)} 0",
+            "OK", "ERR Base region holds different data. No sectors were erased", "OK",
+        ]
+        with mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, "upload.py --repair --base plover"):
+                upload.install_hid(console)
+        self.assertEqual(console.command.call_args_list[-1], mock.call("base_install abort", timeout=2))
+        self.assertFalse(any(" repair " in call.args[0] for call in console.command.call_args_list))
+
+    def test_hid_repair_selects_one_image_and_leaves_old_cache_intact(self):
+        import import_personal
+
+        image = self.images["PLOVER"]
+        old_image = make_image(19)
+        self.paths["PLOVER"].write_bytes(old_image)
+        console = mock.Mock()
+
+        def command(text, timeout=30):
+            if text == "base_install status":
+                state = any(call.args[0] == "base_install commit" for call in console.command.call_args_list)
+                return f"1 INSTALL\nPLOVER {len(image)} {zlib.crc32(image)} {int(state)}\nEXTRAS 4 0 0"
+            return "OK"
+
+        console.command.side_effect = command
+        with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)), \
+                mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), \
+                mock.patch.object(upload, "prepare_base") as prepare, \
+                mock.patch.object(sys, "argv", ["upload.py", "--repair", "--base", "plover"]), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            prepare.side_effect = lambda name, expected, path: path.write_bytes(image)
+            upload.main()
+        commands = [call.args[0] for call in console.command.call_args_list]
+        self.assertEqual(commands[1], "base_install repair PLOVER")
+        self.assertNotIn("base_install repair EXTRAS", commands)
+        self.assertEqual(self.paths["PLOVER"].read_bytes(), old_image)
+        self.assertIn("remaining bases", output.getvalue())
+
+    def test_verify_and_status_default_to_hid(self):
+        import import_personal
+
+        for action in ("--status", "--verify"):
+            console = mock.Mock()
+            console.command.side_effect = ["1 READY\nLAPWING 12 1 1", "OK 1"]
+            with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)), \
+                    mock.patch.object(upload, "Serial", side_effect=AssertionError("opened serial")), \
+                    mock.patch.object(sys, "argv", ["upload.py", action]), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                upload.main()
+            self.assertIn("LAPWING:", output.getvalue())
+            self.assertEqual(console.command.call_count, 2 if action == "--verify" else 1)
+
+    def test_verify_hid_reports_bad_checksum(self):
+        console = mock.Mock()
+        console.command.side_effect = ["1 READY\nLAPWING 12 1 1", "MISMATCH 0"]
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(SystemExit) as result:
+                upload.inspect_hid(console, "ALL", verify=True)
+        self.assertEqual(result.exception.code, 1)
+        self.assertIn("FAILED", output.getvalue())
+
     def test_diagnostics_report_uses_one_detected_port(self):
         port = object()
         with mock.patch.object(upload, "find_port", return_value="COM1"), \
