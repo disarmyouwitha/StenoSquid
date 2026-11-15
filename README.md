@@ -1,7 +1,7 @@
 # StenoSquid
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
-(But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB W25Q128 QSPI flash chip!)
+(But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
 
 ✅ZMK Wireless Keyboard\
 ✅PloverHID\
@@ -142,7 +142,10 @@ The dark green sectors show a one-entry dictionary. The lighter green sectors ar
 ## NiceNano Wiring Diagram
 ![Flash Wiring diagram for NiceNano](assets/NiceNano_Flash_wiring_diagram.png)
 
-* Flash used for hand-wired prototype: [Adafruit W25Q128JVSSIQ](https://www.adafruit.com/product/5634)
+**Components used in hardwired build**
+* [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
+* [10K ohm Resistor](https://www.amazon.com/dp/B07HDGX5LM)
+* [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
 
 ## License
 
