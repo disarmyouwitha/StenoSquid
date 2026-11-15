@@ -320,7 +320,7 @@ int main(void) {
             if(i==0)save("multi-stroke-two");
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_SECOND_ERROR|
                 (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
-            assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 2"));
+            assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 1"));
             assert(lv_obj_get_style_text_decor(outline_label,0)==LV_TEXT_DECOR_UNDERLINE);
             if(i==0)save("multi-retry-two");
             steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|

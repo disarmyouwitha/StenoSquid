@@ -350,7 +350,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
             if (feedback == STENO_SQUID_PRACTICE_PROMPT) {
                 feedback_text = (practice & STENO_SQUID_PRACTICE_PARTIAL) ? "STROKE 2" : "STROKE 1";
             } else if (feedback == STENO_SQUID_PRACTICE_INCORRECT) {
-                feedback_text = (practice & STENO_SQUID_PRACTICE_SECOND_ERROR) ? "RETRY 2" : "RETRY 1";
+                feedback_text = "RETRY 1";
             }
         }
         lv_label_set_text_static(feedback_label, no_dictionary ? "DICT OFF" : feedback_text);
