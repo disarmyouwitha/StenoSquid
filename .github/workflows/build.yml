@@ -86,15 +86,11 @@ jobs:
             shield: corne_left
             snippet: zmk-usb-logging
             dictionaries: true
+            diagnostics: true
           - name: left-default
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
-          - name: left-logging-battery
-            shield: corne_left
-            snippet: zmk-usb-logging
-            dictionaries: true
-            battery_log: true
           - name: left-no-display
             shield: corne_left
             snippet: studio-rpc-usb-uart
@@ -171,9 +167,9 @@ jobs:
             args+=("-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/right-nice-view.conf"
                    "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/right-nice-view.overlay")
           fi
-          if [ "${{ matrix.battery_log }}" = "true" ]; then
-            args+=("-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/battery-log.conf"
-                   "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/battery-log.overlay")
+          if [ "${{ matrix.diagnostics }}" = "true" ]; then
+            args+=("-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/logging.conf"
+                   "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/logging.overlay")
           fi
           if [ -n "${{ matrix.extra }}" ]; then
             args+=(${{ matrix.extra }})

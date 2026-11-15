@@ -1,5 +1,6 @@
-/* Opt-in overlay for the left half's battery logger. Use it with
- * battery-log.conf; see tools/steno-squid-battery/README.md.
+/* Extras for the diagnostic left build (left-logging): the flash partition
+ * for the battery logger. Use it with logging.conf; see
+ * tools/steno-squid-battery/README.md.
  *
  * Reserves the top 128 KiB of application space for the log. The ZMK
  * settings partition and the bootloader retain their original addresses.

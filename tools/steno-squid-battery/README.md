@@ -1,18 +1,16 @@
 # Steno Squid battery logging trial
 
-Battery logging is off by default. To enable it, build the split left half
-with `-S zmk-usb-logging` and these CMake arguments, in a separate build
-directory:
+The battery logger is part of the diagnostic left build, **left-logging**. To
+build it yourself, use `-S zmk-usb-logging` and these CMake arguments:
 
 ```
--DEXTRA_CONF_FILE=config/steno-squid-split/battery-log.conf
--DEXTRA_DTC_OVERLAY_FILE=config/steno-squid-split/battery-log.overlay
+-DEXTRA_CONF_FILE=config/steno-squid-split/logging.conf
+-DEXTRA_DTC_OVERLAY_FILE=config/steno-squid-split/logging.overlay
 ```
 
-The `left-logging-battery` CI job builds this variant. The overlay takes 128 KiB from
-the top of the application partition for a circular log, so the logger build
-has less room for code than the everyday build. The everyday build keeps the
-full partition and leaves the logger out. The left half
+The overlay takes 128 KiB from the top of the application partition for a
+circular log, so the diagnostic build has less room for code than the everyday
+build, which keeps the full partition and leaves the logger out. The left half
 samples every five minutes, at startup, on USB state
 changes, and after the flash rail is switched off just before deep sleep. At
 five-minute intervals the log holds roughly eight days of continuous awake
