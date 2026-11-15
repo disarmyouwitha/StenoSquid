@@ -21,7 +21,7 @@
 | **Numpad** | Arrow keys, a number pad, and Bluetooth controls. Hold the middle left thumb to use it. |
 | **Javelin** | Onboard dictionary translation, including spelling rules, repeat, and undo. Works with Plover closed. |
 | **Plover** | Raw steno strokes sent over Plover HID to Plover on the computer, using Plover's dictionaries. |
-| **Practice** | Offline practice mode using only your keyboard, no PC required! |
+| **Practice** | Offline practice drills using only your keyboard, no PC required! |
 
 ## Onboard dictionaries
 
