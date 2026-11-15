@@ -7,12 +7,10 @@
 #include "engine.h"
 #include "orthography.h"
 #include "english_orthography.h"
-#ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
 #include "host_layout.h"
 #include "platform/macos_us_layout.h"
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 #include "platform/windows_us_layout.h"
-#endif
 #endif
 #include "processor/all_up.h"
 #include "processor/first_up.h"
@@ -509,8 +507,7 @@ static void practice_dictionary_changed() {
 }
 #endif
 
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-#ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
 // These indexes are stored in ZMK settings.
 static constexpr uint8_t HOST_PROFILE_MAC = 0;
 static constexpr uint8_t HOST_PROFILE_WINDOWS = 1;
@@ -554,9 +551,10 @@ static void set_host_profile(void *, const char *line) {
 }
 #endif
 
+#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 static int javelin_settings_set(const char *name, size_t length,
                                 settings_read_cb read, void *argument) {
-#ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
   if (strcmp(name, "host_profile") == 0) {
     uint8_t profile;
     if (length != sizeof(profile) || read(argument, &profile, sizeof(profile)) != sizeof(profile) ||
@@ -669,12 +667,8 @@ static bool load_dictionary_collection() {
 
   printk("[JAV] initializing orthography\n");
   new (compiledOrthography) StenoCompiledOrthography(english_orthography);
-#ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
   apply_host_profile();
-#else
-  HostLayouts::SetActiveLayout(zmk_javelin_macos_us_layout());
-#endif
 #endif
 
   printk("[JAV] constructing engine\n");
@@ -686,13 +680,13 @@ static bool load_dictionary_collection() {
       nullptr);
 
   // Register console commands
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-#ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
   Console::instance.RegisterCommand("get_parameter", "Read host layout parameters",
                                     get_host_parameter, nullptr);
   Console::instance.RegisterCommand("set_host_layout", "Set and save the host layout",
                                     set_host_profile, nullptr);
 #endif
+#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
   Console::instance.RegisterCommand("enable_dictionary", "Enable and save selection",
                                     select_dictionary, nullptr);
   Console::instance.RegisterCommand("disable_dictionary", "Disable and save selection",

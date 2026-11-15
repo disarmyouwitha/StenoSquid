@@ -147,7 +147,7 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
                              "add_user_entry", "remove_user_entry", "reset_user_dictionary",
                              "user_dictionary_status",
                              "enable_dictionary", "disable_dictionary", "toggle_dictionary",
-#ifdef CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
                              "get_parameter", "set_host_layout",
 #endif
     };

@@ -334,7 +334,7 @@ With Javelin Steno Tools connected over HID, open **Host Layout** and select the
 
 Try `SA / SRA` in a blank editor. Mac produces “ça va” and Windows plain text produces “ca va.” The Windows profile sends ordinary ASCII keys and has no Num Lock dependency. Latin-1 characters without a one-character ASCII mapping use a question mark. Each mapped character emits one character to keep undo counts aligned. The picker selects firmware-supplied profiles. The page's layout update section refers to uploading new definitions and can still show that uploads are unavailable.
 
-This split enables `CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT` to provide the Mac profile and, together with the browser dictionary option, the Windows profile picker. Builds with that option disabled use Javelin's plain U.S. output.
+This split enables `CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS`, which needs the browser dictionary option, to provide the Mac and Windows profiles and the picker. Builds with it disabled use Javelin's plain U.S. output.
 
 ## Studio key labels
 

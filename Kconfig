@@ -91,11 +91,13 @@ config ZMK_JAVELIN_BATTERY_LOG
     depends on ZMK_JAVELIN_STENO_SERIAL_PROVISIONING && ZMK_BLE && FLASH_MAP && HWINFO
     select FCB
 
-config ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
-    bool "Use macOS U.S./ABC accent and symbol keys in onboard Javelin"
+config ZMK_JAVELIN_STENO_HOST_LAYOUTS
+    bool "Choose the host layout (Mac U.S. or Windows U.S.) from the browser tool"
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     help
-      Enable when the host uses the macOS U.S. or ABC input source.
-      ASCII keys continue to use Javelin's US layout.
+      Adds the Mac U.S./ABC and Windows U.S. (plain text) profiles and the
+      Host Layout picker in Javelin Steno Tools. The choice is saved in ZMK
+      settings. ASCII keys use Javelin's US layout in both profiles.
 
 endif # ZMK_JAVELIN_STENO
 
