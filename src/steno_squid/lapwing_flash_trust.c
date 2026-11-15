@@ -13,7 +13,7 @@
  *   CRC passes.
  * - A full CRC pass over every base leaves a record in the keyboard's
  *   settings. While it is there, a cold boot runs the quick check too. The
- *   bases only change through serial provisioning, which removes the record
+ *   bases only change through provisioning, which removes the record
  *   before it writes.
  * Anything else verifies in full.
  */
@@ -62,8 +62,8 @@ void lf_store_trust(void) {
     }
 }
 
-void lf_clear_trust(void) {
-    (void)settings_delete(TRUST_SETTING);
+bool lf_clear_trust(void) {
+    return settings_delete(TRUST_SETTING) == 0;
 }
 #else
 bool lf_stored_trust(void) {
@@ -71,7 +71,8 @@ bool lf_stored_trust(void) {
 }
 void lf_store_trust(void) {
 }
-void lf_clear_trust(void) {
+bool lf_clear_trust(void) {
+    return true;
 }
 #endif
 

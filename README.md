@@ -99,26 +99,23 @@ https://lim.au/#/software/javelin-steno-tools
 | **Boardsource-Right-Default** | Right half with the portrait display, squid, stroke tape and Practice UI. |
 | **Boardsource-Left-No-Display** | Left half for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **Boardsource-Right-No-Display**. |
 | **Boardsource-Right-No-Display** | Right half without the display. |
-| **Boardsource-Left-Diagnostic** | Diagnostic left half: the serial port for installing dictionaries, the boot log, the `--diag` tools, and the battery logger, which records battery and activity samples in a reserved 128 KiB of internal flash. Not for everyday use. |
 | **Boardsource-Probe**, **Boardsource-Quad-Probe** | Read the flash chip on first power-up and write nothing. Run them before the left firmware. |
 
 The [Boardsource bring-up guide](config/boardsource-wireless-corne/README.md) covers them in order.
 
-**nice!nano v2 (the handwired prototype)** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`, and `NiceNano-Left-Diagnostic`.
+**nice!nano v2 (the handwired prototype)** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, or `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`.
 
 ### Provision a new keyboard
 
-1. Flash the matching **Left-Diagnostic** UF2 for your board (**Boardsource-Left-Diagnostic** or **NiceNano-Left-Diagnostic**). Let the left half reboot and keep it connected by USB.
-2. From the repository, run:
+1. Flash the matching **Left-Default** and **Right-Default** UF2s. Use the **No-Display** pair if you don't have a nice!view.
+2. Plug the left half in over USB, close any Javelin browser connection, and run these commands from this repository.
 
    ```sh
-   python3 -m pip install pyserial
+   python3 -m pip install hidapi
    python3 upload.py --install
    ```
 
-3. When verification passes, flash the **Left-Default** UF2 for your board (**Boardsource-** or **NiceNano-**) for everyday use and flash the matching right-half UF2.
-
-If USB detection is ambiguous, pass the port explicitly with `upload.py --install PORT`.
+   The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
 
 ### Import a personal Plover dictionary
 
@@ -134,7 +131,7 @@ The file's translations win for matching outlines. Other personal entries stay i
 Local builds must use this checkout's west manifest. If the workspace keeps a separate manifest copy, synchronize it before running `west update`. The compiled dictionary format depends on the pinned Javelin engine. [Dependency manifest](config/west.yml)
 
 ## External Memory Map
-The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
+The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
 
 ![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](assets/qspi-flash-map.png)
 

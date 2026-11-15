@@ -291,6 +291,73 @@ def install(port):
     print("Base dictionaries are ready. Flash the everyday Left-Default UF2 (or Left-No-Display without a nice!view).")
 
 
+def hid_install_status(console):
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        reply = console.command("base_install status", timeout=120)
+        header, *rows = reply.splitlines()
+        if header == "1 LOADING":
+            time.sleep(0.25)
+            continue
+        if header == "1 ERROR":
+            raise RuntimeError("The keyboard could not bring up dictionary flash. Check its connection and power.")
+        if header not in ("1 INSTALL", "1 READY") or not rows:
+            raise RuntimeError(f"Base install unavailable. Use a current Left-Default or Left-No-Display build. {header}")
+        images = {}
+        for row in rows:
+            name, size, crc, verified = row.split()
+            if name not in DEFAULT_IMAGES or name in images or verified not in ("0", "1"):
+                raise RuntimeError(f"Invalid base metadata: {row}")
+            images[name] = (int(size), int(crc), verified == "1")
+        return header == "1 READY", images
+    raise TimeoutError("The keyboard did not finish checking dictionary flash.")
+
+
+def install_hid(console):
+    def send(command, timeout=30):
+        reply = console.command("base_install " + command, timeout=timeout)
+        if reply != "OK":
+            raise RuntimeError(reply)
+
+    _, images = hid_install_status(console)
+    missing = {}
+    for name, (size, crc, verified) in images.items():
+        if verified:
+            print(f"{name}: already installed")
+            continue
+        path = DEFAULT_IMAGES[name]
+        if not path.exists():
+            print(f"Preparing {name} from the pinned dictionary sources…", flush=True)
+            prepare_base(name, (size, crc))
+        image = read_image(path)
+        check_matches_firmware(image, name, size, crc, path)
+        missing[name] = image
+
+    for name, image in missing.items():
+        print(f"Installing {name}…", flush=True)
+        send(f"begin {name}")
+        try:
+            for stage in ("Preflight", "Write and read back"):
+                for offset in range(0, len(image), CHUNK_BYTES):
+                    chunk = image[offset:offset + CHUNK_BYTES]
+                    send(f"data {offset} {chunk.hex()}")
+                    end = offset + len(chunk)
+                    if end == len(image) or end % (64 * 1024) == 0:
+                        print(f"{stage}: {end:,}/{len(image):,} bytes", flush=True)
+            send("commit", timeout=120)
+        except (Exception, KeyboardInterrupt):
+            try:
+                send("abort", timeout=2)
+            except Exception:
+                pass
+            raise
+
+    ready, images = hid_install_status(console)
+    if not ready or not all(verified for _, _, verified in images.values()):
+        raise RuntimeError("The keyboard did not map all verified base dictionaries.")
+    print("Base dictionaries are installed and ready. You can start using Javelin.")
+
+
 def find_port():
     try:
         from serial.tools import list_ports
@@ -352,12 +419,12 @@ def diag(port, what):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("port", nargs="?", help="USB CDC device path; --install can detect it")
+    parser.add_argument("port", nargs="?", help="USB serial device path for advanced maintenance commands")
     parser.add_argument("--install", action="store_true",
-                        help="Prepare, install and verify all missing bundled base images")
+                        help="Install and verify bundled dictionaries over wired USB HID")
     parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON",
                         help="Merge a Plover JSON file into the connected keyboard over USB HID")
-    parser.add_argument("--serial", help="Select a USB keyboard by serial number for --import")
+    parser.add_argument("--serial", help="Select a USB keyboard by serial number for --install or --import")
     parser.add_argument("image", type=Path, nargs="?",
                         help="JSC4 image for a single --base. Default: the file under build/ "
                              "that the prepare script wrote")
@@ -372,18 +439,16 @@ def main():
                         help="Read the whole image and check its CRC. Writes nothing")
     parser.add_argument("--status", action="store_true",
                         help="Print the state of every image and exit")
-    parser.add_argument("--diag", choices=sorted(DIAG),
-                        help="status: counters, flash state, wake timing, power. log: the boot "
-                             "log kept across the last reset. clear: wipe both. rail: switch "
-                             "the flash rail both ways and time its rise and fall. bench: "
-                             "power-cycle the flash ten times through the wake path")
+    parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)],
+                        help="Collect flash status, rail and wake tests, and the boot log. "
+                             "Pass a test name to run it alone.")
     args = parser.parse_args()
     if args.install or args.personal:
         if args.install and args.personal or any((args.base, args.image, args.repair, args.verify,
                                                  args.status, args.diag)):
             parser.error("--install and --import are standalone actions")
-    if args.serial and not args.personal:
-        parser.error("--serial goes with --import")
+    if args.serial and (args.port or not (args.personal or args.install)):
+        parser.error("--serial selects a HID device for --install or --import")
     if args.personal:
         if args.port:
             parser.error("--import uses USB HID; omit the serial port path")
@@ -391,19 +456,32 @@ def main():
         import_file(args.personal, args.serial)
         return
     if args.install:
+        if args.port:
+            with Serial(args.port, 115200, timeout=0.25, write_timeout=5,
+                        exclusive=True) as port:
+                install(port)
+        else:
+            from import_personal import open_console
+            try:
+                with open_console(args.serial) as console:
+                    install_hid(console)
+            except (OSError, ValueError, RuntimeError) as error:
+                raise SystemExit(f"Dictionary installation failed: {error}") from None
+        return
+    if args.diag:
+        if args.repair or args.verify or args.status or args.image or args.base:
+            parser.error("--diag stands alone")
         with Serial(args.port or find_port(), 115200, timeout=0.25,
                     write_timeout=5, exclusive=True) as port:
-            install(port)
+            sections = ("status", "log", "rail", "bench") if args.diag == "report" else (args.diag,)
+            for section in sections:
+                if len(sections) > 1:
+                    print(f"\n[{section}]", flush=True)
+                diag(port, section)
         return
     if not args.port:
-        parser.error("Specify a serial port, --install, or --import USER.JSON")
+        parser.error("Specify a serial port, --install, --import USER.JSON, or --diag")
     base = (args.base or "all").upper()
-    if args.diag:
-        if args.repair or args.verify or args.status or args.image:
-            parser.error("--diag stands alone")
-        with Serial(args.port, 115200, timeout=0.25, write_timeout=5, exclusive=True) as port:
-            diag(port, args.diag)
-        return
     if sum([args.repair, args.verify, args.status]) > 1:
         parser.error("Use only one of --repair, --verify and --status")
     if args.repair and base == "ALL":

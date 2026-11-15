@@ -85,6 +85,13 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
         // ZMK retries on its next idle check. Let any read or save finish.
         return -EBUSY;
     }
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+    /* Let the worker finish mapping a newly installed dictionary first. */
+    if (lf_provisioning_recheck) {
+        k_mutex_unlock(&flash_lock);
+        return -EBUSY;
+    }
+#endif
     int rc = 0;
     if (lf_suspended) {
 #if IDLE_OFF

@@ -46,7 +46,7 @@ west build -s zmk/app -d "$repo/build/split-right" -b nice_nano//zmk -- \
 
 `-S zmk-usb-logging` on the left build adds the diagnostics serial port that `upload.py` uses to write and check the base dictionaries. Once both bases are provisioned, leave the snippet out for everyday use. The bases still load and the browser editor runs over HID. Send `W` to the diagnostics port to read the most recent flash check path, `CHECK_QUICK` or `CHECK_FULL`, followed by how long that check took in milliseconds.
 
-The logging build also answers three more commands on the diagnostics port. `python upload.py <port> --diag status|log|clear` sends them and prints the reply without prompting.
+On a Left-Diagnostic build, `python3 upload.py --diag` detects the USB serial port and runs the status, boot log, rail test, and wake bench in one report. Use `--diag status`, `--diag log`, `--diag rail`, `--diag bench`, or `--diag clear` to run a single command. To select a port, put its path before `--diag`.
 
 - `S` (`--diag status`) prints the build commit and time, uptime, reset cause, whether USB is powering the board and the battery level, the flash state (mapped, checked, suspended, idle power-down, steno hold), the chip ID, the last check path and time, whether the saved verification record is present, each image's verified state, the counters below, and wake timing.
 - `D` (`--diag log`) prints the boot log kept in RAM, about 1 KiB of the flash lifecycle lines with boot number and uptime. It survives a soft reset, so a line printed before you opened the port is still there. It is empty after a power loss.
@@ -217,15 +217,18 @@ The existing website supplies these controls. Firmware support handles listing, 
 
 Plover source: [official main.json at the pinned revision](https://github.com/openstenoproject/plover/blob/8a52c5296c502507f9a46820a4a947ca25f998e6/plover/assets/main.json). Source SHA256: `6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92`. Compiled padded image SHA256: `6d74757af03ad1769f6f2d587afcc8957a5486b3e31ed3e20f00410c2624e2c4`.
 
-After flashing **NiceNano-Left-Diagnostic**, let the keyboard reboot and run:
+After flashing the everyday left firmware, let the keyboard reboot and run:
 
 ```sh
+python3 -m pip install hidapi
 python3 upload.py --install
 ```
 
-The installer detects the serial port, prepares missing images from pinned sources, then installs and verifies the three bundled images. Pass the serial port after `--install` if detection is ambiguous. `--status` prints the state of each image. `--base lapwing`, `--base plover` or `--base extras` acts on one image alone, with the image path after it if the file is elsewhere.
+The installer detects the wired HID device and prepares missing images from pinned sources. Use `--serial SERIAL_NUMBER` with multiple USB keyboards connected.
 
-Provisioning checks the complete transfer before programming, verifies each programmed page, then checks the complete raw and mapped CRCs and native Javelin lookups. It writes only the selected base's region, performs no erases, and rejects conflicting pre-existing bits. Existing Lapwing and personal snapshots remain in place. The dual-base build starts onboard Javelin after both configured bases verify. `VERIFIED` means that base is intact but another configured base still needs provisioning. `MAPPED` means both bases passed and are available to Javelin. Only the left half needs updating for this feature.
+Provisioning checks the complete transfer before programming, reads back each chunk, then checks the raw and mapped CRCs and native Javelin lookups. It writes only inside the configured base regions and rejects conflicting pre-existing bits. Rerun the installer to resume a partial transfer. Personal snapshots stay in place, and Javelin starts once every configured image verifies.
+
+For hardware recovery with a Left-Diagnostic build, `upload.py --install PORT` selects the serial installer. `upload.py PORT --status` shows the state of each base. Use `--repair --base lapwing|plover|extras` to explicitly erase and rewrite a single conflicting base.
 
 ### Lapwing extras
 
@@ -290,7 +293,7 @@ The builder confirmed normal typing over the split, onboard Javelin output of �
 
 ## Edit the onboard personal dictionary
 
-The left firmware exposes a dedicated HID console over USB and Bluetooth for [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools). For wireless editing, pair **Steno Squid** in macOS Bluetooth settings and unplug USB. In Chrome, choose **Connect via HID** for either connection. Select **Steno Squid**, then open **Dictionary Management → View**. This console uses Javelin's vendor HID collection alongside the ordinary keyboard and Plover HID interfaces. The USB serial port handles diagnostics and base dictionary provisioning.
+The left firmware exposes a dedicated HID console over USB and Bluetooth for [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools). For wireless editing, pair **Steno Squid** in macOS Bluetooth settings and unplug USB. In Chrome, choose **Connect via HID** for either connection. Select **Steno Squid**, then open **Dictionary Management → View**. This console uses Javelin's vendor HID collection alongside the ordinary keyboard and Plover HID interfaces. Left-Default also accepts wired USB HID base provisioning before Javelin has started.
 
 Use **Add Translation** to enter an outline and translation, then press Return in the translation field to save. Add, replace, remove, or export personal outlines from the browser. A saved entry takes precedence over the same Lapwing outline in onboard Javelin. Removing the personal entry restores the Lapwing translation. Host Plover HID continues to send raw strokes to the host.
 
@@ -302,7 +305,7 @@ A 4 MiB slot fits about 90,000 entries at the average record size of the bundled
 
 The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checked interrupted saves, corrupt-snapshot fallback, and write boundaries.
 
-The HID transport passed the native Javelin handshake, commands spanning multiple reports, dictionary exports, and two interleaved console channels. The official tools in Chrome connected through **Connect via HID** and saved a translation through the browser. That entry survived a firmware flash and reboot, and deleting it restored Lapwing's translation. This build exposes three HID interfaces and one diagnostics serial interface.
+The HID transport passed the native Javelin handshake, commands spanning multiple reports, dictionary exports, and two interleaved console channels. The official tools in Chrome connected through **Connect via HID** and saved a translation through the browser. That entry survived a firmware flash and reboot, and deleting it restored Lapwing's translation. The diagnostic build also exposes a USB serial interface.
 
 The builder confirmed all three keyboard modes on the final HID firmware, including normal typing, host Plover HID, and onboard Javelin across both halves. The physical steno test produced “the cat is the cat if the cat is the cat!”
 

@@ -89,6 +89,11 @@ void lapwing_flash_hold(bool hold) {
 #endif
 }
 
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+bool lf_provisioning_ready;
+bool lf_provisioning_recheck;
+#endif
+
 static void lapwing_worker(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
@@ -118,11 +123,28 @@ static void lapwing_worker(void *a, void *b, void *c) {
 #ifdef CONFIG_ZMK_SLEEP
         if (atomic_get(&lf_restart_requested)) {
             k_mutex_lock(&flash_lock, K_FOREVER);
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+            if (lf_provisioning_recheck) {
+                lf_provisioning_recheck = false;
+                /* Each image already passed a raw CRC. Check the mapped bytes
+                 * and native lookups before publishing the new mapping. */
+                mapping_failed = !lf_enable_verified_mapping(&config, false);
+                lf_provisioning_ready = qspi_ok && !mapping_failed;
+                if (!mapping_failed) {
+                    lf_store_trust();
+                }
+                atomic_set(&lf_checked, 1);
+                lapwing_flash_ready_changed();
+            }
+#endif
             /* Several callers may ask for one wake. Only a powered-down flash
              * is brought up; a request that arrives late is already served.
              */
             if (atomic_cas(&lf_restart_requested, 1, 0) && lf_suspended) {
                 qspi_ok = lf_bring_up_flash(&config, &mapping_failed);
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+                lf_provisioning_ready = qspi_ok && !mapping_failed;
+#endif
                 lf_suspended = false;
 #if IDLE_OFF
                 lf_note_use();

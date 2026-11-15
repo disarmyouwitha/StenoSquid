@@ -84,6 +84,8 @@ if(CONFIG_ZMK_JAVELIN_STENO)
         "${LAPWING_SRC}/lapwing_flash_serial.c"
         "${LAPWING_SRC}/lapwing_flash_diag.c"
         "${LAPWING_SRC}/w25q_quad.c")
+      target_sources_ifdef(CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING app PRIVATE
+        "${LAPWING_SRC}/lapwing_flash_provision.c")
       if(CONFIG_ZMK_JAVELIN_DIAG)
         # Build id shown by the S command: the CI commit, else git describe.
         set(JAVELIN_BUILD_ID "unknown")

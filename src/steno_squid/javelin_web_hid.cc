@@ -1,5 +1,8 @@
 #include "console.h"
 #include "javelin_hid_transport.h"
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+#include "lapwing_flash_provision.h"
+#endif
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"
 #endif
@@ -125,6 +128,20 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
     }
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
     writer.CountCommand();
+#endif
+
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+    constexpr char install_prefix[] = "base_install ";
+    if (writer.IsUsb() && strncmp(command, install_prefix, sizeof(install_prefix) - 1) == 0) {
+        char reply[160];
+        lf_provision_command(command + sizeof(install_prefix) - 1, reply, sizeof(reply));
+        if (channel) {
+            writer.Write(line, 4);
+        }
+        writer.Write(reply, strlen(reply));
+        writer.Write("\n\n", 2);
+        return;
+    }
 #endif
 
     // Expose dictionary operations and selection of built-in host layouts.

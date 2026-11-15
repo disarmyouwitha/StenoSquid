@@ -11,6 +11,7 @@ silent-firmware cases do not wait. Every test also fails if the script ever
 asks a question, because project scripts must never prompt.
 """
 
+from contextlib import nullcontext
 import builtins
 import collections
 import contextlib
@@ -211,6 +212,65 @@ class UploadTest(unittest.TestCase):
         code, _ = self.run_script(kb, "--install")
         self.assertIn("is not the EXTRAS image", str(code))
         self.assertEqual(self.programmed(kb), [])
+
+    def test_default_install_uses_hid_and_prepares_images_before_writing(self):
+        import import_personal
+
+        self.paths["EXTRAS"].unlink()
+        transfers = []
+        verified = {"LAPWING"}
+        active = None
+
+        def command(text, timeout=30):
+            nonlocal active
+            _, operation, *args = text.split()
+            if operation == "status":
+                state = "READY" if len(verified) == len(self.images) else "INSTALL"
+                return "\n".join([f"1 {state}"] + [
+                    f"{name} {len(image)} {zlib.crc32(image)} {int(name in verified)}"
+                    for name, image in self.images.items()
+                ])
+            if operation == "begin":
+                active, = args
+                self.assertNotIn(active, verified)
+                self.assertTrue(self.paths["EXTRAS"].exists())
+                transfers.append((active, bytearray()))
+            elif operation == "data":
+                offset, chunk = args
+                self.assertEqual(int(offset), len(transfers[-1][1]) % len(self.images[active]))
+                transfers[-1][1].extend(bytes.fromhex(chunk))
+            elif operation == "commit":
+                self.assertEqual(transfers[-1][1], self.images[active] * 2)
+                verified.add(active)
+            else:
+                self.fail(f"Unexpected command: {text}")
+            return "OK"
+
+        console = mock.Mock()
+        console.command.side_effect = command
+        with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)) as open_hid, \
+                mock.patch.object(upload, "Serial", side_effect=AssertionError("opened serial")), \
+                mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), \
+                mock.patch.object(upload, "prepare_base") as prepare, \
+                mock.patch.object(sys, "argv", ["upload.py", "--install", "--serial", "S1"]), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            prepare.side_effect = lambda name, _: self.paths[name].write_bytes(self.images[name])
+            upload.main()
+        open_hid.assert_called_once_with("S1")
+        self.assertEqual([name for name, _ in transfers], ["PLOVER", "EXTRAS"])
+        self.assertIn("installed and ready", output.getvalue())
+
+    def test_diagnostics_report_uses_one_detected_port(self):
+        port = object()
+        with mock.patch.object(upload, "find_port", return_value="COM1"), \
+                mock.patch.object(upload, "Serial", return_value=nullcontext(port)) as serial, \
+                mock.patch.object(upload, "diag") as diag, \
+                mock.patch.object(sys, "argv", ["upload.py", "--diag"]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            upload.main()
+        serial.assert_called_once_with("COM1", 115200, timeout=0.25, write_timeout=5, exclusive=True)
+        self.assertEqual(diag.call_args_list, [mock.call(port, part)
+                                               for part in ("status", "log", "rail", "bench")])
 
     def test_installed_images_are_left_alone(self):
         kb = self.keyboard(installed=("LAPWING", "PLOVER", "EXTRAS"))

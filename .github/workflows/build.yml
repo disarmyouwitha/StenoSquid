@@ -15,7 +15,9 @@ jobs:
       - name: Check out this repository
         uses: actions/checkout@v4
       - name: Run the upload.py tests against a fake keyboard
-        run: python3 tools/steno-squid-lapwing/test_upload.py
+        run: |
+          python3 tools/steno-squid-lapwing/test_upload.py
+          python3 tools/tests/test_base_provision.py
 
   stroke-feed-tests:
     name: stroke tape tests

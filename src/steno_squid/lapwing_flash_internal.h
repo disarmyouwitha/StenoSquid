@@ -53,6 +53,12 @@ struct base_image {
 #define IMAGE_COUNT 1
 #endif
 
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+/* All accesses are under flash_lock. */
+extern bool lf_provisioning_ready;
+extern bool lf_provisioning_recheck;
+#endif
+
 /* lapwing_flash.c */
 extern struct base_image lf_images[IMAGE_COUNT];
 extern atomic_t lf_mapped_ready;
@@ -110,7 +116,7 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed);
 uint8_t lf_trust_marker(void);
 bool lf_stored_trust(void);
 void lf_store_trust(void);
-void lf_clear_trust(void);
+bool lf_clear_trust(void);
 bool lf_take_wake_trust(void);
 
 /* lapwing_flash_serial.c */

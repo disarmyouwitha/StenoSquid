@@ -1,5 +1,6 @@
 """Compile a Plover JSON dictionary and transfer one snapshot over USB HID."""
 
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import struct
@@ -110,10 +111,8 @@ class Console:
             raise RuntimeError(reply)
 
 
-def import_file(path, serial=None):
-    entries = parse_dictionary(path.read_text(encoding="utf-8-sig"))
-    if not entries:
-        raise ValueError("The JSON file has no entries.")
+@contextmanager
+def open_console(serial=None):
     try:
         import hid
     except ImportError:
@@ -121,6 +120,7 @@ def import_file(path, serial=None):
     devices = [
         device for device in hid.enumerate()
         if (device.get("usage_page"), device.get("usage")) == USAGE
+        and device.get("bus_type", 0) in (0, 1)  # HIDAPI unknown or USB
         and (device.get("serial_number") == serial if serial else
              device.get("serial_number") and device.get("product_string") == "Steno Squid")
     ]
@@ -129,7 +129,16 @@ def import_file(path, serial=None):
     device = hid.device()
     device.open_path(devices[0]["path"])
     try:
-        console = Console(device)
+        yield Console(device)
+    finally:
+        device.close()
+
+
+def import_file(path, serial=None):
+    entries = parse_dictionary(path.read_text(encoding="utf-8-sig"))
+    if not entries:
+        raise ValueError("The JSON file has no entries.")
+    with open_console(serial) as console:
         status = json.loads(console.command("user_dictionary_status"))
         if status.get("bulk_import") != 1:
             raise RuntimeError("Install a left firmware build that supports bulk import.")
@@ -166,5 +175,3 @@ def import_file(path, serial=None):
                 pass
             raise
         print("Personal dictionary saved and verified.")
-    finally:
-        device.close()
