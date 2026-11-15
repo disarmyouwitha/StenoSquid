@@ -1,7 +1,7 @@
 """Run repeat-command regressions against the actual pinned Javelin engine.
 
-Requires a native C++20 compiler. Stages a private engine copy and applies the
-same compatibility patches as the firmware build.
+Requires a native C++20 compiler. Builds a private copy of the pinned engine, which
+is the javelin-steno fork named in config/west.yml.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -23,21 +23,13 @@ def main():
     engine.mkdir(parents=True, exist_ok=True)
     shutil.copytree(args.engine.resolve(), engine, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns(".git", "__pycache__"))
-    subprocess.run([sys.executable, str(repo / "tools/build/prepare_engine.py"), str(engine)],
-                   check=True)
-    patches = {
-        "segment_builder.cc": "prepare_segment_builder.py",
-        "engine_normal_mode.cc": "prepare_engine_normal_mode.py",
-    }
+    # The pinned engine is the fork with the firmware's changes already applied.
+    # Its QSPI reader includes two firmware headers: use host stand-ins.
+    stubs = repo / "tools/tests/stubs"
     objects_dir = output / "obj"
     objects_dir.mkdir(exist_ok=True)
     sources = list(engine.rglob("*.cc"))
-    for filename, script in patches.items():
-        original, patched = engine / filename, output / filename
-        subprocess.run([sys.executable, str(repo / "tools/build" / script),
-                        str(original), str(patched)], check=True)
-        sources.remove(original)
-        sources.append(patched)
+    sources.append(stubs / "lapwing_stub.cc")
     sources.append(repo / "tools/tests/repeat_translation.cc")
 
     def compile_source(source):
@@ -45,7 +37,7 @@ def main():
         obj = objects_dir / (name + ".o")
         command = [args.cxx, "-std=c++20", "-O0", "-w", "-DRUN_TESTS=1",
                    "-DJAVELIN_USE_EMBEDDED_STENO=1", "-DJAVELIN_BOARD_CONFIG=<stddef.h>",
-                   "-I" + str(engine), "-c", str(source), "-o", str(obj)]
+                   "-I" + str(stubs), "-I" + str(engine), "-c", str(source), "-o", str(obj)]
         result = subprocess.run(command, text=True, capture_output=True)
         if result.returncode:
             raise RuntimeError(str(source) + "\n" + result.stderr)

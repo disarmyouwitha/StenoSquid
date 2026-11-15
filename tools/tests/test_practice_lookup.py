@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-source = (ROOT / 'src/engine_init.cc').read_text()
+source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text()
 start = source.index('static bool practice_correct(')
 brace = source.index('{', start)
 depth, end = 1, brace + 1
@@ -23,6 +23,7 @@ prefix = r'''
 #include <strings.h>
 #include <string>
 #include "split_status.h"
+#include "practice_types.h"
 #include "practice_words.h"
 #include "practice_multi.h"
 #include "practice_build.h"

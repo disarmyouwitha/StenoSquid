@@ -8,17 +8,9 @@ config ZMK_JAVELIN_STENO
 
 if ZMK_JAVELIN_STENO
 
-config ZMK_JAVELIN_STENO_DICT_PLOVER
-    bool "Include Plover dictionary (standard English)"
-    default y
-
-config ZMK_JAVELIN_STENO_DICT_LAPWING
-    bool "Include Lapwing dictionary (modern, recommended for new learners)"
-    default n
-
 config ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
     bool "Use the Steno Squid's external QSPI Lapwing dictionary"
-    depends on SOC_NRF52840
+    depends on SOC_NRF52840 && ZMK_SLEEP
     select NRFX_QSPI
     select CRC
 
@@ -68,7 +60,7 @@ config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
 
 config ZMK_JAVELIN_STENO_FLASH_IDLE_OFF
     bool "Power the external flash down while the dictionaries are idle"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_SLEEP
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
     default y
     help
       Switch the flash rail and QSPI off after a period with no dictionary
@@ -96,14 +88,23 @@ config ZMK_JAVELIN_STENO_BLE_HID
 
 config ZMK_JAVELIN_BATTERY_LOG
     bool "Record Steno Squid battery samples in a dedicated internal flash partition"
-    depends on ZMK_JAVELIN_STENO_SERIAL_PROVISIONING && ZMK_BLE && FLASH_MAP && HWINFO
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
+    depends on ZMK_BLE && FLASH_MAP && HWINFO
     select FCB
-
-config ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
-    bool "Use macOS U.S./ABC accent and symbol keys in onboard Javelin"
+    default n
     help
-      Enable when the host uses the macOS U.S. or ABC input source.
-      ASCII keys continue to use Javelin's US layout.
+      Needs the battery-log partition from
+      config/steno-squid-split/logging.overlay, which shrinks the
+      application partition by 128 KiB. Build with that overlay and
+      logging.conf together, as the left-logging CI job does.
+
+config ZMK_JAVELIN_STENO_HOST_LAYOUTS
+    bool "Choose the host layout (Mac U.S. or Windows U.S.) from the browser tool"
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    help
+      Adds the Mac U.S./ABC and Windows U.S. (plain text) profiles and the
+      Host Layout picker in Javelin Steno Tools. The choice is saved in ZMK
+      settings. ASCII keys use Javelin's US layout in both profiles.
 
 endif # ZMK_JAVELIN_STENO
 
@@ -124,14 +125,6 @@ config ZMK_STENO_SQUID_STROKE_TAPE
       small write on the split link per stroke, plus one for a translation
       longer than four characters.
 
-config ZMK_STENO_SQUID_STROKE_TRANSLATION
-    bool
-    depends on ZMK_STENO_SQUID_STROKE_TAPE && !ZMK_SPLIT_ROLE_CENTRAL
-    default y
-    help
-      Show the stroke, translation, and WPM above the squid on the right
-      display half when stroke tape is enabled.
-
 config ZMK_STENO_SQUID_STROKE_HINT
     bool
     depends on ZMK_STENO_SQUID_STROKE_TAPE && ZMK_JAVELIN_STENO && ZMK_SPLIT_ROLE_CENTRAL
@@ -140,14 +133,10 @@ config ZMK_STENO_SQUID_STROKE_HINT
     help
       Suggest a one-stroke shortcut using the sorted index in freshly compiled
       external dictionary images. Personal dictionaries use native reverse
-      lookup. Work runs on the key thread; logging builds report its timing.
+      lookup. Work runs on the key thread. With ZMK_JAVELIN_DIAG (the logging
+      build) each stroke's handling time is logged.
 
 config ZMK_STENO_SQUID_PRACTICE
     bool "Offline single-stroke practice on the right nice!view"
     depends on SETTINGS
     depends on ZMK_STENO_SQUID_SPLIT_STATUS && ZMK_JAVELIN_STENO && ZMK_SPLIT_ROLE_CENTRAL
-
-config ZMK_STENO_SQUID_FONT_SAMPLER
-    bool "Show a font sampler on the right nice!view"
-    select LV_FONT_MONTSERRAT_20
-    depends on ZMK_STENO_SQUID_SPLIT_STATUS && !ZMK_SPLIT_ROLE_CENTRAL

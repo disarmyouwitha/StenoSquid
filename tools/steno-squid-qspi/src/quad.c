@@ -2,89 +2,13 @@
 #ifdef TRACE_PROBE
 #include "trace.h"
 #endif
-#ifdef JAVELIN_PROBE
-#include "mapped.h"
-#include <zephyr/devicetree.h>
-#endif
 
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-#define QUAD_ENABLE BIT(1)
-#define STATUS_BUSY_OR_WRITE_ENABLED (BIT(0) | BIT(1))
 static uint8_t single_data[QUAD_SAMPLE_SIZE] __aligned(4);
 static uint8_t quad_data[QUAD_SAMPLE_SIZE] __aligned(4);
-
-bool reactivate_after_xip(void)
-{
-	/* nRF52840 anomaly 215. Use only task/event registers until READY. */
-	nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
-	nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_ACTIVATE);
-	for (unsigned int i = 0; i < 1000; i++) {
-		if (nrf_qspi_event_check(NRF_QSPI, NRF_QSPI_EVENT_READY)) {
-			nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
-			return true;
-		}
-		k_busy_wait(10);
-	}
-	return false;
-}
-
-static nrfx_err_t status_command(uint8_t opcode, const uint8_t *tx, uint8_t *rx)
-{
-	const nrf_qspi_cinstr_conf_t command = {
-		.opcode = opcode,
-		.length = tx || rx ? NRF_QSPI_CINSTR_LEN_2B : NRF_QSPI_CINSTR_LEN_1B,
-		.io2_level = true,
-		.io3_level = true,
-		.wipwait = false,
-		.wren = false,
-	};
-
-	return nrfx_qspi_cinstr_xfer(&command, tx, rx);
-}
-
-static nrfx_err_t set_volatile_sr2(uint8_t value)
-{
-	uint8_t status;
-	nrfx_err_t rc = status_command(0x05, NULL, &status);
-
-	if (rc != NRFX_SUCCESS) {
-		return rc;
-	}
-	/* A preexisting WEL could turn the SR2 write into a nonvolatile write. */
-	if (status & STATUS_BUSY_OR_WRITE_ENABLED) {
-		return NRFX_ERROR_BUSY;
-	}
-
-	rc = status_command(0x50, NULL, NULL);
-	if (rc != NRFX_SUCCESS) {
-		return rc;
-	}
-	rc = status_command(0x31, &value, NULL);
-	if (rc != NRFX_SUCCESS) {
-		return rc;
-	}
-
-	k_msleep(2);
-	rc = status_command(0x35, NULL, &status);
-	if (rc != NRFX_SUCCESS) {
-		return rc;
-	}
-	return status == value ? NRFX_SUCCESS : NRFX_ERROR_INTERNAL;
-}
-
-nrfx_err_t w25q128_enable_volatile_quad(void)
-{
-	uint8_t status;
-	nrfx_err_t rc = status_command(0x35, NULL, &status);
-
-	if (rc != NRFX_SUCCESS || (status & QUAD_ENABLE)) {
-		return rc;
-	}
-	return set_volatile_sr2(status | QUAD_ENABLE);
-}
 
 static nrfx_err_t read_sample(nrfx_qspi_config_t *config, nrf_qspi_readoc_t mode,
 			      uint32_t address, uint8_t *data)
@@ -131,20 +55,20 @@ void run_quad_probe(nrfx_qspi_config_t *config, struct quad_result *result,
 	uint8_t seen_zero = 0;
 
 	result->restore_error = NRFX_SUCCESS;
-	result->error = status_command(0x35, NULL, &original_sr2);
+	result->error = w25q_status_command(0x35, NULL, &original_sr2);
 	if (result->error != NRFX_SUCCESS) {
 		result->outcome = "FAIL: reading Status Register 2";
 		return;
 	}
 	printk("Quad probe initial Status Register 2: 0x%02x\n", original_sr2);
 
-	bool change_qe = (original_sr2 & QUAD_ENABLE) == 0;
+	bool change_qe = (original_sr2 & W25Q_QUAD_ENABLE) == 0;
 
 	if (change_qe) {
-		result->error = set_volatile_sr2(original_sr2 | QUAD_ENABLE);
+		result->error = w25q_set_volatile_sr2(original_sr2 | W25Q_QUAD_ENABLE);
 		if (result->error != NRFX_SUCCESS) {
 			result->outcome = "FAIL: setting or verifying volatile QE";
-			result->restore_error = set_volatile_sr2(original_sr2);
+			result->restore_error = w25q_set_volatile_sr2(original_sr2);
 			return;
 		}
 	}
@@ -195,21 +119,11 @@ void run_quad_probe(nrfx_qspi_config_t *config, struct quad_result *result,
 				return;
 			}
 #endif
-#ifdef JAVELIN_PROBE
-			const uintptr_t mapped_address =
-				DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi), qspi_mm) + address;
-			printk("Opening external JSC4 at 0x%08x\n", (unsigned int)mapped_address);
-			result->javelin_outcome = javelin_lookup_phrase(mapped_address, result->phrase);
-			if (!reactivate_after_xip()) {
-				result->javelin_reactivation_failed = true;
-				return;
-			}
-#endif
 			break;
 		}
 	}
 
 	if (change_qe) {
-		result->restore_error = set_volatile_sr2(original_sr2);
+		result->restore_error = w25q_set_volatile_sr2(original_sr2);
 	}
 }

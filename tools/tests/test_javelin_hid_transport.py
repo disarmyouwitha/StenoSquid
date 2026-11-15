@@ -64,7 +64,7 @@ class Console { public: static constexpr size_t BUFFER_SIZE=2048; };
 
 HARNESS = r'''
 #define CONFIG_ZMK_JAVELIN_STENO_BLE_HID 1
-#define CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT 1
+#define CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS 1
 #include "stubs.h"
 extern "C" bool zmk_usb_is_hid_ready() { return usb_ready; }
 std::vector<std::string> commands;

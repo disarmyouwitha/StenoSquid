@@ -26,6 +26,7 @@ PREFIX = r'''
 #include <cstdio>
 #include "steno_key_state.h"
 #include "split_status.h"
+#include "practice_types.h"
 #include "practice_model.h"
 #include "practice_progress.h"
 #include "practice_view.h"
@@ -266,7 +267,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('engine', type=Path)
     args = parser.parse_args()
-    source = (ROOT / 'src/engine_init.cc').read_text()
+    source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text()
     start = source.index('K_MUTEX_DEFINE(practice_mutex);')
     end = source.index('static const StenoDictionary *practice_fallback_dictionary()', start)
     code = PREFIX + source[start:end]

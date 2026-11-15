@@ -5,6 +5,25 @@
 
 #define JAVELIN_HID_REPORT_BYTES 63
 
+/* Javelin's vendor console collection, separate from keyboard and Plover HID.
+ * One input and one output report of JAVELIN_HID_REPORT_BYTES bytes, no report
+ * ID. Both the USB and the Bluetooth HID services expose these bytes.
+ */
+#define JAVELIN_HID_REPORT_MAP \
+    0x06, 0x31, 0xff, /* Usage Page 0xFF31 */ \
+    0x09, 0x74,       /* Usage 0x74 */ \
+    0xa1, 0x01,       /* Application collection */ \
+    0x15, 0x00,       /* Logical minimum 0 */ \
+    0x26, 0xff, 0x00, /* Logical maximum 255 */ \
+    0x75, 0x08,       /* Eight bits per field */ \
+    0x95, JAVELIN_HID_REPORT_BYTES, \
+    0x09, 0x75, \
+    0x81, 0x02,       /* Input, data, variable */ \
+    0x95, JAVELIN_HID_REPORT_BYTES, \
+    0x09, 0x76, \
+    0x91, 0x02,       /* Output, data, variable */ \
+    0xc0
+
 #ifdef __cplusplus
 extern "C" {
 #endif

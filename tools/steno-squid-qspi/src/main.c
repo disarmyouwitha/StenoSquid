@@ -161,14 +161,6 @@ static void print_result(const struct probe_result *result)
 			       (unsigned int)result->quad.mapped.dma_error);
 		}
 #endif
-#ifdef JAVELIN_PROBE
-		if (result->quad.javelin_outcome) {
-			printk("Javelin %s\n", result->quad.javelin_outcome);
-			if (result->quad.phrase[0]) {
-				printk("Javelin phrase: %s\n", result->quad.phrase);
-			}
-		}
-#endif
 		if (result->quad.restore_error != NRFX_SUCCESS) {
 			printk("Quad SR2 restore failed: nrfx rc=0x%08x; power-cycle the flash\n",
 			       (unsigned int)result->quad.restore_error);
@@ -220,8 +212,6 @@ int main(void)
 	}
 #elif defined(XIP_PROBE)
 	printk("\nSteno Squid QSPI probe - mapped quad data reads\n");
-#elif defined(JAVELIN_PROBE)
-	printk("\nSteno Squid QSPI probe - native Javelin mapped dictionary\n");
 #elif defined(SCRATCH_PROBE)
 	printk("\nSteno Squid QSPI probe - scratch-sector program, read and erase\n");
 #elif defined(QUAD_PROBE)

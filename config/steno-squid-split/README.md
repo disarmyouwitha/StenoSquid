@@ -36,6 +36,8 @@ west build -s zmk/app -d "$repo/build/split-left" -b nice_nano//zmk -S zmk-usb-l
   -DSHIELD=corne_left "-DZMK_CONFIG=$repo/config/steno-squid-split" "-DZMK_EXTRA_MODULES=$repo" \
   "-DZMK_JAVELIN_LAPWING_IMAGE=$repo/build/lapwing/lapwing-base.bin" \
   "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin"   "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin" \
+  "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/logging.conf" \
+  "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/logging.overlay" \
   "-DZephyr_DIR=$ZEPHYR_BASE/share/zephyr-package/cmake"
 west build -s zmk/app -d "$repo/build/split-right" -b nice_nano//zmk -- \
   -DSHIELD=corne_right "-DZMK_CONFIG=$repo/config/steno-squid-split" "-DZMK_EXTRA_MODULES=$repo" \
@@ -60,7 +62,8 @@ The dictionary flash powers down while idle. To compare battery life with it alw
 
 The right half enters deep sleep after 15 idle minutes on battery. Wake it
 with one of its own keys. The [battery logger](../../tools/steno-squid-battery/README.md)
-is an opt-in for the left build.
+is part of the diagnostic left build only. The everyday build keeps the full
+code partition.
 
 The Plover image argument is optional for older Lapwing-only builds. The preparation script downloads a pinned official Plover `main.json`, checks its source checksum, compiles it for address `0x12200000`, and verifies every outline against the compiled image. Numeric outlines include the number bar and corresponding physical keys, matching the pinned engine's stroke parser.
 
@@ -116,7 +119,7 @@ streak separate lines beneath the celebration.
 For a Corne Ultralight right half with a nice!view fitted to its display socket, use this right-half build with the left-half build above. The overlay sets display chip select to D0 (P0.08) to match the Ultralight PCB.
 
 ```sh
-west build -s zmk/app -d "$repo/build/right-nice-view" -b nice_nano//zmk -- \
+west build -s zmk/app -d "$repo/build/right-default" -b nice_nano//zmk -- \
   "-DSHIELD=corne_right nice_view_adapter nice_view" \
   "-DZMK_CONFIG=$repo/config/steno-squid-split" "-DZMK_EXTRA_MODULES=$repo" \
   "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/right-nice-view.conf" \
@@ -334,7 +337,7 @@ With Javelin Steno Tools connected over HID, open **Host Layout** and select the
 
 Try `SA / SRA` in a blank editor. Mac produces “ça va” and Windows plain text produces “ca va.” The Windows profile sends ordinary ASCII keys and has no Num Lock dependency. Latin-1 characters without a one-character ASCII mapping use a question mark. Each mapped character emits one character to keep undo counts aligned. The picker selects firmware-supplied profiles. The page's layout update section refers to uploading new definitions and can still show that uploads are unavailable.
 
-This split enables `CONFIG_ZMK_JAVELIN_STENO_MACOS_US_LAYOUT` to provide the Mac profile and, together with the browser dictionary option, the Windows profile picker. Builds with that option disabled use Javelin's plain U.S. output.
+This split enables `CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS`, which needs the browser dictionary option, to provide the Mac and Windows profiles and the picker. Builds with it disabled use Javelin's plain U.S. output.
 
 ## Studio key labels
 

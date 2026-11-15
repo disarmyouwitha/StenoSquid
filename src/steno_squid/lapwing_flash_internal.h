@@ -1,0 +1,132 @@
+#pragma once
+
+/* Shared by the lapwing_flash_*.c files. The public API is lapwing_flash.h.
+ *
+ * lapwing_flash.c        worker loop, public API, base image table
+ * lapwing_flash_power.c  flash rail and QSPI pins
+ * lapwing_flash_pm.c     sleep, idle power-down and the flash lock (ZMK_SLEEP)
+ * lapwing_flash_qspi.c   QSPI start-up, retry, CRC checks and mapping
+ * lapwing_flash_trust.c  records that allow a quick check
+ * lapwing_flash_serial.c serial provisioning (SERIAL_PROVISIONING)
+ * lapwing_flash_diag.c   status and bench commands (diag builds)
+ */
+
+#include "lapwing_flash.h"
+
+#include <nrfx_qspi.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/sys/util.h>
+
+#define QSPI_NODE DT_NODELABEL(qspi)
+#define XIP_BASE DT_REG_ADDR_BY_NAME(QSPI_NODE, qspi_mm)
+#define SECTOR_BYTES 4096U
+#define PAGE_BYTES 256U
+#define CHUNK_BYTES (2U * PAGE_BYTES)
+
+#define SERIAL_PROVISIONING IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_SERIAL_PROVISIONING)
+#define IDLE_OFF IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_OFF)
+#if IDLE_OFF
+#define IDLE_OFF_MS (CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS * 1000U)
+#endif
+
+struct base_image {
+    const char *name;
+    uint32_t offset;
+    uint32_t bytes;
+    uint32_t crc;
+    uint8_t command;
+    uint8_t query;
+    uint8_t erase;
+    uint8_t verify;
+    uint8_t info;
+    bool verified;
+};
+
+#if PLOVER_BYTES > 0 && EXTRAS_BYTES > 0
+#define IMAGE_COUNT 3
+#elif PLOVER_BYTES > 0 || EXTRAS_BYTES > 0
+#define IMAGE_COUNT 2
+#else
+#define IMAGE_COUNT 1
+#endif
+
+/* lapwing_flash.c */
+extern struct base_image lf_images[IMAGE_COUNT];
+extern atomic_t lf_mapped_ready;
+/* Set once a bring-up attempt has finished, whatever its result. */
+extern atomic_t lf_checked;
+/* Both bases passed a full CRC since this controller last lost power. */
+extern bool lf_trusted;
+#if IDLE_OFF
+/* Set while the idle timer, and not ZMK's sleep, has the flash powered down. */
+extern atomic_t lf_idle_off;
+/* Set while the steno layer is selected: the idle timer leaves the flash on. */
+extern atomic_t lf_held;
+extern atomic_t lf_last_use;
+void lf_note_use(void);
+#endif
+
+/* lapwing_flash_power.c */
+extern const struct gpio_dt_spec lf_power;
+#ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
+extern atomic_t lf_powered;
+#endif
+int lf_pins(uint8_t state);
+#ifdef CONFIG_ZMK_SLEEP
+/* Hold flash_lock. Stops QSPI, floats its pins and switches the rail off. */
+int lf_power_down_flash(bool initialized);
+#endif
+
+/* lapwing_flash_pm.c */
+#ifdef CONFIG_ZMK_SLEEP
+extern struct k_mutex flash_lock;
+/* True until the first bring-up, and again whenever the flash is powered down. */
+extern bool lf_suspended;
+extern atomic_t lf_restart_requested;
+extern struct k_sem lf_restart_wake;
+void lf_request_restart(void);
+/* Hold flash_lock. False while a flash operation is still in progress. */
+bool lf_flash_is_idle(bool initialized);
+#endif
+
+/* lapwing_flash_qspi.c */
+extern uint8_t lf_readback[CHUNK_BYTES];
+extern uint8_t lf_last_jedec[3];
+#if SERIAL_PROVISIONING
+extern bool lf_last_check_quick;
+extern uint32_t lf_last_check_ms;
+#endif
+bool lf_all_verified(void);
+bool lf_image_crc(const struct base_image *image, bool mapped, uint32_t *crc_out,
+                  uint32_t *failed_at);
+bool lf_read_image_crc(const struct base_image *image);
+bool lf_enable_verified_mapping(nrfx_qspi_config_t *config, bool quick);
+bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed);
+
+/* lapwing_flash_trust.c */
+uint8_t lf_trust_marker(void);
+bool lf_stored_trust(void);
+void lf_store_trust(void);
+void lf_clear_trust(void);
+bool lf_take_wake_trust(void);
+
+/* lapwing_flash_serial.c */
+#if SERIAL_PROVISIONING
+extern const struct device *const lf_console;
+/* Handles one pending serial command. True when the worker should poll again
+ * at once instead of sleeping.
+ */
+bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_failed);
+#endif
+
+/* lapwing_flash_diag.c */
+#if SERIAL_PROVISIONING && defined(CONFIG_ZMK_JAVELIN_DIAG)
+void lf_print_flash_status(void);
+#ifdef CONFIG_ZMK_SLEEP
+void lf_run_bench(uint8_t command, nrfx_qspi_config_t *config, bool *qspi_ok,
+                  bool *mapping_failed);
+#endif
+#endif
