@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#ifdef __ZEPHYR__
+#include <zephyr/sys/crc.h>
+#endif
 namespace squid_user {
 constexpr uint32_t SLOT_START = 0x600000, SLOT_BYTES = 4 * 1024 * 1024,
                    SECTOR = 4096;
@@ -22,7 +25,10 @@ struct Entry {
   const char *text =
       nullptr; // Pending browser edit only; saved records use offsets.
 };
-inline uint32_t crc32(uint32_t previous, const void *data, size_t n) {
+// Standard CRC-32 (IEEE, reflected), chainable: crc32(crc32(0, a), b) covers
+// a then b. The portable form is what host tests compile; the device uses
+// Zephyr's crc32_ieee_update (CONFIG_CRC) with identical results.
+inline uint32_t crc32_portable(uint32_t previous, const void *data, size_t n) {
   uint32_t crc = ~previous;
   const auto *p = static_cast<const uint8_t *>(data);
   while (n--) {
@@ -31,6 +37,13 @@ inline uint32_t crc32(uint32_t previous, const void *data, size_t n) {
       crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1)));
   }
   return ~crc;
+}
+inline uint32_t crc32(uint32_t previous, const void *data, size_t n) {
+#ifdef __ZEPHYR__
+  return crc32_ieee_update(previous, static_cast<const uint8_t *>(data), n);
+#else
+  return crc32_portable(previous, data, n);
+#endif
 }
 inline uint32_t hash_bytes(const void *data, size_t n) {
   uint32_t h = 2166136261u;

@@ -169,7 +169,14 @@ static void test_host_import(const char *path) {
 int main(int argc, char **argv) {
   if (argc == 2)
     test_host_import(argv[1]);
+  // On the host crc32 is the portable routine; the device build swaps in
+  // Zephyr's crc32_ieee_update, which must give these same values.
+  assert(crc32_portable(0, "123456789", 9) == 0xcbf43926);
   assert(crc32(0, "123456789", 9) == 0xcbf43926);
+  assert(crc32_portable(0, "", 0) == 0 &&
+         crc32_portable(0, "a", 1) == 0xe8b7be43);
+  assert(crc32_portable(crc32_portable(0, "1234", 4), "56789", 5) ==
+         0xcbf43926);
   Flash flash;
   Store store(flash);
   assert(!store.Open());
