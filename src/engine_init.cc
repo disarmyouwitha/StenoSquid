@@ -319,14 +319,14 @@ static bool practice_process_key(int index, bool pressed) {
           (steno_key == StenoKey::A || steno_key == StenoKey::O ||
            steno_key == StenoKey::E || steno_key == StenoKey::U)) {
         if (practice.menu) {
-          const bool ready = practice.drill != STENO_SQUID_PRACTICE_TROUBLE || steno_squid_trouble_begin();
-          if (ready) {
-            practice.menu = false;
-            if (practice.drill == STENO_SQUID_PRACTICE_WORDS) steno_squid_words_begin();
-            else if (!steno_squid_practice_word_drill(practice.drill)) steno_squid_hands_begin();
-            practice.prompt_started_at = k_uptime_get();
-            practice_refresh_dictionary();
+          if (practice.drill == STENO_SQUID_PRACTICE_TROUBLE && !steno_squid_trouble_begin()) {
+            practice.drill = STENO_SQUID_PRACTICE_WORDS;
           }
+          practice.menu = false;
+          if (practice.drill == STENO_SQUID_PRACTICE_WORDS) steno_squid_words_begin();
+          else if (!steno_squid_practice_word_drill(practice.drill)) steno_squid_hands_begin();
+          practice.prompt_started_at = k_uptime_get();
+          practice_refresh_dictionary();
           practice_publish();
         } else {
           practice_switch_drill(0);

@@ -17,6 +17,7 @@ static unsigned menu_first;
 static const char *const choices[] = {"WORDS 10", "LEFT 50", "RIGHT 50", "TROUBLE"};
 BUILD_ASSERT(sizeof(choices) / sizeof(choices[0]) == STENO_SQUID_PRACTICE_DRILL_COUNT);
 static lv_obj_t *drill_label;
+static lv_obj_t *drill_separator;
 static lv_obj_t *prompt_label;
 static lv_obj_t *outline_label;
 static lv_obj_t *feedback_label;
@@ -127,7 +128,7 @@ static void result_tick(lv_timer_t *timer) {
     }
 }
 
-static void menu_separator(lv_obj_t *parent, int y) {
+static lv_obj_t *menu_separator(lv_obj_t *parent, int y) {
     lv_obj_t *line = lv_obj_create(parent);
     lv_obj_remove_style_all(line);
     lv_obj_remove_flag(line, LV_OBJ_FLAG_SCROLLABLE);
@@ -135,6 +136,7 @@ static void menu_separator(lv_obj_t *parent, int y) {
     lv_obj_set_size(line, 60, 1);
     lv_obj_set_style_bg_color(line, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
+    return line;
 }
 
 lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
@@ -172,8 +174,9 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
     lv_obj_set_size(run_page, 68, 130);
 
     drill_label = steno_squid_display_label(run_page, 0, &lv_font_montserrat_12);
-    prompt_label = steno_squid_display_label(run_page, 15, &lv_font_montserrat_28);
-    outline_label = steno_squid_display_label(run_page, 48, &lv_font_montserrat_12);
+    drill_separator = menu_separator(run_page, 16);
+    prompt_label = steno_squid_display_label(run_page, 19, &lv_font_montserrat_28);
+    outline_label = steno_squid_display_label(run_page, 52, &lv_font_montserrat_12);
     feedback_label = steno_squid_display_label(run_page, 67, &lv_font_unscii_8);
     lv_obj_set_x(feedback_label, 1);
     lv_obj_set_width(feedback_label, 66);
@@ -254,7 +257,9 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     lv_obj_set_y(progress_label, done ? 91 : 97);
     lv_obj_set_style_text_font(progress_label,
                                done ? &lv_font_montserrat_16 : &lv_font_montserrat_8, 0);
+    lv_obj_set_y(prompt_label, done ? 15 : 19);
     if (done) {
+        lv_obj_add_flag(drill_separator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(outline_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(feedback_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
@@ -262,6 +267,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         lv_label_set_text_fmt(best_label, "Best %u", best);
         snprintf(progress, sizeof(progress), "%u/%u", total, total);
     } else {
+        lv_obj_remove_flag(drill_separator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(outline_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(feedback_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);

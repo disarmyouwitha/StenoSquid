@@ -136,7 +136,7 @@ key is consumed before scoring begins.
 
 The left central checks each completed chord through Javelin’s active dictionaries and the verified Lapwing base, without regard to letter case. WORDS samples ten different words from a verified pool of 100, favoring missed, slower, and less-recently practised words. Per-word performance and Pop’s XP are stored compactly in ZMK settings on the left controller.
 
-TROUBLE reuses the same 100 words and persistent stats. It targets early mistakes, first-try accuracy below 90%, and response averages above four seconds. It repeats eligible words to fill ten prompts (without consecutive repeats when possible), or selects ten different targets when enough qualify. With no weak words recorded, it shows **Try Words** and will not start. Improving accuracy and speed clears words from the pool. The stored record format and existing progress are unchanged.
+TROUBLE reuses the same 100 words and persistent stats. It targets early mistakes, first-try accuracy below 90%, and response averages above four seconds. It repeats eligible words to fill ten prompts (without consecutive repeats when possible), or selects ten different targets when enough qualify. With no weak words recorded, it shows **Try Words**; tapping a vowel thumb starts WORDS directly. Improving accuracy and speed clears words from the pool. The stored record format and existing progress are unchanged.
 
 Practice runs on the steno layer. From Qwerty, hold the middle left thumb for
 Numpad and tap the outer right thumb, then release both. The outer right thumb

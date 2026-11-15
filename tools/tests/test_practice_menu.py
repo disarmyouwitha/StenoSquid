@@ -102,7 +102,10 @@ int main() {
   tap(StenoKey::STAR1);
   assert(practice.drill == STENO_SQUID_PRACTICE_TROUBLE && practice.menu);
   tap(StenoKey::A);
-  assert(practice.menu && !progress_model.run.active); // No history: keep menu.
+  assert(!practice.menu && progress_model.run.active && practice.drill==STENO_SQUID_PRACTICE_WORDS);
+  assert(lookups==0); // Try Words starts a Words round without scoring the start key.
+  tap(StenoKey::STAR1); // Back to Trouble.
+  assert(practice.menu && practice.drill==STENO_SQUID_PRACTICE_TROUBLE);
   progress_model.record.words[42].misses=1;
   tap(StenoKey::A);
   assert(!practice.menu && practice_prompt()==42);
