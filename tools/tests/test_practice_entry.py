@@ -41,6 +41,7 @@ static uint32_t atomic_get(uint32_t *p) { return *p; }
 static void atomic_clear(uint32_t *p) { *p=0; }
 static void steno_squid_practice_set_active(bool v) { practicing=v; }
 static void steno_squid_split_status_refresh() {}
+static void refresh_display() { steno_squid_split_status_refresh(); }
 '''
 CASES=r'''
 int main() {
@@ -71,7 +72,7 @@ def main():
     parser.add_argument('zmk_app',type=Path)
     args=parser.parse_args()
     keymap=(args.zmk_app/'src/keymap.c').read_text()
-    central=(ROOT/'src/steno_squid/split_status_central.c').read_text()
+    central=(ROOT/'src/steno_squid/layer_control.c').read_text()
     code=PREFIX
     for signature in ['zmk_keymap_layer_id_t zmk_keymap_layer_index_to_id(',
                       'zmk_keymap_layer_id_t zmk_keymap_layer_default(',
@@ -82,8 +83,12 @@ def main():
                       'int zmk_keymap_layer_activate(', 'int zmk_keymap_layer_deactivate(',
                       'int zmk_keymap_layer_to(']:
         code+=function(keymap,signature)+'\n'
-    for signature in ['static zmk_keymap_layer_id_t active_layer(',
-                      'static void apply_layer(', 'void steno_squid_practice_toggle(']:
+    code+='''static zmk_keymap_layer_id_t steno_squid_active_layer() {
+    return zmk_keymap_layer_index_to_id(zmk_keymap_highest_layer_active());
+}
+static zmk_keymap_layer_id_t active_layer() { return steno_squid_active_layer(); }
+'''
+    for signature in ['static void apply_layer(', 'void steno_squid_practice_toggle(']:
         code+=function(central,signature)+'\n'
     with tempfile.TemporaryDirectory() as tmp:
         path=Path(tmp)
