@@ -129,7 +129,11 @@ jobs:
         working-directory: repo
         shell: bash
         run: |
-          for tool in cmake ninja gcc; do
+          # LVGL's CMake build enables C++, which this image lacks by default.
+          if ! command -v g++ > /dev/null; then
+            (apt-get update -qq && apt-get install -y -qq g++) > /dev/null 2>&1 || true
+          fi
+          for tool in cmake ninja gcc g++; do
             if ! command -v "$tool" > /dev/null; then
               echo "::warning::$tool not found in the build image; skipping the display preview test"
               exit 0

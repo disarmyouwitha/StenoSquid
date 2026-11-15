@@ -170,7 +170,10 @@ static uint32_t slot_base(const Flash &flash, bool newer) {
   Header h0{}, h1{};
   memcpy(&h0, flash.bytes.data() + SLOT_START, sizeof(h0));
   memcpy(&h1, flash.bytes.data() + SLOT_START + SLOT_BYTES, sizeof(h1));
-  const bool second_is_newer = h1.generation > h0.generation;
+  // An erased slot has no magic and a generation of 0xffffffff: it is never
+  // the newer one.
+  const bool valid0 = h0.magic == MAGIC, valid1 = h1.magic == MAGIC;
+  const bool second_is_newer = valid0 && valid1 ? h1.generation > h0.generation : valid1;
   return second_is_newer == newer ? SLOT_START + SLOT_BYTES : SLOT_START;
 }
 
