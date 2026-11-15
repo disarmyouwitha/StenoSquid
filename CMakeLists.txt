@@ -97,7 +97,15 @@ if(CONFIG_ZMK_JAVELIN_STENO)
           "${PATCHED_COMPACT_MAP}" --copy-lookup-text
         COMMAND_ERROR_IS_FATAL ANY)
       set(JAVELIN_COMPACT_MAP_SRC "${PATCHED_COMPACT_MAP}")
-      target_sources(app PRIVATE "${LAPWING_SRC}/lapwing_flash.c" "${LAPWING_SRC}/w25q_quad.c")
+      target_sources(app PRIVATE
+        "${LAPWING_SRC}/lapwing_flash.c"
+        "${LAPWING_SRC}/lapwing_flash_power.c"
+        "${LAPWING_SRC}/lapwing_flash_pm.c"
+        "${LAPWING_SRC}/lapwing_flash_qspi.c"
+        "${LAPWING_SRC}/lapwing_flash_trust.c"
+        "${LAPWING_SRC}/lapwing_flash_serial.c"
+        "${LAPWING_SRC}/lapwing_flash_diag.c"
+        "${LAPWING_SRC}/w25q_quad.c")
       if(CONFIG_ZMK_JAVELIN_DIAG)
         # Build id shown by the S command: the CI commit, else git describe.
         set(JAVELIN_BUILD_ID "unknown")
