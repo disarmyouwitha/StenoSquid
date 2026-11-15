@@ -144,6 +144,8 @@ The dark green sectors show a one-entry dictionary. The lighter green sectors ar
 ## NiceNano Wiring Diagram
 ![Flash Wiring diagram for NiceNano](assets/NiceNano_Flash_wiring_diagram.png)
 
+* Flash used for hand-wired prototype: [Adafruit W25Q128JVSSIQ](https://www.adafruit.com/product/5634)
+
 ## License
 
 The Javelin steno engine is licensed under PolyForm Noncommercial 1.0.0. Dependencies and dictionary sources retain their respective licenses. [Javelin license](https://github.com/jthlim/javelin-steno/blob/22726675b2dcf3b8b6ba1e20898f25e324b2260a/LICENSE.txt)
