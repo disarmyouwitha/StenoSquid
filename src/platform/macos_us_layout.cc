@@ -1,13 +1,13 @@
 #include "macos_us_layout.h"
 
-#include "host_layout.h"
+#include "const_host_layout.h"
 
 #include <stddef.h>
 
 namespace {
 // Sorted Unicode-to-HID map verified with UCKeyTranslate on macOS U.S. and ABC.
 // Bits 9 and 10 are Shift and Option, respectively. Two entries denote a dead
-// key followed by the base letter. The ASCII map comes from Javelin.
+// key followed by the base letter. The ASCII map is shared with the Windows layout.
 constexpr HostLayoutEntry characters[] = {
     {0x00a0, 1, {0x042c}},
     {0x00a1, 1, {0x041e}},
@@ -139,24 +139,16 @@ constexpr HostLayoutEntry characters[] = {
     {0xfb02, 1, {0x0623}},
 };
 
-// HostLayout's zero-capacity StaticList stores its elements directly after
-// the header, matching Javelin's native host-layout asset format.
-struct MacHostLayout {
-    HostLayout header = HostLayout::ansi;
-    HostLayoutEntry entries[sizeof(characters) / sizeof(characters[0])];
+constexpr size_t character_count = sizeof(characters) / sizeof(characters[0]);
 
-    MacHostLayout() {
-        header.entries.SetCount(sizeof(entries) / sizeof(entries[0]));
-        for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); ++i) {
-            entries[i] = characters[i];
-        }
+// Constant data in flash: the entries are copied at compile time.
+constexpr host_layout::Const<character_count> layout([](auto &entries, const auto &) {
+    for (size_t i = 0; i < character_count; ++i) {
+        entries[i] = characters[i];
     }
-};
-
-static_assert(offsetof(MacHostLayout, entries) == sizeof(HostLayout));
+});
 } // namespace
 
 const HostLayout &zmk_javelin_macos_us_layout() {
-    static const MacHostLayout layout;
-    return layout.header;
+    return layout.layout();
 }
