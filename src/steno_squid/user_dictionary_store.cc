@@ -84,6 +84,8 @@ Entry make_key(const StenoStroke *strokes, size_t length) {
   }
   return e;
 }
+// Lookup results are owned by the engine (CreateDynamicString), so a lookup
+// hit must hand over its own allocation.
 char *copy_text(const Entry &e) {
   char *text = static_cast<char *>(malloc(e.text_bytes));
   if (!text)
@@ -94,6 +96,27 @@ char *copy_text(const Entry &e) {
   }
   return text;
 }
+// One buffer reused across a whole dictionary walk instead of an allocation
+// per entry.
+class TextBuffer {
+public:
+  ~TextBuffer() { free(data); }
+  const char *Read(const Entry &e) {
+    if (e.text_bytes > size) {
+      free(data);
+      size = 0;
+      data = static_cast<char *>(malloc(e.text_bytes));
+      if (!data)
+        return nullptr;
+      size = e.text_bytes;
+    }
+    return store.ReadText(e, 0, data, e.text_bytes) ? data : nullptr;
+  }
+
+private:
+  char *data = nullptr;
+  uint32_t size = 0;
+};
 bool same_text(const Entry &e, const char *text) {
   if (e.text_bytes != strlen(text) + 1)
     return false;
@@ -171,21 +194,22 @@ public:
   void PrintDictionary(PrintDictionaryContext &context) const override {
     if (context.HasName() && strcmp(context.GetName(), GetName()))
       return;
+    TextBuffer buffer;
     for (uint32_t i = 0; i < store.Count(); ++i) {
       Entry e{};
       if (!store.Get(i, false, e))
         return;
-      char *text = copy_text(e);
+      const char *text = buffer.Read(e);
       if (!text)
         return;
       StenoStroke strokes[MAX_STROKES];
       memcpy(strokes, e.strokes, e.length * 4);
       context.Print(strokes, e.length, text);
-      free(text);
     }
   }
   void PrintEntriesWithPartialOutline(
       PrintPartialOutlineContext &context) const override {
+    TextBuffer buffer;
     for (uint32_t i = 0; i < store.Count() && !context.IsDone(); ++i) {
       Entry e{};
       if (!store.Get(i, false, e))
@@ -198,21 +222,21 @@ public:
                                           context.length,
                                           e.length - context.length))
         continue;
-      char *text = copy_text(e);
+      const char *text = buffer.Read(e);
       if (!text)
         return;
       context.Add(strokes, e.length, text, this);
-      free(text);
     }
   }
   void PrintEntriesWithPrefix(PrintPrefixContext &context) const override {
+    TextBuffer buffer;
     for (uint32_t i = 0; i < store.Count() && !context.IsDone(); ++i) {
       Entry e{};
       if (!store.Get(i, false, e))
         return;
       if (e.text_bytes <= context.prefixLength + 1)
         continue;
-      char *text = copy_text(e);
+      const char *text = buffer.Read(e);
       if (!text)
         return;
       if (strncmp(text, context.prefix, context.prefixLength) == 0) {
@@ -220,11 +244,10 @@ public:
         memcpy(strokes, e.strokes, e.length * 4);
         context.Add(strokes, e.length, text, this);
       }
-      free(text);
     }
   }
   void PrintInfo(int depth) const override {
-    Console::Printf("%s%s\n%sFormat: QSPI compact snapshots v2\n%sEntries: "
+    Console::Printf("%s%s\n%sFormat: QSPI compact snapshots\n%sEntries: "
                     "%u\n%sSnapshot bytes: %u/%u\n",
                     Spaces(depth), GetName(), Spaces(depth + 2),
                     Spaces(depth + 2), store.Count(), Spaces(depth + 2),
@@ -394,7 +417,7 @@ void store_status(void *, const char *) {
   Console::Printf(
       "{\"format\":2,\"available\":%s,\"entries\":%u,\"used_bytes\":%u,"
       "\"slot_bytes\":%u,\"generation\":%u,\"last_save_ms\":%u,"
-      "\"ram_mirror_bytes\":0,\"valid_copies\":%u,\"bulk_import\":1}\n\n",
+      "\"valid_copies\":%u,\"bulk_import\":1}\n\n",
       store_available ? "true" : "false", store.Count(), store.Used(),
       SLOT_BYTES, store.Generation(), last_save_ms, store.ValidCopies());
 }

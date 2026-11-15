@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Optional SHI1 trailer on our JSC4 images. Offsets are image-relative, so
+// SHI1 trailer, always emitted on our JSC4 images. Offsets are image-relative, so
 // existing relocatable dictionary pointers and the native format stay intact.
 // Records are sorted by translation: uint32 text offset, uint32 single stroke.
 // All reads go through the QSPI-safe word/byte accessors on the device.
@@ -22,7 +22,7 @@ public:
     const uintptr_t footer = image + bytes - 12;
     if (word((const void *)footer) != 0x31494853 ||
         word((const void *)(footer + 8)) != dictionaries) {
-      return; // Legacy images have no hint index.
+      return; // Integrity check: footer must be the SHI1 trailer.
     }
     const uint32_t directory = word((const void *)(footer + 4));
     if (directory % 4 || directory > bytes - 12 ||
