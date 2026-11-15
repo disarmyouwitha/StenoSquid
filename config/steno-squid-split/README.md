@@ -130,7 +130,7 @@ Check **Qwerty** after connection, **Numpad** while holding the middle left thum
 ## Offline practice
 
 Practice opens a **Practice** screen listing **WORDS (10)**, **LEFT (50)**,
-**RIGHT (50)**, and **TROUBLE (10)** in a scrolling three-row menu. Tap a left star to select the previous drill or a right star for
+**RIGHT (50)**, **TROUBLE (10)**, **Multi- (10)**, **COLUMNS (50)**, and **SPEED (10 in 30 seconds)** in a scrolling three-row menu. Tap a left star to select the previous drill or a right star for
 the next, then tap a vowel thumb (**A**, **O**, **E**, or **U**) to start. The start
 key is consumed before scoring begins.
 
@@ -143,8 +143,12 @@ Numpad and tap the outer right thumb, then release both. The outer right thumb
 also starts Practice directly from Javelin or Plover. During Practice it
 returns to ordinary Javelin. The former left-hand Practice key is unbound. Tap either left star by itself to go to the previous
 drill, or either right star to go to the next. The order wraps through
-**WORDS → LEFT → RIGHT → TROUBLE**. You can switch before, during, or after a run.
+**WORDS → LEFT → RIGHT → TROUBLE → Multi- → COLUMNS → SPEED**. You can switch before, during, or after a run.
 Switching returns to the Practice menu with the new drill selected; start it with a vowel thumb. A new run resets the streak. WORDS samples 10 distinct prompts from 300 common words; LEFT and RIGHT have 50 each and avoid immediate repeats. Update both halves together for the Practice text protocol. LHS now sends the prompt and outline text; RHS does not store the word pool. Later word additions within the text limits only need LHS firmware. This expansion starts fresh stats/XP and retains other settings.
+
+Multi- draws ten distinct words from 20 verified two-stroke Lapwing outlines. The hint shows the current stroke number; release two chords before grading. A wrong pair resets to stroke one. Stars clear a partial outline and select another drill. Multi- earns word-drill XP without changing the 300 single-stroke word records.
+
+COLUMNS tests simultaneous TK/PW/HR/-FR/-PB/-LG/-TS/-DZ pairs, independently of dictionaries, using hand-drill XP. SPEED gives ten adaptive single-stroke words in 30 seconds, advances immediately on correct answers, and updates word history. The clock starts on the start-thumb release. Expiry keeps earned XP, skips the completion bonus, and shows Time up; only a new vowel press dismisses it. Both halves must be updated for the new display flags. Existing progress and dictionary images stay valid.
 
 **LEFT** and **RIGHT** use the corresponding consonant banks from
 [StenoJig's keyboard drills](https://joshuagrams.github.io/steno-jig/learn-keyboard.html).
@@ -180,7 +184,7 @@ Build both halves with the nice!view build options above and
 configuration. Hardware validation should cover a mistake followed by a
 correct answer, all prompts, entry and exit while a steno key is held,
 right-half reconnect, and normal typing, onboard Javelin and Plover HID after
-leaving Practice. Check both star directions and complete all four drills with
+leaving Practice. Check both star directions and complete all seven drills with
 all dictionaries disabled. Confirm that ordinary Javelin still sends raw steno
 after exiting Practice with that selection. Confirm the connected host receives no text during the drill,
 then repeat with USB disconnected.

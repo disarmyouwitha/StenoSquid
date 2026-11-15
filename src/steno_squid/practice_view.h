@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define STENO_SQUID_PRACTICE_VIEW_PROTOCOL 10u
+#define STENO_SQUID_PRACTICE_VIEW_PROTOCOL 11u
 #define STENO_SQUID_PRACTICE_TEXT_SIZE 16u
 #define STENO_SQUID_PRACTICE_OUTLINE_SIZE 24u
 #define STENO_SQUID_PRACTICE_FRAME_MAX 72u
@@ -133,11 +133,22 @@ steno_squid_practice_receive(struct steno_squid_practice_receiver *rx,
       steno_squid_practice_rounds((enum steno_squid_practice_drill)drill);
   const unsigned feedback = steno_squid_practice_feedback_value(next.state);
   const bool menu = next.state & STENO_SQUID_PRACTICE_MENU;
+  const bool timeout = next.state & STENO_SQUID_PRACTICE_TIMEOUT;
+  const bool partial = next.state & STENO_SQUID_PRACTICE_PARTIAL;
+  const bool speed = drill == STENO_SQUID_PRACTICE_SPEED;
   if (!(next.state & STENO_SQUID_PRACTICE_ACTIVE) ||
-      drill >= STENO_SQUID_PRACTICE_DRILL_COUNT || (next.state & 0x4000000fu) ||
+      drill >= STENO_SQUID_PRACTICE_DRILL_COUNT || (next.state & 0x0000000eu) ||
       round > total ||
       (menu && (round || feedback != STENO_SQUID_PRACTICE_PROMPT)) ||
-      ((round == total) != (feedback == STENO_SQUID_PRACTICE_DONE)) ||
+      (timeout &&
+       (!speed || feedback != STENO_SQUID_PRACTICE_DONE || round >= total)) ||
+      (!timeout &&
+       ((round == total) != (feedback == STENO_SQUID_PRACTICE_DONE))) ||
+      (partial && (menu || drill != STENO_SQUID_PRACTICE_MULTI ||
+                   feedback != STENO_SQUID_PRACTICE_PROMPT)) ||
+      steno_squid_practice_seconds(next.progress) > STENO_SQUID_SPEED_SECONDS ||
+      (steno_squid_practice_seconds(next.progress) &&
+       (!speed || menu || feedback == STENO_SQUID_PRACTICE_DONE)) ||
       steno_squid_practice_counter(next.state,
                                    STENO_SQUID_PRACTICE_STREAK_SHIFT) > total ||
       steno_squid_practice_counter(next.state,

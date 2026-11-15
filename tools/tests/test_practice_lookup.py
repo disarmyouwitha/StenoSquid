@@ -21,12 +21,14 @@ prefix = r'''
 #include <string>
 #include "split_status.h"
 #include "practice_words.h"
+#include "practice_multi.h"
 struct StenoStroke {
   std::string outline;
   void Set(const char *s) { outline=s; }
   bool operator==(const StenoStroke &other) const { return outline==other.outline; }
 };
-struct StenoDictionaryLookup { StenoDictionaryLookup(const StenoStroke *,unsigned) {} };
+static unsigned outline_count;
+struct StenoDictionaryLookup { StenoDictionaryLookup(const StenoStroke *,unsigned count) { outline_count=count; } };
 struct Result {
   const char *text;
   bool IsValid() const { return text; }
@@ -42,7 +44,7 @@ static StenoDictionary active, base;
 static bool base_available=true;
 struct Engine { StenoDictionary &GetDictionary() { return active; } };
 namespace StenoEngine { static struct { Engine value; } container; }
-static struct { steno_squid_practice_drill drill=STENO_SQUID_PRACTICE_WORDS; } practice;
+static struct { steno_squid_practice_drill drill=STENO_SQUID_PRACTICE_WORDS; StenoStroke multi_strokes[2]; } practice;
 static unsigned practice_prompt() { return 0; }
 static const StenoDictionary *practice_fallback_dictionary() { return base_available?&base:nullptr; }
 '''
@@ -64,6 +66,18 @@ int main() {
   practice.drill=STENO_SQUID_PRACTICE_TROUBLE;
   base_available=true;base.text="cat";
   assert(practice_correct(stroke)); // Trouble uses word translation/fallback too.
+  practice.drill=STENO_SQUID_PRACTICE_MULTI;
+  active.text="hello";
+  assert(practice_correct(stroke) && outline_count==2);
+  active.text="wrong";base.text="hello";
+  assert(practice_correct(stroke));
+  active.text=nullptr;base_available=false;
+  assert(!practice_correct(stroke));
+  practice.drill=STENO_SQUID_PRACTICE_COLUMNS;
+  unsigned calls=active.calls;
+  stroke.Set("TK");assert(practice_correct(stroke));
+  stroke.Set("TKP");assert(!practice_correct(stroke));
+  assert(active.calls==calls);
   practice.drill=STENO_SQUID_PRACTICE_LEFT;
   const unsigned lookups=active.calls;
   stroke.Set("S");assert(practice_correct(stroke));

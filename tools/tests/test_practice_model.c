@@ -108,6 +108,22 @@ int main(void) {
     assert(steno_squid_model_finish(&model));
     assert(model.run.earned==70 && model.record.xp==previous+70);
     assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
+    steno_squid_model_multi_begin(&model,random_word);
+    bool multi_seen[STENO_SQUID_MULTI_COUNT]={false};
+    for(unsigned i=0;i<10;i++) {
+        assert(model.run.deck[i]<STENO_SQUID_MULTI_COUNT && !multi_seen[model.run.deck[i]]);
+        multi_seen[model.run.deck[i]]=true;
+        if(i==0)assert(!steno_squid_model_hands_answer(&model,i,false,1000));
+        assert(steno_squid_model_hands_answer(&model,i,true,2000));
+    }
+    assert(steno_squid_model_finish(&model) && model.run.earned==112 && model.run.first_try==9);
+    assert(!memcmp(model.record.words,empty_words,sizeof(empty_words)));
+    steno_squid_model_begin(&model,random_word);
+    const unsigned speed_xp=model.record.xp;
+    assert(steno_squid_model_answer(&model,0,true,1000));
+    assert(steno_squid_model_timeout(&model));
+    assert(model.record.xp==speed_xp+10 && model.run.earned==10);
+    assert(!steno_squid_model_finish(&model) && !steno_squid_model_timeout(&model));
     /* Trouble never invents history or resets the persisted record. */
     steno_squid_model_init(&model);
     assert(!steno_squid_model_trouble_begin(&model,random_word));

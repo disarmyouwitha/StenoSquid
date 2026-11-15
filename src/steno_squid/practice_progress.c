@@ -108,6 +108,17 @@ void steno_squid_hands_begin(void) {
     steno_squid_model_hands_begin(&model);
     k_mutex_unlock(&progress_mutex);
 }
+void steno_squid_multi_begin(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    steno_squid_model_multi_begin(&model, sys_rand32_get);
+    k_mutex_unlock(&progress_mutex);
+}
+void steno_squid_speed_timeout(void) {
+    k_mutex_lock(&progress_mutex, K_FOREVER);
+    if (steno_squid_model_timeout(&model)) generation++;
+    k_mutex_unlock(&progress_mutex);
+    steno_squid_practice_checkpoint();
+}
 void steno_squid_hands_answer(unsigned round, bool correct, uint32_t elapsed_ms) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     if (steno_squid_model_hands_answer(&model, round, correct, elapsed_ms)) generation++;

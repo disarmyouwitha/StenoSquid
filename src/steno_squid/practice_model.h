@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "practice_words.h"
+#include "practice_multi.h"
 
 #define STENO_SQUID_PROGRESS_MAGIC 0x31505453u /* STP1 */
 #define STENO_SQUID_XP_MAX 0xfffffu
@@ -31,6 +32,7 @@ struct steno_squid_progress_record {
 struct steno_squid_word_run {
     uint16_t deck[STENO_SQUID_WORD_ROUNDS];
     uint8_t position;
+    uint8_t limit;
     uint8_t first_try;
     uint8_t errors;
     uint8_t word_errors;
@@ -40,7 +42,8 @@ struct steno_squid_word_run {
     uint8_t timed_count;
     uint32_t response_ds;
     uint8_t hand_streak;
-    bool hand;
+    bool hand; /* Hands/columns/Multi path: no per-word pool records. */
+    bool multi;
     bool active;
     bool finished;
 };
@@ -129,6 +132,7 @@ static inline void steno_squid_model_begin(struct steno_squid_practice_model *mo
     memset(&model->run, 0, sizeof(model->run));
     model->run.review = STENO_SQUID_NO_REVIEW;
     model->run.active = true;
+    model->run.limit = STENO_SQUID_WORD_ROUNDS;
     if (model->record.session < UINT32_MAX) model->record.session++;
     steno_squid_model_deck(model, NULL, STENO_SQUID_WORD_COUNT, random_word);
 }
@@ -145,6 +149,7 @@ static inline bool steno_squid_model_trouble_begin(struct steno_squid_practice_m
     }
     if (!count) return false;
     model->run.active = true;
+    model->run.limit = STENO_SQUID_WORD_ROUNDS;
     if (model->record.session < UINT32_MAX) model->record.session++;
     steno_squid_model_deck(model, eligible, count, random_word);
     return true;
@@ -196,6 +201,21 @@ static inline void steno_squid_model_hands_begin(struct steno_squid_practice_mod
     memset(&model->run, 0, sizeof(model->run));
     model->run.review = STENO_SQUID_NO_REVIEW;
     model->run.active = model->run.hand = true;
+    model->run.limit = STENO_SQUID_HAND_ROUNDS;
+}
+
+static inline void steno_squid_model_multi_begin(struct steno_squid_practice_model *model,
+                                                uint32_t (*random_word)(void)) {
+    steno_squid_model_hands_begin(model);
+    model->run.multi = true;
+    model->run.limit = STENO_SQUID_WORD_ROUNDS;
+    bool used[STENO_SQUID_MULTI_COUNT] = {false};
+    for (unsigned i=0;i<STENO_SQUID_WORD_ROUNDS;i++) {
+        unsigned choice = ((uint64_t)random_word() * (STENO_SQUID_MULTI_COUNT-i)) >> 32;
+        for (unsigned j=0;j<STENO_SQUID_MULTI_COUNT;j++) {
+            if (!used[j] && choice-- == 0) { used[j]=true;model->run.deck[i]=j;break; }
+        }
+    }
 }
 
 /* One XP for a correct key. Every fifth consecutive correct key adds a bonus
@@ -204,17 +224,27 @@ static inline void steno_squid_model_hands_begin(struct steno_squid_practice_mod
 static inline bool steno_squid_model_hands_answer(struct steno_squid_practice_model *model,
                                                  unsigned round, bool correct, uint32_t elapsed_ms) {
     struct steno_squid_word_run *run = &model->run;
-    if (!run->active || !run->hand || run->finished || round != run->position || round >= STENO_SQUID_HAND_ROUNDS) {
+    if (!run->active || !run->hand || run->finished || round != run->position || round >= run->limit) {
         return false;
     }
     if (!correct) {
         if (run->errors < 63) run->errors++;
         run->hand_streak = 0;
+        if (run->multi) {
+            if (run->word_errors < UINT8_MAX) run->word_errors++;
+            if (run->word_errors > run->review_errors) {
+                run->review_errors=run->word_errors;run->review=run->deck[round];
+            }
+        }
         return false; // Run feedback changed, but no persistent data changed.
     }
     run->hand_streak++;
     unsigned reward = 1;
-    if (run->hand_streak % 5 == 0) {
+    if (run->multi) {
+        reward = run->word_errors ? 2 : 10;
+        if (!run->word_errors) run->first_try++;
+        run->word_errors = 0;
+    } else if (run->hand_streak % 5 == 0) {
         const unsigned bonus = run->hand_streak / 5;
         reward += bonus > 5 ? 5 : bonus;
     }
@@ -233,11 +263,20 @@ static inline bool steno_squid_model_hands_answer(struct steno_squid_practice_mo
 
 static inline bool steno_squid_model_finish(struct steno_squid_practice_model *model) {
     struct steno_squid_word_run *run = &model->run;
-    if (!run->active || run->finished || run->position != (run->hand ? STENO_SQUID_HAND_ROUNDS : STENO_SQUID_WORD_ROUNDS)) return false;
+    if (!run->active || run->finished || run->position != run->limit) return false;
     run->finished = true;
     run->earned += 20;
     model->record.xp = model->record.xp > STENO_SQUID_XP_MAX - 20
                            ? STENO_SQUID_XP_MAX : model->record.xp + 20;
+    if (model->record.rounds < UINT32_MAX) model->record.rounds++;
+    return true;
+}
+
+/* A timed-out round keeps earned XP but gets no completion bonus. */
+static inline bool steno_squid_model_timeout(struct steno_squid_practice_model *model) {
+    if (!model->run.active || model->run.finished || model->run.hand ||
+        model->run.position >= model->run.limit) return false;
+    model->run.finished = true;
     if (model->record.rounds < UINT32_MAX) model->record.rounds++;
     return true;
 }

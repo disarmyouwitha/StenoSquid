@@ -132,6 +132,20 @@ int main(void) {
     assert(model.record.xp==trouble.xp && model.record.rounds==trouble.rounds);
     assert(!memcmp(model.record.words,trouble.words,sizeof(trouble.words)));
     assert(steno_squid_practice_no_trouble(steno_squid_practice_progress()));
+    const struct steno_squid_progress_record before_multi=model.record;
+    steno_squid_multi_begin();
+    for(unsigned i=0;i<10;i++)steno_squid_hands_answer(i,true,2000);
+    steno_squid_practice_finish();
+    save_progress(&save_progress_work);
+    steno_squid_model_init(&model);generation=saved_generation=0;
+    assert(registered_load("progress",disk_size,read_disk,NULL)==0);
+    assert(model.record.xp==before_multi.xp+120);
+    assert(!memcmp(model.record.words,before_multi.words,sizeof(model.record.words)));
+    steno_squid_words_begin();steno_squid_words_answer(0,true,1000);
+    const unsigned timeout_xp=model.record.xp;
+    steno_squid_speed_timeout();save_progress(&save_progress_work);
+    steno_squid_model_init(&model);generation=saved_generation=0;
+    assert(registered_load("progress",disk_size,read_disk,NULL)==0 && model.record.xp==timeout_xp);
     puts("Practice persistence: reboot restore, CRC/pool rejection, failures, concurrent updates and idle checkpoint passed");
 }
 '''

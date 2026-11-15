@@ -17,3 +17,11 @@ for word,outline in rows:
 fingerprint = int.from_bytes(hashlib.sha256(json.dumps(rows).encode()).digest()[:4],'little')
 assert fingerprint==int(re.search(r'STENO_SQUID_WORD_SET_ID 0x([0-9a-f]+)',header)[1],16)
 print('Practice word pool: 300 unique words/outlines and persistent-ID fingerprint verified')
+
+multi_header=(ROOT / 'src/steno_squid/practice_multi.h').read_text()
+multi=re.findall(r'\{"([A-Z]+)", "([#A-Z*/\-]+)"\}',multi_header)
+assert len(multi)==20 and len(set(w for w,_ in multi))==20
+for word,outline in multi:
+    assert outline.count('/')==1 and entries[outline].upper()==word,(word,outline)
+    assert len(word)<16 and len(outline)<24
+print('Multi drill: 20 common two-stroke outlines verified against Lapwing')

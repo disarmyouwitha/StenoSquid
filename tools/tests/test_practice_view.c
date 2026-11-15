@@ -90,6 +90,35 @@ int main(void) {
     assert(!strcmp(out.prompt, steno_squid_words[id].word));
     assert(!strcmp(out.review, steno_squid_words[id].word));
   }
+  // Speed can finish short of its goal only with an explicit timeout; partial
+  // outlines are accepted only in an active Multi- prompt.
+  for (unsigned scenario = 0; scenario < 4; scenario++) {
+    in.state = STENO_SQUID_PRACTICE_ACTIVE;
+    in.progress = 0;
+    if (scenario < 2) {
+      in.state |=
+          (STENO_SQUID_PRACTICE_SPEED << STENO_SQUID_PRACTICE_DRILL_SHIFT);
+      if (scenario == 0)
+        in.progress = (uint64_t)30 << 46;
+      else
+        in.state |=
+            STENO_SQUID_PRACTICE_TIMEOUT |
+            (STENO_SQUID_PRACTICE_DONE << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT) |
+            (3 << STENO_SQUID_PRACTICE_ROUND_SHIFT);
+    } else {
+      in.state |=
+          (STENO_SQUID_PRACTICE_MULTI << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
+          STENO_SQUID_PRACTICE_PARTIAL;
+      if (scenario == 3)
+        in.state |= STENO_SQUID_PRACTICE_MENU;
+    }
+    n = steno_squid_practice_encode(&in, bytes);
+    memset(&rx, 0, sizeof(rx));
+    for (unsigned i = 0; i < (n + 4) / 5; i++) {
+      const int expected = i + 1 == (n + 4) / 5 ? (scenario == 3 ? -1 : 1) : 0;
+      assert(deliver(&rx, bytes, n, 1, i, &out) == expected);
+    }
+  }
   uint32_t a, b;
   steno_squid_practice_fragment(bytes, n, 1, 0, &a, &b);
   assert(steno_squid_practice_receive(&rx, a, b | (1u << 31), &out) == -1);
