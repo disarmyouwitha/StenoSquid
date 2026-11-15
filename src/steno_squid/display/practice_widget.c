@@ -83,7 +83,7 @@ static void progress_labels(void) {
     unsigned into, needed;
     const unsigned level = steno_squid_pop_level(steno_squid_practice_xp(last_progress), &into, &needed);
     const unsigned drill = (last_practice & STENO_SQUID_PRACTICE_DRILL_MASK) >> STENO_SQUID_PRACTICE_DRILL_SHIFT;
-    const bool words = steno_squid_practice_word_drill(drill) || (drill == STENO_SQUID_PRACTICE_MULTI || drill == STENO_SQUID_PRACTICE_BUILD);
+    const bool words = steno_squid_practice_is_word_like(drill);
     const bool speed = drill == STENO_SQUID_PRACTICE_SPEED;
     const bool timeout = last_practice & STENO_SQUID_PRACTICE_TIMEOUT;
     if (steno_squid_practice_feedback_value(last_practice) != STENO_SQUID_PRACTICE_DONE) return;

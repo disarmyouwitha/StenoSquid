@@ -46,6 +46,14 @@ static inline bool steno_squid_practice_word_drill(enum steno_squid_practice_dri
     return drill == STENO_SQUID_PRACTICE_WORDS || drill == STENO_SQUID_PRACTICE_TROUBLE || drill == STENO_SQUID_PRACTICE_SPEED;
 }
 
+/* Drills that show a word or outline from the word pools: the word, speed and
+ * trouble drills, the multi-stroke drill and the build drill.
+ */
+static inline bool steno_squid_practice_is_word_like(enum steno_squid_practice_drill drill) {
+    return steno_squid_practice_word_drill(drill) || drill == STENO_SQUID_PRACTICE_MULTI ||
+           drill == STENO_SQUID_PRACTICE_BUILD;
+}
+
 enum steno_squid_practice_feedback {
     STENO_SQUID_PRACTICE_PROMPT,
     STENO_SQUID_PRACTICE_CORRECT,
@@ -105,7 +113,7 @@ static inline const char *steno_squid_practice_outline(enum steno_squid_practice
 }
 
 static inline unsigned steno_squid_practice_rounds(enum steno_squid_practice_drill drill) {
-    return steno_squid_practice_word_drill(drill) || (drill == STENO_SQUID_PRACTICE_MULTI || drill == STENO_SQUID_PRACTICE_BUILD)
+    return steno_squid_practice_is_word_like(drill)
                ? STENO_SQUID_WORD_ROUNDS : STENO_SQUID_PRACTICE_ROUNDS;
 }
 
