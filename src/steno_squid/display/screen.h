@@ -18,3 +18,5 @@ lv_obj_t *steno_squid_display_bar(lv_obj_t *parent, int x, int y, int width, int
 
 lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent);
 void steno_squid_practice_widget_update(uint32_t practice);
+void steno_squid_practice_widget_set_progress(uint64_t progress);
+void steno_squid_practice_widget_hide(void);

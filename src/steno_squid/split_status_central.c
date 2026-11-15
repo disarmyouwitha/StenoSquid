@@ -17,6 +17,9 @@
 
 #include "split_status.h"
 #include "stroke_feed.h"
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
+#include "practice_progress.h"
+#endif
 #if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
 #include "lapwing_flash.h"
 #endif
@@ -144,6 +147,14 @@ static void send_status(struct k_work *work) {
 #endif
     struct zmk_behavior_binding_event event = {.timestamp = k_uptime_get()};
     zmk_split_central_invoke_behavior(0, &binding, event, true);
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
+    if (practice & STENO_SQUID_PRACTICE_ACTIVE) {
+        const uint64_t progress = steno_squid_practice_progress();
+        binding.param1 = progress;
+        binding.param2 = STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL | ((uint32_t)(progress >> 32) << 8);
+        zmk_split_central_invoke_behavior(0, &binding, event, true);
+    }
+#endif
 }
 
 K_WORK_DEFINE(send_status_work, send_status);

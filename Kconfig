@@ -143,6 +143,7 @@ config ZMK_STENO_SQUID_STROKE_HINT
 
 config ZMK_STENO_SQUID_PRACTICE
     bool "Offline single-stroke practice on the right nice!view"
+    depends on SETTINGS
     depends on ZMK_STENO_SQUID_SPLIT_STATUS && ZMK_JAVELIN_STENO && ZMK_SPLIT_ROLE_CENTRAL
 
 config ZMK_STENO_SQUID_FONT_SAMPLER

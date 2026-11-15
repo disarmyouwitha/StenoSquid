@@ -13,7 +13,8 @@ if(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
 endif()
 
 if(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-  target_sources(app PRIVATE src/behaviors/behavior_javelin_practice.c)
+  target_sources(app PRIVATE src/behaviors/behavior_javelin_practice.c
+      src/steno_squid/practice_progress.c)
 endif()
 
 if(CONFIG_ZMK_JAVELIN_STENO)

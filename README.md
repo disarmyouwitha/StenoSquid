@@ -68,7 +68,7 @@ Pop, the 48 × 48 squid traced from the original concept, reacts to right-hand t
 
 The right display shows **Discon-** above Pop and **-nected** below when the left half has neither a connected Bluetooth host on the active profile nor a USB HID connection. **Waiting for Left** means the halves themselves are disconnected.
 
-On the Javelin layer the display shows the last **translation and stroke above Pop**, in larger bold text. The translation can span multiple strokes; the stroke row shows the most recent stroke, not the complete outline. The hint or WPM appears below the layer name. The display appears with the first stroke and hides on other layers, in Practice, and while a host-disconnection notice is showing. Translations are limited to twelve characters; text that cannot fit ends in "..". WPM counts the last ten seconds of translated characters and updates with strokes. [Split message format](src/steno_squid/stroke_feed.h)
+On the Javelin layer the display shows the last **translation and stroke above Pop**, in larger bold text. The translation can span multiple strokes; the stroke row shows the most recent stroke, not the complete outline. The hint or WPM appears below the layer name. The display appears with the first stroke and hides on other layers, in Practice, and while a host-disconnection notice is showing. The display folds Latin accents to plain text (for example, `ça va` → `ca va`, `café` → `cafe`), drops common combining accents, and uses `?` for unsupported characters. This only changes the display; Javelin’s host output stays unchanged. Translations are limited to twelve display characters; text that cannot fit ends in "..". WPM counts the last ten seconds of translated characters and updates with strokes. [Split message format](src/steno_squid/stroke_feed.h)
 
 The trial config enables **shorter-outline hints**. Our dictionary compiler adds a compact, sorted flash index of one-stroke shortcuts, searched without copying the dictionary into RAM. For example, Lapwing's `HE/HROE` translates to **hello**, and can suggest `H-L`. This first index suggests one-stroke shortcuts; it does not index alternative multi-stroke briefs. Personal dictionaries retain their engine-native reverse lookup. Only enabled dictionaries participate, and a shortcut overridden by a higher-priority dictionary is excluded.
 
@@ -112,23 +112,31 @@ Hold the middle left thumb for Numpad, tap the outer right thumb, then release b
 
 | Drill | Prompts | Checks |
 | --- | ---: | --- |
-| WORDS | 10 | CAT, THE, IF, and IS through the onboard dictionary engine. |
+| WORDS | 10 | Ten different words from a verified pool of 100 common Lapwing words, weighted toward mistakes, slow answers, and less-recent practice. |
 | LEFT | 50 | Random left-hand consonant keys. |
 | RIGHT | 50 | Random right-hand consonant keys. |
 
-Practice opens a Practice menu. Select WORDS, LEFT, or RIGHT with the left/right star keys, then tap a vowel thumb (A, O, E, or U) to start. After a run, tap a vowel thumb to return to the menu.
+Practice opens a menu with a divider above the star-key and start controls. Select WORDS, LEFT, or RIGHT with the left/right star keys, then tap a vowel thumb (A, O, E, or U) to start. The menu has three visible rows and scrolls to follow the selection if more drills are added. After a run, tap a vowel thumb to return to the menu.
 
-The hand drills use Steno Jig's key sets and draw a new random prompt after each correct answer. Consecutive repeats are allowed. Mistakes keep the current prompt and reset the streak; correct answers advance after 250 ms.
+WORDS records each word’s completions, first-try successes, mistakes, response-time average, and last practice session. Each round samples ten distinct words without replacement. Pop earns **10 XP** for a first-try answer, **2 XP** after a correction, and **20 XP** for completing the round. Incorrect attempts and repeated keys during feedback earn no XP. Levels cost progressively more: level 2 needs 100 total XP, level 3 needs 300, and level 4 needs 600. LEFT and RIGHT also earn XP: **1 XP per correct key**, a bonus at every five-key streak milestone (**+1**, **+2**, **+3**, **+4**, then **+5** at each remaining milestone), and **20 XP** for finishing. A clean 50-key run earns **110 XP**. Mistakes break the streak and award no XP; they do not subtract earned XP.
+
+The completion screen underlines **A: MENU**, celebrates with Pop, and shows a larger **Lv N** label. After celebrating, the mascot stays visibly awake until you leave the results screen; keyboard power-management settings are unchanged. WORDS shows **first-try accuracy out of ten**; its results rotate through XP earned, average response time, a **Review** card naming the word needing the most retries (or “Clean run!”), and progress toward the next level. LEFT/RIGHT show **50/50** completion and rotate through XP earned, best streak, average response time, and progress toward the next level. Pauses over two minutes are excluded from timing averages.
+
+Progress is a compact, checksummed **1,224-byte record** in the left controller’s **32 KB internal ZMK settings area** (eight 4 KB NVS sectors), separate from the external dictionary flash. It saves at round completion, on leaving/switching drills, and on idle before deep sleep; it does not write flash per chord. Saved progress survives reboots and normal UF2 updates. Abrupt power loss can lose work since the last checkpoint. Clearing all ZMK settings also clears training progress; changing the word-pool fingerprint starts fresh stats for that pool. The NVS backend appends records and rotates sectors rather than erasing a page per save; unchanged progress is not rewritten. Flash endurance is finite, so save frequency still matters—these checkpoints are intended for normal practice, not per-key logging. [NVS wear and storage behavior](https://docs.zephyrproject.org/latest/services/storage/nvs/nvs.html). No computer, JSON file, dictionary rewrite, or companion tool is needed. [Word pool](src/steno_squid/practice_words.h) · [Selection and XP rules](src/steno_squid/practice_model.h)
+
+The hand drills use Steno Jig's key sets and draw a new random prompt after each correct answer, avoiding an immediate repeat. Mistakes keep the current prompt and reset the streak; correct answers advance after 250 ms.
 
 Tap a left star by itself for the previous drill, or a right star for the next. The outer right thumb toggles Practice; the former left-hand Practice key is unbound. The outer left thumb returns to Qwerty.
 
-Practice works with the computer off and consumes its strokes before host output. Hand drills work with dictionaries disabled; WORDS can use the verified Lapwing Base as a fallback. Saved dictionary selections stay intact. [Practice guide](config/steno-squid-split/README.md#offline-practice) · [Steno Jig](https://joshuagrams.github.io/steno-jig/learn-keyboard.html)
+Practice works with the computer off and consumes its strokes before host output. Hand drills work with dictionaries disabled; WORDS uses the verified Lapwing Base locally, even when its checkbox is off, and also accepts an active-dictionary outline that translates to the requested word. Saved dictionary selections stay intact. Install matching left and right firmware for this 100-word protocol; dictionary images do not need reinstalling. [Practice guide](config/steno-squid-split/README.md#offline-practice) · [Steno Jig](https://joshuagrams.github.io/steno-jig/learn-keyboard.html)
 
 ## Bluetooth and power
 
 From Qwerty, hold Numpad and tap **Q** for Bluetooth profile 0 or **W** for profile 1. Tap **R** on that layer to clear the selected profile's host pairing. Pair **Steno Squid** in the computer's Bluetooth settings. USB is normally preferred while connected.
 
 Typing, onboard Javelin, Plover HID, and dictionary editing have been verified over Bluetooth on macOS. The Windows plain-text output profile has been tested on Windows; Windows Bluetooth remains unverified.
+
+The left half enables `CONFIG_ZMK_USB_BOOT=y` for hosts that require the standard USB keyboard Boot protocol, including some Mac FileVault startup screens. Connect the left half by USB and use Qwerty mode for the first password. FileVault operation still needs testing on the target Mac; this option does not change Bluetooth startup compatibility. [ZMK USB Boot protocol documentation](https://zmk.dev/docs/config/system#usb)
 
 Both halves enable deep sleep after 15 idle minutes on battery. Wake each half with one of its own keys. The left half switches off the external flash rail during deep sleep and also after 30 seconds outside Javelin/Practice without dictionary use. Entering Javelin or accessing the editor wakes the flash. Boot checks verify the installed images before translation starts.
 

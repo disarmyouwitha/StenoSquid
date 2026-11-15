@@ -324,12 +324,14 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
     const bool practicing = (practice & STENO_SQUID_PRACTICE_ACTIVE) != 0;
     const bool done = practicing && steno_squid_practice_feedback_value(practice) == STENO_SQUID_PRACTICE_DONE;
     steno_squid_pet_set_visible(!practicing || done);
+    steno_squid_pet_set_awake_hold(done);
     if (practicing) {
         had_layer = false;
         lv_obj_add_flag(status_page, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(practice_page, LV_OBJ_FLAG_HIDDEN);
         steno_squid_practice_widget_update(practice);
     } else {
+        steno_squid_practice_widget_hide();
         lv_obj_add_flag(practice_page, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(status_page, LV_OBJ_FLAG_HIDDEN);
         const char *title = mode < STENO_SQUID_MODE_COUNT ? mode_names[mode] : layer_name;

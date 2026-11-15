@@ -100,6 +100,7 @@ static uint8_t frame_index;
 static bool usb_powered;
 static bool pet_visible = true;
 static bool headroom = true;
+static bool awake_hold;
 
 static void update_effect(void) {
     if (pet_visible && headroom && state == PET_SLEEP) {
@@ -131,7 +132,7 @@ static void show_frame(void) {
  * USB power and a hidden pet are handled by steno_squid_pet_set_state().
  */
 static enum pet_state resting_state(void) {
-    return zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE ? PET_IDLE : PET_SLEEP;
+    return awake_hold || zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE ? PET_IDLE : PET_SLEEP;
 }
 
 static void advance_frame(lv_timer_t *timer) {
@@ -171,7 +172,9 @@ void steno_squid_pet_set_state(enum pet_state next) {
 
     if (!pet_visible) {
         next = PET_IDLE;
-    } else if (usb_powered && (next == PET_IDLE || next == PET_SLEEP)) {
+    } else if (awake_hold && (next == PET_SLEEP || next == PET_POWERED)) {
+        next = PET_IDLE;
+    } else if (usb_powered && !awake_hold && (next == PET_IDLE || next == PET_SLEEP)) {
         next = PET_POWERED;
     }
     /* Finish the current puff before a later keypress starts another one. */
@@ -223,5 +226,13 @@ void steno_squid_pet_set_headroom(bool available) {
     headroom = available;
     if (pet_image) {
         update_effect();
+    }
+}
+
+void steno_squid_pet_set_awake_hold(bool hold) {
+    if (awake_hold == hold) return;
+    awake_hold = hold;
+    if (state == PET_IDLE || state == PET_SLEEP || state == PET_POWERED) {
+        steno_squid_pet_set_state(resting_state());
     }
 }

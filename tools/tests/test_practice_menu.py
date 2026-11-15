@@ -26,6 +26,8 @@ PREFIX = r'''
 #include <cstdio>
 #include "steno_key_state.h"
 #include "split_status.h"
+#include "practice_model.h"
+#include "practice_progress.h"
 // The display receiver is C; allow its integer-to-enum calls in this C++ harness.
 unsigned steno_squid_practice_prompt_count(unsigned drill) {
   return steno_squid_practice_prompt_count(static_cast<steno_squid_practice_drill>(drill));
@@ -55,6 +57,21 @@ int64_t k_uptime_get() { return now; }
 void k_work_cancel_delayable(int *) {}
 void k_work_reschedule(int *, int64_t) {}
 uint32_t sys_rand32_get() { return 3; }
+static steno_squid_practice_model progress_model;
+void steno_squid_words_begin() { steno_squid_model_begin(&progress_model, sys_rand32_get); }
+void steno_squid_hands_begin() { steno_squid_model_hands_begin(&progress_model); }
+void steno_squid_hands_answer(unsigned round, bool correct, uint32_t ms) { steno_squid_model_hands_answer(&progress_model,round,correct,ms); }
+unsigned steno_squid_words_prompt(unsigned round) { return progress_model.run.deck[round < 10 ? round : 9]; }
+void steno_squid_words_answer(unsigned round, bool correct, uint32_t ms) { steno_squid_model_answer(&progress_model,round,correct,ms); }
+void steno_squid_practice_finish() { steno_squid_model_finish(&progress_model); }
+void steno_squid_practice_checkpoint() {}
+void steno_squid_practice_end() { progress_model.run.active=false; }
+struct k_spinlock {};
+using k_spinlock_key_t = int;
+int k_spin_lock(k_spinlock *) { return 0; }
+void k_spin_unlock(k_spinlock *, int) {}
+k_spinlock progress_lock;
+uint64_t practice_progress;
 extern "C" void steno_squid_split_status_refresh() {}
 struct zmk_behavior_binding { uint32_t param1, param2; };
 struct zmk_behavior_binding_event {};
@@ -113,7 +130,7 @@ int main() {
     tap(key);  // Keep celebration until an explicit return to menu.
     assert(practice.menu && practice.round == 0);
   }
-  // New menu packets and the two previous run protocols remain distinct.
+  // Menu packets, extended word IDs and malformed packets remain distinct.
   zmk_behavior_binding packet{practice_screen, STENO_SQUID_PRACTICE_PROTOCOL};
   assert(status_received(&packet, {}) == 0);
   const auto snapshot = practice_screen;
@@ -124,12 +141,22 @@ int main() {
   assert(status_received(&host_packet, {}) == 0 && !host_disconnected);
   packet.param1 |= 1u << STENO_SQUID_PRACTICE_ROUND_SHIFT;
   assert(status_received(&packet, {}) == -EINVAL);
-  packet = {STENO_SQUID_PRACTICE_ACTIVE | STENO_SQUID_PRACTICE_MENU, STENO_SQUID_PRACTICE_RUN_PROTOCOL};
+  packet = {STENO_SQUID_PRACTICE_ACTIVE | steno_squid_practice_pack_prompt(99), STENO_SQUID_PRACTICE_PROTOCOL};
+  assert(status_received(&packet, {}) == 0);
+  assert(steno_squid_practice_prompt_value(practice_screen)==99);
+  packet.param1 = STENO_SQUID_PRACTICE_ACTIVE | steno_squid_practice_pack_prompt(100);
   assert(status_received(&packet, {}) == -EINVAL);
-  packet.param1 = STENO_SQUID_PRACTICE_ACTIVE;
-  assert(status_received(&packet, {}) == 0);
-  packet.param2 = STENO_SQUID_PRACTICE_LEGACY_PROTOCOL;
-  assert(status_received(&packet, {}) == 0);
+  for(unsigned id=0;id<100;id++) {
+    packet.param1=STENO_SQUID_PRACTICE_ACTIVE|steno_squid_practice_pack_prompt(id);
+    assert(status_received(&packet,{})==0);
+    assert(steno_squid_practice_prompt_value(practice_screen)==id);
+  }
+  const uint64_t stats=120 | (uint64_t(8)<<20) | (uint64_t(3)<<24) | (uint64_t(27)<<30) |
+                       (uint64_t(104)<<39) | (uint64_t(99)<<46);
+  packet={uint32_t(stats),STENO_SQUID_PRACTICE_PROGRESS_PROTOCOL | (uint32_t(stats>>32)<<8)};
+  assert(status_received(&packet,{})==0 && practice_progress==stats);
+  packet.param2 |= 0x20000000;
+  assert(status_received(&packet,{})==-EINVAL);
   practice.active = false;
   assert(!practice_process_key(int(StenoKey::KL), true));
   puts("Practice menu, navigation, start, feedback and replay checks passed");

@@ -134,10 +134,7 @@ Practice opens a **Practice** screen listing **WORDS (10)**, **LEFT (50)**, and
 the next, then tap a vowel thumb (**A**, **O**, **E**, or **U**) to start. The start
 key is consumed before scoring begins.
 
-The left central looks up each completed chord
-through Javelin's active dictionaries, including personal overrides. The
-ten-prompt drill repeats CAT, THE, IF and IS. It compares single-stroke
-translations without regard to letter case.
+The left central checks each completed chord through Javelin’s active dictionaries and the verified Lapwing base, without regard to letter case. WORDS samples ten different words from a verified pool of 100, favoring missed, slower, and less-recently practised words. Per-word performance and Pop’s XP are stored compactly in ZMK settings on the left controller.
 
 Practice runs on the steno layer. From Qwerty, hold the middle left thumb for
 Numpad and tap the outer right thumb, then release both. The outer right thumb
@@ -145,15 +142,14 @@ also starts Practice directly from Javelin or Plover. During Practice it
 returns to ordinary Javelin. The former left-hand Practice key is unbound. Tap either left star by itself to go to the previous
 drill, or either right star to go to the next. The order wraps through
 **WORDS → LEFT → RIGHT**. You can switch before, during, or after a run.
-Switching returns to the Practice menu with the new drill selected; start it with a vowel thumb. A new run resets the streak. WORDS has 10 prompts; LEFT and RIGHT have 50 each. Each hand drill randomly draws from its key list for each prompt, so consecutive prompts can repeat. Update both halves for the new drills. A new right half still displays the original 30-prompt drills from an older left half.
+Switching returns to the Practice menu with the new drill selected; start it with a vowel thumb. A new run resets the streak. WORDS samples 10 distinct prompts from 100 common words; LEFT and RIGHT have 50 each and avoid immediate repeats. Update both halves together for the expanded Practice protocol.
 
 **LEFT** and **RIGHT** use the corresponding consonant banks from
 [StenoJig's keyboard drills](https://joshuagrams.github.io/steno-jig/learn-keyboard.html).
 Tap the displayed steno key and release it. A leading hyphen indicates a
 right-hand key, such as `-F`. The lower left key is `S`. The key above it is the Lapwing `#` key.
 The hand drills check raw strokes and work with all dictionaries disabled.
-When both base dictionaries are off, **WORDS** uses the verified onboard
-Lapwing Base for outlines that the active personal dictionary does not cover.
+**WORDS** uses the verified onboard Lapwing Base locally, even when its checkbox is off, and accepts matching one-stroke translations from active dictionaries too.
 This lookup is local to Practice. It requires no computer and leaves saved
 dictionary selections alone. **ENABLE DICT** appears if WORDS has neither a
 usable active dictionary nor an available Lapwing base.
@@ -162,7 +158,7 @@ The right nice!view shows the drill, a large prompt, progress, and streak.
 Correct answers show **CORRECT** for
 250 ms and advance automatically. Mistakes show **RETRY**, reset the streak,
 and keep the current prompt. After all prompts are answered correctly, the screen shows
-**DONE**, the best streak, and the celebrating squid. Tap a vowel thumb to return
+the celebrating squid. WORDS shows first-try accuracy, Pop’s level, and rotating XP, timing, and review details. Hand drills show completion, Pop’s level, and rotating XP, best-streak, timing, and level-progress details. **A: MENU** is underlined. Tap a vowel thumb to return
 to the Practice menu, or a star to select another drill.
 
 The outer left thumb returns to Qwerty. The outer right thumb exits to
@@ -170,7 +166,7 @@ normal Javelin. To select Plover, return to Qwerty first and tap the outer
 right thumb there. Leaving the steno
 layer ends practice. Turn practice off and on to restart. A right-half reboot or
 reconnect reloads the current screen from the left. Rebooting the left resets
-the session. Both halves can run on battery with the computer off.
+the active session, while saved per-word statistics and Pop’s XP survive. Both halves can run on battery with the computer off. Progress checkpoints at round completion, on exit/switch, and when idle; abrupt power loss can lose changes since the last checkpoint. WORDS awards 10 XP for a first-try answer, 2 after a correction, and 20 for completing the round. Hand drills award 1 XP per correct key, growing bonuses every five consecutive correct keys, and 20 for completing the round (110 XP for a clean run). See the [training rules](../../README.md#offline-practice) for persistence and level details.
 
 Practice consumes its steno chords before the normal Javelin output pipeline,
 so a connected computer receives no practice text. Keys pressed during correct

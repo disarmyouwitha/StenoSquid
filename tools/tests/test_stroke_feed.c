@@ -98,12 +98,48 @@ static void test_text(void) {
     steno_squid_tape_clean_text("{:retro_shift:1}", out, sizeof(out));
     CHECK_STR(out, ":retro_shift");
     steno_squid_tape_clean_text("caf\xc3\xa9", out, sizeof(out));
-    CHECK_STR(out, "caf?");
+    CHECK_STR(out, "cafe");
     steno_squid_tape_clean_text("a\tb", out, sizeof(out));
     CHECK_STR(out, "a b");
     steno_squid_tape_clean_text("", out, sizeof(out));
     CHECK_STR(out, "");
 
+    /* Accented Latin, decomposed accents, expansions and unsupported scripts. */
+    const struct { const char *raw; const char *plain; } examples[] = {
+        {"ça va", "ca va"}, {"ÇÀ ÉÈÊË", "CA EEEE"}, {"über", "uber"},
+        {"mañana", "manana"}, {"Crème brûlée", "Creme brulee"},
+        {"Łódź", "Lodz"}, {"Đorđe", "Dorde"}, {"Øresund", "Oresund"},
+        {"İstanbul", "Istanbul"}, {"Tiếng Việt", "Tieng Viet"},
+        {"Straße", "Strasse"}, {"cœur", "coeur"}, {"Æsir", "AEsir"},
+        {"{^café}", "cafe"}, {"{&ß}", "ss"},
+        {"cafe\xcc\x81", "cafe"}, {"c\xcc\xa7" "a va", "ca va"},
+        {"“ça”—‘va’", "\"ca\"-'va'"}, {"a\xc2\xa0" "b", "a b"},
+        {"猫", "?"}, {"😀", "?"}, {"a😀b", "a?b"},
+        {"a\xc3", "a?"}, {"\xe2\x82", "?"}, {"\xc3(", "?("},
+        {"\xed\xa0\x80", "?"}, {"\xf4\x90\x80\x80", "?"},
+        {"\xe0\x80\x80", "?"}, {"\x80", "?"},
+    };
+    for (size_t i = 0; i < sizeof(examples) / sizeof(examples[0]); i++) {
+        steno_squid_tape_clean_text(examples[i].raw, out, sizeof(out));
+        CHECK_STR(out, examples[i].plain);
+        for (size_t j = 0; out[j]; j++) CHECK((unsigned char)out[j] < 0x80);
+    }
+    /* Boundaries must not write outside the caller's capacity. */
+    char bounded[] = {'x', 'x', 'x', 'x', 'x'};
+    steno_squid_tape_clean_text("ça", bounded + 1, 0);
+    CHECK(bounded[1] == 'x');
+    steno_squid_tape_clean_text("ça", bounded + 1, 1);
+    CHECK(bounded[1] == '\0' && bounded[0] == 'x' && bounded[2] == 'x');
+    steno_squid_tape_clean_text("ß", bounded + 1, 2);
+    CHECK_STR(bounded + 1, "s");
+    CHECK(bounded[0] == 'x' && bounded[3] == 'x');
+    steno_squid_tape_clean_text("éééé", bounded + 1, 3);
+    CHECK_STR(bounded + 1, "ee");
+    CHECK(bounded[0] == 'x' && bounded[4] == 'x');
+    CHECK(steno_squid_tape_typed_chars("ça va") == 6);
+    CHECK(steno_squid_tape_typed_chars("cafe\xcc\x81") == 5);
+    CHECK(steno_squid_tape_typed_chars("Straße") == 7);
+    CHECK(steno_squid_tape_typed_chars("{&ß}") == 1);
     CHECK(steno_squid_tape_typed_chars("cat") == 4);
     CHECK(steno_squid_tape_typed_chars("the cat") == 8);
     CHECK(steno_squid_tape_typed_chars("{^ing}") == 3);
