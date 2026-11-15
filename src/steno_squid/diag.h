@@ -10,7 +10,7 @@
  * - wake timing measures how long an idle or resumed flash takes to come back.
  *
  * Everything here compiles away in other builds. To remove it for good, delete
- * diag.c, this file and the calls to diag_*() in lapwing_flash.c.
+ * diag.c, this file, lapwing_flash_diag.c and the calls to diag_*() in lapwing_flash*.c.
  */
 
 #include <stdbool.h>

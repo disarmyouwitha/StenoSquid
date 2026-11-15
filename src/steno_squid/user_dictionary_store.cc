@@ -5,9 +5,7 @@
 #include "stroke_list_parser.h"
 #include "user_dictionary_snapshot.h"
 #include "xip_load.h"
-extern "C" {
-#include "quad.h"
-}
+#include "w25q_quad.h"
 #include <stdlib.h>
 #include <string.h>
 #include <zephyr/devicetree.h>
