@@ -9,7 +9,7 @@
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!
 
-![Pop](docs/assets/screens/pop-hi.png) — ![Tape](docs/assets/screens/tape-shortcut.png) — ![Practice](docs/assets/screens/practice-menu.png) — ![BuildUp](docs/assets/screens/drill-build-reveal.png) — ![XPk](docs/assets/screens/results-xp.png)
+![Pop](assets/screens/pop-hi.png) — ![Tape](assets/screens/tape-shortcut.png) — ![Practice](assets/screens/practice-menu.png) — ![BuildUp](assets/screens/drill-build-reveal.png) — ![XPk](assets/screens/results-xp.png)
 
 [ZMK](https://github.com/zmkfirmware/zmk) handles the keyboard, Bluetooth, power management, and keymap editing. [Javelin](https://github.com/jthlim/javelin-steno) handles onboard steno translation.
 
@@ -57,15 +57,15 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ### Qwerty
 
-![Qwerty layer with tap and hold actions](docs/keymap/qwerty-3084f385c4c6.svg)
+![Qwerty layer with tap and hold actions](assets/keymap/qwerty-3084f385c4c6.svg)
 
 ### Numpad
 
-![Arrows and number pad layer with Bluetooth and Practice controls](docs/keymap/numpad-73da1dd8421b.svg)
+![Arrows and number pad layer with Bluetooth and Practice controls](assets/keymap/numpad-73da1dd8421b.svg)
 
 ### Javelin
 
-![Onboard Javelin layer with Lapwing number key and Practice toggle](docs/keymap/javelin-68ed47c7832b.svg)
+![Onboard Javelin layer with Lapwing number key and Practice toggle](assets/keymap/javelin-68ed47c7832b.svg)
 
 ## ZMK Studio
 ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
@@ -137,9 +137,12 @@ Local builds must use this checkout's west manifest. If the workspace keeps a se
 ## External Memory Map
 The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
 
-![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](docs/assets/qspi-flash-map.png)
+![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](assets/qspi-flash-map.png)
 
 The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
+
+## NiceNano Wiring Diagram
+![Flash Wiring diagram for NiceNano](assets/NiceNano_Flash_wiring_diagram.png)
 
 ## License
 
