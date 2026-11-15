@@ -132,7 +132,8 @@ config ZMK_STENO_SQUID_STROKE_HINT
     help
       Suggest a one-stroke shortcut using the sorted index in freshly compiled
       external dictionary images. Personal dictionaries use native reverse
-      lookup. Work runs on the key thread; logging builds report its timing.
+      lookup. Work runs on the key thread. With ZMK_JAVELIN_DIAG (the logging
+      build) each stroke's handling time is logged.
 
 config ZMK_STENO_SQUID_PRACTICE
     bool "Offline single-stroke practice on the right nice!view"

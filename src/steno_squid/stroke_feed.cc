@@ -16,6 +16,11 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+// Per-stroke timing is a diagnostic: it exists only in the logging build.
+#if defined(CONFIG_ZMK_STENO_SQUID_STROKE_HINT) && defined(CONFIG_ZMK_JAVELIN_DIAG)
+#define STENO_SQUID_TAPE_TIMING 1
+#endif
+
 namespace {
 
 class TapeWriter final : public IWriter {
@@ -38,6 +43,8 @@ TapeWriter tapeWriter;
 bool paperTapeWasEnabled;
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
 bool suggestionWasEnabled;
+#endif
+#ifdef STENO_SQUID_TAPE_TIMING
 uint32_t startCycles;
 #endif
 bool active;
@@ -87,6 +94,8 @@ extern "C" void steno_squid_stroke_feed_begin(void) {
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
   suggestionWasEnabled = Console::IsEventEnabled(ConsoleEvent::SUGGESTION);
   Console::EnableEvent(ConsoleEvent::SUGGESTION);
+#endif
+#ifdef STENO_SQUID_TAPE_TIMING
   startCycles = k_cycle_get_32();
 #endif
   ConsoleWriter::Push(&tapeWriter);
@@ -105,6 +114,8 @@ extern "C" void steno_squid_stroke_feed_end(void) {
   if (!suggestionWasEnabled) {
     Console::DisableEvent(ConsoleEvent::SUGGESTION);
   }
+#endif
+#ifdef STENO_SQUID_TAPE_TIMING
   const uint32_t cycles = k_cycle_get_32() - startCycles;
 #endif
   if (tapeWriter.count == 0) {
@@ -115,7 +126,7 @@ extern "C" void steno_squid_stroke_feed_end(void) {
   if (!steno_squid_tape_parse(tapeWriter.buffer, tapeWriter.count, &event)) {
     return;
   }
-#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
+#ifdef STENO_SQUID_TAPE_TIMING
   // How long a stroke takes with suggestions on. This runs on the thread that
   // handles keys, so watch for anything over a few milliseconds.
   LOG_INF("[tape] stroke handled in %u us%s", (unsigned)k_cyc_to_us_floor32(cycles),
