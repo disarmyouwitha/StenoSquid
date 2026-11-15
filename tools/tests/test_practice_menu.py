@@ -26,6 +26,7 @@ PREFIX = r'''
 #include <cstdio>
 #include "steno_key_state.h"
 #include "split_status.h"
+#include "practice_types.h"
 #include "practice_model.h"
 #include "practice_progress.h"
 #include "practice_view.h"

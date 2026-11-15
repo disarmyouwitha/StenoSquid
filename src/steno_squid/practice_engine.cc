@@ -11,6 +11,7 @@
 #include "practice_build.h"
 #include "practice_multi.h"
 #include "practice_progress.h"
+#include "practice_types.h"
 #include "practice_view.h"
 #include "practice_words.h"
 #include "split_status.h"
@@ -52,7 +53,7 @@ static struct {
 } practice;
 
 static unsigned practice_prompt() {
-  return steno_squid_practice_word_drill(practice.drill) || (practice.drill == STENO_SQUID_PRACTICE_MULTI || practice.drill == STENO_SQUID_PRACTICE_BUILD)
+  return steno_squid_practice_is_word_like(practice.drill)
              ? steno_squid_words_prompt(practice.round) : practice.hand_prompt;
 }
 
@@ -183,7 +184,7 @@ static void practice_advance(struct k_work *) {
     practice.feedback = practice.round == steno_squid_practice_rounds(practice.drill)
                             ? STENO_SQUID_PRACTICE_DONE
                             : STENO_SQUID_PRACTICE_PROMPT;
-    if (practice.feedback == STENO_SQUID_PRACTICE_PROMPT && !steno_squid_practice_word_drill(practice.drill) && practice.drill != STENO_SQUID_PRACTICE_MULTI && practice.drill != STENO_SQUID_PRACTICE_BUILD) {
+    if (practice.feedback == STENO_SQUID_PRACTICE_PROMPT && !steno_squid_practice_is_word_like(practice.drill)) {
       practice_draw_hand_prompt(true);
     }
     practice.prompt_started_at = k_uptime_get();
@@ -220,7 +221,7 @@ static void practice_switch_drill(int direction) {
   practice.active = true;
   practice.menu = true;
   practice.drill = drill;
-  if (!steno_squid_practice_word_drill(drill) && drill != STENO_SQUID_PRACTICE_MULTI && drill != STENO_SQUID_PRACTICE_BUILD) {
+  if (!steno_squid_practice_is_word_like(drill)) {
     practice_draw_hand_prompt(false);
   }
   practice_refresh_dictionary();

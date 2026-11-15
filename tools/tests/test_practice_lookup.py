@@ -23,6 +23,7 @@ prefix = r'''
 #include <strings.h>
 #include <string>
 #include "split_status.h"
+#include "practice_types.h"
 #include "practice_words.h"
 #include "practice_multi.h"
 #include "practice_build.h"

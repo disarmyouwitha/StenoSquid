@@ -4,7 +4,7 @@
  * Each split command carries five bytes, an eight-bit sequence and an index.
  * At most fifteen fragments; the final one supplies the frame length.
  */
-#include "split_status.h"
+#include "practice_types.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>

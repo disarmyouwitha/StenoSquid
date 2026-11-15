@@ -22,6 +22,7 @@
 #include "display/screen.h"
 #include "display/pet_widget.h"
 #include "split_status.h"
+#include "practice_types.h"
 #include "stroke_feed.h"
 #include "practice_view.h"
 
