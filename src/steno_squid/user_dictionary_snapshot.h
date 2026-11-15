@@ -95,23 +95,39 @@ public:
   uint32_t Used() const { return active < 0 ? 0 : header.used; }
   uint32_t Maximum() const { return header.maximum; }
   uint32_t Generation() const { return header.generation; }
+  // Slots fully verified so far. Open verifies only the one it serves, so this
+  // is 1 after a successful boot even if the older slot is also intact.
   unsigned ValidCopies() const { return valid_copies; }
+  // Fully validates (CRC plus index check) the newer slot and serves it. The
+  // older slot is validated only if the newer one is missing or invalid, so a
+  // snapshot is never served unvalidated and the common boot does half the work.
   bool Open() {
     AbortImport();
     active = -1;
     header = {};
     valid_copies = 0;
-    for (int slot = 0; slot < 2; ++slot) {
-      Header candidate{};
-      if (!device.Read(Base(slot), &candidate, sizeof(candidate)) ||
-          !ValidHeader(candidate) || !Validate(Base(slot), candidate))
+    Header candidates[2]{};
+    bool usable[2]{};
+    for (int slot = 0; slot < 2; ++slot)
+      usable[slot] = device.Read(Base(slot), &candidates[slot],
+                                 sizeof(candidates[slot])) &&
+                     ValidHeader(candidates[slot]);
+    // Ties keep slot 0, as a strictly-newer comparison would.
+    const int first =
+        usable[0] && usable[1]
+            ? (static_cast<int32_t>(candidates[1].generation -
+                                    candidates[0].generation) > 0
+                   ? 1
+                   : 0)
+            : (usable[0] ? 0 : 1);
+    for (int n = 0; n < 2; ++n) {
+      const int slot = n ? 1 - first : first;
+      if (!usable[slot] || !Validate(Base(slot), candidates[slot]))
         continue;
-      ++valid_copies;
-      if (active < 0 ||
-          static_cast<int32_t>(candidate.generation - header.generation) > 0) {
-        active = slot;
-        header = candidate;
-      }
+      active = slot;
+      header = candidates[slot];
+      valid_copies = 1;
+      break;
     }
     return active >= 0;
   }
@@ -255,7 +271,12 @@ public:
         return false;
       previous = e;
     }
-    if (!BodyCrc(base, next, next.body_crc) || !Validate(base, next))
+    // Integrity chain: WriteVerified read back every programmed byte, so flash
+    // holds exactly what was intended; this single read-back pass computes the
+    // CRC of what is really in flash for the header; Validate (structure only)
+    // then checks ordering, offsets and both indexes. Open and imports, whose
+    // bytes were not just verified here, re-check the CRC.
+    if (!BodyCrc(base, next, next.body_crc) || !Validate(base, next, false))
       return false;
     return Publish(next);
   }
@@ -297,8 +318,10 @@ private:
            device.Read(base + SECTOR + (reverse ? h.count * 8 : 0) + i * 8,
                        &idx, sizeof(idx));
   }
+  // need_text_hash rehashes the whole text of a forward entry (the reverse
+  // index already stores it). Only validation needs that.
   bool GetAt(uint32_t base, const Header &h, uint32_t i, bool reverse, Entry &e,
-             bool need_text_hash = true) {
+             bool need_text_hash = false) {
     Index idx{};
     uint32_t record[2]{};
     if (!ReadIndex(base, h, i, reverse, idx) ||
@@ -335,7 +358,7 @@ private:
     return true;
   }
   bool FindAt(uint32_t base, const Header &h, const Entry &key, Entry &e,
-              bool need_text_hash = true) {
+              bool need_text_hash = false) {
     uint32_t lo = 0, hi = h.count, hash = outline_hash(key);
     Index idx{};
     while (lo < hi) {
@@ -385,9 +408,9 @@ private:
     }
     return true;
   }
-  bool Validate(uint32_t base, const Header &h) {
+  bool Validate(uint32_t base, const Header &h, bool check_crc = true) {
     uint32_t crc;
-    if (!BodyCrc(base, h, crc) || crc != h.body_crc)
+    if (check_crc && (!BodyCrc(base, h, crc) || crc != h.body_crc))
       return false;
     uint32_t expected = SECTOR + h.count * 16, maximum = 0;
     Entry e{}, prev{};
@@ -410,7 +433,7 @@ private:
     for (uint32_t i = 0; i < h.count; ++i) {
       Entry match{};
       if (!GetAt(base, h, i, true, e) || (i && compare(prev, e, true) >= 0) ||
-          !FindAt(base, h, e, match) || e.text_address != match.text_address ||
+          !FindAt(base, h, e, match, true) || e.text_address != match.text_address ||
           e.text_hash != match.text_hash)
         return false;
       prev = e;

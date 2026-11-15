@@ -166,9 +166,125 @@ static void test_host_import(const char *path) {
          operations);
 }
 
+static uint32_t slot_base(const Flash &flash, bool newer) {
+  Header h0{}, h1{};
+  memcpy(&h0, flash.bytes.data() + SLOT_START, sizeof(h0));
+  memcpy(&h1, flash.bytes.data() + SLOT_START + SLOT_BYTES, sizeof(h1));
+  const bool second_is_newer = h1.generation > h0.generation;
+  return second_is_newer == newer ? SLOT_START + SLOT_BYTES : SLOT_START;
+}
+
+// Open validates only the slot it serves, and falls back only on failure.
+static void test_open_slots() {
+  Flash flash;
+  Store writer(flash);
+  Rows rows;
+  rows.Add({8}, "cat");
+  rows.Add({2, 4}, std::string(2047, 'x'));
+  rows.Prepare();
+  assert(writer.Save(rows) && writer.Save(rows)); // Both slots are valid.
+  const auto both = flash.bytes;
+  const uint32_t newer = slot_base(flash, true), older = slot_base(flash, false);
+  Header newer_header{};
+  memcpy(&newer_header, flash.bytes.data() + newer, sizeof(newer_header));
+
+  flash.reads = 0;
+  Store normal(flash);
+  assert(normal.Open() && normal.Generation() == newer_header.generation);
+  assert(normal.ValidCopies() == 1);
+  const size_t two_valid_reads = flash.reads;
+  // The same cost with the older slot erased proves it was never validated.
+  memset(flash.bytes.data() + older, 255, SECTOR);
+  flash.reads = 0;
+  Store one(flash);
+  assert(one.Open() && flash.reads == two_valid_reads);
+
+  // A bad body in the older slot is not even looked at.
+  flash.bytes = both;
+  flash.bytes[older + SECTOR] ^= 1;
+  Store unseen(flash);
+  assert(unseen.Open() && unseen.Generation() == newer_header.generation);
+
+  // A bad newer body, or header, falls back to the older snapshot.
+  flash.bytes = both;
+  flash.bytes[newer + SECTOR] ^= 1;
+  Store fallback(flash);
+  assert(fallback.Open() &&
+         fallback.Generation() == newer_header.generation - 1 &&
+         fallback.ValidCopies() == 1 && lookup(fallback, key(8)) == "cat");
+  flash.bytes = both;
+  flash.bytes[newer + 4] ^= 1; // Header version field.
+  Store bad_header(flash);
+  assert(bad_header.Open() &&
+         bad_header.Generation() == newer_header.generation - 1);
+
+  // Both bad: nothing is served.
+  flash.bytes = both;
+  flash.bytes[newer + SECTOR] ^= 1;
+  flash.bytes[older + SECTOR] ^= 1;
+  Store none(flash);
+  Entry sink{};
+  assert(!none.Open() && none.Count() == 0 && !none.Find(key(8), sink));
+}
+
+// Forward lookups must not rehash translation text; only validation does.
+static void test_get_does_not_hash() {
+  Flash flash;
+  Store store(flash);
+  Rows rows;
+  rows.Add({8}, "cat");
+  rows.Add({2, 4}, std::string(2047, 'x'));
+  rows.Prepare();
+  assert(store.Save(rows));
+  Entry e{};
+  for (uint32_t i = 0; i < store.Count(); ++i) {
+    flash.reads = 0;
+    assert(store.Get(i, false, e) && e.text_hash == 0);
+    assert(flash.reads < 128); // Index + record + strokes, never the text.
+  }
+  Entry multi{};
+  multi.length = 2;
+  multi.strokes[0] = 2;
+  multi.strokes[1] = 4;
+  flash.reads = 0;
+  assert(store.Find(multi, e) && e.text_bytes == 2048 && e.text_hash == 0);
+  assert(flash.reads < 256);
+  // The reverse index supplies the hash without reading text.
+  flash.reads = 0;
+  assert(store.Get(store.ReverseStart(hash_bytes("cat", 3)), true, e) &&
+         e.text_hash == hash_bytes("cat", 3) && flash.reads < 128);
+}
+
+// Save: the stored CRC describes the bytes actually in flash, and a flash that
+// silently drops bits is rejected before anything is published.
+static void test_save_integrity() {
+  Flash flash;
+  Store store(flash);
+  Rows rows;
+  rows.Add({8}, "cat");
+  rows.Add({2, 4}, "ça va");
+  rows.Prepare();
+  assert(store.Save(rows));
+  Header h{};
+  const uint32_t base = slot_base(flash, true);
+  memcpy(&h, flash.bytes.data() + base, sizeof(h));
+  assert(h.body_crc ==
+         crc32(0, flash.bytes.data() + base + SECTOR, h.used - SECTOR));
+  assert(h.header_crc == crc32(0, &h, offsetof(Header, header_crc)));
+  const uint32_t generation = store.Generation();
+  flash.silent_corruption = true;
+  assert(!store.Save(rows) && store.Generation() == generation);
+  flash.silent_corruption = false;
+  Store reboot(flash);
+  assert(reboot.Open() && reboot.Generation() == generation);
+}
+
 int main(int argc, char **argv) {
   if (argc == 2)
     test_host_import(argv[1]);
+  test_open_slots();
+  test_get_does_not_hash();
+  test_save_integrity();
   // On the host crc32 is the portable routine; the device build swaps in
   // Zephyr's crc32_ieee_update, which must give these same values.
   assert(crc32_portable(0, "123456789", 9) == 0xcbf43926);
