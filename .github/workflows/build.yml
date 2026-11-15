@@ -47,6 +47,11 @@ jobs:
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
+          - name: left-battery
+            shield: corne_left
+            snippet: zmk-usb-logging
+            dictionaries: true
+            battery_log: true
           - name: right
             shield: corne_right
           - name: right-nice-view
@@ -99,6 +104,10 @@ jobs:
           if [ "${{ matrix.nice_view }}" = "true" ]; then
             args+=("-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/right-nice-view.conf"
                    "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/right-nice-view.overlay")
+          fi
+          if [ "${{ matrix.battery_log }}" = "true" ]; then
+            args+=("-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/battery-log.conf"
+                   "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/battery-log.overlay")
           fi
           if [ -n "${{ matrix.extra }}" ]; then
             args+=(${{ matrix.extra }})

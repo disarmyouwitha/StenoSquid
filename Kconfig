@@ -96,8 +96,15 @@ config ZMK_JAVELIN_STENO_BLE_HID
 
 config ZMK_JAVELIN_BATTERY_LOG
     bool "Record Steno Squid battery samples in a dedicated internal flash partition"
-    depends on ZMK_JAVELIN_STENO_SERIAL_PROVISIONING && ZMK_BLE && FLASH_MAP && HWINFO
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
+    depends on ZMK_BLE && FLASH_MAP && HWINFO
     select FCB
+    default n
+    help
+      Needs the battery-log partition from
+      config/steno-squid-split/battery-log.overlay, which shrinks the
+      application partition by 128 KiB. Build with that overlay and
+      battery-log.conf together, as the left-battery CI job does.
 
 config ZMK_JAVELIN_STENO_MACOS_US_LAYOUT
     bool "Use macOS U.S./ABC accent and symbol keys in onboard Javelin"

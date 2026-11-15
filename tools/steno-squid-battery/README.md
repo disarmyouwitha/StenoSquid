@@ -1,15 +1,24 @@
 # Steno Squid battery logging trial
 
-Battery logging is off by default. To enable it, use `-S zmk-usb-logging`
-and add `-DCONFIG_ZMK_JAVELIN_BATTERY_LOG=y` to the split left build's CMake
-arguments. Use a separate build directory for this variant. The left half
+Battery logging is off by default. To enable it, build the split left half
+with `-S zmk-usb-logging` and these CMake arguments, in a separate build
+directory:
+
+```
+-DEXTRA_CONF_FILE=config/steno-squid-split/battery-log.conf
+-DEXTRA_DTC_OVERLAY_FILE=config/steno-squid-split/battery-log.overlay
+```
+
+The `left-battery` CI job builds this variant. The overlay takes 128 KiB from
+the top of the application partition for a circular log, so the logger build
+has less room for code than the everyday build. The everyday build keeps the
+full partition and leaves the logger out. The left half
 samples every five minutes, at startup, on USB state
-changes, and after the flash rail is switched off just before deep sleep. The
-128 KiB circular log uses a dedicated internal flash partition. At five-minute
-intervals it holds roughly eight days of continuous awake samples, with extra
-events reducing that window. Old sectors roll off as space is needed. The
-standard split left build reserves the same flash partition so a later
-logger build can export retained records.
+changes, and after the flash rail is switched off just before deep sleep. At
+five-minute intervals the log holds roughly eight days of continuous awake
+samples, with extra events reducing that window. Old sectors roll off as
+space is needed. The everyday build uses that flash for code, so export the
+records before flashing it over a logger build.
 
 Each row has the measured voltage and ZMK's estimated percent, a sequence number
 and boot number, uptime, the event, activity, USB, host and split Bluetooth status,

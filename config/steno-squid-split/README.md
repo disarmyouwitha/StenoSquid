@@ -60,7 +60,8 @@ The dictionary flash powers down while idle. To compare battery life with it alw
 
 The right half enters deep sleep after 15 idle minutes on battery. Wake it
 with one of its own keys. The [battery logger](../../tools/steno-squid-battery/README.md)
-is an opt-in for the left build.
+is an opt-in for the left build. It needs its own overlay and
+conf fragment, and the everyday build keeps the full code partition.
 
 The Plover image argument is optional for older Lapwing-only builds. The preparation script downloads a pinned official Plover `main.json`, checks its source checksum, compiles it for address `0x12200000`, and verifies every outline against the compiled image. Numeric outlines include the number bar and corresponding physical keys, matching the pinned engine's stroke parser.
 
