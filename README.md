@@ -49,16 +49,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
-## External Memory Map
-The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
-
-![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](docs/assets/qspi-flash-map.png)
-
-The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
-
-## Visual keymap
-
-These diagrams show the default split keymap.
+## Default Keymap 
 
 ### Qwerty
 
@@ -72,26 +63,31 @@ These diagrams show the default split keymap.
 
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](docs/keymap/javelin-68ed47c7832b.svg)
 
-### Plover
-
-![Plover HID layer with raw steno keys](docs/keymap/plover-hid-fe80dff10661.svg)
-
-## ZMK Studio
-
-ZMK Studio edits the keymap over USB or Bluetooth!
+## ZMK Studio (Edit keymap)
+ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
 
 Javelin and Plover HID bindings have separate parameters for the visible key label and the actual steno key. Change the steno identity to change what a key sends.
 
 Saved Studio keymaps take precedence over the source keymap. To load updated defaults, use **Restore stock settings**, which replaces saved keymap edits. Renamed layers appear on the nice!view after a layer change. Only the first nine characters are sent across the split, and only plain ASCII.
 
-## Javelin Wireless Dictionary Management
+https://zmk.studio/
 
+## Javelin Wireless Dictionary Management
 1. Connect the left half by USB or Bluetooth!
 2. Open Javelin Steno Tools in Chrome, choose **Connect via HID**, and select the keyboard.
 3. Use **Active Dictionaries** to change selections and **Dictionary Management → View** to add, replace, remove, or export personal entries.
 4. Use **Host Layout** to select **Mac U.S.** or **Windows U.S. (plain text)**. The keyboard remembers the choice.
 
 Mac U.S. supports accents using the U.S./ABC input source. Windows U.S. uses ordinary U.S. keystrokes and converts accented Latin letters to plain equivalents, such as **ç → c**.
+
+https://lim.au/#/software/javelin-steno-tools
+
+## External Memory Map
+The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. Initial dictionary installation uses the left half's diagnostics serial port. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
+
+![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](docs/assets/qspi-flash-map.png)
+
+The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
 
 ## Build and install
 
