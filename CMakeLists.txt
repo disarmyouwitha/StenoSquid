@@ -49,10 +49,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       COMMAND_ERROR_IS_FATAL ANY
     )
 
-    # Override dir MUST come before javelin/ so our unit_test.h is found first
-    zephyr_include_directories(include/javelin_overrides)
     zephyr_include_directories(${JAVELIN_SRC_DIR})
-    zephyr_include_directories(include)
 
     # Keep behavioral compatibility patches private to this build.
     set(JAVELIN_SEGMENT_BUILDER_SRC "${CMAKE_CURRENT_BINARY_DIR}/compat/segment_builder.cc")
@@ -218,16 +215,11 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/dictionary/cache_dictionary.cc
       ${JAVELIN_COMPACT_MAP_SRC}
       ${JAVELIN_SRC_DIR}/dictionary/debug_dictionary.cc
-      ${JAVELIN_SRC_DIR}/dictionary/dictionary_definition.cc
       ${JAVELIN_SRC_DIR}/dictionary/dictionary_list.cc
       ${JAVELIN_SRC_DIR}/dictionary/dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/emily_symbols_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/full_map_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/invalid_dictionary.cc
-      ${JAVELIN_SRC_DIR}/dictionary/jeff_numbers_dictionary.cc
-      ${JAVELIN_SRC_DIR}/dictionary/jeff_phrasing_dictionary_data.cc
-      ${JAVELIN_SRC_DIR}/dictionary/jeff_phrasing_dictionary.cc
-      ${JAVELIN_SRC_DIR}/dictionary/jeff_show_stroke_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/orthospelling_data.cc
       ${JAVELIN_SRC_DIR}/dictionary/orthospelling_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/reverse_auto_suffix_dictionary.cc
@@ -274,16 +266,11 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/hal/usb_status.cc
     )
 
-    # Font sources (needed by display/script subsystem)
+    # Button scripts reference the bitmap fonts. src/platform/font_stub.cc
+    # stands in for the glyph tables, which this build never draws.
     set(JAVELIN_FONT_SRC
-      ${JAVELIN_SRC_DIR}/font/monochrome/data/default.cc
-      ${JAVELIN_SRC_DIR}/font/monochrome/data/dos.cc
-      ${JAVELIN_SRC_DIR}/font/monochrome/data/huge_digits.cc
-      ${JAVELIN_SRC_DIR}/font/monochrome/data/large_digits.cc
-      ${JAVELIN_SRC_DIR}/font/monochrome/data/large.cc
-      ${JAVELIN_SRC_DIR}/font/monochrome/data/medium_digits.cc
-      ${JAVELIN_SRC_DIR}/font/monochrome/data/small_digits.cc
       ${JAVELIN_SRC_DIR}/font/monochrome/font.cc
+      src/platform/font_stub.cc
     )
 
     # Split sources (ZMK handles split transport, but Javelin split types
@@ -358,15 +345,12 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     )
     zephyr_library_compile_definitions(
       JAVELIN_USE_EMBEDDED_STENO=1
-      JAVELIN_USE_USER_DICTIONARY=1
       JAVELIN_PLATFORM_ZEPHYR=1
       JAVELIN_BOARD_CONFIG=<stddef.h>
       M_PI=3.14159265358979323846
-      USE_ORTHOGRAPHY_CACHE=0
     )
-    # Test suppression handled by include/javelin_overrides/unit_test.h
-    # which shadows Javelin's unit_test.h via include path ordering.
-
+    # tools/build/prepare_engine.py strips Javelin's unit tests and turns the
+    # orthography cache off in the private engine copy.
 
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
       zephyr_library_sources("${LAPWING_SRC}/lapwing_dictionary.cc")
