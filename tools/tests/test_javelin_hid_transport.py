@@ -30,6 +30,7 @@ struct k_msgq { size_t size; std::deque<std::vector<uint8_t>> messages; };
 #define K_SECONDS(n) (n)
 #define K_MSEC(n) (n)
 #define K_NO_WAIT 0
+#define K_FOREVER -1
 #define SYS_INIT(...)
 #define K_THREAD_DEFINE(...)
 #define MIN(a,b) std::min<size_t>((a),(b))

@@ -41,6 +41,8 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     set(JAVELIN_PRIVATE_DIR "${CMAKE_CURRENT_BINARY_DIR}/javelin-engine")
     file(COPY "${JAVELIN_SRC_DIR}/" DESTINATION "${JAVELIN_PRIVATE_DIR}" PATTERN ".git" EXCLUDE)
     set(JAVELIN_SRC_DIR "${JAVELIN_PRIVATE_DIR}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+      "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_engine.py")
     execute_process(
       COMMAND ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_LIST_DIR}/tools/build/prepare_engine.py"
               "${JAVELIN_SRC_DIR}"

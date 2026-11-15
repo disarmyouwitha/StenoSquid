@@ -207,7 +207,9 @@ The existing website supplies these controls. Firmware support handles listing, 
 |---|---|---|---|
 | Lapwing Base, 114,885 outlines | `0x000000` | 1,700,488 bytes | `720cfca6` |
 | Plover Base, 147,424 outlines | `0x200000` | 2,178,864 bytes | `14b65522` |
-| Personal snapshots | `0xF00000` | Two 28 KiB slots | Per-snapshot CRCs |
+| Personal snapshot A | `0x600000` | 4 MiB reserved | Per-snapshot CRC |
+| Personal snapshot B | `0xA00000` | 4 MiB reserved | Per-snapshot CRC |
+| Diagnostic scratch | `0xFFF000` | 4 KiB reserved | — |
 
 Plover source: [official main.json at the pinned revision](https://github.com/openstenoproject/plover/blob/8a52c5296c502507f9a46820a4a947ca25f998e6/plover/assets/main.json). Source SHA256: `6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92`. Compiled padded image SHA256: `6d74757af03ad1769f6f2d587afcc8957a5486b3e31ed3e20f00410c2624e2c4`.
 
@@ -268,7 +270,7 @@ python3 tools/steno-squid-lapwing/upload.py /dev/cu.usbmodem14501 --base lapwing
 
 It never asks a question, so a script or an agent can run it. Passing `--repair` is the confirmation.
 
-The other base and the personal dictionary at `0xF00000` are never erased. If a repair is interrupted, the base is left unprovisioned and onboard Javelin shows **No dictionary**; run the same command again.
+The other base and the personal dictionary snapshots are never erased. If a repair is interrupted, the base is left unprovisioned and onboard Javelin shows **No dictionary**; run the same command again.
 
 ## Flash and check
 
@@ -288,7 +290,11 @@ The left firmware exposes a dedicated HID console over USB and Bluetooth for [Ja
 
 Use **Add Translation** to enter an outline and translation, then press Return in the translation field to save. Add, replace, remove, or export personal outlines from the browser. A saved entry takes precedence over the same Lapwing outline in onboard Javelin. Removing the personal entry restores the Lapwing translation. Host Plover HID continues to send raw strokes to the host.
 
-Personal entries are backed by two CRC-checked snapshots in a reserved region of the W25Q128 starting at `0xF00000`. The editor acknowledges an edit after a verified flash write. The previous snapshot remains available if power is interrupted before the next save completes. The personal dictionary has 16 KiB for entry data. To reclaim space from replaced and deleted entries when it fills, export the dictionary, reset it, and import the export. Lapwing base occupies its own read-only region, and ZMK continues to run the matrix, split Bluetooth, and host USB interfaces.
+The left half reads the personal dictionary and its two indexes directly from QSPI. Each save writes the live entries to the inactive slot, verifies them, then commits the snapshot header. The previous snapshot remains available if the save is interrupted. Unused parts of a slot are skipped, and replacing or deleting an entry reclaims its space on the next successful save.
+
+Base dictionary uploads use the same serial commands and addresses. Export the personal dictionary from Javelin Tools to keep an independent backup.
+
+A 4 MiB slot fits about 90,000 entries at the average record size of the bundled dictionary sources. Capacity varies with outline length and UTF-8 translation size. A large personal dictionary takes longer to save because each edit writes its current contents once. Bulk transfers need a separate protocol that builds and commits a snapshot in one transaction.
 
 The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checked interrupted saves, corrupt-snapshot fallback, and write boundaries.
 
