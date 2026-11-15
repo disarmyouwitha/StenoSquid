@@ -110,9 +110,12 @@ These are compilation results pending target-hardware testing. They predate the 
 
 ## Current main integration
 
-This branch includes main through `8813a45`, including the 100-word adaptive
-trainer, persistent progress and XP, LEFT/RIGHT streak rewards, revised Practice
-results, ASCII display fallbacks, the Plover label, and USB Boot protocol support.
+This branch includes main through `551f9dd`, including the 300-word adaptive
+trainer, Trouble, Build-Up, Multi-, Speed, 30-prompt LEFT/RIGHT/COLUMNS drills,
+AO/EU vowel columns, persistent progress and XP, and the larger unnumbered
+Multi- hints. Practice text streams from the central rather than duplicating
+word pools on the peripheral. ASCII display fallbacks, the Plover label, and
+USB Boot protocol support remain included.
 The right build also enables deep sleep in its board configuration, matching
 the tested split. The locked hardware pin and rail definitions are unchanged.
 
@@ -131,7 +134,7 @@ Use the Boardsource artifacts from one successful workflow run:
    Use `upload.py PORT --status` for a read-only status query.
 5. `boardsource-left-studio` for everyday use.
 
-The earlier integration through `1e07854` built all five targets locally against the pinned dependencies. The table below records those earlier builds, not a new build of `8813a45`. Generated devicetrees matched the locked active/sleep QSPI pins,
+The earlier integration through `1e07854` built all five targets locally against the pinned dependencies. The table below records those earlier builds, not a new build of `551f9dd`. Generated devicetrees matched the locked active/sleep QSPI pins,
 P0.31 power control and vendor partitions. UF2 payloads fit entirely inside the
 application partition.
 
