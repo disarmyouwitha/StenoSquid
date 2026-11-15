@@ -70,6 +70,20 @@ jobs:
           west update --fetch-opt=--filter=tree:0
           west zephyr-export
 
+      # Renders the real display widgets with the pinned LVGL on the build host.
+      - name: Display preview test
+        if: matrix.nice_view
+        working-directory: repo
+        shell: bash
+        run: |
+          for tool in cmake ninja gcc; do
+            if ! command -v "$tool" > /dev/null; then
+              echo "::warning::$tool not found in the build image; skipping the display preview test"
+              exit 0
+            fi
+          done
+          python3 tools/tests/run_display_preview.py "$GITHUB_WORKSPACE/ws/modules/lib/gui/lvgl"
+
       - name: Compile the base dictionaries
         if: matrix.dictionaries
         working-directory: repo

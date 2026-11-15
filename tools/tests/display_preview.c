@@ -48,6 +48,46 @@ static void check_tentacles_connected(void) {
     for (unsigned i = 34*48; i < 48*48; i++) assert(!sprite_px(idle_pixels, i % 48, i / 48) || seen[i]);
 }
 
+/* Draw a known 68x10 A1 pattern (68 is not a multiple of 8, so rows are padded to 72 bits) and
+ * compare every rendered pixel: checks MSB-first bit order and the row stride. */
+#define A1_TEST_W 68
+#define A1_TEST_H 10
+static bool a1_test_bit(unsigned x, unsigned y) {
+    return (x == 0 && y == 0) || (x == A1_TEST_W - 1 && y == 1) || ((x * 7 + y * 3) % 5 < 2);
+}
+static lv_obj_t *check_a1_draw(void) {
+    static uint8_t bits[A1_STRIDE(A1_TEST_W) * A1_TEST_H];
+    for (unsigned y = 0; y < A1_TEST_H; y++)
+        for (unsigned x = 0; x < A1_TEST_W; x++)
+            if (a1_test_bit(x, y)) bits[y * A1_STRIDE(A1_TEST_W) + x / 8] |= 0x80 >> (x % 8);
+    static const lv_image_dsc_t image = {
+        .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_A1, .w = A1_TEST_W,
+                   .h = A1_TEST_H, .stride = A1_STRIDE(A1_TEST_W)},
+        .data_size = sizeof(bits), .data = bits,
+    };
+    lv_obj_t *screen = lv_obj_create(NULL);
+    lv_obj_remove_style_all(screen);
+    lv_obj_set_style_bg_color(screen, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_t *img = lv_image_create(screen);
+    lv_obj_remove_style_all(img);
+    lv_obj_set_pos(img, 0, 0);
+    lv_obj_set_style_image_recolor(img, lv_color_black(), 0);
+    lv_image_set_src(img, &image);
+    lv_screen_load(screen);
+    lv_refr_now(NULL);
+    unsigned set = 0;
+    for (unsigned y = 0; y < A1_TEST_H; y++)
+        for (unsigned x = 0; x < A1_TEST_W; x++) {
+            const bool on = a1_test_bit(x, y);
+            set += on;
+            assert(saved[y * 68 + x] == (on ? 0 : 255));
+        }
+    assert(set > 100 && set < A1_TEST_W * A1_TEST_H - 100);
+    for (unsigned x = 0; x < 68; x++) assert(saved[A1_TEST_H * 68 + x] == 255);
+    return screen;
+}
+
 /* Representative production states for documentation renders. */
 static void save_gallery_states(void) {
     static const struct {
@@ -138,7 +178,9 @@ int main(void) {
     lv_display_set_color_format(d,LV_COLOR_FORMAT_L8);
     lv_display_set_buffers(d,pixels,NULL,sizeof(pixels),LV_DISPLAY_RENDER_MODE_FULL);
     lv_display_set_flush_cb(d,flush);
+    lv_obj_t *a1_screen = check_a1_draw();
     lv_screen_load(steno_squid_screen_create());
+    lv_obj_delete(a1_screen);
     steno_squid_screen_update(STENO_SQUID_MODE_SYMBOLS,NULL,0,85,false);
     assert(!strcmp(lv_label_get_text(mode_below),"Numpad"));
     save("numpad");
