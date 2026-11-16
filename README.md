@@ -138,7 +138,9 @@ The compiled base and extras images occupy about 4.43 MiB of external flash. The
 The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
 
 ## NiceNano Wiring Diagram
-![Flash Wiring diagram for NiceNano](assets/NiceNano_Flash_wiring_diagram.png)
+![Wiring diagram for NiceNano](assets/NiceNano_wiring_diagram.png)
+
+![Flash Wiring diagram](assets/NiceNano_Flash_wiring.png)
 
 **Components used in hardwired build**
 * [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
