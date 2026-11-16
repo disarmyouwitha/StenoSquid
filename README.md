@@ -1,13 +1,13 @@
 # StenoSquid
 
-**Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
-(But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
-
 ✅ZMK Wireless Keyboard\
 ✅PloverHID\
 ✅Javelin onboard steno\
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!
+
+**Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
+(But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
 
 ![Pop](assets/screens/pop-hi.png) — ![Tape](assets/screens/tape-shortcut.png) — ![Practice](assets/screens/practice-menu.png) — ![BuildUp](assets/screens/drill-build-reveal.png) — ![XPk](assets/screens/results-xp.png)
 
@@ -35,6 +35,8 @@
 | Lapwing Proper Nouns | On |
 | Lapwing Base | On |
 | Plover Base | **Off** |
+
+📚Room for ~90,000 user translations on top of the installed dictionaries
 
 Personal entries have highest priority, followed by the other dictionaries in order. Selections and personal edits survive reboot and firmware updates. Enable Plover Base and disable Lapwing dictionaries to switch bases. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
@@ -125,14 +127,17 @@ The compiled base and extras images occupy about 4.43 MiB of external flash. The
 The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
 
 ## NiceNano Wiring Diagram
-![Wiring diagram for NiceNano](assets/NiceNano_wiring_diagram.png)
+![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)
 
 **Components used in handwired build**
 * [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
 * [10K ohm Resistor](https://www.amazon.com/dp/B07HDGX5LM)
 * [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
 
-![Flash Wiring diagram](assets/NiceNano_Flash_wiring.png)
+The 10 kΩ resistor connects CS# to the flash's switched 3.3 V supply.
+The 100 nF ceramic capacitor connects across flash VCC/GND. Both are nonpolarized.
+Wire the Adafruit #5634's exposed IO2 and IO3 pads directly.
+[Adafruit pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts)
 
 ## License
 

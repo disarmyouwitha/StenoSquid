@@ -355,6 +355,27 @@ int main(void) {
                                 lv_obj_get_style_text_font(prompt_label,0),0)<=66);
         assert(lv_obj_get_y(prompt_label)+lv_obj_get_height(prompt_label)<=lv_obj_get_y(outline_label));
         assert(lv_obj_get_y(outline_label)+lv_obj_get_height(outline_label)<=lv_obj_get_y(feedback_label));
+        if (!lv_obj_has_flag(outline_second, LV_OBJ_FLAG_HIDDEN)) {
+            assert(lv_obj_get_y(outline_label)+lv_obj_get_height(outline_label)<=lv_obj_get_y(outline_second));
+            assert(lv_obj_get_y(outline_second)+lv_obj_get_height(outline_second)<=lv_obj_get_y(feedback_label));
+            char combined[sizeof(view.outline)];
+            snprintf(combined, sizeof(combined), "%s%s", lv_label_get_text(outline_label),
+                     lv_label_get_text(outline_second));
+            char canonical[sizeof(view.outline)];
+            unsigned index = 0;
+            for (const char *c = view.outline; *c; ++c) {
+                if (*c != '-') canonical[index++] = *c;
+            }
+            canonical[index] = 0;
+            assert(!strcmp(combined, canonical));
+        }
+        if (!strcmp(steno_squid_words[word].word, "BIKE")) {
+            assert(!strcmp(lv_label_get_text(outline_label), "PWAO"));
+            assert(!strcmp(lv_label_get_text(outline_second), "EUBG"));
+            assert(lv_obj_get_style_text_font(outline_label, 0)->line_height >= 16);
+            assert(lv_obj_get_style_text_font(outline_second, 0)->line_height >= 16);
+            save("practice-bike-hands");
+        }
         if(!strcmp(steno_squid_words[word].word,"PEOPLE"))save("adaptive-word");
         if(!strcmp(steno_squid_words[word].word,"EVERYTHING"))save("practice-300-long-word");
     }

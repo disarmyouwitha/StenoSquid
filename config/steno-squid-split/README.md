@@ -4,7 +4,7 @@ The handwired Steno Squid left half is the Bluetooth split central and the Corne
 
 The split uses the [default keymap](../../README.md#default-keymap). The outer right thumb starts Practice from Javelin or Plover. The outer left thumb returns to Qwerty.
 
-![Handwired left-half matrix, nice!nano v2 edge pins, and W25Q128 wiring](../../docs/assets/steno_squid_left_wiring_diagram.png)
+![Handwired left-half matrix, nice!nano v2 edge pins, and W25Q128 wiring](../../assets/StenoSquid_wiring.png)
 
 ## Build
 

@@ -66,6 +66,20 @@ static void fit_outline(lv_obj_t *label, const char *text) {
     }
 }
 
+/* Left thumb vowels A/O stay above the right hand's E/U and consonants.
+ * Canonical outlines use a hyphen when no vowel separates the hands. */
+static const char *outline_hand_break(const char *outline) {
+    const char *middle = strpbrk(outline, "AO*EU-");
+    if (!middle || (middle == outline && strchr("EU-", *middle))) {
+        return NULL;
+    }
+    const char *right = middle + strspn(middle, "AO*");
+    if (*right == '-') {
+        ++right;
+    }
+    return right > outline && *right ? right : NULL;
+}
+
 static void fit_multi_text(lv_obj_t *label, const char *text, bool stroke) {
     static const lv_font_t *const fonts[] = {&lv_font_montserrat_20, &lv_font_montserrat_16, &lv_font_montserrat_14};
     fit_text(label, text, false);
@@ -306,6 +320,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     lv_obj_set_style_text_font(prompt_label, done ? &lv_font_montserrat_16 : &lv_font_montserrat_28, 0);
     fit_text(prompt_label, done ? "DONE" : prompt, !done);
     lv_obj_set_y(outline_label, 58);
+    lv_obj_set_y(outline_second, 62);
     lv_obj_set_style_text_decor(outline_label, LV_TEXT_DECOR_NONE, 0);
     lv_obj_set_style_text_decor(outline_second, LV_TEXT_DECOR_NONE, 0);
     lv_obj_add_flag(outline_second, LV_OBJ_FLAG_HIDDEN);
@@ -323,6 +338,25 @@ void steno_squid_practice_widget_update(uint32_t practice) {
             lv_obj_set_style_text_decor((practice & STENO_SQUID_PRACTICE_PARTIAL) ? outline_second : outline_label,
                                        LV_TEXT_DECOR_UNDERLINE,0);
         }
+    } else if (!done && !no_dictionary &&
+               (drill == STENO_SQUID_PRACTICE_WORDS ||
+                drill == STENO_SQUID_PRACTICE_TROUBLE ||
+                drill == STENO_SQUID_PRACTICE_SPEED) &&
+               lv_text_get_width(outline, strlen(outline), &lv_font_montserrat_16, 0) > 66 &&
+               outline_hand_break(outline)) {
+        const char *right = outline_hand_break(outline);
+        size_t left_size = (size_t)(right - outline);
+        if (outline[left_size - 1] == '-') {
+            --left_size;
+        }
+        char left[sizeof(last_view.outline)];
+        snprintf(left, sizeof(left), "%.*s", (int)left_size, outline);
+        fit_outline(prompt_label, prompt);
+        fit_outline(outline_label, left);
+        fit_outline(outline_second, right);
+        lv_obj_set_y(outline_label, 42);
+        lv_obj_set_y(outline_second, 64);
+        lv_obj_remove_flag(outline_second, LV_OBJ_FLAG_HIDDEN);
     } else {
         fit_outline(outline_label, no_dictionary ? "Enable dict" : outline);
     }
