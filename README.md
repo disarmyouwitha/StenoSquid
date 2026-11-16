@@ -4,7 +4,7 @@
 ✅PloverHID\
 ✅Javelin onboard steno\
 🤌🍇 Wireless dictionary updates\
-🦑 Practice with just your keyboard!
+🦑 Practice with just your keyboard!\
 📚 Room for ~90,000 custom dictionary entries!
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
