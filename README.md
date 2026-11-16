@@ -131,7 +131,7 @@ The file's translations win for matching outlines. Other personal entries stay i
 Local builds must use this checkout's west manifest. If the workspace keeps a separate manifest copy, synchronize it before running `west update`. The compiled dictionary format depends on the pinned Javelin engine. [Dependency manifest](config/west.yml)
 
 ## External Memory Map
-The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it. [Provisioning and flash layout](config/steno-squid-split/README.md#flash-regions-and-initial-plover-provisioning)
+The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it.
 
 ![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](assets/qspi-flash-map.png)
 
@@ -140,12 +140,12 @@ The dark green sectors show a one-entry dictionary. The lighter green sectors ar
 ## NiceNano Wiring Diagram
 ![Wiring diagram for NiceNano](assets/NiceNano_wiring_diagram.png)
 
-![Flash Wiring diagram](assets/NiceNano_Flash_wiring.png)
-
 **Components used in hardwired build**
 * [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
 * [10K ohm Resistor](https://www.amazon.com/dp/B07HDGX5LM)
 * [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
+
+![Flash Wiring diagram](assets/NiceNano_Flash_wiring.png)
 
 ## License
 
