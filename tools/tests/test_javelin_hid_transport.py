@@ -52,11 +52,16 @@ struct hid_ops {
     void (*int_in_ready)(const device *);
 };
 inline const hid_ops *usb_ops;
+inline bool usb_complete = true;
+inline int usb_write_result = 0, ble_write_result = 0;
 inline std::vector<std::vector<uint8_t>> usb_tx, ble_tx;
 inline void usb_hid_register_device(const device *,const uint8_t *,size_t,const hid_ops *ops) { usb_ops=ops; }
 inline int usb_hid_init(const device *) { return 0; }
 inline int hid_int_ep_write(const device *,const uint8_t *p,size_t n,void *) {
-    usb_tx.emplace_back(p,p+n); usb_ops->int_in_ready(&dev); return 0;
+    if (usb_write_result) return usb_write_result;
+    usb_tx.emplace_back(p,p+n);
+    if (usb_complete) usb_ops->int_in_ready(&dev);
+    return 0;
 }
 inline uint16_t sys_le16_to_cpu(uint16_t n) { return n; }
 class IWriter { public: virtual void Write(const char *,size_t)=0; virtual ~IWriter()=default; };
@@ -76,7 +81,9 @@ extern "C" void lf_provision_command(const char *command, char *reply, size_t si
     provision_command = command;
     std::snprintf(reply, size, "1 INSTALL");
 }
-bool steno_squid_javelin_console_line(const char *p,size_t n,IWriter &w) {
+bool steno_squid_javelin_console_line(const char *p,size_t n,IWriter &w,
+                                        bool (*cancelled)(void *), void *context) {
+    assert(!cancelled(context));
     if (!console_ready) {
         return false;
     }
@@ -87,6 +94,7 @@ bool steno_squid_javelin_console_line(const char *p,size_t n,IWriter &w) {
 }
 extern "C" int steno_squid_javelin_ble_session_valid(uint32_t s) { return s==live_session; }
 extern "C" int steno_squid_javelin_ble_send(const void *p,size_t n,uint32_t s) {
+    if (ble_write_result) return ble_write_result;
     if(s!=live_session) return -ENOTCONN;
     ble_tx.emplace_back((const uint8_t *)p,(const uint8_t *)p+n); return 0;
 }
@@ -97,6 +105,8 @@ void reset() {
     k_sem_give(&transmit_ready);usb_ready=true;live_session=2;
     console_ready = true;
     provision_command.clear();
+    usb_complete = true;
+    usb_write_result = ble_write_result = 0;
 }
 void usb(const std::string &s) {
     usb_setup_packet setup{0x0200};int32_t n=s.size();auto *p=(uint8_t *)s.data();
@@ -173,6 +183,41 @@ int main() {
     reset();usb_ready=false;transmit_ready.count=0;run();
     usb_ready=true;usb("c00 hello\n");run();assert(!usb_tx.empty());
 
+    // A timeout leaves the in-flight USB buffer untouched and cancels the
+    // rest of this response. Completion permits a later response to recover.
+    reset();
+    Report report{};
+    HidWriter stalled(report);
+    usb_complete = false;
+    stalled.Write("first", 5);
+    assert(usb_tx.size() == 1);
+    const auto flight = usb_tx[0];
+    stalled.Write("second", 6);
+    stalled.Write("third", 5);
+    assert(stalled.Failed() && usb_tx.size() == 1);
+    assert(!memcmp(transmit_report.bytes, flight.data(), REPORT_BYTES));
+    usb_complete = true;
+    input_complete(&dev);
+    HidWriter resumed(report);
+    resumed.Write("ok", 2);
+    assert(!resumed.Failed() && usb_tx.size() == 2);
+
+    reset();
+    HidWriter rejected(report);
+    usb_write_result = -EIO;
+    rejected.Write("bad", 3);
+    usb_write_result = 0;
+    rejected.Write("again", 5);
+    assert(rejected.Failed() && usb_tx.empty());
+
+    reset(); report.bluetooth = true; report.session = live_session;
+    HidWriter wireless(report);
+    ble_write_result = -ETIMEDOUT;
+    wireless.Write("bad", 3);
+    ble_write_result = 0;
+    wireless.Write("again", 5);
+    assert(wireless.Failed() && ble_tx.empty());
+
     assert(steno_squid_javelin_ble_receive("x",64,2)==-EINVAL);
     assert(steno_squid_javelin_ble_receive("",0,2)==-EINVAL);
 }
@@ -193,7 +238,7 @@ def main():
                         str(ROOT / "src/steno_squid"), str(root / "test.cc"),
                         "-o", str(root / "test")], check=True)
         subprocess.run([str(root / "test")], check=True)
-    print("PASS: BLE without USB, transport isolation, stale sessions, allowlist, flash not ready, wired base provisioning, overflow, USB reconnect")
+    print("PASS: BLE without USB, transport isolation, stale sessions, allowlist, flash not ready, wired base provisioning, overflow, USB reconnect, stalled response and in-flight ownership")
 
 
 if __name__ == "__main__":

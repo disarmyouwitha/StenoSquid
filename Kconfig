@@ -97,7 +97,7 @@ config ZMK_JAVELIN_BATTERY_LOG
     default n
     help
       Needs the battery-log partition from
-      config/steno-squid-split/logging.overlay, which shrinks the
+      config/nicenano-wireless-corne/logging.overlay, which shrinks the
       application partition by 128 KiB. Build with that overlay and
       logging.conf together, as the NiceNano-Left-Diagnostic CI job does.
 

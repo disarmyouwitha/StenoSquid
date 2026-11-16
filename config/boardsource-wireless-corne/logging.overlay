@@ -1,5 +1,5 @@
 /* Extras for the diagnostic left build (Boardsource-Left-Diagnostic): the flash
- * partition for the battery logger. Use it with config/steno-squid-split/
+ * partition for the battery logger. Use it with config/nicenano-wireless-corne/
  * logging.conf; see tools/battery/README.md.
  *
  * Takes the top 128 KiB of the vendor board's code partition (0x1000-0xD3FFF)

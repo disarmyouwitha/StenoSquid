@@ -17,7 +17,8 @@
 extern "C" bool zmk_usb_is_hid_ready(void);
 
 // False when the engine could not take the command, so nothing was written.
-bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer);
+bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer,
+                                      bool (*cancelled)(void *), void *context);
 
 namespace {
 constexpr size_t REPORT_BYTES = JAVELIN_HID_REPORT_BYTES;
@@ -40,7 +41,7 @@ void input_complete(const device *) {
 
 int output_report(const device *, usb_setup_packet *setup, int32_t *size, uint8_t **data) {
     if (sys_le16_to_cpu(setup->wValue) != 0x0200 || *size <= 0 ||
-        *size > REPORT_BYTES) {
+        *size > static_cast<int32_t>(REPORT_BYTES)) {
         return -EINVAL;
     }
     Report report{};
@@ -73,7 +74,10 @@ public:
 
     bool IsUsb() const { return !bluetooth; }
 
+    bool Failed() const { return failed; }
+
     void Write(const char *text, size_t size) override {
+        if (failed) return;
         if (bluetooth) {
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BLE_HID
             while (size && !failed) {
@@ -91,21 +95,26 @@ public:
             return;
         }
         while (size && hid && zmk_usb_is_hid_ready()) {
-            // A report in flight when USB dropped never completes. After a
-            // timeout, treat the endpoint as free; a busy one rejects the write.
-            (void)k_sem_take(&transmit_ready, K_SECONDS(2));
-            memset(&transmit_report, 0, sizeof(transmit_report));
+            // A timeout does not transfer ownership of an in-flight buffer.
+            // Stop this response and wait for completion/disconnect to free it.
+            if (k_sem_take(&transmit_ready, K_SECONDS(2)) != 0) {
+                failed = true;
+                return;
+            }
+            memset(transmit_report.bytes, 0, sizeof(transmit_report.bytes));
             const size_t count = MIN(size, REPORT_BYTES);
             memcpy(transmit_report.bytes, text, count);
             const int rc = hid_int_ep_write(hid, transmit_report.bytes,
                                             sizeof(transmit_report.bytes), nullptr);
             if (rc != 0) {
                 k_sem_give(&transmit_ready);
+                failed = true;
                 return;
             }
             text += count;
             size -= count;
         }
+        if (size) failed = true;
     }
 private:
     bool bluetooth;
@@ -162,8 +171,11 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
         forward = forward || is_command(command, name);
     }
     forward = forward || (writer.IsUsb() && is_command(command, "user_dictionary_import"));
-    if (forward && steno_squid_javelin_console_line(line, size, writer)) {
-        return;
+    if (forward) {
+        const bool handled = steno_squid_javelin_console_line(
+            line, size, writer,
+            [](void *context) { return static_cast<HidWriter *>(context)->Failed(); }, &writer);
+        if (handled) return;
     }
 
     if (channel) {
@@ -295,6 +307,10 @@ void hid_worker(void *, void *, void *) {
                     target->line[target->used++] = '\n';
                     target->line[target->used] = '\0';
                     dispatch(target->line, target->used, writer);
+                    if (writer.Failed()) {
+                        reset_buffer(*target);
+                        break;
+                    }
                 }
                 target->used = 0;
                 target->too_long = false;

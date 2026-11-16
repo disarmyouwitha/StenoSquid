@@ -86,6 +86,11 @@ struct Source {
   virtual uint32_t Count() const = 0;
   // The same records in outline order and text-hash/outline order.
   virtual bool Get(uint32_t index, bool reverse, Entry &entry) = 0;
+  // Optional packed-record position, relative to the records area. A source
+  // that retains record order can relocate offsets instead of searching the
+  // newly written forward index for every reverse entry. Validate still checks
+  // the complete resulting indexes before publication.
+  virtual bool RecordOffset(const Entry &, uint32_t &) const { return false; }
   virtual ~Source() = default;
 };
 class Store : public Source {
@@ -100,7 +105,8 @@ public:
   unsigned ValidCopies() const { return valid_copies; }
   // Fully validates (CRC plus index check) the newer slot and serves it. The
   // older slot is validated only if the newer one is missing or invalid, so a
-  // snapshot is never served unvalidated and the common boot does half the work.
+  // snapshot is never served unvalidated and the common boot does half the
+  // work.
   bool Open() {
     AbortImport();
     active = -1;
@@ -113,13 +119,12 @@ public:
                                  sizeof(candidates[slot])) &&
                      ValidHeader(candidates[slot]);
     // Ties keep slot 0, as a strictly-newer comparison would.
-    const int first =
-        usable[0] && usable[1]
-            ? (static_cast<int32_t>(candidates[1].generation -
-                                    candidates[0].generation) > 0
-                   ? 1
-                   : 0)
-            : (usable[0] ? 0 : 1);
+    const int first = usable[0] && usable[1]
+                          ? (static_cast<int32_t>(candidates[1].generation -
+                                                  candidates[0].generation) > 0
+                                 ? 1
+                                 : 0)
+                          : (usable[0] ? 0 : 1);
     for (int n = 0; n < 2; ++n) {
       const int slot = n ? 1 - first : first;
       if (!usable[slot] || !Validate(Base(slot), candidates[slot]))
@@ -134,6 +139,16 @@ public:
   bool Get(uint32_t i, bool reverse, Entry &e) override {
     return active >= 0 && GetAt(Base(active), header, i, reverse, e);
   }
+  bool RecordOffset(const Entry &e, uint32_t &offset) const override {
+    if (active < 0)
+      return false;
+    const uint32_t start =
+        Base(active) + SECTOR + Count() * 16 + 8 + e.length * 4;
+    if (e.text_address < start || e.text_address >= Base(active) + header.used)
+      return false;
+    offset = e.text_address - start;
+    return true;
+  }
   bool ReadText(const Entry &e, uint32_t offset, void *data, size_t n) {
     if (offset > e.text_bytes || n > e.text_bytes - offset)
       return false;
@@ -144,7 +159,7 @@ public:
     return device.Read(e.text_address + offset, data, n);
   }
   bool Find(const Entry &key, Entry &e) {
-    return active >= 0 && FindAt(Base(active), header, key, e, false);
+    return active >= 0 && FindAt(Base(active), header, key, e);
   }
   uint32_t ReverseStart(uint32_t hash) {
     uint32_t lo = 0, hi = Count();
@@ -237,40 +252,46 @@ public:
       if (!device.Erase(base + offset))
         return false;
     uint32_t offset = SECTOR + next.count * 16;
-    alignas(4) uint8_t buffer[256];
+    // Separate sequential streams: both indexes and the packed records. Each
+    // stream fills physical page boundaries and verifies every flushed byte.
+    // Buffers live only during a save; no dictionary-sized RAM allocation.
+    PageWriter forward(*this, base + SECTOR);
+    PageWriter records(*this, base + offset);
     for (uint32_t i = 0; i < next.count; ++i) {
       if (!source.Get(i, false, e))
         return false;
       Index idx{outline_hash(e), offset};
       uint32_t record[]{e.length, e.text_bytes};
-      if (!WriteVerified(base + SECTOR + i * 8, &idx, sizeof(idx)) ||
-          !WriteVerified(base + offset, record, sizeof(record)) ||
-          !WriteVerified(base + offset + 8, e.strokes, e.length * 4))
+      if (!forward.Append(&idx, sizeof(idx)) ||
+          !records.Append(record, sizeof(record)) ||
+          !records.Append(e.strokes, e.length * 4) || !records.Text(e))
         return false;
-      for (uint32_t off = 0; off < e.text_bytes;) {
-        uint32_t n = e.text_bytes - off > sizeof(buffer) ? sizeof(buffer)
-                                                         : e.text_bytes - off;
-        memset(buffer, 0xff, sizeof(buffer));
-        if (!ReadText(e, off, buffer, n) ||
-            !WriteVerified(base + offset + 8 + e.length * 4 + off, buffer,
-                           (n + 3) & ~3u))
-          return false;
-        off += n;
-      }
       offset += record_bytes(e);
     }
+    if (!forward.Flush() || !records.Flush())
+      return false;
+    // Reuse the forward stream's page buffer for the reverse index.
+    forward.Reset(base + SECTOR + next.count * 8);
     for (uint32_t i = 0; i < next.count; ++i) {
-      Entry mapped{};
-      if (!source.Get(i, true, e) || (i && compare(previous, e, true) >= 0) ||
-          !FindAt(base, next, e, mapped))
+      if (!source.Get(i, true, e) || (i && compare(previous, e, true) >= 0))
         return false;
-      Index idx{e.text_hash,
-                mapped.text_address - base - 8 - mapped.length * 4};
-      if (!WriteVerified(base + SECTOR + next.count * 8 + i * 8, &idx,
-                         sizeof(idx)))
+      uint32_t relative;
+      if (!source.RecordOffset(e, relative)) {
+        Entry mapped{};
+        if (!FindAt(base, next, e, mapped))
+          return false;
+        relative = mapped.text_address - base - 8 - mapped.length * 4 - SECTOR -
+                   next.count * 16;
+      }
+      if (relative >= next.used - SECTOR - next.count * 16)
+        return false;
+      Index idx{e.text_hash, SECTOR + next.count * 16 + relative};
+      if (!forward.Append(&idx, sizeof(idx)))
         return false;
       previous = e;
     }
+    if (!forward.Flush())
+      return false;
     // Integrity chain: WriteVerified read back every programmed byte, so flash
     // holds exactly what was intended; this single read-back pass computes the
     // CRC of what is really in flash for the header; Validate (structure only)
@@ -282,6 +303,57 @@ public:
   }
 
 private:
+  class PageWriter {
+  public:
+    PageWriter(Store &store, uint32_t address)
+        : store(store), address(address) {}
+    void Reset(uint32_t next) { address = next; }
+    bool Append(const void *data, uint32_t size) {
+      const auto *bytes = static_cast<const uint8_t *>(data);
+      while (size) {
+        uint32_t n = Room();
+        if (n > size)
+          n = size;
+        memcpy(buffer + used, bytes, n);
+        used += n;
+        bytes += n;
+        size -= n;
+        if (!Room() && !Flush())
+          return false;
+      }
+      return true;
+    }
+    bool Text(const Entry &e) {
+      for (uint32_t off = 0; off < e.text_bytes;) {
+        uint32_t n = Room();
+        if (n > e.text_bytes - off)
+          n = e.text_bytes - off;
+        if (!store.ReadText(e, off, buffer + used, n))
+          return false;
+        used += n;
+        off += n;
+        if (!Room() && !Flush())
+          return false;
+      }
+      const uint32_t padding = 0xffffffffu;
+      return Append(&padding, (0u - e.text_bytes) & 3u);
+    }
+    bool Flush() {
+      if (!used)
+        return true;
+      if (!store.WriteVerified(address, buffer, used))
+        return false;
+      address += used;
+      used = 0;
+      return true;
+    }
+
+  private:
+    uint32_t Room() const { return sizeof(buffer) - (address & 255u) - used; }
+    Store &store;
+    uint32_t address, used = 0;
+    alignas(4) uint8_t buffer[256];
+  };
   Device &device;
   int active = -1;
   unsigned valid_copies = 0;
@@ -318,10 +390,8 @@ private:
            device.Read(base + SECTOR + (reverse ? h.count * 8 : 0) + i * 8,
                        &idx, sizeof(idx));
   }
-  // need_text_hash rehashes the whole text of a forward entry (the reverse
-  // index already stores it). Only validation needs that.
-  bool GetAt(uint32_t base, const Header &h, uint32_t i, bool reverse, Entry &e,
-             bool need_text_hash = false) {
+  bool GetAt(uint32_t base, const Header &h, uint32_t i, bool reverse,
+             Entry &e) {
     Index idx{};
     uint32_t record[2]{};
     if (!ReadIndex(base, h, i, reverse, idx) ||
@@ -338,27 +408,51 @@ private:
     e.text_address = base + idx.offset + 8 + e.length * 4;
     if (reverse)
       e.text_hash = idx.hash;
-    else if (need_text_hash) {
-      uint8_t bytes[64];
-      uint32_t hash = 2166136261u;
-      for (uint32_t off = 0; off < e.text_bytes - 1;) {
-        uint32_t n = e.text_bytes - 1 - off > sizeof(bytes)
-                         ? sizeof(bytes)
-                         : e.text_bytes - 1 - off;
-        if (!device.Read(e.text_address + off, bytes, n))
-          return false;
-        for (uint32_t j = 0; j < n; ++j) {
-          hash ^= bytes[j];
-          hash *= 16777619u;
-        }
-        off += n;
+    return true;
+  }
+  bool TextHash(const Entry &e, uint32_t &hash) {
+    uint8_t bytes[64];
+    hash = 2166136261u;
+    for (uint32_t off = 0; off < e.text_bytes - 1;) {
+      uint32_t n = e.text_bytes - 1 - off;
+      if (n > sizeof(bytes))
+        n = sizeof(bytes);
+      if (!device.Read(e.text_address + off, bytes, n))
+        return false;
+      for (uint32_t j = 0; j < n; ++j) {
+        hash ^= bytes[j];
+        hash *= 16777619u;
       }
-      e.text_hash = hash;
+      off += n;
     }
     return true;
   }
-  bool FindAt(uint32_t base, const Header &h, const Entry &key, Entry &e,
-              bool need_text_hash = false) {
+  // The forward pass has already validated every record and its exact offset.
+  // Check membership using just the index, without decoding the same record
+  // again on the reverse pass. Hash collisions still require matching offset.
+  bool HasForwardIndex(uint32_t base, const Header &h, const Entry &e) {
+    const uint32_t hash = outline_hash(e);
+    const uint32_t offset = e.text_address - base - 8 - e.length * 4;
+    uint32_t lo = 0, hi = h.count;
+    Index idx{};
+    while (lo < hi) {
+      const uint32_t mid = lo + (hi - lo) / 2;
+      if (!ReadIndex(base, h, mid, false, idx))
+        return false;
+      if (idx.hash < hash)
+        lo = mid + 1;
+      else
+        hi = mid;
+    }
+    for (; lo < h.count; ++lo) {
+      if (!ReadIndex(base, h, lo, false, idx) || idx.hash != hash)
+        return false;
+      if (idx.offset == offset)
+        return true;
+    }
+    return false;
+  }
+  bool FindAt(uint32_t base, const Header &h, const Entry &key, Entry &e) {
     uint32_t lo = 0, hi = h.count, hash = outline_hash(key);
     Index idx{};
     while (lo < hi) {
@@ -372,7 +466,7 @@ private:
     }
     for (; lo < h.count; ++lo) {
       if (!ReadIndex(base, h, lo, false, idx) || idx.hash != hash ||
-          !GetAt(base, h, lo, false, e, need_text_hash))
+          !GetAt(base, h, lo, false, e))
         return false;
       int cmp = key_compare(e, key);
       if (!cmp)
@@ -431,10 +525,10 @@ private:
     if (expected != h.used || maximum != h.maximum)
       return false;
     for (uint32_t i = 0; i < h.count; ++i) {
-      Entry match{};
+      uint32_t text_hash;
       if (!GetAt(base, h, i, true, e) || (i && compare(prev, e, true) >= 0) ||
-          !FindAt(base, h, e, match, true) || e.text_address != match.text_address ||
-          e.text_hash != match.text_hash)
+          !HasForwardIndex(base, h, e) || !TextHash(e, text_hash) ||
+          e.text_hash != text_hash)
         return false;
       prev = e;
     }
@@ -447,6 +541,8 @@ public:
              bool clear = false)
       : store(store), key(key), replacement(replacement), clear(clear) {}
   bool Prepare() {
+    removed[0] = removed[1] = -1;
+    removed_bytes = inserted_bytes = 0;
     if (clear)
       return true;
     for (int reverse = 0; reverse < 2; ++reverse) {
@@ -457,10 +553,15 @@ public:
           return false;
         if (key_compare(e, key) == 0) {
           removed[reverse] = i;
+          if (!reverse)
+            removed_bytes = record_bytes(e);
           continue;
         }
-        if (replacement && compare(e, *replacement, reverse) < 0)
+        if (replacement && compare(e, *replacement, reverse) < 0) {
           ++filtered;
+          if (!reverse)
+            inserted_bytes += record_bytes(e);
+        }
       }
       inserted[reverse] = filtered;
     }
@@ -484,6 +585,21 @@ public:
     return store.Get(old, reverse, e);
   }
 
+  bool RecordOffset(const Entry &e, uint32_t &offset) const override {
+    if (replacement && key_compare(e, *replacement) == 0) {
+      offset = inserted_bytes;
+      return true;
+    }
+    if (!store.RecordOffset(e, offset))
+      return false;
+    // Packed records retain their forward order across a one-entry edit.
+    if (Exists() && key_compare(e, key) > 0)
+      offset -= removed_bytes;
+    if (replacement && key_compare(e, *replacement) > 0)
+      offset += record_bytes(*replacement);
+    return true;
+  }
+
 private:
   Store &store;
   Entry key;
@@ -491,5 +607,6 @@ private:
   bool clear;
   int32_t removed[2]{-1, -1};
   uint32_t inserted[2]{};
+  uint32_t removed_bytes = 0, inserted_bytes = 0;
 };
 } // namespace squid_user

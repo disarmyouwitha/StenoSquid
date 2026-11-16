@@ -57,10 +57,13 @@ static bool wait_until_ready(void) {
  * the personal dictionary alone. Safe to repeat after an interruption.
  */
 static bool erase_image(struct base_image *image) {
+    if (!lf_clear_trust()) {
+        reply(image, "TRUST_CLEAR_ERROR", 0);
+        return false;
+    }
     atomic_clear(&lf_mapped_ready);
     lf_trusted = false;
     NRF_POWER->GPREGRET2 = 0;
-    lf_clear_trust();
     image->verified = false;
     if (!reactivate_after_xip()) {
         return false;
@@ -156,7 +159,12 @@ static bool transfer_image(const struct base_image *image, bool program) {
  * flash holds an image the record no longer describes.
  */
 static bool transfer_and_program(const struct base_image *image) {
-    lf_clear_trust();
+    if (!lf_clear_trust()) {
+        reply(image, "TRUST_CLEAR_ERROR", 0);
+        return false;
+    }
+    lf_trusted = false;
+    NRF_POWER->GPREGRET2 = 0;
     return transfer_image(image, false) && transfer_image(image, true);
 }
 

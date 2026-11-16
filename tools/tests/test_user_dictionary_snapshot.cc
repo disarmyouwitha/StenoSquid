@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include <string>
+#include <map>
 #include <vector>
 using namespace squid_user;
 struct Flash : Device {
@@ -19,6 +20,8 @@ struct Flash : Device {
   bool Program(uint32_t a, const void *p, size_t n) override {
     assert(a >= SLOT_START && a + n <= SLOT_START + 2 * SLOT_BYTES &&
            !(a & 3) && !(n & 3));
+    // Saves and imports must not hand the NOR driver a cross-page write.
+    assert(n <= 256 && (a & 255u) + n <= 256);
     bool failure = mutations++ == fail;
     size_t actual = failure ? n / 2 : n;
     const auto *b = (const uint8_t *)p;
@@ -282,9 +285,60 @@ static void test_save_integrity() {
   assert(reboot.Open() && reboot.Generation() == generation);
 }
 
+static void test_page_edits() {
+  Flash flash;
+  Store store(flash);
+  Rows initial;
+  initial.Add({1}, "original");
+  initial.Prepare();
+  assert(store.Save(initial));
+  std::map<uint32_t, std::string> expected{{1, "original"}};
+  uint32_t random = 1234567;
+  for (unsigned step = 0; step < 150; ++step) {
+    random = random * 1664525u + 1013904223u;
+    const uint32_t stroke = random % 37 + 1;
+    const bool erase = step % 4 == 0;
+    std::string text(random % 2047 + 1, char('a' + step % 26));
+    Entry entry = key(stroke, text.c_str());
+    EditSource edit(store, entry, erase ? nullptr : &entry);
+    assert(edit.Prepare() && store.Save(edit));
+    if (erase) expected.erase(stroke);
+    else expected[stroke] = text;
+    Store reboot(flash);
+    assert(reboot.Open() && reboot.Count() == expected.size());
+    for (const auto &row : expected) assert(lookup(reboot, key(row.first)) == row.second);
+  }
+  // Guard the intended controller-call saving on a larger personal edit.
+  Rows rows;
+  for (uint32_t i = 1; i <= 1000; ++i) rows.Add({i}, "personal word");
+  rows.Prepare();
+  assert(store.Save(rows));
+  Entry replacement = key(500, "changed word");
+  EditSource edit(store, replacement, &replacement);
+  flash.mutations = 0;
+  flash.reads = 0;
+  assert(edit.Prepare() && store.Save(edit));
+  assert(flash.mutations < 250); // old path needed more than 5,000
+  assert(flash.reads < 400000); // relocation avoids rebuilding reverse offsets by search
+  // A source's relocation hint is never trusted instead of final validation.
+  struct BadOffsets : Rows {
+    bool RecordOffset(const Entry &, uint32_t &offset) const override {
+      offset = 0;
+      return true;
+    }
+  } bad;
+  bad.Add({1}, "one"); bad.Add({2}, "two"); bad.Prepare();
+  const uint32_t generation = store.Generation();
+  assert(!store.Save(bad) && store.Generation() == generation);
+  Store recovered(flash);
+  assert(recovered.Open() && recovered.Count() == 1000);
+  printf("PASS: variable-length page edits, reboot validation, batching budget and untrusted offsets\n");
+}
+
 int main(int argc, char **argv) {
   if (argc == 2)
     test_host_import(argv[1]);
+  test_page_edits();
   test_open_slots();
   test_get_does_not_hash();
   test_save_integrity();
@@ -418,6 +472,18 @@ int main(int argc, char **argv) {
   memcpy(flash.bytes.data() + newest, &bad, sizeof(bad));
   Store corrupt(flash);
   assert(corrupt.Open() && corrupt.Count() == 0);
+  flash.bytes = good;
+  memcpy(&bad, flash.bytes.data() + newest, sizeof(bad));
+  Index wrong_hash{};
+  const uint32_t reverse_start = newest + SECTOR + bad.count * 8;
+  memcpy(&wrong_hash, flash.bytes.data() + reverse_start, sizeof(wrong_hash));
+  wrong_hash.hash--; // remains sorted before the other equal-text entries
+  memcpy(flash.bytes.data() + reverse_start, &wrong_hash, sizeof(wrong_hash));
+  bad.body_crc = crc32(0, flash.bytes.data() + newest + SECTOR, bad.used - SECTOR);
+  bad.header_crc = crc32(0, &bad, offsetof(Header, header_crc));
+  memcpy(flash.bytes.data() + newest, &bad, sizeof(bad));
+  Store bad_reverse(flash);
+  assert(bad_reverse.Open() && bad_reverse.Count() == 0);
   // Maximum outline and browser-sized translation survive without a full RAM
   // mirror.
   Rows limits;

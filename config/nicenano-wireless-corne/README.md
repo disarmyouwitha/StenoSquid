@@ -1,4 +1,4 @@
-# Steno Squid and Corne Ultralight split
+# nice!nano wireless Corne configuration
 
 The handwired Steno Squid left half is the Bluetooth split central and the Corne Ultralight right half is the peripheral. Each half scans its own wiring and reports positions in the same 42-key Corne layout. The left half handles USB typing, host Plover HID, and onboard Javelin from the base dictionaries on the W25Q128.
 
@@ -33,14 +33,14 @@ export ZEPHYR_BASE="$ws/zephyr"
 cd "$ws"
 west update
 west build -s zmk/app -d "$repo/build/split-left" -b nice_nano//zmk -S zmk-usb-logging -- \
-  -DSHIELD=corne_left "-DZMK_CONFIG=$repo/config/steno-squid-split" "-DZMK_EXTRA_MODULES=$repo" \
+  -DSHIELD=corne_left "-DZMK_CONFIG=$repo/config/nicenano-wireless-corne" "-DZMK_EXTRA_MODULES=$repo" \
   "-DZMK_JAVELIN_LAPWING_IMAGE=$repo/build/lapwing/lapwing-base.bin" \
   "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin"   "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin" \
-  "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/logging.conf" \
-  "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/logging.overlay" \
+  "-DEXTRA_CONF_FILE=$repo/config/nicenano-wireless-corne/logging.conf" \
+  "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/nicenano-wireless-corne/logging.overlay" \
   "-DZephyr_DIR=$ZEPHYR_BASE/share/zephyr-package/cmake"
 west build -s zmk/app -d "$repo/build/split-right" -b nice_nano//zmk -- \
-  -DSHIELD=corne_right "-DZMK_CONFIG=$repo/config/steno-squid-split" "-DZMK_EXTRA_MODULES=$repo" \
+  -DSHIELD=corne_right "-DZMK_CONFIG=$repo/config/nicenano-wireless-corne" "-DZMK_EXTRA_MODULES=$repo" \
   "-DZephyr_DIR=$ZEPHYR_BASE/share/zephyr-package/cmake"
 ```
 
@@ -124,9 +124,9 @@ For a Corne Ultralight right half with a nice!view fitted to its display socket,
 ```sh
 west build -s zmk/app -d "$repo/build/NiceNano-Right-Default" -b nice_nano//zmk -- \
   "-DSHIELD=corne_right nice_view_adapter nice_view" \
-  "-DZMK_CONFIG=$repo/config/steno-squid-split" "-DZMK_EXTRA_MODULES=$repo" \
-  "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/right-nice-view.conf" \
-  "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/steno-squid-split/right-nice-view.overlay" \
+  "-DZMK_CONFIG=$repo/config/nicenano-wireless-corne" "-DZMK_EXTRA_MODULES=$repo" \
+  "-DEXTRA_CONF_FILE=$repo/config/nicenano-wireless-corne/right-nice-view.conf" \
+  "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/nicenano-wireless-corne/right-nice-view.overlay" \
   "-DZephyr_DIR=$ZEPHYR_BASE/share/zephyr-package/cmake"
 ```
 
@@ -305,15 +305,15 @@ The left firmware exposes a dedicated HID console over USB and Bluetooth for [Ja
 
 Use **Add Translation** to enter an outline and translation, then press Return in the translation field to save. Add, replace, remove, or export personal outlines from the browser. A saved entry takes precedence over the same Lapwing outline in onboard Javelin. Removing the personal entry restores the Lapwing translation. Host Plover HID continues to send raw strokes to the host.
 
-The left half reads the personal dictionary and its two indexes directly from QSPI. Each save writes the live entries to the inactive slot, verifies them, then commits the snapshot header. The previous snapshot remains available if the save is interrupted. Unused parts of a slot are skipped, and replacing or deleting an entry reclaims its space on the next successful save.
+The left half reads the personal dictionary and its two indexes directly from QSPI. Each save writes the live entries to the inactive slot, verifies them, then commits the snapshot header. The previous snapshot remains available if the save is interrupted. Unused parts of a slot are skipped, and replacing or deleting an entry reclaims its space on the next successful save. Writes are batched at 256-byte page boundaries, and single-entry edits relocate existing record offsets instead of searching for every reverse-index entry. The snapshot format, readback checks, CRCs, index validation, and header-last commit are unchanged.
 
-Base dictionary uploads use the same serial commands and addresses. Export the personal dictionary from Javelin Tools to keep an independent backup.
+Install or repair base dictionaries over USB HID with `stenosquid.py --install` or `stenosquid.py --repair`. Serial provisioning is available only in Left-Diagnostic. Export the personal dictionary from Javelin Tools to keep an independent backup.
 
 A 4 MiB slot fits about 90,000 entries at the average record size of the bundled dictionary sources. Capacity varies with outline length and UTF-8 translation size. A large personal dictionary takes longer to save because each edit writes its current contents once. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers one snapshot for the keyboard to verify and commit.
 
 The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checked interrupted saves, corrupt-snapshot fallback, and write boundaries.
 
-The HID transport passed the native Javelin handshake, commands spanning multiple reports, dictionary exports, and two interleaved console channels. The official tools in Chrome connected through **Connect via HID** and saved a translation through the browser. That entry survived a firmware flash and reboot, and deleting it restored Lapwing's translation. The diagnostic build also exposes a USB serial interface.
+The HID transport passed the native Javelin handshake, commands spanning multiple reports, dictionary exports, and two interleaved console channels. The official tools in Chrome connected through **Connect via HID** and saved a translation through the browser. That entry survived a firmware flash and reboot, and deleting it restored Lapwing's translation. The diagnostic build also exposes a USB serial interface. A transport timeout stops the remaining response and aborts a personal export; it does not reuse an in-flight USB buffer. Bluetooth transmits through a separate sleeping worker with a 2 KiB stack, so a stalled Bluetooth send cannot hold the engine lock indefinitely.
 
 The builder confirmed all three keyboard modes on the final HID firmware, including normal typing, host Plover HID, and onboard Javelin across both halves. The physical steno test produced “the cat is the cat if the cat is the cat!”
 

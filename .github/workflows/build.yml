@@ -20,6 +20,8 @@ jobs:
         run: |
           python3 tools/dictionaries/test_stenosquid.py
           python3 tools/tests/test_base_provision.py
+          python3 tools/tests/test_serial_trust.py
+          python3 tools/tests/test_dictionary_selection.py
 
   stroke-feed-tests:
     name: stroke tape tests
@@ -56,6 +58,7 @@ jobs:
           python3 tools/tests/test_practice_progress.py
           python3 tools/tests/test_practice_lookup.py
           python3 tools/tests/test_javelin_hid_transport.py
+          python3 tools/tests/test_javelin_ble_tx.py
       - name: Fetch the pinned Javelin engine and ZMK
         run: |
           python3 tools/ci/fetch_pinned.py javelin-steno javelin-steno
@@ -100,7 +103,7 @@ jobs:
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
-            extra: "-DEXTRA_CONF_FILE=$repo/config/steno-squid-split/left-no-display.conf"
+            extra: "-DEXTRA_CONF_FILE=$repo/config/nicenano-wireless-corne/left-no-display.conf"
           - name: NiceNano-Right-No-Display
             shield: corne_right
           - name: NiceNano-Right-Default
@@ -191,7 +194,7 @@ jobs:
         shell: bash
         run: |
           repo="$GITHUB_WORKSPACE/repo"
-          split="$repo/config/steno-squid-split"
+          split="$repo/config/nicenano-wireless-corne"
           source=zmk/app
           args=("-DZMK_EXTRA_MODULES=$repo")
           case "${{ matrix.boardsource }}" in

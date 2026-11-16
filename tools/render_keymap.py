@@ -11,7 +11,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "config/corne.keymap"
-PROFILE = ROOT / "config/steno-squid-split/corne.keymap"
+PROFILE = ROOT / "config/nicenano-wireless-corne/corne.keymap"
 OUTPUT = ROOT / "docs/keymap"
 LAYERS = [
     (

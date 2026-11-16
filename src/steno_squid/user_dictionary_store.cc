@@ -11,6 +11,8 @@
 #include <string.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+// Stop an export promptly if its browser transport has failed.
+bool steno_squid_javelin_response_cancelled();
 namespace {
 using namespace squid_user;
 static_assert(BASE_DICTIONARY_LIMIT <= SLOT_START);
@@ -195,6 +197,7 @@ public:
       return;
     TextBuffer buffer;
     for (uint32_t i = 0; i < store.Count(); ++i) {
+      if (steno_squid_javelin_response_cancelled()) return;
       Entry e{};
       if (!store.Get(i, false, e))
         return;

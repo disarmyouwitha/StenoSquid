@@ -130,7 +130,7 @@ int steno_squid_javelin_ble_session_valid(uint32_t session) {
     return valid;
 }
 
-int steno_squid_javelin_ble_send(const void *data, size_t size, uint32_t session) {
+int steno_squid_javelin_ble_notify(const void *data, size_t size, uint32_t session) {
     if (size != JAVELIN_HID_REPORT_BYTES) {
         return -EINVAL;
     }
@@ -145,7 +145,8 @@ int steno_squid_javelin_ble_send(const void *data, size_t size, uint32_t session
             rc = -EMSGSIZE;
         } else {
             /* GATT copies the payload into its ATT buffer before returning.
-             * This worker may block for TX buffers; the Bluetooth RX thread never does.
+             * Only the isolated TX worker can block for buffers; neither the engine
+             * nor the Bluetooth RX thread waits here.
              */
             rc = bt_gatt_notify(conn, &javelin_hog.attrs[INPUT_VALUE], data, size);
         }

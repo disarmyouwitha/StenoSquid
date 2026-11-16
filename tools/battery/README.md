@@ -2,11 +2,11 @@
 
 The battery logger is part of the diagnostic left builds, **Boardsource-Left-Diagnostic** and
 **NiceNano-Left-Diagnostic**. To build one yourself, use `-S zmk-usb-logging`, add
-`config/steno-squid-split/logging.conf` to `EXTRA_CONF_FILE`, and pass the overlay for your
+`config/nicenano-wireless-corne/logging.conf` to `EXTRA_CONF_FILE`, and pass the overlay for your
 board as `EXTRA_DTC_OVERLAY_FILE`:
 
 ```
--DEXTRA_DTC_OVERLAY_FILE=config/steno-squid-split/logging.overlay           # nice!nano
+-DEXTRA_DTC_OVERLAY_FILE=config/nicenano-wireless-corne/logging.overlay           # nice!nano
 -DEXTRA_DTC_OVERLAY_FILE=config/boardsource-wireless-corne/logging.overlay  # Boardsource
 ```
 

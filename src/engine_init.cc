@@ -146,21 +146,12 @@ static int javelin_settings_set(const char *name, size_t length,
     return -ENOENT;
   }
   uint8_t record[2];
-  if ((length != 1 && length != sizeof(record)) ||
-      read(argument, record, length) != static_cast<ssize_t>(length)) {
+  if (length != sizeof(record) ||
+      read(argument, record, sizeof(record)) != static_cast<ssize_t>(sizeof(record)) ||
+      record[0] != DICTIONARY_SELECTION_VERSION || (record[1] & 0x80)) {
     return -EINVAL;
   }
-  if (length == 1 && !(record[0] & 0x80)) {
-    // The cleanup build saved the seven selection bits without a version.
-    dictionary_selection = record[0];
-  } else if (length == sizeof(record) && record[0] == 1 && !(record[1] & ~7)) {
-    dictionary_selection = record[1] | EXTRAS_SELECTION_DEFAULT;
-  } else if (length == sizeof(record) && record[0] == DICTIONARY_SELECTION_VERSION &&
-             !(record[1] & 0x80)) {
-    dictionary_selection = record[1];
-  } else {
-    return -EINVAL;
-  }
+  dictionary_selection = record[1];
   return 0;
 }
 
@@ -367,16 +358,29 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
 } // extern "C"
 
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer) {
+// This hook is installed and read only under JavelinEngineLock. It stops a
+// large personal export as soon as its transport reports a terminal failure.
+static bool (*response_cancelled)(void *);
+static void *response_context;
+bool steno_squid_javelin_response_cancelled() {
+  return response_cancelled && response_cancelled(response_context);
+}
+
+bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer,
+                                      bool (*cancelled)(void *), void *context) {
   const JavelinEngineLock lock;
   if (!lock) {
     // The flash is asleep, unprovisioned or still verifying.
     return false;
   }
   zmk_javelin_steno_init();
+  response_cancelled = cancelled;
+  response_context = context;
   ConsoleWriter::Push(&writer);
   Console::instance.HandleInput(line, size, ConnectionId::SERIAL_CONSOLE);
   ConsoleWriter::Pop();
+  response_cancelled = nullptr;
+  response_context = nullptr;
   return true;
 }
 #endif
