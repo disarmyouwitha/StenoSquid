@@ -20,8 +20,8 @@ curl --fail --location \
   -o "$repo/build/lapwing/lapwing-base.json"
 python3 "$repo/tools/dict_compiler/compile_dict.py" "$repo/build/lapwing/lapwing-base.json" \
   --name lapwing-base --base-addr 0x12000000 -o "$repo/build/lapwing/lapwing-base.bin"
-python3 "$repo/tools/steno-squid-lapwing/prepare_plover.py"
-python3 "$repo/tools/steno-squid-lapwing/prepare_extras.py"
+python3 "$repo/tools/dictionaries/prepare_plover.py"
+python3 "$repo/tools/dictionaries/prepare_extras.py"
 ```
 
 ### Build the split firmware
@@ -64,7 +64,7 @@ If `retries` and `power cycles` stay at 0 after days of use, the retry logic nev
 The dictionary flash powers down while idle. To compare battery life with it always on, uncomment `CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_OFF=n` in `corne_left.conf`. `CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS` on the next line sets the idle period, 30 seconds by default. The flash stays on while the steno layer is selected, including during practice, and the idle period counts from leaving it. Selecting the steno layer starts the flash. An editor command on another layer waits for it to start; the `W` reply shows how long that took.
 
 The right half enters deep sleep after 15 idle minutes on battery. Wake it
-with one of its own keys. The [battery logger](../../tools/steno-squid-battery/README.md)
+with one of its own keys. The [battery logger](../../tools/battery/README.md)
 is part of the diagnostic left build only. The everyday build keeps the full
 code partition.
 

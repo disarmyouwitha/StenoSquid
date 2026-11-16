@@ -35,7 +35,7 @@ Reconnect the left half to USB and run this from the repository with a Python
 environment that has `pyserial` installed:
 
 ```sh
-python3 tools/steno-squid-battery/export.py sleep-flash-off.csv \
+python3 tools/battery/export.py sleep-flash-off.csv \
   --label "Deep sleep with flash rail off" \
   --notes "Record battery age, LED state, and approximate sleep and wake times here"
 ```

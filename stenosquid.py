@@ -30,7 +30,7 @@ def Serial(*args, **kwargs):
 
 CHUNK_BYTES = 512
 REPO = Path(__file__).resolve().parent
-DICTIONARY_TOOLS = REPO / "tools" / "steno-squid-lapwing"
+DICTIONARY_TOOLS = REPO / "tools" / "dictionaries"
 sys.path.insert(0, str(DICTIONARY_TOOLS))
 # Where the prepare scripts and the Lapwing build instructions write each image.
 DEFAULT_IMAGES = {

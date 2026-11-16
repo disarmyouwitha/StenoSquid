@@ -53,7 +53,7 @@ config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
       16 gives the 2 MHz clock proven on the handwired left half. A routed
       PCB should tolerate a much smaller divider, which shortens the full
       dictionary check after a cold boot. Confirm each new value with
-      tools/steno-squid-qspi before relying on it.
+      tools/qspi before relying on it.
 
 config ZMK_JAVELIN_STENO_FLASH_IDLE_OFF
     bool "Power the external flash down while the dictionaries are idle"

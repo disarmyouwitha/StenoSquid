@@ -33,13 +33,13 @@ Run from this repository's root in a shell with west and the Zephyr SDK availabl
 repo="$PWD"
 target="$repo/config/boardsource-wireless-corne"
 split="$repo/config/steno-squid-split"
-probe="$repo/tools/steno-squid-qspi"
+probe="$repo/tools/qspi"
 vendor="$repo/build/boardsource-upstream"
 
 git clone https://github.com/boardsource/wireless-corne_zmk_config "$vendor"
 git -C "$vendor" checkout --detach 2158104902e164c317e35f53dfa0ca1e36e1a751
-python3 "$repo/tools/steno-squid-lapwing/prepare_plover.py"
-python3 "$repo/tools/steno-squid-lapwing/prepare_extras.py"
+python3 "$repo/tools/dictionaries/prepare_plover.py"
+python3 "$repo/tools/dictionaries/prepare_extras.py"
 export ZEPHYR_BASE="$ws/zephyr"
 zephyr_cmake="$ZEPHYR_BASE/share/zephyr-package/cmake"
 cd "$ws"

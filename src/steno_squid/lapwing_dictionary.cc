@@ -16,7 +16,7 @@ static constexpr uintptr_t image_end = image_start + LAPWING_BYTES;
 static StenoDictionary *dictionary;
 static StenoDictionary *plover;
 static StenoDictionary *extras[EXTRAS_DICTIONARY_COUNT];
-// The image stores them in this order. tools/steno-squid-lapwing/prepare_extras.py
+// The image stores them in this order. tools/dictionaries/prepare_extras.py
 // must compile them in the same order.
 static const char *const extras_names[EXTRAS_DICTIONARY_COUNT] = {
     "Lapwing Commands",

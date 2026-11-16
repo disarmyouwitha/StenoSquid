@@ -1,6 +1,6 @@
 /* Extras for the diagnostic left build (NiceNano-Left-Diagnostic): the flash partition
  * for the battery logger. Use it with logging.conf; see
- * tools/steno-squid-battery/README.md.
+ * tools/battery/README.md.
  *
  * Reserves the top 128 KiB of application space for the log. The ZMK
  * settings partition and the bootloader retain their original addresses.

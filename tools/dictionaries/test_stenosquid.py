@@ -2,7 +2,7 @@
 
 No hardware and no pyserial needed. Run from anywhere:
 
-    python3 tools/steno-squid-lapwing/test_stenosquid.py
+    python3 tools/dictionaries/test_stenosquid.py
 
 The fake keyboard answers like the firmware: it reports each image's expected
 size and CRC, accepts the preflight and write passes in 512-byte chunks, and
