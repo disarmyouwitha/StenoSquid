@@ -89,7 +89,9 @@ https://lim.au/#/software/javelin-steno-tools
 
 ## Build and install
 
-⭐️ GitHub Actions builds these UF2 artifacts from the pinned dependencies. Install a left half with the right half that goes with it. **[Firmware builds](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml)**
+⭐️ **[Download firmware](https://github.com/disarmyouwitha/StenoSquid/releases)** — no GitHub account required. Download the UF2s for your board and install the matching left and right halves.
+
+GitHub Actions builds and tests every version before publishing its firmware. Development builds are available under [Actions](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml).
 
 **Boardsource Wireless Corne SMT with the Steno Squid flash board**
 

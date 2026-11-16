@@ -2,6 +2,8 @@ name: Build firmware
 
 on:
   push:
+    branches: ["**"]
+    tags: ["v*"]
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -293,3 +295,67 @@ jobs:
           name: ${{ matrix.name }}
           path: out/zephyr/${{ matrix.boardsource == 'probe' && 'zephyr' || 'zmk' }}.uf2
           if-no-files-found: error
+
+
+  release:
+    name: Publish firmware release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [upload-tests, stroke-feed-tests, host-tests, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: firmware-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Download everyday firmware
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-*-Default"
+          path: artifacts
+
+      - name: Download firmware without display
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-*-No-Display"
+          path: artifacts
+
+      - name: Name the firmware files for each board and half
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          for board in NiceNano Boardsource; do
+            for half in Left Right; do
+              for variant in Default No-Display; do
+                name="$board-$half-$variant"
+                test -s "artifacts/$name/zmk.uf2"
+                cp "artifacts/$name/zmk.uf2" "release/$name.uf2"
+              done
+            done
+          done
+
+      - name: Publish tested firmware
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
+            if [ "$draft" != true ]; then
+              echo "::error::This release is already published. Use a new version tag."
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "$RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release/*.uf2 --clobber
+          prerelease=false
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            prerelease=true
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$prerelease"
