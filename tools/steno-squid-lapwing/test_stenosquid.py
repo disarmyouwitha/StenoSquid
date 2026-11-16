@@ -1,8 +1,8 @@
-"""Tests for upload.py against a fake keyboard that speaks the serial protocol.
+"""Tests for stenosquid.py against a fake keyboard that speaks the serial protocol.
 
 No hardware and no pyserial needed. Run from anywhere:
 
-    python3 tools/steno-squid-lapwing/test_upload.py
+    python3 tools/steno-squid-lapwing/test_stenosquid.py
 
 The fake keyboard answers like the firmware: it reports each image's expected
 size and CRC, accepts the preflight and write passes in 512-byte chunks, and
@@ -26,7 +26,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.modules.setdefault("serial", types.SimpleNamespace(Serial=object))
-import upload  # noqa: E402
+import stenosquid  # noqa: E402
 
 LETTERS = {
     "LAPWING": dict(zip(b"?LEVI", ["query", "program", "erase", "verify", "info"])),
@@ -88,7 +88,7 @@ class Keyboard:
         if self.phase:
             name, kind = self.phase
             image = self.images[name]
-            assert len(data) <= upload.CHUNK_BYTES
+            assert len(data) <= stenosquid.CHUNK_BYTES
             offset = self.received
             assert image["data"][offset:offset + len(data)] == data, "chunk differs from image"
             self.received += len(data)
@@ -171,13 +171,13 @@ class UploadTest(unittest.TestCase):
         out = io.StringIO()
         code = None
         with contextlib.redirect_stdout(out), \
-                mock.patch.object(upload, "Serial", FakeSerial), \
-                mock.patch.object(upload, "time", FakeTime()), \
-                mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), \
+                mock.patch.object(stenosquid, "Serial", FakeSerial), \
+                mock.patch.object(stenosquid, "time", FakeTime()), \
+                mock.patch.object(stenosquid, "DEFAULT_IMAGES", self.paths), \
                 mock.patch.object(builtins, "input", no_prompt), \
-                mock.patch.object(sys, "argv", ["upload.py", "COM1", *args]):
+                mock.patch.object(sys, "argv", ["stenosquid.py", "COM1", *args]):
             try:
-                upload.main()
+                stenosquid.main()
             except SystemExit as exit_:
                 code = exit_.code
         return code, out.getvalue()
@@ -198,7 +198,7 @@ class UploadTest(unittest.TestCase):
     def test_install_prepares_missing_images_and_verifies_all(self):
         self.paths["EXTRAS"].unlink()
         kb = self.keyboard(installed=("LAPWING",))
-        with mock.patch.object(upload, "prepare_base") as prepare:
+        with mock.patch.object(stenosquid, "prepare_base") as prepare:
             prepare.side_effect = lambda name, _: self.paths[name].write_bytes(self.images[name])
             code, _ = self.run_script(kb, "--install")
         self.assertIsNone(code)
@@ -249,13 +249,13 @@ class UploadTest(unittest.TestCase):
         console = mock.Mock()
         console.command.side_effect = command
         with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)) as open_hid, \
-                mock.patch.object(upload, "Serial", side_effect=AssertionError("opened serial")), \
-                mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), \
-                mock.patch.object(upload, "prepare_base") as prepare, \
-                mock.patch.object(sys, "argv", ["upload.py", "--install", "--serial", "S1"]), \
+                mock.patch.object(stenosquid, "Serial", side_effect=AssertionError("opened serial")), \
+                mock.patch.object(stenosquid, "DEFAULT_IMAGES", self.paths), \
+                mock.patch.object(stenosquid, "prepare_base") as prepare, \
+                mock.patch.object(sys, "argv", ["stenosquid.py", "--install", "--serial", "S1"]), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             prepare.side_effect = lambda name, _: self.paths[name].write_bytes(self.images[name])
-            upload.main()
+            stenosquid.main()
         open_hid.assert_called_once_with("S1")
         self.assertEqual([name for name, _ in transfers], ["PLOVER", "EXTRAS"])
         self.assertIn("installed and ready", output.getvalue())
@@ -267,9 +267,9 @@ class UploadTest(unittest.TestCase):
             f"1 INSTALL\nPLOVER {len(image)} {zlib.crc32(image)} 0",
             "OK", "ERR Base region holds different data. No sectors were erased", "OK",
         ]
-        with mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), contextlib.redirect_stdout(io.StringIO()):
-            with self.assertRaisesRegex(RuntimeError, "upload.py --repair --base plover"):
-                upload.install_hid(console)
+        with mock.patch.object(stenosquid, "DEFAULT_IMAGES", self.paths), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, "stenosquid.py --repair --base plover"):
+                stenosquid.install_hid(console)
         self.assertEqual(console.command.call_args_list[-1], mock.call("base_install abort", timeout=2))
         self.assertFalse(any(" repair " in call.args[0] for call in console.command.call_args_list))
 
@@ -289,12 +289,12 @@ class UploadTest(unittest.TestCase):
 
         console.command.side_effect = command
         with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)), \
-                mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), \
-                mock.patch.object(upload, "prepare_base") as prepare, \
-                mock.patch.object(sys, "argv", ["upload.py", "--repair", "--base", "plover"]), \
+                mock.patch.object(stenosquid, "DEFAULT_IMAGES", self.paths), \
+                mock.patch.object(stenosquid, "prepare_base") as prepare, \
+                mock.patch.object(sys, "argv", ["stenosquid.py", "--repair", "--base", "plover"]), \
                 contextlib.redirect_stdout(io.StringIO()) as output:
             prepare.side_effect = lambda name, expected, path: path.write_bytes(image)
-            upload.main()
+            stenosquid.main()
         commands = [call.args[0] for call in console.command.call_args_list]
         self.assertEqual(commands[1], "base_install repair PLOVER")
         self.assertNotIn("base_install repair EXTRAS", commands)
@@ -331,10 +331,10 @@ class UploadTest(unittest.TestCase):
 
                 console.command.side_effect = command
                 with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)), \
-                        mock.patch.object(upload, "DEFAULT_IMAGES", self.paths), \
-                        mock.patch.object(sys, "argv", ["upload.py", *args]), \
+                        mock.patch.object(stenosquid, "DEFAULT_IMAGES", self.paths), \
+                        mock.patch.object(sys, "argv", ["stenosquid.py", *args]), \
                         contextlib.redirect_stdout(io.StringIO()) as output:
-                    upload.main()
+                    stenosquid.main()
                 self.assertEqual(repaired, ["PLOVER", "EXTRAS"])
                 self.assertIn("LAPWING: already installed", output.getvalue())
                 self.assertIn("installed and ready", output.getvalue())
@@ -346,10 +346,10 @@ class UploadTest(unittest.TestCase):
             console = mock.Mock()
             console.command.side_effect = ["1 READY\nLAPWING 12 1 1", "OK 1"]
             with mock.patch.object(import_personal, "open_console", return_value=nullcontext(console)), \
-                    mock.patch.object(upload, "Serial", side_effect=AssertionError("opened serial")), \
-                    mock.patch.object(sys, "argv", ["upload.py", action]), \
+                    mock.patch.object(stenosquid, "Serial", side_effect=AssertionError("opened serial")), \
+                    mock.patch.object(sys, "argv", ["stenosquid.py", action]), \
                     contextlib.redirect_stdout(io.StringIO()) as output:
-                upload.main()
+                stenosquid.main()
             self.assertIn("LAPWING:", output.getvalue())
             self.assertEqual(console.command.call_count, 2 if action == "--verify" else 1)
 
@@ -358,18 +358,18 @@ class UploadTest(unittest.TestCase):
         console.command.side_effect = ["1 READY\nLAPWING 12 1 1", "MISMATCH 0"]
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaises(SystemExit) as result:
-                upload.inspect_hid(console, "ALL", verify=True)
+                stenosquid.inspect_hid(console, "ALL", verify=True)
         self.assertEqual(result.exception.code, 1)
         self.assertIn("FAILED", output.getvalue())
 
     def test_diagnostics_report_uses_one_detected_port(self):
         port = object()
-        with mock.patch.object(upload, "find_port", return_value="COM1"), \
-                mock.patch.object(upload, "Serial", return_value=nullcontext(port)) as serial, \
-                mock.patch.object(upload, "diag") as diag, \
-                mock.patch.object(sys, "argv", ["upload.py", "--diag"]), \
+        with mock.patch.object(stenosquid, "find_port", return_value="COM1"), \
+                mock.patch.object(stenosquid, "Serial", return_value=nullcontext(port)) as serial, \
+                mock.patch.object(stenosquid, "diag") as diag, \
+                mock.patch.object(sys, "argv", ["stenosquid.py", "--diag"]), \
                 contextlib.redirect_stdout(io.StringIO()):
-            upload.main()
+            stenosquid.main()
         serial.assert_called_once_with("COM1", 115200, timeout=0.25, write_timeout=5, exclusive=True)
         self.assertEqual(diag.call_args_list, [mock.call(port, part)
                                                for part in ("status", "log", "rail", "bench")])
@@ -455,7 +455,7 @@ class UploadTest(unittest.TestCase):
                 code, text = self.run_script(kb, "--diag", what)
                 self.assertIsNone(code)
                 self.assertEqual(kb.sent, [letter])
-                self.assertIn(upload.DIAG[what][1], text)
+                self.assertIn(stenosquid.DIAG[what][1], text)
         # S stops at END, so the line after it stays unread.
         kb = self.keyboard()
         _, text = self.run_script(kb, "--diag", "status")

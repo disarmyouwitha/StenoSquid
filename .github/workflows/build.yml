@@ -9,14 +9,14 @@ on:
 
 jobs:
   upload-tests:
-    name: upload.py tests
+    name: stenosquid.py tests
     runs-on: ubuntu-latest
     steps:
       - name: Check out this repository
         uses: actions/checkout@v4
-      - name: Run the upload.py tests against a fake keyboard
+      - name: Run the stenosquid.py tests against a fake keyboard
         run: |
-          python3 tools/steno-squid-lapwing/test_upload.py
+          python3 tools/steno-squid-lapwing/test_stenosquid.py
           python3 tools/tests/test_base_provision.py
 
   stroke-feed-tests:

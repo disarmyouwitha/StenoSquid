@@ -374,13 +374,13 @@ def install_hid(console, repair_base=None):
                     str(error).startswith("ERR Base region holds different data")):
                 raise RuntimeError(
                     f"{name} conflicts with the image in flash. To replace just this base, "
-                    f"run: python3 upload.py --repair --base {name.lower()}"
+                    f"run: python3 stenosquid.py --repair --base {name.lower()}"
                 ) from None
             raise
 
     ready, images = hid_install_status(console)
     if repair_base not in (None, "ALL") and images[repair_base][2] and not ready:
-        print(f"{repair_base} verified. Run python3 upload.py --install for the remaining bases.")
+        print(f"{repair_base} verified. Run python3 stenosquid.py --install for the remaining bases.")
         return
     if not ready or not all(verified for _, _, verified in images.values()):
         raise RuntimeError("The keyboard did not map all verified base dictionaries.")

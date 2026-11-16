@@ -49,7 +49,7 @@ legacy serial provisioning and diagnostics. Left-Default uses wired HID for
 dictionary maintenance. Send `W` to the diagnostics port for the last flash
 check path (`CHECK_QUICK` or `CHECK_FULL`) and its time in milliseconds.
 
-On a Left-Diagnostic build, `python3 upload.py --diag` detects the USB serial port and runs the status, boot log, rail test, and wake bench in one report. Use `--diag status`, `--diag log`, `--diag rail`, `--diag bench`, or `--diag clear` to run a single command. To select a port, put its path before `--diag`.
+On a Left-Diagnostic build, `python3 stenosquid.py --diag` detects the USB serial port and runs the status, boot log, rail test, and wake bench in one report. Use `--diag status`, `--diag log`, `--diag rail`, `--diag bench`, or `--diag clear` to run a single command. To select a port, put its path before `--diag`.
 
 - `S` (`--diag status`) prints the build commit and time, uptime, reset cause, whether USB is powering the board and the battery level, the flash state (mapped, checked, suspended, idle power-down, steno hold), the chip ID, the last check path and time, whether the saved verification record is present, each image's verified state, the counters below, and wake timing.
 - `D` (`--diag log`) prints the boot log kept in RAM, about 1 KiB of the flash lifecycle lines with boot number and uptime. It survives a soft reset, so a line printed before you opened the port is still there. It is empty after a power loss.
@@ -224,19 +224,19 @@ After flashing the everyday left firmware, let the keyboard reboot and run:
 
 ```sh
 python3 -m pip install hidapi
-python3 upload.py --install
+python3 stenosquid.py --install
 ```
 
 The installer detects the wired HID device and prepares missing images from pinned sources. Use `--serial SERIAL_NUMBER` with multiple USB keyboards connected.
 
 Provisioning checks the complete transfer before programming, reads back each chunk, then checks the raw and mapped CRCs and native Javelin lookups. It writes only inside the configured base regions and rejects conflicting pre-existing bits. Rerun the installer to resume a partial transfer. Personal snapshots stay in place, and Javelin starts once every configured image verifies.
 
-On Left-Default, `python3 upload.py --repair` checks all configured images
+On Left-Default, `python3 stenosquid.py --repair` checks all configured images
 over wired HID and replaces only the ones that need repair. Use
 `--repair --base lapwing` (or `plover` or `extras`) to check just one image.
 The replacement must match the firmware checksum before the selected region is erased.
 
-For hardware recovery with a Left-Diagnostic build, `upload.py --install PORT` selects the serial installer. `upload.py PORT --status` shows the state of each base. Use `--repair --base lapwing|plover|extras` to explicitly erase and rewrite a single conflicting base.
+For hardware recovery with a Left-Diagnostic build, `stenosquid.py --install PORT` selects the serial installer. `stenosquid.py PORT --status` shows the state of each base. Use `--repair --base lapwing|plover|extras` to explicitly erase and rewrite a single conflicting base.
 
 ### Lapwing extras
 
@@ -254,7 +254,7 @@ They rank above the bases, in that order: personal entries first, then the four 
 `prepare_extras.py` downloads the four pinned sources, compiles them into `build/extras/lapwing-extras.bin` (451,088 bytes) and checks every outline. The image lives at `0x500000` in the external flash and is uploaded, verified and repaired as one unit:
 
 ```sh
-python3 upload.py /dev/cu.usbmodem14501 --base extras
+python3 stenosquid.py /dev/cu.usbmodem14501 --base extras
 ```
 
 A firmware built with the extras image needs it in flash. After the first flash of such a build, onboard Javelin shows **No dictionary** until this upload finishes; the Lapwing and Plover bases already in flash are kept. `--verify --base all` checks all three images, and `--repair` works with `--base extras`.
@@ -266,13 +266,13 @@ Eight of the command entries are Plover application commands, such as lookup and
 Left-Default runs both commands over USB HID without a port argument. The port examples below select the legacy serial tools on Left-Diagnostic.
 
 ```sh
-python3 upload.py /dev/cu.usbmodem14501 --verify
+python3 stenosquid.py /dev/cu.usbmodem14501 --verify
 ```
 
 `--verify` reads every byte of the chosen image, or of all of them, and compares the CRC with the image the firmware was built for. It writes and erases nothing, and it works when a dictionary cannot load. It prints `OK`, a CRC mismatch, or the offset of a read error, and exits with status 1 if any base fails.
 
 ```sh
-python3 upload.py /dev/cu.usbmodem14501 --base lapwing --repair
+python3 stenosquid.py /dev/cu.usbmodem14501 --base lapwing --repair
 ```
 
 `--repair` replaces a base that is damaged or holds other data, including one the keyboard still reports as verified. In order, it:
@@ -289,7 +289,7 @@ The other base and the personal dictionary snapshots are never erased. If a repa
 
 ## Flash and check
 
-Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. The same Lapwing image already on the left half's external flash should verify and load at boot. Use the [dictionary uploader](../../upload.py) with only the USB serial port argument to check for `MAPPED`.
+Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. The same Lapwing image already on the left half's external flash should verify and load at boot. Use the [dictionary uploader](../../stenosquid.py) with only the USB serial port argument to check for `MAPPED`.
 
 Check ordinary typing on both halves, then test `TP / -T / KAT / S / -T / KAT` in Javelin with host Plover closed. Use the right half for the final `-T`. Return to MAIN and check the same cross-half chords in Plover HID.
 
@@ -309,7 +309,7 @@ The left half reads the personal dictionary and its two indexes directly from QS
 
 Base dictionary uploads use the same serial commands and addresses. Export the personal dictionary from Javelin Tools to keep an independent backup.
 
-A 4 MiB slot fits about 90,000 entries at the average record size of the bundled dictionary sources. Capacity varies with outline length and UTF-8 translation size. A large personal dictionary takes longer to save because each edit writes its current contents once. For a Plover JSON file, use `upload.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers one snapshot for the keyboard to verify and commit.
+A 4 MiB slot fits about 90,000 entries at the average record size of the bundled dictionary sources. Capacity varies with outline length and UTF-8 translation size. A large personal dictionary takes longer to save because each edit writes its current contents once. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers one snapshot for the keyboard to verify and commit.
 
 The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checked interrupted saves, corrupt-snapshot fallback, and write boundaries.
 

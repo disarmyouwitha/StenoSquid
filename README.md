@@ -109,12 +109,12 @@ https://lim.au/#/software/javelin-steno-tools
 
    ```sh
    python3 -m pip install hidapi
-   python3 upload.py --install
+   python3 stenosquid.py --install
    ```
 
    The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
 
-If the installer reports a conflict, run `python3 upload.py --repair` to check
+If the installer reports a conflict, run `python3 stenosquid.py --repair` to check
 all configured base images and replace the ones that need repair.
 The personal dictionary stays intact.
 
@@ -123,7 +123,7 @@ The personal dictionary stays intact.
 With the current **Left** firmware connected by USB, close the Javelin browser connection and run:
 
 ```sh
-python3 upload.py --import user.json
+python3 stenosquid.py --import user.json
 ```
 
 The file's translations win for matching outlines. Other personal entries stay in the dictionary. The importer verifies one complete snapshot before publishing it. Keep USB connected through verification and use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
