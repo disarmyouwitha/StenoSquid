@@ -53,6 +53,36 @@ From the Javelin or Plover layer, tap the outer right thumb
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
+## How to install
+
+⭐️ **[Download firmware](https://github.com/disarmyouwitha/StenoSquid/releases)** —  Download the UF2s for your board and install the matching left and right halves.
+
+### Provision a new keyboard
+
+1. Flash the matching **Left** and **Right** UF2s. Use the **No-Display** pair if you don't have a nice!view.
+2. Plug the left half in over USB, close any Javelin browser connection, and run these commands from this repository.
+
+   ```sh
+   python3 -m pip install hidapi
+   python3 stenosquid.py --install
+   ```
+
+   The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
+
+If the installer reports a conflict, run `python3 stenosquid.py --repair` to check
+all configured base images and replace the ones that need repair.
+The personal dictionary stays intact.
+
+### Import a personal Plover dictionary
+
+With the current **Left** firmware connected by USB, close the Javelin browser connection and run:
+
+```sh
+python3 stenosquid.py --import user.json
+```
+
+The file's translations win for matching outlines. Other personal entries stay in the dictionary. The importer verifies one complete snapshot before publishing it. Keep USB connected through verification and use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
+
 ## Default Keymap 
 Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-studio)
 
@@ -86,51 +116,6 @@ https://zmk.studio/
 **Windows U.S. (plain text)** is the default for a standard U.S. input layout. It uses ordinary U.S. keystrokes and converts accented Latin letters to plain equivalents, such as **ç → c**. (On a Mac, select **Mac U.S.** with the U.S. or ABC input source to type **aççents**.)
 
 https://lim.au/#/software/javelin-steno-tools
-
-## Build and install
-
-⭐️ **[Download firmware](https://github.com/disarmyouwitha/StenoSquid/releases)** — no GitHub account required. Download the UF2s for your board and install the matching left and right halves.
-
-GitHub Actions builds and tests every version before publishing its firmware. Development builds are available under [Actions](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml).
-
-**Boardsource Wireless Corne SMT with the Steno Squid flash board**
-
-| Artifact | Use |
-| --- | --- |
-| **Boardsource-Left-Default** | Everyday left half. Install it with **Boardsource-Right-Default**. |
-| **Boardsource-Right-Default** | Right half with the portrait display, squid, stroke tape and Practice UI. |
-| **Boardsource-Left-No-Display** | Left half for a keyboard without a nice!view. It sends the right half no status and Practice is off. Install it with **Boardsource-Right-No-Display**. |
-| **Boardsource-Right-No-Display** | Right half without the display. |
-
-**nice!nano v2** builds the same set with a `NiceNano-` prefix: `NiceNano-Left-Default` with `NiceNano-Right-Default`, or `NiceNano-Left-No-Display` with `NiceNano-Right-No-Display`.
-
-### Provision a new keyboard
-
-1. Flash the matching **Left** and **Right** UF2s. Use the **No-Display** pair if you don't have a nice!view.
-2. Plug the left half in over USB, close any Javelin browser connection, and run these commands from this repository.
-
-   ```sh
-   python3 -m pip install hidapi
-   python3 stenosquid.py --install
-   ```
-
-   The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
-
-If the installer reports a conflict, run `python3 stenosquid.py --repair` to check
-all configured base images and replace the ones that need repair.
-The personal dictionary stays intact.
-
-### Import a personal Plover dictionary
-
-With the current **Left** firmware connected by USB, close the Javelin browser connection and run:
-
-```sh
-python3 stenosquid.py --import user.json
-```
-
-The file's translations win for matching outlines. Other personal entries stay in the dictionary. The importer verifies one complete snapshot before publishing it. Keep USB connected through verification and use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
-
-<sub>Local builds must use this checkout's west manifest. If the workspace keeps a separate manifest copy, synchronize it before running `west update`. The compiled dictionary format depends on the pinned Javelin engine. [Dependency manifest](config/west.yml)</sub>
 
 ## External Memory Map
 The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it.
