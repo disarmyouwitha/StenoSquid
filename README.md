@@ -5,6 +5,7 @@
 ✅Javelin onboard steno\
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!
+📚 Room for ~90,000 custom dictionary entries!
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
 (But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
@@ -35,8 +36,6 @@
 | Lapwing Proper Nouns | On |
 | Lapwing Base | On |
 | Plover Base | **Off** |
-
-📚Room for ~90,000 user translations on top of the installed dictionaries
 
 Personal entries have highest priority, followed by the other dictionaries in order. Selections and personal edits survive reboot and firmware updates. Enable Plover Base and disable Lapwing dictionaries to switch bases. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
