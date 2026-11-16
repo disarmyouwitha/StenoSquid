@@ -47,6 +47,29 @@ A8_SHA256 = {
 }
 
 
+# New animations authored directly as A1, hashed after expansion to binary alpha.
+A1_SHA256 = {
+    "install_0": "77d0b4a05b56c21b3b2b538485e7dd66fe14297cb75d66d2bdedb90b0fdf4f3f",
+    "install_1": "597650084cbbed93e2f301f5a38152fc40589e736d86d1140c45bcfadaa21687",
+    "install_2": "d3966be02fbe9712a6797f7bfc93299a261f0f9b67867da65ff482571766cbb0",
+    "install_3": "275f9057332d5fba22079ef67728b45b6b3e1794efb24b8467c4721dcff7d2f5",
+    "install_4": "18581873e7868dc0ba63efaaf0e53b28830062241fc52605486d9e17740e0d84",
+    "install_5": "8034ca31a6542bc1e640d78c63797b6b98d3f953d33a8ff1ca02a0fbec3b7b2f",
+    "install_6": "60436bd1808986c19d4f459fdd7987c637fa26137dbcdd455b36d206544fa487",
+    "install_7": "ad17f4a8e90a2935d0cc938b3227acc637fa5e689deeaecd02a0d086114e318b",
+    "repair_0": "8475cd3cdbcf1307cea88948f8ac8f97bde2733d29f3f05188451c1b3bc61a6b",
+    "repair_1": "5733c3c5065a5818d7f2f8ef4b34c572acc6735e49d2b2bb46e198305bad6194",
+    "repair_2": "fcc6c7311cf2701971bf184001731136e67e5677e7bcdecfd8b08daf62942cd2",
+    "repair_3": "56058004adf7fa8131abff32b7350fd68b8c58971c277af696a4c9cd8a2e06e5",
+    "repair_4": "a46d17cf6a0cc83fd75990741093e7febb09d4491fe6de0967665da7a3de5d8d",
+    "repair_5": "e0c59f8d4f210b78ddcc1b46a85404d5c8eeadf29d176525612ab95896a59e19",
+    "upload_0": "9f64078c0e8ba867a1f2586820e7f214fc892d2db9a5491f8d04a30d34cafb0c",
+    "upload_1": "935555e8c09115bd3195a3a58707ab47c9e1be13e4d6e2583ec862a93cbb448b",
+    "upload_2": "f2cc9aaaad2ab54c11735c0775a807e45aeebf6ad8924922c25f7cbc02a93f00",
+    "upload_3": "8e1295df65c83299194edf0b8e9887c9540a121b041dde44f4cfd0b3fb62b43a",
+}
+
+
 def strip_comments(text):
     return re.sub(r'/\*.*?\*/', '', text, flags=re.S)
 
@@ -79,13 +102,14 @@ def main():
     for header, default in (('pet_sprites.h', (48, 48)), ('pet_effects.h', (48, 30))):
         for name, (w, h), data in images(DISPLAY / header, default):
             seen[name] = hashlib.sha256(expand(w, h, data)).hexdigest()
-    missing = set(A8_SHA256) - set(seen)
-    extra = set(seen) - set(A8_SHA256)
-    bad = [n for n in A8_SHA256 if n in seen and seen[n] != A8_SHA256[n]]
+    expected = {**A8_SHA256, **A1_SHA256}
+    missing = set(expected) - set(seen)
+    extra = set(seen) - set(expected)
+    bad = [n for n in expected if n in seen and seen[n] != expected[n]]
     if missing or extra or bad:
         print('missing:', sorted(missing), 'extra:', sorted(extra), 'mismatch:', bad)
         return 1
-    print(f'{len(seen)} images match their 8-bit originals')
+    print(f'{len(seen)} images match their approved binary alpha')
     return 0
 
 
