@@ -140,7 +140,7 @@ The dark green sectors show a one-entry dictionary. The lighter green sectors ar
 ## NiceNano Wiring Diagram
 ![Wiring diagram for NiceNano](assets/NiceNano_wiring_diagram.png)
 
-**Components used in hardwired build**
+**Components used in handwired build**
 * [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
 * [10K ohm Resistor](https://www.amazon.com/dp/B07HDGX5LM)
 * [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
