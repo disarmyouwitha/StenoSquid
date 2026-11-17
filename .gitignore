@@ -1,9 +1,9 @@
 __pycache__/
 
-javelin-steno/
-zmk/
-zephyr/
-lvgl/
+/javelin-steno/
+/zmk/
+/zephyr/
+/lvgl/
 /build/
 
 .DS_Store
