@@ -10,7 +10,7 @@ config ZMK_JAVELIN_STENO
 if ZMK_JAVELIN_STENO
 
 config ZMK_JAVELIN_STENO_EXTERNAL_FLASH
-    bool "Use the Steno Squid's external QSPI Lapwing dictionary"
+    bool "Use the Steno Squid's external QSPI dictionaries"
     depends on SOC_NRF52840 && ZMK_SLEEP && ZMK_SPLIT_ROLE_CENTRAL
     select NRFX_QSPI
     select CRC
@@ -32,8 +32,8 @@ config ZMK_JAVELIN_DIAG
       Adds a boot log that survives a soft reset, a status command, fault
       counters saved across reboots, and wake timing for the external flash.
       Serial commands: S status, D dump the boot log, Z clear log and counters.
-      It compiles in only with the logging snippet. Turn it off, or delete
-      src/steno_squid/flash_diagnostics.c provides the diagnostic counters and log.
+      It compiles only with the logging snippet. The implementation is in
+      src/steno_squid/flash_diagnostics.c.
 
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
