@@ -1,9 +1,33 @@
 # StenoSquid cleanup and engineering spec
 
-Status: **implementation in progress.** Phase 0 is on `cleanup/phase-0`.
+Status: **implemented on the stacked `cleanup/*` branches; hardware acceptance pending.**
 The personal-dictionary redesign is complete and its separate spec was retired.
-P7, P8 and X1 below are superseded; no migration code will be added.
-The owner chose maximally permissive licensing; use 0BSD for first-party code.
+P7, P8 and X1 are superseded. No migration code was added. The owner explicitly
+approved resetting Practice XP/stats for P17's smaller block-based saves.
+First-party code uses 0BSD; upstream dependencies retain their own licenses.
+
+Current verification and intentional exceptions:
+
+- Phases 0, test foundation, 1 and 2 passed every CI firmware/probe build and native test.
+- Phase 3 passes local left/right/diagnostic builds, native power-loss/storage tests,
+  protocol tests and the real LVGL renderer. CI results are tracked per branch.
+- P12 retains full heartbeat snapshots: without a return acknowledgement path, a
+  hash-only heartbeat cannot repair a lost text frame. Unchanged snapshots no
+  longer redraw the screen; ordinary Practice updates carry state without text.
+- P5/P10 expose probe clock and rail-settle controls, but production timing stays
+  at the measured defaults until PCB testing. No unmeasured speedup is claimed.
+- D2/T8 bench tools remain available for first PCB bring-up as requested.
+- T7's first-party tests now include private implementation headers. Only the
+  pinned upstream ZMK layer test extracts functions, using a shared literal-aware
+  parser rather than naïve brace counting.
+- X2 (new fonts), X3 (pruning upstream compilation), X4's generated Windows table
+  and X8 (cropped effect assets) remain optional follow-ups. Approved artwork and
+  text output stay unchanged. X4's sortedness checks and X5 are implemented.
+- The final generic-flash rename is a separate, behaviour-preserving commit.
+- Neither main nor the published v0.1.1 firmware has been replaced during cleanup.
+
+See [development checks](development.md) and [cleanup acceptance](cleanup-acceptance.md).
+
 Reviewed at commit `7908a68` (main), 2026-11-16.
 
 ## 1. Scope
@@ -34,11 +58,10 @@ to gain, better engineering, and cruft to remove.
 - Any item that changes a wire format (host ↔ left half, or left ↔ right half) is called out as **protocol change** and needs both ends flashed together.
 - Settings keys already on users' keyboards (`lapwing/verified`, `lapwing/diag`, `steno_squid/practice/progress`, the Javelin selection keys) keep their names.
 
-**What could not be checked**
+**Original review limitations (resolved during implementation)**
 
-The Javelin fork and Zephyr are not checked out in this working copy, and this
-machine has no C compiler, so nothing here was built or run except the
-pure-Python tests. Items that depend on engine internals are marked
+The original review had no engine/Zephyr checkout or C compiler. Implementation
+uses both pinned dependencies, native C/C++ tests and real firmware builds. Items that depend on engine internals are marked
 *(verify against fork)*. CI is the gate for every phase.
 
 ## 2. Decisions needed before work starts
@@ -206,7 +229,7 @@ Ordered by benefit. P1–P3 are the ones a user can feel.
 
 | ID | Problem | Change |
 |---|---|---|
-| P17 | Each progress save rewrites one 3,624-byte settings value — nearly a whole 4 KB NVS sector — though at most 10 words changed. Entering and leaving a drill without answering still costs a write. The record is copied onto the stack on save and load, which is why both stacks are raised to 8 KB on the RAM-tight left half. The format is at its size ceiling (~315 words). | Split into a small header key plus per-block word keys; save only dirty blocks; don't mark dirty until the first answer; static scratch buffer under the mutex. Needs a one-time migration from the old key. Then re-measure and lower the stack sizes. |
+| P17 | Each progress save rewrites one 3,624-byte settings value — nearly a whole 4 KB NVS sector — though at most 10 words changed. Entering and leaving a drill without answering still costs a write. The record is copied onto the stack on save and load, which is why both stacks are raised to 8 KB on the RAM-tight left half. The format is at its size ceiling (~315 words). | Split into a small header key plus per-block word keys; save only dirty blocks; don't mark dirty until the first answer; static scratch buffer under the mutex. Owner approved a fresh progress record instead of migration code. Then re-measure and lower the stack sizes. |
 
 ### Smaller
 

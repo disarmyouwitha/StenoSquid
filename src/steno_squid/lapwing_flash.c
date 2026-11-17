@@ -129,7 +129,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
                 lf_provisioning_recheck = false;
                 /* Each image already passed a raw CRC. Check the mapped bytes
                  * and native lookups before publishing the new mapping. */
-                mapping_failed = !lf_enable_verified_mapping(&config, false);
+                mapping_failed = !lf_enable_verified_mapping(&config);
                 lf_provisioning_ready = qspi_ok;
                 if (!mapping_failed) {
                     lf_store_trust();

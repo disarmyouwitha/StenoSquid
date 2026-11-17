@@ -9,18 +9,6 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def function(source, name):
-    start = source.index(name)
-    start = source.rfind('\n', 0, start) + 1
-    brace = source.index('{', start)
-    depth = 1
-    end = brace + 1
-    while depth:
-        depth += (source[end] == '{') - (source[end] == '}')
-        end += 1
-    return source[start:end]
-
-
 PREFIX = r'''
 #include <cerrno>
 #include <cassert>
@@ -269,16 +257,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('engine', type=Path)
     args = parser.parse_args()
-    source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text(encoding="utf-8")
-    start = source.index('K_MUTEX_DEFINE(practice_mutex);')
-    end = source.index('static const StenoDictionary *practice_fallback_dictionary()', start)
-    code = PREFIX + source[start:end]
+    code = PREFIX + '#include "practice_state.h"\n'
     code += '\nstatic void practice_refresh_dictionary() { practice.no_dictionary = false; }\n'
-    code += function(source, 'static void practice_switch_drill(') + '\n'
-    code += function(source, 'static bool practice_process_key(') + '\n'
-    receiver = (ROOT / 'src/steno_squid/split_status_display.c').read_text(encoding="utf-8")
-    code += function(receiver, 'static int status_received_locked(') + '\n'
-    code += function(receiver, 'static int status_received(') + '\n'
+    code += '#include "status_receive.h"\n'
     code += CASES
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)

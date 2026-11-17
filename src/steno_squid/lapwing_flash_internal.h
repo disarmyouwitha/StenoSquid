@@ -104,7 +104,7 @@ bool lf_all_verified(void);
 bool lf_image_crc(const struct base_image *image, bool mapped, uint32_t *crc_out,
                   uint32_t *failed_at);
 bool lf_read_image_crc(const struct base_image *image);
-bool lf_enable_verified_mapping(nrfx_qspi_config_t *config, bool quick);
+bool lf_enable_verified_mapping(nrfx_qspi_config_t *config);
 bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed);
 
 /* Opportunistic CRC scrub; all calls hold flash_lock. */

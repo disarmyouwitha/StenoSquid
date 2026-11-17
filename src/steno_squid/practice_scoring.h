@@ -2,7 +2,7 @@
 
 // Private scoring implementation shared with the native test harness.
 /* The first chord follows the displayed learning outline. Both failed strokes
- * restart at the first chord; a separate flag identifies a second-chord error. */
+ * restart at the first chord. */
 static bool practice_first_stroke_correct(const StenoStroke &stroke) {
   const char *outline = steno_squid_multi[practice_prompt()].outline;
   const char *slash = strchr(outline, '/');

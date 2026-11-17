@@ -247,49 +247,28 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/split/split.cc
     )
 
-    # Platform shims (our ZMK implementations)
-    set(ZMK_SHIM_SRC
+    # Upstream sources use the fork's permissive flags; first-party adapters
+    # compile strictly in a separate C++23 library.
+    zephyr_library_named(javelin_steno)
+    zephyr_library_sources(${JAVELIN_CORE_SRC} ${JAVELIN_DICT_SRC} ${JAVELIN_PROC_SRC}
+      ${JAVELIN_HAL_SRC} ${JAVELIN_FONT_SRC} ${JAVELIN_SPLIT_SRC})
+    zephyr_library_compile_options(-fpermissive)
+
+    zephyr_library_named(steno_squid_engine)
+    zephyr_library_sources(
       src/platform/zmk_key_shim.cc
       src/platform/zmk_clock_shim.cc
       src/platform/zmk_flash_shim.cc
       src/platform/zmk_console_shim.cc
       src/platform/zmk_stubs.cc
-    )
-
-    # Engine initialization
-    set(ZMK_INIT_SRC
-      src/engine_init.cc
-    )
+      src/platform/font_stub.cc
+      src/engine_init.cc)
     if(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
-      list(APPEND ZMK_INIT_SRC src/steno_squid/stroke_feed.cc)
+      zephyr_library_sources(src/steno_squid/stroke_feed.cc)
     endif()
     if(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-      list(APPEND ZMK_INIT_SRC src/steno_squid/practice_engine.cc)
+      zephyr_library_sources(src/steno_squid/practice_engine.cc)
     endif()
-
-    # Pure Javelin sources (no ZMK deps) → separate library for C++23
-    set(JAVELIN_LIB_SRC
-      ${JAVELIN_CORE_SRC}
-      ${JAVELIN_DICT_SRC}
-      ${JAVELIN_PROC_SRC}
-      ${JAVELIN_HAL_SRC}
-      ${JAVELIN_FONT_SRC}
-      ${JAVELIN_SPLIT_SRC}
-    )
-
-    # Shims + init (need ZMK headers) → compiled into app target
-    set(ZMK_BRIDGE_SRC
-      ${ZMK_SHIM_SRC}
-      ${ZMK_INIT_SRC}
-    )
-
-    # Build everything as a Zephyr library for C++23.
-    zephyr_library_named(javelin_steno)
-    zephyr_library_sources(${JAVELIN_LIB_SRC})
-    zephyr_library_compile_options(-fpermissive)
-
-    zephyr_library_named(steno_squid_engine)
-    zephyr_library_sources(${ZMK_BRIDGE_SRC} src/platform/font_stub.cc)
     if(CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS)
       zephyr_library_sources(src/platform/macos_us_layout.cc src/platform/windows_us_layout.cc)
     endif()

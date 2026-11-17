@@ -99,8 +99,7 @@ static bool enable_quad_reads(nrfx_qspi_config_t *config) {
            nrfx_qspi_activate(true) == NRFX_SUCCESS;
 }
 
-bool lf_enable_verified_mapping(nrfx_qspi_config_t *config, bool quick) {
-    ARG_UNUSED(quick);
+bool lf_enable_verified_mapping(nrfx_qspi_config_t *config) {
     // Startup and provisioning have already checked each image once through DMA.
     // Native lookups exercise mapped reads without another full-image CRC pass.
     if (config->prot_if.readoc != NRF_QSPI_READOC_READ4O && !enable_quad_reads(config)) return false;
@@ -158,7 +157,7 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed, bool
             magic == JSC4_MAGIC && (quick || lf_read_image_crc(image));
     }
     if (lf_all_verified()) {
-        *mapping_failed = !lf_enable_verified_mapping(config, quick);
+        *mapping_failed = !lf_enable_verified_mapping(config);
     }
     return true;
 }

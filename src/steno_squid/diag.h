@@ -9,8 +9,7 @@
  *   add up across reboots and show whether the retry paths ever run.
  * - wake timing measures how long an idle or resumed flash takes to come back.
  *
- * Everything here compiles away in other builds. To remove it for good, delete
- * diag.c, this file, lapwing_flash_diag.c and the calls to diag_*() in lapwing_flash*.c.
+ * Diagnostics remain available in Left-Diagnostic and compile away elsewhere.
  */
 
 #include <stdbool.h>
@@ -28,8 +27,8 @@ enum diag_event {
     DIAG_POWER_CYCLE,    /* The flash rail was taken down between attempts. */
     DIAG_QUICK_FALLBACK, /* A quick check failed and a full check followed. */
     DIAG_UNAVAILABLE,    /* A bring-up ended with no usable dictionaries. */
-    DIAG_ERASE,          /* An image erase over serial succeeded. */
-    DIAG_PROGRAM,        /* An image was written over serial. */
+    DIAG_ERASE,          /* A base-image erase succeeded. */
+    DIAG_PROGRAM,        /* A base image was written. */
     DIAG_PERSISTED_COUNT,
     /* Since this boot only. */
     DIAG_QUICK_CHECK = DIAG_PERSISTED_COUNT,

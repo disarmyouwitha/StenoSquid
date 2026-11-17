@@ -5,7 +5,7 @@ from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
-from test_practice_menu import function
+from hostlib import extract_c_function
 
 ROOT=Path(__file__).resolve().parents[2]
 PREFIX=r'''
@@ -35,6 +35,8 @@ static zmk_keymap_layers_state_t _zmk_keymap_layer_state = 1, _zmk_keymap_layer_
 static zmk_keymap_layer_id_t _zmk_keymap_layer_default;
 static uint32_t practice_wanted;
 static bool practicing;
+static uintptr_t lapwing_mapped_address() { return 1; }
+static void lapwing_flash_hold(bool) {}
 static bool zmk_javelin_steno_ready() { return true; }
 static void apply_layer();
 static int raise_layer_state_changed(uint8_t, bool, bool) { apply_layer(); return 0; }
@@ -74,7 +76,6 @@ def main():
     parser.add_argument('zmk_app',type=Path)
     args=parser.parse_args()
     keymap=(args.zmk_app/'src/keymap.c').read_text(encoding="utf-8")
-    central=(ROOT/'src/steno_squid/layer_control.c').read_text(encoding="utf-8")
     code=PREFIX
     for signature in ['zmk_keymap_layer_id_t zmk_keymap_layer_index_to_id(',
                       'zmk_keymap_layer_id_t zmk_keymap_layer_default(',
@@ -84,18 +85,17 @@ def main():
                       'zmk_keymap_layer_index_t zmk_keymap_highest_layer_active(',
                       'int zmk_keymap_layer_activate(', 'int zmk_keymap_layer_deactivate(',
                       'int zmk_keymap_layer_to(']:
-        code+=function(keymap,signature)+'\n'
+        code+=extract_c_function(keymap,signature)+'\n'
     code+='''static zmk_keymap_layer_id_t steno_squid_active_layer() {
     return zmk_keymap_layer_index_to_id(zmk_keymap_highest_layer_active());
 }
 static zmk_keymap_layer_id_t active_layer() { return steno_squid_active_layer(); }
 '''
-    for signature in ['static void apply_layer(', 'void steno_squid_practice_toggle(']:
-        code+=function(central,signature)+'\n'
+    code += '#include "layer_apply.h"\n'
     with tempfile.TemporaryDirectory() as tmp:
         path=Path(tmp)
         (path/'entry.cc').write_text(code+CASES, encoding="utf-8")
-        subprocess.run([*host_compiler('c++'),'-std=c++20','-I'+str(ROOT/'include'),
+        subprocess.run([*host_compiler('c++'),'-std=c++20','-I'+str(ROOT/'include'), '-I'+str(ROOT/'src/steno_squid'),
                         str(path/'entry.cc'),'-o',str(path/'entry')],check=True)
         subprocess.run([str(path/'entry')],check=True)
 
