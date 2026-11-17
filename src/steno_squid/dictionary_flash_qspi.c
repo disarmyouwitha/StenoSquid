@@ -202,9 +202,9 @@ static bool prepare_flash_with_retry(nrfx_qspi_config_t *config, bool *mapping_f
     return qspi_ok;
 }
 
-/* Start-up checks the chip ID, image headers and native lookups. Both CRC
- * passes run when no full check is on record for these images, such as the
- * first boot after provisioning, and when the quick check fails.
+/* Start-up checks the chip ID, image headers and native lookups. A full CRC
+ * pass runs when no check is on record for these images, such as the first
+ * boot after provisioning, and when the quick check fails.
  */
 bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     const int64_t started = k_uptime_get();

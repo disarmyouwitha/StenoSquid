@@ -15,8 +15,9 @@ and truncation, HID/BLE ownership, personal-store power-loss recovery and real
 LVGL rendering. Image sizes and CRCs remain fixed. Generated keymaps are checked
 against the committed SVGs.
 
-The left-default build uses 449,476 bytes of internal flash and 207,798 bytes of
-RAM (79.27%). Right-default uses 444,524 bytes of flash and 89,232 bytes of RAM
+The left-default build uses 449,480 bytes of internal flash and 207,798 bytes of
+RAM (79.27%). Diagnostic uses 515,304 bytes of flash and 220,222 bytes of RAM (84.01%).
+Right-default uses 444,524 bytes of flash and 89,232 bytes of RAM
 (34.04%). Compared with phase 2, left RAM drops 3,584 bytes despite adding the
 engine work queue. External flash layout and dictionary contents are unchanged.
 These are linker allocations, not measured runtime peaks.

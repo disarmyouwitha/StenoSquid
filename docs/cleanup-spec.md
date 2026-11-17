@@ -8,9 +8,9 @@ First-party code uses 0BSD; upstream dependencies retain their own licenses.
 
 Current verification and intentional exceptions:
 
-- Phases 0, test foundation, 1 and 2 passed every CI firmware/probe build and native test.
-- Phase 3 passes local left/right/diagnostic builds, native power-loss/storage tests,
-  protocol tests and the real LVGL renderer. CI results are tracked per branch.
+- Phases 0–4 and the test foundation passed every CI firmware/probe build and native test.
+- The final code passes local left/right/diagnostic builds, native power-loss/storage
+  tests, protocol tests and the real LVGL renderer. Later CI results are tracked per branch.
 - P12 retains full heartbeat snapshots: without a return acknowledgement path, a
   hash-only heartbeat cannot repair a lost text frame. Unchanged snapshots no
   longer redraw the screen; ordinary Practice updates carry state without text.

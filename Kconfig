@@ -33,7 +33,7 @@ config ZMK_JAVELIN_DIAG
       counters saved across reboots, and wake timing for the external flash.
       Serial commands: S status, D dump the boot log, Z clear log and counters.
       It compiles in only with the logging snippet. Turn it off, or delete
-      src/steno_squid/flash_diagnostics.c and the diag_*() calls, once debugging is done.
+      src/steno_squid/flash_diagnostics.c provides the diagnostic counters and log.
 
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
