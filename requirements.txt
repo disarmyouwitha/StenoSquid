@@ -1,0 +1,6 @@
+# Python 3.10 or newer. Ordinary USB HID setup/import commands.
+hidapi>=0.14,<1
+# Diagnostic serial commands only.
+pyserial>=3.5,<4
+# Artwork generators and previews only.
+Pillow>=10,<13

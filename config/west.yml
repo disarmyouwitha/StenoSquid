@@ -11,6 +11,11 @@ manifest:
       remote: zmkfirmware
       revision: 4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85
       import: app/west.yml
+    # Override ZMK's mutable Zephyr tag with the tested commit.
+    - name: zephyr
+      remote: zmkfirmware
+      revision: 10ba6d0cb38bc3d258775d27982f707599320085
+      import: true
     # Fork of jthlim/javelin-steno at 2272667, plus the firmware's changes as
     # commits (branch steno-squid).
     - name: javelin-steno

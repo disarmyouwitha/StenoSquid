@@ -8,6 +8,9 @@ from pathlib import Path
 import html
 import hashlib
 import re
+import sys
+
+CHECK = "--check" in sys.argv
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "config/corne.keymap"
@@ -286,14 +289,18 @@ text{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
     content = "\n".join(svg) + "\n"
     digest = hashlib.sha256(content.encode()).hexdigest()[:12]
     target = OUTPUT / f"{filename}-{digest}.svg"
-    target.write_text(content, encoding="utf-8")
     readme = ROOT / "README.md"
     pattern = r"assets/keymap/" + re.escape(filename) + r"(?:-[0-9a-f]{12})?\.svg"
-    readme.write_text(
-        re.sub(pattern, target.relative_to(ROOT).as_posix(), readme.read_text(encoding="utf-8"))
-    , encoding="utf-8")
-    for previous in OUTPUT.glob(f"{filename}-*.svg"):
-        if previous != target:
+    current_readme = readme.read_text(encoding="utf-8")
+    updated_readme = re.sub(pattern, target.relative_to(ROOT).as_posix(), current_readme)
+    obsolete = [path for path in OUTPUT.glob(f"{filename}-*.svg") if path != target]
+    if CHECK:
+        if not target.exists() or target.read_text(encoding="utf-8") != content or obsolete or updated_readme != current_readme:
+            raise SystemExit(f"Keymap render is stale: run python3 tools/render_keymap.py ({filename})")
+    else:
+        target.write_text(content, encoding="utf-8")
+        readme.write_text(updated_readme, encoding="utf-8")
+        for previous in obsolete:
             previous.unlink()
     print(target.relative_to(ROOT))
 

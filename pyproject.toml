@@ -1,0 +1,11 @@
+[project]
+name = "stenosquid-tools"
+version = "0.0.0"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+# Catch syntax errors, undefined names and accidental duplicate definitions.
+# Formatting the existing tools is intentionally a separate change.
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

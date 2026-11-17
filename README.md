@@ -150,4 +150,5 @@ Wire the Adafruit #5634's exposed IO2 and IO3 pads directly.
 
 ## License
 
+StenoSquid’s own code is available under the [0BSD license](LICENSE).
 The Javelin steno engine is licensed under PolyForm Noncommercial 1.0.0. Dependencies and dictionary sources retain their respective licenses. [Javelin license](https://github.com/jthlim/javelin-steno/blob/22726675b2dcf3b8b6ba1e20898f25e324b2260a/LICENSE.txt)
