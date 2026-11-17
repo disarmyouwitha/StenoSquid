@@ -10,7 +10,7 @@ def compiler(language='c++'):
     configured = os.environ.get(variable)
     if configured:
         return shlex.split(configured)
-    choices = ('cc', 'clang', 'gcc') if language == 'c' else ('c++', 'clang++', 'g++')
+    choices = ('cc', 'clang', 'gcc') if language == 'c' else ('clang++', 'c++', 'g++')
     for name in choices:
         if path := shutil.which(name):
             return [path]
