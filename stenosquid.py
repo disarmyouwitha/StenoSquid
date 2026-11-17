@@ -1,4 +1,4 @@
-"""Install the base dictionaries or import a personal Plover JSON file over USB.
+"""Install the base dictionaries, or import or back up a personal Plover JSON file over USB.
 
 With no options it installs every image the firmware knows that is not
 installed yet, from the files under build/. Name one image with --base to
@@ -485,6 +485,8 @@ def main():
                         help="Install and verify bundled dictionaries over wired USB HID")
     parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON",
                         help="Merge a Plover JSON file into the connected keyboard over USB HID")
+    parser.add_argument("--backup", type=Path, metavar="FILE.JSON",
+                        help="Save the keyboard's personal dictionary to a new Plover JSON file over USB HID")
     parser.add_argument("--serial", help="Select a wired USB keyboard by serial number")
     parser.add_argument("image", type=Path, nargs="?",
                         help="JSC4 image for a single --base. Default: the file under build/ "
@@ -504,13 +506,19 @@ def main():
                         help="Collect flash status, rail and wake tests, and the boot log. "
                              "Pass a test name to run it alone.")
     args = parser.parse_args()
-    if args.install or args.personal:
-        if args.install and args.personal or any((args.base, args.image, args.repair, args.verify,
-                                                 args.status, args.diag)):
-            parser.error("--install and --import are standalone actions")
-    if args.serial and (args.port or not (args.personal or args.install or args.repair or
-                                          args.verify or args.status)):
+    if args.install or args.personal or args.backup:
+        if sum(map(bool, (args.install, args.personal, args.backup))) > 1 or any(
+                (args.base, args.image, args.repair, args.verify, args.status, args.diag)):
+            parser.error("--install, --import and --backup are standalone actions")
+    if args.serial and (args.port or not (args.personal or args.backup or args.install or
+                                          args.repair or args.verify or args.status)):
         parser.error("--serial selects a keyboard for a wired USB HID command")
+    if args.backup:
+        if args.port:
+            parser.error("--backup uses USB HID; omit the serial port path")
+        from import_personal import backup_file
+        backup_file(args.backup, args.serial)
+        return
     if args.personal:
         if args.port:
             parser.error("--import uses USB HID; omit the serial port path")
@@ -553,7 +561,8 @@ def main():
                 diag(port, section)
         return
     if not args.port:
-        parser.error("Specify --install, --repair, --verify, --status, --import USER.JSON, or --diag")
+        parser.error("Specify --install, --repair, --verify, --status, --import USER.JSON, "
+                     "--backup FILE.JSON, or --diag")
     if args.image and base == "ALL":
         parser.error("An image path goes with a single --base")
     if args.image and (args.verify or args.status):

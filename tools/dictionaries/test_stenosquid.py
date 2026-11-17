@@ -470,6 +470,22 @@ class UploadTest(unittest.TestCase):
         code, _ = self.run_script(kb, "--diag", "status")
         self.assertIn("CONFIG_ZMK_JAVELIN_DIAG", str(code))
 
+    def test_backup_and_import_dispatch_to_the_personal_dictionary_tool(self):
+        import import_personal
+
+        for action, function in (("--backup", "backup_file"), ("--import", "import_file")):
+            with mock.patch.object(import_personal, function) as call,                     mock.patch.object(stenosquid, "Serial", side_effect=AssertionError("opened serial")),                     mock.patch.object(sys, "argv", ["stenosquid.py", action, "dictionary.json",
+                                                    "--serial", "ABC"]):
+                stenosquid.main()
+            call.assert_called_once_with(Path("dictionary.json"), "ABC")
+
+    def test_backup_stands_alone_and_uses_hid(self):
+        for extra in (["--import", "other.json"], ["--verify"], ["COM1"]):
+            with mock.patch.object(sys, "argv", ["stenosquid.py", "--backup", "b.json", *extra]),                     contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as result:
+                    stenosquid.main()
+            self.assertEqual(result.exception.code, 2)
+
     def test_diag_stands_alone(self):
         code, _ = self.run_script(self.keyboard(), "--diag", "status", "--verify")
         self.assertEqual(code, 2)

@@ -214,8 +214,7 @@ The existing website supplies these controls. Firmware support handles listing, 
 |---|---|---|---|
 | Lapwing Base, 114,885 outlines | `0x000000` | 1,700,488 bytes | `720cfca6` |
 | Plover Base, 147,424 outlines | `0x200000` | 2,178,864 bytes | `14b65522` |
-| Personal snapshot A | `0x600000` | 4 MiB reserved | Per-snapshot CRC |
-| Personal snapshot B | `0xA00000` | 4 MiB reserved | Per-snapshot CRC |
+| Personal dictionary | `0x600000` | 159 segments of 64 KiB (to `0xFEFFFF`) | Per-record CRC; tables rebuildable from records |
 | Diagnostic scratch | `0xFFF000` | 4 KiB reserved | — |
 
 Plover source: [official main.json at the pinned revision](https://github.com/openstenoproject/plover/blob/8a52c5296c502507f9a46820a4a947ca25f998e6/plover/assets/main.json). Source SHA256: `6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92`. Compiled padded image SHA256: `6d74757af03ad1769f6f2d587afcc8957a5486b3e31ed3e20f00410c2624e2c4`.
@@ -229,7 +228,7 @@ python3 stenosquid.py --install
 
 The installer detects the wired HID device and prepares missing images from pinned sources. Use `--serial SERIAL_NUMBER` with multiple USB keyboards connected.
 
-Provisioning checks the complete transfer before programming, reads back each chunk, then checks the raw and mapped CRCs and native Javelin lookups. It writes only inside the configured base regions and rejects conflicting pre-existing bits. Rerun the installer to resume a partial transfer. Personal snapshots stay in place, and Javelin starts once every configured image verifies.
+Provisioning checks the complete transfer before programming, reads back each chunk, then checks the raw and mapped CRCs and native Javelin lookups. It writes only inside the configured base regions and rejects conflicting pre-existing bits. Rerun the installer to resume a partial transfer. The personal dictionary stays in place, and Javelin starts once every configured image verifies.
 
 On Left-Default, `python3 stenosquid.py --repair` checks all configured images
 over wired HID and replaces only the ones that need repair. Use
@@ -285,7 +284,7 @@ python3 stenosquid.py /dev/cu.usbmodem14501 --base lapwing --repair
 
 It never asks a question, so a script or an agent can run it. Passing `--repair` is the confirmation.
 
-The other base and the personal dictionary snapshots are never erased. If a repair is interrupted, the base is left unprovisioned and onboard Javelin shows **No dictionary**; run the same command again.
+The other base and the personal dictionary segments are never erased. If a repair is interrupted, the base is left unprovisioned and onboard Javelin shows **No dictionary**; run the same command again.
 
 ## Flash and check
 
@@ -309,9 +308,9 @@ The left half reads the personal dictionary and its two indexes directly from QS
 
 Install or repair base dictionaries over USB HID with `stenosquid.py --install` or `stenosquid.py --repair`. Serial provisioning is available only in Left-Diagnostic. Export the personal dictionary from Javelin Tools to keep an independent backup.
 
-A 4 MiB slot fits about 90,000 entries at the average record size of the bundled dictionary sources. Capacity varies with outline length and UTF-8 translation size. A large personal dictionary takes longer to save because each edit writes its current contents once. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers one snapshot for the keyboard to verify and commit.
+The personal dictionary region fits about 190,000 entries at the average record size of the bundled dictionary sources. Capacity varies with outline length and UTF-8 translation size. Each add, edit or delete writes only the changed entry, so its cost does not grow with the dictionary; space is reclaimed in the background. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers finished segments for the keyboard to verify and commit.
 
-The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checked interrupted saves, corrupt-snapshot fallback, and write boundaries.
+The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checks power loss at every flash write, recovery from damaged tables, and write boundaries.
 
 The HID transport passed the native Javelin handshake, commands spanning multiple reports, dictionary exports, and two interleaved console channels. The official tools in Chrome connected through **Connect via HID** and saved a translation through the browser. That entry survived a firmware flash and reboot, and deleting it restored Lapwing's translation. The diagnostic build also exposes a USB serial interface. A transport timeout stops the remaining response and aborts a personal export; it does not reuse an in-flight USB buffer. Bluetooth transmits through a separate sleeping worker with a 2 KiB stack, so a stalled Bluetooth send cannot hold the engine lock indefinitely.
 

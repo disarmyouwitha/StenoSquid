@@ -5,7 +5,7 @@
 ✅Javelin onboard steno\
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!\
-📚 Room for ~90,000 personal dictionary entries!
+📚 Room for ~190,000 personal dictionary entries!
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
 (But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
@@ -82,7 +82,17 @@ With the current **Left** firmware connected by USB, close the Javelin browser c
 python3 stenosquid.py --import user.json
 ```
 
-The file's translations win for matching outlines. Other personal entries stay in the dictionary. The importer verifies one complete snapshot before publishing it. Keep USB connected through verification and use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
+The file's translations win for matching outlines. Other personal entries stay in the dictionary. A small change is sent as individual edits. A large one is built into whole flash segments on your computer, uploaded, and checked by the keyboard before it is committed. If the keyboard has no room to keep your current dictionary during the import, the importer first saves the merged dictionary to a timestamped `.backup-*.json` file next to your input, then replaces the keyboard's copy. Keep USB connected through verification and use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
+
+### Back up your dictionary
+
+Keep a copy of your personal dictionary on your computer. With the current **Left** firmware connected by USB, close the Javelin browser connection and run:
+
+```sh
+python3 stenosquid.py --backup dictionary.json
+```
+
+It writes a Plover JSON file and refuses to overwrite an existing one. Restore it later with `--import`.
 
 ## Default Keymap 
 Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-studio)
@@ -119,9 +129,9 @@ https://zmk.studio/
 https://lim.au/#/software/javelin-steno-tools
 
 ## External Memory Map
-The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI and has two 4 MiB snapshot slots. Saves compact the live entries and verify the replacement before switching to it.
+The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI. It uses one region from `0x600000` to `0xFF0000`, split into 159 segments of 64 KiB. Entries are appended to record segments, two hash tables find them by outline and by translation, and a small log says which tables are current. An edit appends one record and writes two table slots instead of rewriting the dictionary, and space from deleted entries is reclaimed one segment at a time. Every record carries a checksum, and the tables can be rebuilt from the records.
 
-![Left half QSPI flash map showing the two personal dictionary snapshots and 3.57 MiB of unallocated sectors](assets/qspi-flash-map.png)
+![Left half QSPI flash map showing the old two-slot personal dictionary layout and 3.57 MiB of unallocated sectors](assets/qspi-flash-map.png)
 
 The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
 

@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Compact personal snapshots occupy 600000..DFFFFF.
+// The personal dictionary's segments occupy 600000..FEFFFF.
 #define PLOVER_FLASH_OFFSET 0x200000U
 // One image holding the smaller Lapwing dictionaries, each with its own
 // checkbox in the browser.

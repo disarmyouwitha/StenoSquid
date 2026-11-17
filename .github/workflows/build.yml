@@ -37,7 +37,7 @@ jobs:
           ./stroke-feed-cpp
 
   # Everything that runs natively: the art, dictionary compiler, Practice logic,
-  # HID transport and personal-dictionary snapshot reader. The pinned Javelin
+  # HID transport and personal-dictionary store. The pinned Javelin
   # engine and ZMK are fetched alone (no west) for the tests that extract
   # functions from them.
   host-tests:
@@ -48,10 +48,13 @@ jobs:
     steps:
       - name: Check out this repository
         uses: actions/checkout@v4
-      - name: Squid art, tiny dictionary and personal dictionary snapshot
+      - name: Squid art, tiny dictionary and personal dictionary
         run: |
           python3 tools/tests/test_sprite_bits.py
           python3 tools/dict_compiler/test_tiny_dict.py
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -I src/steno_squid -o user-dictionary-log tools/tests/test_user_dictionary_log.cc
+          ./user-dictionary-log --quick
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -I src/steno_squid -o user-dictionary-import tools/tests/test_user_dictionary_import.cc
           python3 tools/dictionaries/test_import_personal.py
       - name: Practice logic and HID transport
         run: |
