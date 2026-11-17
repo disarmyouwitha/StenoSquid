@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def main(name, destination, manifest_path=None):
     manifest = Path(manifest_path or ROOT / 'config/west.yml').read_text(encoding="utf-8")
     remotes = dict(re.findall(r'- name: (\w+)\s+url-base: (\S+)', manifest))
-    match = re.search(rf'- name: {re.escape(name)}\s+(?:remote: (\w+)\s+)?revision: (\w+)', manifest)
+    match = re.search(rf'- name: {re.escape(name)}\s+(?:remote: (\w+)\s+)?revision: (\S+)', manifest)
     if not match:
         sys.exit(f'{name} not found in config/west.yml')
     default = re.search(r'defaults:\s+remote: (\w+)', manifest)
