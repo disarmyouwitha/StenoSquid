@@ -18,7 +18,6 @@ bool lapwing_flash_is_powered(void) {
 }
 #endif
 
-#ifdef CONFIG_ZMK_SLEEP
 int lf_power_down_flash(bool initialized) {
     atomic_clear(&lf_mapped_ready);
     lf_suspended = true;
@@ -36,4 +35,3 @@ int lf_power_down_flash(bool initialized) {
 #endif
     return rc;
 }
-#endif

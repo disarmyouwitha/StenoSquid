@@ -179,7 +179,6 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed, bool
     return true;
 }
 
-#ifdef CONFIG_ZMK_SLEEP
 #define BRING_UP_ATTEMPTS 3
 
 /* Takes the rail down for half a second, so the next attempt starts from a
@@ -197,12 +196,6 @@ static void power_cycle_flash(void) {
     diag_note(DIAG_POWER_CYCLE);
     k_msleep(500);
 }
-#else
-#define BRING_UP_ATTEMPTS 1
-
-static void power_cycle_flash(void) {
-}
-#endif
 
 /* A start-up that fails before it reads the images is tried again, a few
  * times, with a power cycle between. Otherwise one glitch, such as a rail

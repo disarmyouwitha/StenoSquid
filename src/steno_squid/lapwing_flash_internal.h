@@ -82,13 +82,10 @@ extern const struct gpio_dt_spec lf_power;
 extern atomic_t lf_powered;
 #endif
 int lf_pins(uint8_t state);
-#ifdef CONFIG_ZMK_SLEEP
 /* Hold flash_lock. Stops QSPI, floats its pins and switches the rail off. */
 int lf_power_down_flash(bool initialized);
-#endif
 
 /* lapwing_flash_pm.c */
-#ifdef CONFIG_ZMK_SLEEP
 extern struct k_mutex flash_lock;
 /* True until the first bring-up, and again whenever the flash is powered down. */
 extern bool lf_suspended;
@@ -98,7 +95,6 @@ extern int64_t lf_last_restart;
 void lf_request_restart(void);
 /* Hold flash_lock. False while a flash operation is still in progress. */
 bool lf_flash_is_idle(bool initialized);
-#endif
 
 /* lapwing_flash_qspi.c */
 extern uint8_t lf_readback[CHUNK_BYTES];
@@ -133,8 +129,6 @@ bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_fai
 /* lapwing_flash_diag.c */
 #if SERIAL_PROVISIONING && defined(CONFIG_ZMK_JAVELIN_DIAG)
 void lf_print_flash_status(void);
-#ifdef CONFIG_ZMK_SLEEP
 void lf_run_bench(uint8_t command, nrfx_qspi_config_t *config, bool *qspi_ok,
                   bool *mapping_failed);
-#endif
 #endif

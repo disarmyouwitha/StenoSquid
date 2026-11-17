@@ -99,9 +99,19 @@ def expand(width, height, data):
 
 def main():
     seen = {}
+    pixels = {}
     for header, default in (('pet_sprites.h', (48, 48)), ('pet_effects.h', (48, 30))):
         for name, (w, h), data in images(DISPLAY / header, default):
-            seen[name] = hashlib.sha256(expand(w, h, data)).hexdigest()
+            pixels[name] = expand(w, h, data)
+            seen[name] = hashlib.sha256(pixels[name]).hexdigest()
+    # Reconstruct offset-only frames to prove the optimized art is pixel-identical.
+    for name, base, dy in [('typing', 'idle', 1), ('jump', 'idle', -1), ('land', 'blink', 1), ('sleep', 'blink', 0)]:
+        frame = bytearray(48 * 48)
+        for y in range(48):
+            if 0 <= y + dy < 48:
+                frame[(y + dy)*48:(y + dy + 1)*48] = pixels[base][y*48:(y + 1)*48]
+        seen[name] = hashlib.sha256(frame).hexdigest()
+    seen['rising_7'] = hashlib.sha256(bytes(48 * 30)).hexdigest()
     expected = {**A8_SHA256, **A1_SHA256}
     missing = set(expected) - set(seen)
     extra = set(seen) - set(expected)

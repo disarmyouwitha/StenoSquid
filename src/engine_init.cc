@@ -13,7 +13,6 @@
 #include "platform/windows_us_layout.h"
 #endif
 #include "processor/all_up.h"
-#include "processor/first_up.h"
 #include "processor/jeff_modifiers.h"
 #include "processor/processor.h"
 #include "processor/repeat.h"
@@ -215,13 +214,11 @@ static bool load_dictionary_collection() {
   new (dictionaryList)
       StenoDictionaryList(static_cast<List<StenoDictionaryListEntry> &&>(entries));
 
-  printk("[JAV] initializing orthography\n");
   new (compiledOrthography) StenoCompiledOrthography(english_orthography);
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
   apply_host_profile();
 #endif
 
-  printk("[JAV] constructing engine\n");
   new (StenoEngine::container) StenoEngine(
       dictionaryList.value,
       nullptr,
@@ -262,7 +259,6 @@ void zmk_javelin_steno_init(void) {
     LOG_WRN("External Lapwing dictionary is unavailable");
     return;
   }
-  printk("[JAV] lazy init start; thread=%s\n", k_thread_name_get(k_current_get()));
 
   // Construct the manager queried by the emitter even though ZMK handles keys.
   alignas(4) static const uint8_t empty_button_script[64] = {0x4a, 0x53, 0x53, 0x34};
@@ -282,7 +278,6 @@ void zmk_javelin_steno_init(void) {
   processor = &processorInstance;
   initialized = true;
 
-  printk("[JAV] processor pipeline ready\n");
   LOG_INF("Steno processor pipeline ready");
 }
 

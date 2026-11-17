@@ -232,10 +232,6 @@ static void practice_switch_drill(int direction) {
 
 #include "practice_scoring.h"
 
-extern "C" uint32_t steno_squid_practice_snapshot(void) {
-  return uint32_t(atomic_get(&practice_screen));
-}
-
 extern "C" void steno_squid_practice_set_active(bool active) {
   if (active) {
     zmk_javelin_steno_init();

@@ -2,7 +2,6 @@
 #include "diag.h"
 #include "w25q_quad.h"
 
-#if SERIAL_PROVISIONING && defined(CONFIG_ZMK_JAVELIN_DIAG)
 #include <hal/nrf_gpio.h>
 
 /* The S command: the flash lifecycle state, then the counters. */
@@ -10,9 +9,7 @@ void lf_print_flash_status(void) {
     int suspended = 0;
     int idle = 0;
     int holding = 0;
-#ifdef CONFIG_ZMK_SLEEP
     suspended = lf_suspended;
-#endif
 #if IDLE_OFF
     idle = atomic_get(&lf_idle_off) != 0;
     holding = atomic_get(&lf_held) != 0;
@@ -40,7 +37,6 @@ void lf_print_flash_status(void) {
     diag_printf(lf_console, "END");
 }
 
-#ifdef CONFIG_ZMK_SLEEP
 /* Bring-up bench: the R and T serial commands. Both hold flash_lock, take the
  * flash down, and leave it powered and checked again when they finish. They
  * can run for tens of seconds, and dictionary lookups wait meanwhile.
@@ -196,6 +192,3 @@ void lf_run_bench(uint8_t command, nrfx_qspi_config_t *config, bool *qspi_ok,
         bring_flash_back(config, qspi_ok, mapping_failed);
     }
 }
-#endif /* CONFIG_ZMK_SLEEP */
-
-#endif /* SERIAL_PROVISIONING && CONFIG_ZMK_JAVELIN_DIAG */

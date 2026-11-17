@@ -4,9 +4,9 @@
 #include "battery_log.h"
 #endif
 
-#ifdef CONFIG_ZMK_SLEEP
 #include <zephyr/pm/device.h>
 
+BUILD_ASSERT(IS_ENABLED(CONFIG_ZMK_SLEEP), "External flash requires sleep support");
 BUILD_ASSERT(!IS_ENABLED(CONFIG_ZMK_EXT_POWER), "The QSPI driver owns the flash power pin");
 K_MUTEX_DEFINE(flash_lock);
 bool lf_suspended = true;
@@ -135,4 +135,3 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
 PM_DEVICE_DEFINE(steno_squid_flash, flash_pm_action);
 DEVICE_DEFINE(steno_squid_flash, "STENO_SQUID_QSPI", NULL, PM_DEVICE_GET(steno_squid_flash), NULL, NULL,
               POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE, NULL);
-#endif /* CONFIG_ZMK_SLEEP */

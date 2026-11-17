@@ -21,7 +21,6 @@ void steno_squid_practice_set_active(bool active);
  * else it selects the steno layer with practice on.
  */
 void steno_squid_practice_toggle(void);
-uint32_t steno_squid_practice_snapshot(void);
 
 struct steno_squid_tape;
 /* Left half: send the last stroke, its translation and the typing speed to the

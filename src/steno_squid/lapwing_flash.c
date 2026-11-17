@@ -114,14 +114,9 @@ static void lapwing_worker(void *a, void *b, void *c) {
     diag_log("Flash worker started\n");
 
     bool mapping_failed = false;
-#ifdef CONFIG_ZMK_SLEEP
     bool qspi_ok = false;
-#else
-    bool qspi_ok = lf_bring_up_flash(&config, &mapping_failed);
-#endif
 
     for (;;) {
-#ifdef CONFIG_ZMK_SLEEP
         if (atomic_get(&lf_restart_requested)) {
             k_mutex_lock(&flash_lock, K_FOREVER);
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
@@ -181,14 +176,13 @@ static void lapwing_worker(void *a, void *b, void *c) {
             k_mutex_unlock(&flash_lock);
         }
 #endif
-#endif
 #if SERIAL_PROVISIONING
         diag_tick();
         if (lf_serial_poll(&config, &qspi_ok, &mapping_failed)) {
             continue;
         }
         k_msleep(10);
-#elif defined(CONFIG_ZMK_SLEEP)
+#else
         /* Nothing to poll. Sleep until something asks for the mapping again,
          * waking now and then only while an idle power-down is still due.
          */
@@ -199,9 +193,6 @@ static void lapwing_worker(void *a, void *b, void *c) {
 #else
         k_sem_take(&lf_restart_wake, K_FOREVER);
 #endif
-#else
-        ARG_UNUSED(qspi_ok);
-        return;
 #endif
     }
 }

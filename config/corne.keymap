@@ -2,6 +2,7 @@
 #include <dt-bindings/zmk/keys.h>
 #include <dt-bindings/zmk/bt.h>
 #include <behaviors/javelin_steno.dtsi>
+#include <behaviors/javelin_practice.dtsi>
 #include <behaviors/plover_hid.dtsi>
 #include <dt-bindings/zmk/hid-io/plover_hid.h>
 #include <dt-bindings/zmk/javelin_steno.h>
@@ -14,39 +15,21 @@
 #define STENO JAVELIN_LAYER_STENO
 #define PLOVER_HID JAVELIN_LAYER_PLOVER_HID
 
-#ifndef CORNE_RIGHT_SYMBOL_THUMBS
-#define CORNE_RIGHT_SYMBOL_THUMBS &none &kp N0 &none
-#endif
+#define CORNE_RIGHT_SYMBOL_THUMBS &none &kp N0 &javpractice
 
-#ifndef CORNE_LEFT_MAIN_THUMBS
 #define CORNE_LEFT_MAIN_THUMBS &kp LCMD &mo SYM_NUM &kp BSPC
-#endif
 
-#ifndef CORNE_RIGHT_MAIN_THUMBS
-#define CORNE_RIGHT_MAIN_THUMBS &kp SPACE &to PLOVER_HID &to STENO
-#endif
+#define CORNE_RIGHT_MAIN_THUMBS &kp SPACE &to STENO &to PLOVER_HID
 
-#ifndef CORNE_RIGHT_STENO_THUMBS
-#define CORNE_RIGHT_STENO_THUMBS &javsteno STENO_E &javsteno STENO_U &to PLOVER_HID
-#endif
+#define CORNE_RIGHT_STENO_THUMBS &javsteno STENO_E &javsteno STENO_U &javpractice
 
-#ifndef CORNE_RIGHT_PLOVER_THUMBS
-#define CORNE_RIGHT_PLOVER_THUMBS &plv PLV_E &plv PLV_U &to STENO
-#endif
+#define CORNE_RIGHT_PLOVER_THUMBS &plv PLV_E &plv PLV_U &javpractice
 
-#ifndef CORNE_LEFT_SYMBOL_ROW_0
-// Voyager LED positions Q/W/R select or clear host Bluetooth profiles.
 #define CORNE_LEFT_SYMBOL_ROW_0 &kp LG(LA(ESC)) &bt BT_SEL 0 &bt BT_SEL 1 &kp UP &bt BT_CLR &none
-#endif
 
-#ifndef CORNE_STENO_SPARE_KEY
-// The unused key left of the Lapwing # key (the one above S) on the steno layer.
 #define CORNE_STENO_SPARE_KEY &none
-#endif
 
-#ifndef CORNE_LEFT_SYMBOL_ROW_1
 #define CORNE_LEFT_SYMBOL_ROW_1 &none &none &kp LEFT &kp DOWN &kp RIGHT &none
-#endif
 
 / {
     chosen {

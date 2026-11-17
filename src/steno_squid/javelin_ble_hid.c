@@ -78,10 +78,7 @@ static ssize_t write_report(struct bt_conn *conn, const struct bt_gatt_attr *att
     return len;
 }
 
-static void subscription_changed(const struct bt_gatt_attr *attr, uint16_t value) {
-    ARG_UNUSED(attr);
-    ARG_UNUSED(value);
-}
+
 
 static ssize_t control_point(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                              const void *buf, uint16_t len, uint16_t offset, uint8_t flags) {
@@ -101,7 +98,7 @@ BT_GATT_SERVICE_DEFINE(javelin_hog,
         BT_GATT_PERM_READ_ENCRYPT, read_map, NULL, NULL),
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
         BT_GATT_PERM_READ_ENCRYPT, read_report, NULL, NULL),
-    BT_GATT_CCC(subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
+    BT_GATT_CCC(NULL, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
     BT_GATT_DESCRIPTOR(BT_UUID_HIDS_REPORT_REF, BT_GATT_PERM_READ_ENCRYPT,
         read_ref, NULL, input_ref),
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT,

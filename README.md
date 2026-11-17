@@ -109,6 +109,8 @@ Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-s
 
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](assets/keymap/javelin-68ed47c7832b.svg)
 
+![Plover layer](assets/keymap/plover-hid-fe80dff10661.svg)
+
 ## ZMK Studio
 ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
 

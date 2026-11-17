@@ -213,20 +213,18 @@ extern "C" bool lapwing_verify_native_dictionary(uintptr_t address) {
   return true;
 }
 
-extern "C" bool plover_verify_native_dictionary(uintptr_t address) {
 #if PLOVER_BYTES > 0
+extern "C" bool plover_verify_native_dictionary(uintptr_t address) {
   if (!plover_base.Load(address, PLOVER_BYTES, "Plover Base", StenoStroke("KAT"), "cat")) {
     return false;
   }
   plover = plover_base.dictionary;
   return true;
-#else
-  return false;
-#endif
 }
+#endif
 
-extern "C" bool extras_verify_native_dictionary(uintptr_t address) {
 #if EXTRAS_BYTES > 0
+extern "C" bool extras_verify_native_dictionary(uintptr_t address) {
   // One entry that only this dictionary holds, so an image whose dictionaries
   // are in a different order from extras_names fails the check.
   const struct {
@@ -251,7 +249,5 @@ extern "C" bool extras_verify_native_dictionary(uintptr_t address) {
     extras[i] = extras_base[i].dictionary;
   }
   return true;
-#else
-  return false;
-#endif
 }
+#endif

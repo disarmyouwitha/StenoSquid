@@ -3,6 +3,7 @@ menu "Javelin Steno Engine"
 config ZMK_JAVELIN_STENO
     bool "Enable Javelin steno engine"
     default n
+    select ZMK_JAVELIN_STENO_EXTERNAL_LAPWING if ZMK_SPLIT_ROLE_CENTRAL
     select CPP
     select REQUIRES_FULL_LIBCPP
 
@@ -10,7 +11,7 @@ if ZMK_JAVELIN_STENO
 
 config ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
     bool "Use the Steno Squid's external QSPI Lapwing dictionary"
-    depends on SOC_NRF52840 && ZMK_SLEEP
+    depends on SOC_NRF52840 && ZMK_SLEEP && ZMK_SPLIT_ROLE_CENTRAL
     select NRFX_QSPI
     select CRC
 
@@ -79,7 +80,7 @@ config ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 
 config ZMK_JAVELIN_STENO_HID_PROVISIONING
     bool "Install base dictionaries over wired USB HID"
-    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY && ZMK_SLEEP
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     depends on !ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
     default y
 

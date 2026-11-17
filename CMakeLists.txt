@@ -44,8 +44,8 @@ if(CONFIG_ZMK_JAVELIN_STENO)
   zephyr_include_directories(include)
   target_sources(app PRIVATE src/behaviors/behavior_javelin_steno.c)
 
-  # Only compile on central side of split keyboards (or non-split)
-  if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+  # The engine runs only on a supported split central.
+  if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 
     # The engine is the javelin-steno fork named in config/west.yml. It carries
     # the firmware's changes as commits, so it is built as it is.
@@ -59,16 +59,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       message(FATAL_ERROR "Javelin engine not found; see config/west.yml")
     endif()
     zephyr_include_directories(${JAVELIN_SRC_DIR})
-    set(JAVELIN_SEGMENT_BUILDER_SRC "${JAVELIN_SRC_DIR}/segment_builder.cc")
-    set(JAVELIN_NORMAL_MODE_SRC "${JAVELIN_SRC_DIR}/engine_normal_mode.cc")
 
-    if(NOT CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-      message(FATAL_ERROR
-        "Onboard Javelin reads its dictionaries from the external QSPI flash: "
-        "enable ZMK_JAVELIN_STENO_EXTERNAL_LAPWING (which needs ZMK_SLEEP)")
-    endif()
-
-    set(JAVELIN_COMPACT_MAP_SRC "${JAVELIN_SRC_DIR}/dictionary/compact_map_dictionary.cc")
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
       if(NOT EXISTS "${ZMK_JAVELIN_LAPWING_IMAGE}")
         message(FATAL_ERROR "Set ZMK_JAVELIN_LAPWING_IMAGE to the mapped Lapwing JSC4 image")
@@ -142,7 +133,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/engine_add_translation_mode.cc
       ${JAVELIN_SRC_DIR}/engine_binding.cc
       ${JAVELIN_SRC_DIR}/engine_console_mode.cc
-      ${JAVELIN_NORMAL_MODE_SRC}
+      ${JAVELIN_SRC_DIR}/engine_normal_mode.cc
       ${JAVELIN_SRC_DIR}/engine.cc
       ${JAVELIN_SRC_DIR}/flash.cc
       ${JAVELIN_SRC_DIR}/hash.cc
@@ -158,7 +149,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/script_byte_code.cc
       ${JAVELIN_SRC_DIR}/script_storage.cc
       ${JAVELIN_SRC_DIR}/script.cc
-      ${JAVELIN_SEGMENT_BUILDER_SRC}
+      ${JAVELIN_SRC_DIR}/segment_builder.cc
       ${JAVELIN_SRC_DIR}/segment.cc
       ${JAVELIN_SRC_DIR}/start_console_command_detector.cc
       ${JAVELIN_SRC_DIR}/state.cc
@@ -184,7 +175,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     # Dictionary sources
     set(JAVELIN_DICT_SRC
       ${JAVELIN_SRC_DIR}/dictionary/cache_dictionary.cc
-      ${JAVELIN_COMPACT_MAP_SRC}
+      ${JAVELIN_SRC_DIR}/dictionary/compact_map_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/debug_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/dictionary_list.cc
       ${JAVELIN_SRC_DIR}/dictionary/dictionary.cc
@@ -205,7 +196,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     # Processor sources
     set(JAVELIN_PROC_SRC
       ${JAVELIN_SRC_DIR}/processor/all_up.cc
-      # javelin/processor/fake_processor.cc  # test-only, uses RUN_TESTS APIs
       ${JAVELIN_SRC_DIR}/processor/first_up.cc
       ${JAVELIN_SRC_DIR}/processor/gemini.cc
       ${JAVELIN_SRC_DIR}/processor/jeff_modifiers.cc

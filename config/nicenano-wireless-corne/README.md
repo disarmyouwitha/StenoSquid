@@ -1,5 +1,7 @@
 # nice!nano wireless Corne configuration
 
+This module supports split central/peripheral keyboards; one-piece boards are not supported.
+
 The handwired Steno Squid left half is the Bluetooth split central and the Corne Ultralight right half is the peripheral. Each half scans its own wiring and reports positions in the same 42-key Corne layout. The left half handles USB typing, host Plover HID, and onboard Javelin from the base dictionaries on the W25Q128.
 
 The split uses the [default keymap](../../README.md#default-keymap). The outer right thumb starts Practice from Javelin or Plover. The outer left thumb returns to Qwerty.

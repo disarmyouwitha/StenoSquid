@@ -41,11 +41,9 @@ void lapwing_flash_ready_changed(void);
 bool lapwing_flash_is_powered(void);
 #endif
 
-#ifdef CONFIG_ZMK_SLEEP
 /* Hold across mapped reads and personal dictionary writes. */
 bool lapwing_flash_acquire(void);
 void lapwing_flash_release(void);
-#endif
 
 #ifdef __cplusplus
 }

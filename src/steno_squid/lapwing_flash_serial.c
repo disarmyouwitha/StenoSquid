@@ -271,7 +271,6 @@ bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_fai
         diag_clear(lf_console);
         return true;
     }
-#ifdef CONFIG_ZMK_SLEEP
     if (command == 'R' || command == 'T') {
         k_mutex_lock(&flash_lock, K_FOREVER);
         lf_run_bench(command, config, qspi_ok, mapping_failed);
@@ -279,14 +278,12 @@ bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_fai
         return true;
     }
 #endif
-#endif
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
     if (command == 'B') {
         steno_squid_battery_log_export(lf_console);
         return true;
     }
 #endif
-#ifdef CONFIG_ZMK_SLEEP
     k_mutex_lock(&flash_lock, K_FOREVER);
 #if IDLE_OFF
     /* A provisioning command needs the flash, so end an idle power-down. */
@@ -302,9 +299,6 @@ bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_fai
         handle_command(command, config, *qspi_ok, mapping_failed);
     }
     k_mutex_unlock(&flash_lock);
-#else
-    handle_command(command, config, *qspi_ok, mapping_failed);
-#endif
     return false;
 }
 

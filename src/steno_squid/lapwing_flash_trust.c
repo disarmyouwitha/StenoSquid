@@ -81,14 +81,8 @@ bool lf_clear_trust(void) {
 }
 #endif
 
-#ifdef CONFIG_ZMK_SLEEP
 bool lf_take_wake_trust(void) {
     NRF_POWER->GPREGRET2 = 0;
     // The retained byte is only a hint; confirm the full image fingerprint.
     return !trust_invalidated && (lf_trusted || lf_stored_trust());
 }
-#else
-bool lf_take_wake_trust(void) {
-    return false;
-}
-#endif

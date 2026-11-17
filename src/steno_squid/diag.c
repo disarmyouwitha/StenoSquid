@@ -1,6 +1,5 @@
 #include "diag.h"
 
-#ifdef CONFIG_ZMK_JAVELIN_DIAG
 
 #include <stdarg.h>
 #include <string.h>
@@ -18,12 +17,7 @@
 #if IS_ENABLED(CONFIG_SETTINGS)
 #include <zephyr/settings/settings.h>
 #endif
-#if __has_include("diag_build_id.h")
 #include "diag_build_id.h"
-#endif
-#ifndef JAVELIN_BUILD_ID
-#define JAVELIN_BUILD_ID "unknown"
-#endif
 
 #define RING_BYTES 1024U
 #define RING_MAGIC 0x4a44494cU
@@ -322,5 +316,3 @@ void diag_clear(const struct device *console) {
 #endif
     diag_printf(console, "CLEARED log and counters");
 }
-
-#endif /* CONFIG_ZMK_JAVELIN_DIAG */

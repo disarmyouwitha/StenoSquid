@@ -18,7 +18,6 @@
 #include "pet_sprites.h"
 #undef PET_IMAGE
 
-BUILD_ASSERT(sizeof(idle_pixels) == A1_STRIDE(PET_SIZE) * PET_SIZE);
 
 #define FX_SIZED_IMAGE(name, width, height)                                                         \
     BUILD_ASSERT(sizeof(name##_pixels) == A1_STRIDE(width) * (height), #name " effect size");               \
@@ -35,6 +34,7 @@ BUILD_ASSERT(sizeof(idle_pixels) == A1_STRIDE(PET_SIZE) * PET_SIZE);
 struct pet_frame {
     const lv_image_dsc_t *image;
     uint16_t duration_ms;
+    int8_t offset_y;
 };
 
 struct pet_animation {
@@ -46,23 +46,23 @@ struct pet_animation {
 };
 
 static const struct pet_frame typing_frames[] = {
-    {&typing_image, 110}, {&idle_image, 110}, {&blink_image, 110}, {&idle_image, 90},
+    {&idle_image, 110, 1}, {&idle_image, 110}, {&blink_image, 110}, {&idle_image, 90},
 };
 /* A little hop that stays between the Waiting and For Left labels. */
 static const struct pet_frame wait_tap_frames[] = {
-    {&blink_image, 80}, {&jump_image, 130}, {&land_image, 100}, {&idle_image, 80},
+    {&blink_image, 80}, {&idle_image, 130, -1}, {&blink_image, 100, 1}, {&idle_image, 80},
 };
 static const int8_t wait_tap_bob[] = {0, -6, 0, 0};
 BUILD_ASSERT(ARRAY_SIZE(wait_tap_bob) == ARRAY_SIZE(wait_tap_frames));
 
 static const struct pet_frame level_up_frames[] = {
-    {&jump_image, 120}, {&spark_image, 180}, {&land_image, 100}, {&blink_image, 120},
+    {&idle_image, 120, -1}, {&spark_image, 180}, {&blink_image, 100, 1}, {&blink_image, 120},
 };
 static const struct pet_frame greeting_frames[] = {
-    {&typing_image, 200}, {&jump_image, 180}, {&idle_image, 600}, {&blink_image, 130},
+    {&idle_image, 200, 1}, {&idle_image, 180, -1}, {&idle_image, 600}, {&blink_image, 130},
 };
 static const struct pet_frame layer_change_frames[] = {
-    {&blink_image, 100}, {&typing_image, 100}, {&idle_image, 120},
+    {&blink_image, 100}, {&idle_image, 100, 1}, {&idle_image, 120},
 };
 static const lv_image_dsc_t *const layer_change_effects[] = {
     &layer_flip_0_image, &layer_flip_1_image, &layer_flip_2_image,
@@ -70,7 +70,7 @@ static const lv_image_dsc_t *const layer_change_effects[] = {
 BUILD_ASSERT(ARRAY_SIZE(layer_change_effects) == ARRAY_SIZE(layer_change_frames));
 
 static const struct pet_frame upload_frames[] = {
-    {&typing_image, 140}, {&jump_image, 140}, {&idle_image, 140}, {&blink_image, 140},
+    {&idle_image, 140, 1}, {&idle_image, 140, -1}, {&idle_image, 140}, {&blink_image, 140},
 };
 static const lv_image_dsc_t *const upload_effects[] = {
     &upload_0_image, &upload_1_image, &upload_2_image, &upload_3_image,
@@ -78,8 +78,8 @@ static const lv_image_dsc_t *const upload_effects[] = {
 BUILD_ASSERT(ARRAY_SIZE(upload_effects) == ARRAY_SIZE(upload_frames));
 
 static const struct pet_frame repair_frames[] = {
-    {&idle_image, 220}, {&jump_image, 200}, {&typing_image, 90},
-    {&land_image, 120}, {&blink_image, 140}, {&idle_image, 280},
+    {&idle_image, 220}, {&idle_image, 200, -1}, {&idle_image, 90, 1},
+    {&blink_image, 120, 1}, {&blink_image, 140}, {&idle_image, 280},
 };
 static const lv_image_dsc_t *const repair_effects[] = {
     &repair_0_image, &repair_1_image, &repair_2_image,
@@ -88,8 +88,8 @@ static const lv_image_dsc_t *const repair_effects[] = {
 BUILD_ASSERT(ARRAY_SIZE(repair_effects) == ARRAY_SIZE(repair_frames));
 
 static const struct pet_frame install_frames[] = {
-    {&idle_image, 250}, {&typing_image, 200}, {&idle_image, 250}, {&typing_image, 200},
-    {&idle_image, 250}, {&typing_image, 200}, {&jump_image, 300}, {&blink_image, 500},
+    {&idle_image, 250}, {&idle_image, 200, 1}, {&idle_image, 250}, {&idle_image, 200, 1},
+    {&idle_image, 250}, {&idle_image, 200, 1}, {&idle_image, 300, -1}, {&blink_image, 500},
 };
 static const lv_image_dsc_t *const install_effects[] = {
     &install_0_image, &install_1_image, &install_2_image, &install_3_image,
@@ -98,12 +98,12 @@ static const lv_image_dsc_t *const install_effects[] = {
 BUILD_ASSERT(ARRAY_SIZE(install_effects) == ARRAY_SIZE(install_frames));
 
 static const struct pet_frame powered_frames[] = {
-    {&idle_image, 220}, {&idle_image, 180}, {&jump_image, 180}, {&idle_image, 180},
+    {&idle_image, 220}, {&idle_image, 180}, {&idle_image, 180, -1}, {&idle_image, 180},
     {&idle_image, 180}, {&blink_image, 130}, {&idle_image, 180}, {&idle_image, 1400},
 };
 static const lv_image_dsc_t *const powered_effects[] = {
     &rising_0_image, &rising_1_image, &rising_2_image, &rising_3_image,
-    &rising_4_image, &rising_5_image, &rising_6_image, &rising_7_image,
+    &rising_4_image, &rising_5_image, &rising_6_image, NULL,
 };
 static const int8_t powered_bob[] = {0, -1, -2, -3, -2, -1, 0, 0};
 BUILD_ASSERT(ARRAY_SIZE(powered_effects) == ARRAY_SIZE(powered_frames));
@@ -150,7 +150,8 @@ static void update_effect(void) {
         lv_image_set_src(effect_image, &sleep_bubble_image);
         lv_obj_set_pos(effect_image, 10, 12);
         lv_obj_remove_flag(effect_image, LV_OBJ_FLAG_HIDDEN);
-    } else if (pet_visible && headroom && animations[state].effects) {
+    } else if (pet_visible && headroom && animations[state].effects &&
+               animations[state].effects[frame_index]) {
         const struct pet_animation *animation = &animations[state];
         lv_image_set_src(effect_image, animation->effects[frame_index]);
         lv_obj_set_pos(effect_image, animation->effect_x, animation->effect_y);
@@ -170,7 +171,7 @@ static void show_frame(void) {
     } else if (state == PET_WAIT_TAP) {
         bob = wait_tap_bob[frame_index];
     }
-    lv_obj_set_y(pet_image, 51 + bob);
+    lv_obj_set_y(pet_image, 51 + bob + frame->offset_y);
     update_effect();
     lv_timer_set_period(frame_timer, frame->duration_ms);
     lv_timer_reset(frame_timer);
@@ -203,8 +204,7 @@ void steno_squid_pet_create(lv_obj_t *parent) {
     lv_obj_remove_style_all(effect_image);
     lv_obj_set_pos(effect_image, 10, 12);
     lv_obj_set_style_image_recolor(effect_image, lv_color_black(), 0);
-    lv_image_set_src(effect_image, &rising_7_image);
-    lv_obj_add_flag(effect_image, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(effect_image, LV_OBJ_FLAG_HIDDEN);
     pet_image = lv_image_create(parent);
     lv_obj_remove_style_all(pet_image);
     lv_obj_set_pos(pet_image, 10, 51);
@@ -245,7 +245,7 @@ void steno_squid_pet_set_state(enum pet_state next) {
     frame_index = 0;
     if (state == PET_IDLE || state == PET_SLEEP) {
         lv_timer_pause(frame_timer);
-        lv_image_set_src(pet_image, state == PET_SLEEP ? &sleep_image : &idle_image);
+        lv_image_set_src(pet_image, state == PET_SLEEP ? &blink_image : &idle_image);
         lv_obj_set_y(pet_image, 51);
         update_effect();
     } else {

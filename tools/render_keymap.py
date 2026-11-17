@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the default split keymap as SVGs using only the Python standard library.
 
-The split profile overrides the shared keymap's CORNE_* binding groups.
+Reads the canonical split keymap and its named binding groups.
 """
 
 from pathlib import Path
@@ -11,7 +11,6 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "config/corne.keymap"
-PROFILE = ROOT / "config/nicenano-wireless-corne/corne.keymap"
 OUTPUT = ROOT / "assets/keymap"
 LAYERS = [
     (
@@ -175,10 +174,7 @@ def key_name(key):
 
 def parse_layers():
     source = re.sub(r"//[^\n]*", "", SOURCE.read_text(encoding="utf-8"))
-    profile = re.sub(r"//[^\n]*", "", PROFILE.read_text(encoding="utf-8"))
-    macros = dict(re.findall(r"^#define (CORNE_\w+) (.+)$", profile, re.M))
-    for name, value in re.findall(r"^#define (CORNE_\w+) (.+)$", source, re.M):
-        macros.setdefault(name, value)
+    macros = dict(re.findall(r"^#define (CORNE_\w+) (.+)$", source, re.M))
     source = re.sub(r"^\s*#.*$", "", source, flags=re.M)
     for name, value in macros.items():
         source = re.sub(r"\b" + re.escape(name) + r"\b", lambda match: value, source)

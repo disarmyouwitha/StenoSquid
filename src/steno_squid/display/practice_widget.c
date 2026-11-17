@@ -260,7 +260,7 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
 
 void steno_squid_practice_widget_update(uint32_t practice) {
     static const char *const drill_names[] = {"WORDS", "LEFT", "RIGHT", "COLUMNS", "Build-Up", "Multi-", "SPEED", "TROUBLE"};
-    static const char *const feedback_names[] = {"READY", "CORRECT", "RETRY", "DONE"};
+    static const char *const feedback_names[] = {"READY", "CORRECT", "RETRY"};
     if (last_practice == practice && !view_dirty) {
         return;
     }
@@ -370,8 +370,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         lv_obj_add_flag(feedback_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(best_label, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text_fmt(best_label, "Best %u", best);
-        snprintf(progress, sizeof(progress), "%u/%u", total, total);
+        progress[0] = 0;
     } else {
         lv_obj_remove_flag(drill_separator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(outline_label, LV_OBJ_FLAG_HIDDEN);

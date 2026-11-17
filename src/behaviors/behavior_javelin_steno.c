@@ -107,10 +107,7 @@ static int on_keymap_binding_released(struct zmk_behavior_binding *binding,
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
-static int behavior_javelin_steno_init(const struct device *dev) {
-    // Lazy initialization on first press, after C++ global constructors.
-    return 0;
-}
+
 
 static const struct behavior_driver_api behavior_javelin_steno_driver_api = {
     .locality = BEHAVIOR_LOCALITY_CENTRAL,
@@ -122,7 +119,7 @@ static const struct behavior_driver_api behavior_javelin_steno_driver_api = {
 };
 
 #define JAVSTENO_INST(n)                                                    \
-    BEHAVIOR_DT_INST_DEFINE(n, behavior_javelin_steno_init, NULL,          \
+    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL,          \
                             NULL, NULL, POST_KERNEL,                        \
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,            \
                             &behavior_javelin_steno_driver_api);
