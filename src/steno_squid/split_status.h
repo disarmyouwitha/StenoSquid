@@ -3,14 +3,7 @@
 #include <stdint.h>
 #include <zephyr/toolchain.h>
 
-#define STENO_SQUID_STATUS_BEHAVIOR "zrst"
-#define STENO_SQUID_STATUS_PROTOCOL 1
-#define STENO_SQUID_HOST_STATUS_PROTOCOL 7
-/* A renamed layer uses the high bit of param2 as its tag. The remaining
- * 63 bits hold nine 7-bit characters, first character in the lowest bits.
- */
-#define STENO_SQUID_LAYER_NAME_PROTOCOL (1u << 31)
-#define STENO_SQUID_LAYER_NAME_CHARS 9
+#include "split_protocol.h"
 
 #ifdef __cplusplus
 extern "C" {

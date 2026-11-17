@@ -1,4 +1,5 @@
 #include "scratch.h"
+#include "w25q_quad.h"
 
 #include <string.h>
 #include <zephyr/kernel.h>
@@ -12,21 +13,7 @@
 static uint8_t page[PAGE_BYTES] __aligned(4);
 static uint8_t readback[PAGE_BYTES] __aligned(4);
 
-static nrfx_err_t wait_until_ready(void)
-{
-	int64_t deadline = k_uptime_get() + 2000;
 
-	do {
-		nrfx_err_t rc = nrfx_qspi_mem_busy_check();
-
-		if (rc != NRFX_ERROR_BUSY) {
-			return rc;
-		}
-		k_msleep(2);
-	} while (k_uptime_get() < deadline);
-
-	return NRFX_ERROR_TIMEOUT;
-}
 
 static nrfx_err_t verify_erased(bool *blank)
 {
@@ -62,7 +49,7 @@ static const char *program_and_read(uint32_t address, nrfx_err_t *rc)
 	if (*rc != NRFX_SUCCESS) {
 		return "FAIL: page program command";
 	}
-	*rc = wait_until_ready();
+	*rc = squid_qspi_wait_ready(2000);
 	if (*rc != NRFX_SUCCESS) {
 		return "FAIL: waiting for page program";
 	}
@@ -92,7 +79,7 @@ static const char *erase_and_verify(nrfx_qspi_config_t *config, nrfx_err_t *rc)
 	if (*rc != NRFX_SUCCESS) {
 		return "FAIL: reconfiguring single-data-line reads";
 	}
-	*rc = wait_until_ready();
+	*rc = squid_qspi_wait_ready(2000);
 	if (*rc != NRFX_SUCCESS) {
 		return "FAIL: waiting before sector erase";
 	}
@@ -101,7 +88,7 @@ static const char *erase_and_verify(nrfx_qspi_config_t *config, nrfx_err_t *rc)
 	if (*rc != NRFX_SUCCESS) {
 		return "FAIL: sector erase command";
 	}
-	*rc = wait_until_ready();
+	*rc = squid_qspi_wait_ready(2000);
 	if (*rc != NRFX_SUCCESS) {
 		return "FAIL: waiting for sector erase";
 	}

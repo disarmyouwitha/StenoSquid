@@ -129,14 +129,7 @@ static const char *custom_layer_name(void) {
 }
 
 static void pack_layer_name(const char *name, struct zmk_behavior_binding *binding) {
-    uint64_t packed = 0;
-    for (int i = 0; i < STENO_SQUID_LAYER_NAME_CHARS && name[i]; i++) {
-        const uint8_t c = name[i];
-        /* The display font has ASCII only. */
-        packed |= (uint64_t)(c >= ' ' && c < 0x7f ? c : '?') << (7 * i);
-    }
-    binding->param1 = (uint32_t)packed;
-    binding->param2 = (uint32_t)(packed >> 32) | STENO_SQUID_LAYER_NAME_PROTOCOL;
+    steno_squid_layer_name_encode(name, &binding->param1, &binding->param2);
 }
 
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
@@ -170,7 +163,7 @@ static void send_status(struct k_work *work) {
         const unsigned length = steno_squid_practice_encode(&view, bytes);
         ++sequence;
         struct zmk_behavior_binding_event event = {.timestamp = k_uptime_get()};
-        for (unsigned part=0; part<(length+4)/5; part++) {
+        for (unsigned part=0; part<(length + STENO_SQUID_PRACTICE_FRAGMENT_BYTES - 1) / STENO_SQUID_PRACTICE_FRAGMENT_BYTES; part++) {
             steno_squid_practice_fragment(bytes, length, sequence, part, &binding.param1, &binding.param2);
             zmk_split_central_invoke_behavior(0, &binding, event, true);
         }

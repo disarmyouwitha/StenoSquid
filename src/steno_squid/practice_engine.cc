@@ -131,7 +131,7 @@ void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) 
       practice.feedback != STENO_SQUID_PRACTICE_DONE) {
     const int64_t left = practice.deadline - k_uptime_get();
     const unsigned seconds = left > 0 ? (left + 999) / 1000 : 0;
-    view->progress |= uint64_t(seconds > STENO_SQUID_SPEED_SECONDS ? STENO_SQUID_SPEED_SECONDS : seconds) << 46;
+    view->progress |= uint64_t(seconds > STENO_SQUID_SPEED_SECONDS ? STENO_SQUID_SPEED_SECONDS : seconds) << PRACTICE_SECONDS_SHIFT;
   }
   if (practice.active && !practice.menu && practice.feedback != STENO_SQUID_PRACTICE_DONE) {
     const unsigned id = practice_prompt();

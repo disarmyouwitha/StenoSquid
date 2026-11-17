@@ -1,4 +1,5 @@
 #pragma once
+#include <zephyr/toolchain.h>
 
 #include <stdint.h>
 #include "practice_types.h"
@@ -313,3 +314,4 @@ static const struct { const char *word; const char *outline; } steno_squid_words
     {"MUSIC", "PHAOUFBG"},
     {"SONG", "SOPBG"},
 };
+BUILD_ASSERT(sizeof(steno_squid_words) / sizeof(steno_squid_words[0]) == STENO_SQUID_WORD_COUNT);

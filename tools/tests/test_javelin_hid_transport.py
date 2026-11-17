@@ -76,7 +76,7 @@ HARNESS = r'''
 #define CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS 1
 #define CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING 1
 #include "stubs.h"
-extern "C" bool zmk_usb_is_hid_ready() { return usb_ready; }
+extern "C" bool steno_squid_usb_hid_ready() { return usb_ready; }
 std::vector<std::string> commands;
 bool console_ready = true;
 std::string provision_command;
@@ -193,32 +193,40 @@ int main() {
     HidWriter stalled(report);
     usb_complete = false;
     stalled.Write("first", 5);
+    stalled.Flush();
     assert(usb_tx.size() == 1);
     const auto flight = usb_tx[0];
     stalled.Write("second", 6);
+    stalled.Flush();
     stalled.Write("third", 5);
+    stalled.Flush();
     assert(stalled.Failed() && usb_tx.size() == 1);
-    assert(!memcmp(transmit_report.bytes, flight.data(), REPORT_BYTES));
+    assert(!memcmp(transmit_report, flight.data(), REPORT_BYTES));
     usb_complete = true;
     input_complete(&dev);
     HidWriter resumed(report);
     resumed.Write("ok", 2);
+    resumed.Flush();
     assert(!resumed.Failed() && usb_tx.size() == 2);
 
     reset();
     HidWriter rejected(report);
     usb_write_result = -EIO;
     rejected.Write("bad", 3);
+    rejected.Flush();
     usb_write_result = 0;
     rejected.Write("again", 5);
+    rejected.Flush();
     assert(rejected.Failed() && usb_tx.empty());
 
     reset(); report.bluetooth = true; report.session = live_session;
     HidWriter wireless(report);
     ble_write_result = -ETIMEDOUT;
     wireless.Write("bad", 3);
+    wireless.Flush();
     ble_write_result = 0;
     wireless.Write("again", 5);
+    wireless.Flush();
     assert(wireless.Failed() && ble_tx.empty());
 
     assert(steno_squid_javelin_ble_receive("x",64,2)==-EINVAL);
@@ -232,7 +240,7 @@ def main():
         root = Path(temp)
         (root / "stubs.h").write_text(STUBS, encoding="utf-8")
         for name in ("console.h", "zephyr/device.h", "zephyr/init.h", "zephyr/kernel.h",
-                     "zephyr/sys/byteorder.h", "zephyr/usb/class/usb_hid.h"):
+                     "zephyr/sys/byteorder.h", "zephyr/usb/class/usb_hid.h", "zmk/usb.h"):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('#include "stubs.h"\n', encoding="utf-8")

@@ -73,8 +73,8 @@ if(CONFIG_ZMK_JAVELIN_STENO)
         "${LAPWING_SRC}/lapwing_flash_qspi.c"
         "${LAPWING_SRC}/lapwing_flash_trust.c"
         "${LAPWING_SRC}/w25q_quad.c")
-      target_sources_ifdef(CONFIG_ZMK_JAVELIN_STENO_SERIAL_PROVISIONING app PRIVATE
-        "${LAPWING_SRC}/lapwing_flash_serial.c")
+      target_sources_ifdef(CONFIG_ZMK_JAVELIN_SERIAL_CONSOLE app PRIVATE
+        "${LAPWING_SRC}/serial_console.c")
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING app PRIVATE
         "${LAPWING_SRC}/lapwing_flash_provision.c")
       if(CONFIG_ZMK_JAVELIN_DIAG)
@@ -231,7 +231,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     # stands in for the glyph tables, which this build never draws.
     set(JAVELIN_FONT_SRC
       ${JAVELIN_SRC_DIR}/font/monochrome/font.cc
-      src/platform/font_stub.cc
     )
 
     # Split sources (ZMK handles split transport, but Javelin split types
@@ -285,26 +284,33 @@ if(CONFIG_ZMK_JAVELIN_STENO)
 
     # Build everything as a Zephyr library for C++23.
     zephyr_library_named(javelin_steno)
-    zephyr_library_sources(${JAVELIN_LIB_SRC} ${ZMK_BRIDGE_SRC})
+    zephyr_library_sources(${JAVELIN_LIB_SRC})
+    zephyr_library_compile_options(-fpermissive)
+
+    zephyr_library_named(steno_squid_engine)
+    zephyr_library_sources(${ZMK_BRIDGE_SRC} src/platform/font_stub.cc)
     if(CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS)
       zephyr_library_sources(src/platform/macos_us_layout.cc src/platform/windows_us_layout.cc)
     endif()
+    foreach(bridge_target IN ITEMS javelin_steno steno_squid_engine)
     # ZMK app headers aren't inherited by libraries — add manually
-    zephyr_library_include_directories(${APPLICATION_SOURCE_DIR}/include)
+    target_include_directories(${bridge_target} PRIVATE ${APPLICATION_SOURCE_DIR}/include)
+    set(ZEPHYR_CURRENT_LIBRARY ${bridge_target})
     zephyr_library_compile_options(
       -std=gnu++23
       -fno-exceptions
       -fno-rtti
       -fno-threadsafe-statics
-      -Wno-invalid-constexpr
-      -fpermissive
     )
-    zephyr_library_compile_definitions(
+    target_compile_definitions(${bridge_target} PRIVATE
       JAVELIN_USE_EMBEDDED_STENO=1
       JAVELIN_PLATFORM_ZEPHYR=1
       JAVELIN_BOARD_CONFIG=<stddef.h>
       M_PI=3.14159265358979323846
     )
+    endforeach()
+    set(ZEPHYR_CURRENT_LIBRARY steno_squid_engine)
+    target_include_directories(javelin_steno PRIVATE "${LAPWING_SRC}")
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
       zephyr_library_sources("${LAPWING_SRC}/lapwing_dictionary.cc")
       zephyr_library_include_directories(
@@ -312,6 +318,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       zephyr_library_compile_definitions(LAPWING_BYTES=${LAPWING_BYTES} PLOVER_BYTES=${PLOVER_BYTES}
         EXTRAS_BYTES=${EXTRAS_BYTES})
       if(CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY)
+        target_sources(app PRIVATE "${LAPWING_SRC}/javelin_usb.c")
         zephyr_library_sources("${LAPWING_SRC}/user_dictionary_store.cc" "${LAPWING_SRC}/javelin_web_hid.cc")
         if(CONFIG_ZMK_JAVELIN_STENO_BLE_HID)
           target_sources(app PRIVATE "${LAPWING_SRC}/javelin_ble_hid.c"

@@ -1,4 +1,5 @@
 #include "screen.h"
+#include "label_fit.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -50,19 +51,15 @@ lv_obj_t *steno_squid_display_label(lv_obj_t *parent, int y, const lv_font_t *fo
     return label;
 }
 
-#define MODE_TEXT_WIDTH 67
+#define MODE_TEXT_WIDTH (STENO_SQUID_TEXT_WIDTH + 1)
 
 static const lv_font_t *const mode_fonts[] = {
     &lv_font_montserrat_20, &lv_font_montserrat_16, &lv_font_montserrat_14,
 };
 
 static const lv_font_t *fit_mode_font(const char *text, size_t length) {
-    for (size_t i = 0; i < sizeof(mode_fonts) / sizeof(mode_fonts[0]); i++) {
-        if (lv_text_get_width(text, length, mode_fonts[i], 0) <= MODE_TEXT_WIDTH) {
-            return mode_fonts[i];
-        }
-    }
-    return NULL;
+    return steno_squid_fit_font(text, length, mode_fonts,
+        sizeof(mode_fonts) / sizeof(mode_fonts[0]), MODE_TEXT_WIDTH);
 }
 
 static void set_mode_label(lv_obj_t *label, const char *text) {
@@ -116,7 +113,7 @@ static void show_mode(const char *title) {
     lv_obj_remove_flag(mode_above, LV_OBJ_FLAG_HIDDEN);
 }
 
-#define TAPE_WIDTH 66
+#define TAPE_WIDTH STENO_SQUID_TEXT_WIDTH
 
 static const lv_font_t *const tape_text_fonts[] = {
     &lv_font_montserrat_20, &lv_font_montserrat_16, &lv_font_montserrat_14,
@@ -135,13 +132,8 @@ static void set_fitted_text(lv_obj_t *label, const char *text, const lv_font_t *
     char buffer[STENO_SQUID_TAPE_STROKE_TEXT_MAX + 8];
     snprintf(buffer, sizeof(buffer), "%s", text);
     size_t length = strlen(buffer);
-    const lv_font_t *font = fonts[font_count - 1];
-    for (size_t i = 0; i < font_count; i++) {
-        if (lv_text_get_width(buffer, length, fonts[i], 0) <= TAPE_WIDTH) {
-            font = fonts[i];
-            break;
-        }
-    }
+    const lv_font_t *font = steno_squid_fit_font(buffer, length, fonts, font_count, TAPE_WIDTH);
+    if (!font) font = fonts[font_count - 1];
     if (lv_text_get_width(buffer, length, font, 0) > TAPE_WIDTH) {
         const int dots = lv_text_get_width("..", 2, font, 0);
         while (length > 1 && lv_text_get_width(buffer, length, font, 0) + dots > TAPE_WIDTH) {

@@ -7,7 +7,7 @@
  * lapwing_flash_pm.c     sleep, idle power-down and the flash lock (ZMK_SLEEP)
  * lapwing_flash_qspi.c   QSPI start-up, retry, CRC checks and mapping
  * lapwing_flash_trust.c  records that allow a quick check
- * lapwing_flash_serial.c serial provisioning (SERIAL_PROVISIONING)
+ * serial_console.c serial provisioning (SERIAL_CONSOLE)
  * lapwing_flash_diag.c   status and bench commands (diag builds)
  */
 
@@ -27,7 +27,7 @@
 #define PAGE_BYTES 256U
 #define CHUNK_BYTES (2U * PAGE_BYTES)
 
-#define SERIAL_PROVISIONING IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_SERIAL_PROVISIONING)
+#define SERIAL_CONSOLE IS_ENABLED(CONFIG_ZMK_JAVELIN_SERIAL_CONSOLE)
 #define IDLE_OFF IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_OFF)
 #if IDLE_OFF
 #define IDLE_OFF_MS (CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS * 1000U)
@@ -38,11 +38,6 @@ struct base_image {
     uint32_t offset;
     uint32_t bytes;
     uint32_t crc;
-    uint8_t command;
-    uint8_t query;
-    uint8_t erase;
-    uint8_t verify;
-    uint8_t info;
     bool verified;
 };
 
@@ -99,7 +94,7 @@ bool lf_flash_is_idle(bool initialized);
 /* lapwing_flash_qspi.c */
 extern uint8_t lf_readback[CHUNK_BYTES];
 extern uint8_t lf_last_jedec[3];
-#if SERIAL_PROVISIONING
+#if SERIAL_CONSOLE
 extern bool lf_last_check_quick;
 extern uint32_t lf_last_check_ms;
 #endif
@@ -112,13 +107,15 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed);
 
 /* lapwing_flash_trust.c */
 uint8_t lf_trust_marker(void);
+void lf_forget_wake_trust(void);
+void lf_leave_wake_trust(void);
 bool lf_stored_trust(void);
 void lf_store_trust(void);
 bool lf_clear_trust(void);
 bool lf_take_wake_trust(void);
 
-/* lapwing_flash_serial.c */
-#if SERIAL_PROVISIONING
+/* serial_console.c */
+#if SERIAL_CONSOLE
 extern const struct device *const lf_console;
 /* Handles one pending serial command. True when the worker should poll again
  * at once instead of sleeping.
@@ -127,7 +124,7 @@ bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_fai
 #endif
 
 /* lapwing_flash_diag.c */
-#if SERIAL_PROVISIONING && defined(CONFIG_ZMK_JAVELIN_DIAG)
+#if SERIAL_CONSOLE && defined(CONFIG_ZMK_JAVELIN_DIAG)
 void lf_print_flash_status(void);
 void lf_run_bench(uint8_t command, nrfx_qspi_config_t *config, bool *qspi_ok,
                   bool *mapping_failed);

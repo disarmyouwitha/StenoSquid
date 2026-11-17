@@ -65,11 +65,12 @@ static inline bool lapwing_flash_acquire(void) {
 static inline void lapwing_flash_ready_changed(void) {}
 static inline bool reactivate_after_xip(void) { return true; }
 static inline void lf_request_restart(void) { assert(flash_lock); restarts++; }
-static inline bool lf_clear_trust(void) { return trust_can_clear; }
+static inline bool lf_clear_trust(void) { lf_trusted = false; power.GPREGRET2 = 0; return trust_can_clear; }
 static inline enum lapwing_flash_state lapwing_flash_status(void) {
     return lf_mapped_ready ? LAPWING_FLASH_READY
                            : lf_checked ? LAPWING_FLASH_UNAVAILABLE : LAPWING_FLASH_LOADING;
 }
+static inline nrfx_err_t squid_qspi_wait_ready(uint32_t timeout) { (void)timeout; return NRFX_SUCCESS; }
 static inline int nrfx_qspi_read(void *out, size_t size, uint32_t offset) {
     assert(flash_lock && offset + size <= sizeof(nor));
     memcpy(out, nor + offset, size);

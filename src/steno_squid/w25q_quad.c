@@ -73,3 +73,13 @@ nrfx_err_t w25q128_enable_volatile_quad(void)
 	}
 	return w25q_set_volatile_sr2(status | W25Q_QUAD_ENABLE);
 }
+
+nrfx_err_t squid_qspi_wait_ready(uint32_t timeout_ms)
+{
+    const int64_t deadline = k_uptime_get() + timeout_ms;
+    nrfx_err_t rc;
+    while ((rc = nrfx_qspi_mem_busy_check()) == NRFX_ERROR_BUSY && k_uptime_get() < deadline) {
+        k_msleep(1);
+    }
+    return rc;
+}

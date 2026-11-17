@@ -9,6 +9,8 @@
 extern "C" {
 #endif
 
+nrfx_err_t squid_qspi_wait_ready(uint32_t timeout_ms);
+
 /* Status Register 2 bit that routes IO2 and IO3 to the data lines. */
 #define W25Q_QUAD_ENABLE BIT(1)
 

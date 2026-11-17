@@ -64,12 +64,8 @@ static void refresh_status(struct k_work *work) {
     const unsigned shown = atomic_get(&mode);
     char name[STENO_SQUID_LAYER_NAME_CHARS + 1] = {0};
     if (shown == MODE_LAYER_NAME) {
-        const uint64_t packed = (uint64_t)(uint32_t)atomic_get(&layer_name_high) << 32 |
-                                (uint32_t)atomic_get(&layer_name_low);
-        for (int i = 0; i < STENO_SQUID_LAYER_NAME_CHARS; i++) {
-            const char ch = (packed >> (7 * i)) & 0x7f;
-            name[i] = ch >= 0x20 && ch <= 0x7e ? ch : 0;
-        }
+        steno_squid_layer_name_decode((uint32_t)atomic_get(&layer_name_low),
+                                      (uint32_t)atomic_get(&layer_name_high), name);
     }
     k_spinlock_key_t progress_key = k_spin_lock(&progress_lock);
     const uint32_t practice = atomic_get(&practice_screen);

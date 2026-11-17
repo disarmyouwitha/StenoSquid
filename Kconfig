@@ -15,8 +15,8 @@ config ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
     select NRFX_QSPI
     select CRC
 
-config ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
-    bool "Provision base dictionaries over the USB logging serial port"
+config ZMK_JAVELIN_SERIAL_CONSOLE
+    bool "Diagnostic commands on the USB logging serial port"
     depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_USB_LOGGING
     help
       Enable from the diagnostic build's logging.conf with the zmk-usb-logging
@@ -24,7 +24,7 @@ config ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
 
 config ZMK_JAVELIN_DIAG
     bool "Diagnostics on the logging serial port"
-    depends on ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
+    depends on ZMK_JAVELIN_SERIAL_CONSOLE
     select HWINFO
     default y
     help
@@ -81,7 +81,6 @@ config ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 config ZMK_JAVELIN_STENO_HID_PROVISIONING
     bool "Install base dictionaries over wired USB HID"
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-    depends on !ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
     default y
 
 config ZMK_JAVELIN_STENO_BLE_HID
@@ -93,7 +92,7 @@ config ZMK_JAVELIN_STENO_BLE_HID
 
 config ZMK_JAVELIN_BATTERY_LOG
     bool "Record Steno Squid battery samples in a dedicated internal flash partition"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_JAVELIN_SERIAL_CONSOLE
     depends on ZMK_BLE && FLASH_MAP && HWINFO
     select FCB
     default n

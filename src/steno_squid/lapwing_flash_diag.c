@@ -60,12 +60,6 @@ static void take_flash_down(void) {
 
 static void bring_flash_back(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_failed) {
     *qspi_ok = lf_bring_up_flash(config, mapping_failed);
-    lf_suspended = false;
-#if IDLE_OFF
-    lf_note_use();
-    atomic_clear(&lf_idle_off);
-#endif
-    lapwing_flash_ready_changed();
 }
 
 /* Microseconds until the sense pin reads the wanted level, or -1 on timeout.

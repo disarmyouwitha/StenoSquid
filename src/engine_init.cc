@@ -28,6 +28,7 @@
 #include <new>
 
 #include "javelin_engine_lock.h"
+#include "javelin_hid_transport.h"
 #include "lapwing_dictionary.h"
 #include "lapwing_flash.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
@@ -57,6 +58,10 @@ static bool initialized = false;
 // snapshots. A fresh keyboard starts with Lapwing. Personal=1, Lapwing=2,
 // Plover=4, then the Lapwing extras from bit 3 up.
 #define EXTRAS_SELECTION_SHIFT 3
+static constexpr uint8_t PERSONAL_SELECTION = 1;
+static constexpr uint8_t LAPWING_SELECTION = 2;
+static constexpr uint8_t PLOVER_SELECTION = 4;
+static_assert(EXTRAS_SELECTION_SHIFT + EXTRAS_DICTIONARY_COUNT <= 7);
 #define EXTRAS_SELECTION_BIT(index) (uint8_t(1) << (EXTRAS_SELECTION_SHIFT + (index)))
 // Commands, numbers and proper nouns start on. UK additions start off.
 #define EXTRAS_SELECTION_DEFAULT                                                                   \
@@ -142,11 +147,11 @@ static void select_dictionary(void *, const char *line) {
   ++name;
   uint8_t bit = 0;
   if (strcmp(name, "user_dictionary") == 0) {
-    bit = 1;
+    bit = PERSONAL_SELECTION;
   } else if (strcmp(name, "Lapwing Base") == 0) {
-    bit = 2;
+    bit = LAPWING_SELECTION;
   } else if (strcmp(name, "Plover Base") == 0 && plover_dictionary()) {
-    bit = 4;
+    bit = PLOVER_SELECTION;
   }
   for (size_t i = 0; !bit && i < EXTRAS_DICTIONARY_COUNT; i++) {
     if (extras_dictionary(i) && strcmp(name, extras_dictionary_name(i)) == 0) {
@@ -195,7 +200,7 @@ static bool load_dictionary_collection() {
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
   auto *personal = steno_squid_user_dictionary_open();
   if (personal) {
-    entries.Add(StenoDictionaryListEntry(personal, dictionary_selection & 1));
+    entries.Add(StenoDictionaryListEntry(personal, dictionary_selection & PERSONAL_SELECTION));
   }
 #endif
   // The Lapwing extras rank above the bases, in the order Plover gives them.
@@ -205,10 +210,10 @@ static bool load_dictionary_collection() {
           extra, dictionary_enabled(EXTRAS_SELECTION_BIT(i), i != EXTRAS_UK_ADDITIONS)));
     }
   }
-  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), dictionary_enabled(2, true)));
+  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), dictionary_enabled(LAPWING_SELECTION, true)));
   if (auto *plover = plover_dictionary()) {
     // Personal overrides remain first. Fresh settings default to Lapwing.
-    entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(4, false)));
+    entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(PLOVER_SELECTION, false)));
   }
 
   new (dictionaryList)
@@ -226,20 +231,14 @@ static bool load_dictionary_collection() {
       StenoStroke(StrokeMask::STAR),  // undo stroke = *
       nullptr);
 
-  // Register console commands
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
-  Console::instance.RegisterCommand("get_parameter", "Read host layout parameters",
-                                    get_host_parameter, nullptr);
-  Console::instance.RegisterCommand("set_host_layout", "Set and save the host layout",
-                                    set_host_profile, nullptr);
-#endif
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-  Console::instance.RegisterCommand("enable_dictionary", "Enable and save selection",
-                                    select_dictionary, nullptr);
-  Console::instance.RegisterCommand("disable_dictionary", "Disable and save selection",
-                                    select_dictionary, nullptr);
-  Console::instance.RegisterCommand("toggle_dictionary", "Toggle and save selection",
-                                    select_dictionary, nullptr);
+#define UPSTREAM_COMMAND(name)
+#define ENGINE_COMMAND(name, help, handler) Console::instance.RegisterCommand(name, help, handler, nullptr);
+#define USER_COMMAND(name, help, handler, usb_only)
+#include "steno_squid/console_commands.def"
+#undef UPSTREAM_COMMAND
+#undef ENGINE_COMMAND
+#undef USER_COMMAND
   steno_squid_user_dictionary_register(Console::instance, dictionaryList.value);
 #endif
   StenoEngine::container.value.AddConsoleCommands(Console::instance);

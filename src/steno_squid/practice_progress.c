@@ -147,11 +147,9 @@ uint64_t steno_squid_practice_progress(void) {
     k_mutex_lock(&progress_mutex, K_FOREVER);
     const struct steno_squid_word_run *run = &model.run;
     const unsigned average = run->timed_count ? run->response_ds / run->timed_count : 0;
-    const uint64_t packed = (uint64_t)model.record.xp |
-        ((uint64_t)run->first_try << 20) | ((uint64_t)run->errors << 24) |
-        ((uint64_t)(average > 511 ? 511 : average) << 30) |
-        ((uint64_t)run->earned << 39) |
-        ((uint64_t)(steno_squid_trouble_count(&model.record) == 0) << 53);
+    const uint64_t packed = steno_squid_practice_pack_progress(model.record.xp,
+        run->first_try, run->errors, average, run->earned,
+        steno_squid_trouble_count(&model.record) == 0);
     k_mutex_unlock(&progress_mutex);
     return packed;
 }

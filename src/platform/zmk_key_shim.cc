@@ -6,7 +6,7 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-extern "C" int zmk_javelin_emit_keycode(uint16_t usage_page, uint32_t keycode, bool pressed);
+#include "zmk_javelin_steno/zmk_platform_shim.h"
 
 static constexpr uint16_t HID_USAGE_PAGE_KEYBOARD = 0x07;
 static constexpr uint16_t HID_USAGE_PAGE_CONSUMER = 0x0C;

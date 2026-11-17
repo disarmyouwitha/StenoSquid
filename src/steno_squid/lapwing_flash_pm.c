@@ -78,7 +78,7 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
     if (action == PM_DEVICE_ACTION_RESUME) {
         // ZMK aborted power-off and rolled back device suspension. Let the
         // worker restore the same mapping before allowing new flash access.
-        NRF_POWER->GPREGRET2 = 0;
+        lf_forget_wake_trust();
         lf_request_restart();
         return 0;
     }
@@ -121,7 +121,7 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
         // A failing suspend is not on ZMK's resume list.
         lf_request_restart();
     } else if (lf_trusted) {
-        NRF_POWER->GPREGRET2 = lf_trust_marker();
+        lf_leave_wake_trust();
     }
     k_mutex_unlock(&flash_lock);
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG

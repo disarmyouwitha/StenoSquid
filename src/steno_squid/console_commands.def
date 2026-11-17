@@ -1,0 +1,18 @@
+/* The command names, registrations and transport allowlist share this table. */
+UPSTREAM_COMMAND("hello")
+UPSTREAM_COMMAND("list_dictionaries")
+ENGINE_COMMAND("enable_dictionary", "Enable and save selection", select_dictionary)
+ENGINE_COMMAND("disable_dictionary", "Disable and save selection", select_dictionary)
+ENGINE_COMMAND("toggle_dictionary", "Toggle and save selection", select_dictionary)
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
+ENGINE_COMMAND("get_parameter", "Read host layout parameters", get_host_parameter)
+ENGINE_COMMAND("set_host_layout", "Set and save the host layout", set_host_profile)
+#endif
+USER_COMMAND("lookup_stroke", "Look up an outline in the dictionaries", lookup_outline, false)
+USER_COMMAND("user_dictionary_status", "Read personal dictionary usage", store_status, false)
+USER_COMMAND("user_dictionary_verify", "Check every personal dictionary record", store_verify, false)
+USER_COMMAND("user_dictionary_rebuild", "Rebuild personal dictionary lookup tables", store_rebuild, false)
+USER_COMMAND("user_dictionary_import", "Import personal dictionary segments", bulk_import, true)
+USER_COMMAND("add_user_entry", "Save a personal translation", add_entry, false)
+USER_COMMAND("remove_user_entry", "Remove a personal translation", remove_entry, false)
+USER_COMMAND("reset_user_dictionary", "Clear personal translations", reset_entries, false)

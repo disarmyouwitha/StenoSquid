@@ -1,6 +1,7 @@
 #include "lapwing_flash_internal.h"
 #include "diag.h"
 #include "w25q_quad.h"
+#include "xip_load.h"
 
 #include <string.h>
 #include <zephyr/drivers/pinctrl.h>
@@ -11,7 +12,7 @@
 uint8_t lf_readback[CHUNK_BYTES] __aligned(4);
 /* The last chip ID read, for the status command. */
 uint8_t lf_last_jedec[3];
-#if SERIAL_PROVISIONING
+#if SERIAL_CONSOLE
 bool lf_last_check_quick;
 uint32_t lf_last_check_ms;
 #endif
@@ -68,11 +69,7 @@ bool lf_image_crc(const struct base_image *image, bool mapped, uint32_t *crc_out
         const size_t size = MIN(CHUNK_BYTES, image->bytes - offset);
 
         if (mapped) {
-            for (size_t index = 0; index < size; index += sizeof(uint32_t)) {
-                const uint32_t word = window[(offset + index) / sizeof(uint32_t)];
-                __DSB();
-                memcpy(lf_readback + index, &word, sizeof(word));
-            }
+            copy_xip_bytes(lf_readback, (const void *)(window + offset / sizeof(uint32_t)), size);
         } else if (nrfx_qspi_read(lf_readback, size, image->offset + offset) != NRFX_SUCCESS) {
             if (failed_at) {
                 *failed_at = offset;
@@ -255,8 +252,17 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     diag_log("External flash %s after %s check in %d ms\n",
              atomic_get(&lf_mapped_ready) ? "mapped" : "unavailable", quick ? "quick" : "full",
              (int)(k_uptime_get() - started));
+    lf_suspended = false;
+#if IDLE_OFF
+    lf_note_use();
+    atomic_clear(&lf_idle_off);
+#endif
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+    lf_provisioning_ready = qspi_ok;
+#endif
     atomic_set(&lf_checked, 1);
-#if SERIAL_PROVISIONING
+    lapwing_flash_ready_changed();
+#if SERIAL_CONSOLE
     lf_last_check_quick = quick;
     lf_last_check_ms = (uint32_t)(k_uptime_get() - started);
 #endif

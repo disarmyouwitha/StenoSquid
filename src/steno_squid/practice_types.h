@@ -60,12 +60,26 @@ enum steno_squid_practice_feedback {
     STENO_SQUID_PRACTICE_DONE,
 };
 
-static inline unsigned steno_squid_practice_first_try(uint64_t progress) { return (progress >> 20) & 15u; }
-static inline unsigned steno_squid_practice_errors(uint64_t progress) { return (progress >> 24) & 63u; }
-static inline unsigned steno_squid_practice_average(uint64_t progress) { return (progress >> 30) & 511u; }
-static inline unsigned steno_squid_practice_xp_earned(uint64_t progress) { return (progress >> 39) & 127u; }
-static inline bool steno_squid_practice_no_trouble(uint64_t progress) { return (progress >> 53) & 1u; }
-static inline unsigned steno_squid_practice_seconds(uint64_t progress) { return (progress >> 46) & 31u; }
+enum {
+    PRACTICE_FIRST_TRY_SHIFT = 20, PRACTICE_ERRORS_SHIFT = 24,
+    PRACTICE_AVERAGE_SHIFT = 30, PRACTICE_EARNED_SHIFT = 39,
+    PRACTICE_SECONDS_SHIFT = 46, PRACTICE_NO_TROUBLE_SHIFT = 53,
+};
+static inline uint64_t steno_squid_practice_pack_progress(uint32_t xp, unsigned first_try,
+        unsigned errors, unsigned average, unsigned earned, bool no_trouble) {
+    return (uint64_t)xp | ((uint64_t)first_try << PRACTICE_FIRST_TRY_SHIFT) |
+        ((uint64_t)errors << PRACTICE_ERRORS_SHIFT) |
+        ((uint64_t)(average > 511 ? 511 : average) << PRACTICE_AVERAGE_SHIFT) |
+        ((uint64_t)earned << PRACTICE_EARNED_SHIFT) |
+        ((uint64_t)no_trouble << PRACTICE_NO_TROUBLE_SHIFT);
+}
+
+static inline unsigned steno_squid_practice_first_try(uint64_t progress) { return (progress >> PRACTICE_FIRST_TRY_SHIFT) & 15u; }
+static inline unsigned steno_squid_practice_errors(uint64_t progress) { return (progress >> PRACTICE_ERRORS_SHIFT) & 63u; }
+static inline unsigned steno_squid_practice_average(uint64_t progress) { return (progress >> PRACTICE_AVERAGE_SHIFT) & 511u; }
+static inline unsigned steno_squid_practice_xp_earned(uint64_t progress) { return (progress >> PRACTICE_EARNED_SHIFT) & 127u; }
+static inline bool steno_squid_practice_no_trouble(uint64_t progress) { return (progress >> PRACTICE_NO_TROUBLE_SHIFT) & 1u; }
+static inline unsigned steno_squid_practice_seconds(uint64_t progress) { return (progress >> PRACTICE_SECONDS_SHIFT) & 31u; }
 static inline uint32_t steno_squid_practice_xp(uint64_t progress) { return progress & 0xfffffu; }
 
 /* The hand-drill prompts. The tables live inside the function so that only a

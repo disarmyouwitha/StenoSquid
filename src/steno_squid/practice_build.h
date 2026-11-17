@@ -1,4 +1,5 @@
 #pragma once
+#include <zephyr/toolchain.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -16,6 +17,8 @@ static const struct {
     {"TEN", {"T", "TE", "TEPB"}},   {"RED", {"R", "RE", "RED"}},
     {"TOP", {"T", "TO", "TOP"}},    {"FAN", {"TP", "TPA", "TPAPB"}},
 };
+BUILD_ASSERT(sizeof(steno_squid_build) / sizeof(steno_squid_build[0]) == STENO_SQUID_BUILD_COUNT);
+
 
 /* Keep the scoring outlines canonical; add a visual hand separator after the
  * last vowel when right-hand consonants follow it. */

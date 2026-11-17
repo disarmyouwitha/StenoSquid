@@ -20,15 +20,7 @@ static struct {
 
 static uint8_t incoming[CHUNK_BYTES] __aligned(4);
 
-static bool wait_until_ready(void) {
-    const int64_t deadline = k_uptime_get() + 2000;
-    nrfx_err_t rc;
 
-    while ((rc = nrfx_qspi_mem_busy_check()) == NRFX_ERROR_BUSY && k_uptime_get() < deadline) {
-        k_msleep(1);
-    }
-    return rc == NRFX_SUCCESS;
-}
 
 static bool erase_base(const struct base_image *image) {
     /* The image table is fixed. Every base starts on a sector boundary. */
@@ -36,7 +28,7 @@ static bool erase_base(const struct base_image *image) {
 
     for (uint32_t address = image->offset; address < end; address += SECTOR_BYTES) {
         if (nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_4KB, address) != NRFX_SUCCESS ||
-            !wait_until_ready()) {
+            squid_qspi_wait_ready(2000) != NRFX_SUCCESS) {
             return false;
         }
     }
@@ -78,7 +70,7 @@ static const char *transfer_data(uint32_t offset, const char *hex, size_t length
                 continue;
             }
             if (nrfx_qspi_write(incoming + i, page, image->offset + offset + i) != NRFX_SUCCESS ||
-                !wait_until_ready()) {
+                squid_qspi_wait_ready(2000) != NRFX_SUCCESS) {
                 return "ERR Flash write failed";
             }
         }
@@ -95,7 +87,6 @@ static const char *transfer_data(uint32_t offset, const char *hex, size_t length
             return "ERR Could not clear the saved flash verification record";
         }
         lf_trusted = false;
-        NRF_POWER->GPREGRET2 = 0;
         if (transfer.repair && !erase_base(image)) {
             return "ERR Base erase failed. Rerun repair for this base";
         }
@@ -171,8 +162,7 @@ static const char *handle_command(const char *command, char *reply, size_t reply
                 return "ERR Base repair requires a readable checksum mismatch and writable settings";
             }
             lf_trusted = false;
-            NRF_POWER->GPREGRET2 = 0;
-            image->verified = false;
+                image->verified = false;
             lapwing_flash_ready_changed();
         }
         transfer.image = image;

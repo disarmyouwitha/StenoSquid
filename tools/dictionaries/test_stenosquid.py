@@ -28,11 +28,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.modules.setdefault("serial", types.SimpleNamespace(Serial=object))
 import stenosquid  # noqa: E402
 
-LETTERS = {
-    "LAPWING": dict(zip(b"?LEVI", ["query", "program", "erase", "verify", "info"])),
-    "PLOVER": dict(zip(b"pPevi", ["query", "program", "erase", "verify", "info"])),
-    "EXTRAS": dict(zip(b"xXKkn", ["query", "program", "erase", "verify", "info"])),
-}
 DIAG_REPLIES = {
     b"S": ["BUILD abc", "[b1 2.0] noise", "FLASH mapped=1", "END", "after"],
     b"D": ["LOG BEGIN 10 bytes", "[b1 0.1] x", "LOG END"],
@@ -63,75 +58,14 @@ class FakeTime:
 
 
 class Keyboard:
-    def __init__(self, images, installed=(), damaged=()):
-        self.images = {}
-        for name, data in images.items():
-            self.images[name] = {
-                "data": data, "size": len(data), "crc": zlib.crc32(data),
-                "state": "VERIFIED" if name in installed else "UNPROVISIONED",
-                "damaged": name in damaged,
-            }
+    def __init__(self, *args, **kwargs):
         self.out = collections.deque()
-        self.phase = None
-        self.received = 0
-        self.log = []
         self.sent = []
-
-    def say(self, name, text, value):
-        self.out.append(f"{name} {text} {value}\r\n".encode())
-
-    def mapped(self):
-        return all(i["state"] == "VERIFIED" for i in self.images.values())
 
     def write(self, data):
         self.sent.append(data)
-        if self.phase:
-            name, kind = self.phase
-            image = self.images[name]
-            assert len(data) <= stenosquid.CHUNK_BYTES
-            offset = self.received
-            assert image["data"][offset:offset + len(data)] == data, "chunk differs from image"
-            self.received += len(data)
-            self.say(name, "ACK", self.received)
-            if self.received == image["size"]:
-                self.received = 0
-                if kind == "PREFLIGHT":
-                    self.phase = (name, "WRITE")
-                    self.say(name, "WRITE", image["size"])
-                else:
-                    self.phase = None
-                    image["state"] = "VERIFIED"
-                    self.say(name, "MAPPED" if self.mapped() else "VERIFIED", image["size"])
-            return
-        assert len(data) == 1, data
-        if data in DIAG_REPLIES:
-            for line in DIAG_REPLIES[data]:
-                self.out.append((line + "\r\n").encode())
-            return
-        for name, image in self.images.items():
-            action = LETTERS[name].get(data[0])
-            if not action:
-                continue
-            self.log.append((name, action))
-            if action == "info":
-                self.say(name, "SIZE", image["size"])
-                self.say(name, "CRC", image["crc"])
-            elif action == "query":
-                self.say(name, "MAPPED" if self.mapped() else image["state"], image["size"])
-            elif action == "program":
-                assert image["state"] == "UNPROVISIONED", f"{name} was written over data"
-                self.phase = (name, "PREFLIGHT")
-                self.say(name, "PREFLIGHT", image["size"])
-            elif action == "verify":
-                if image["damaged"]:
-                    self.say(name, "VERIFY_MISMATCH", image["crc"] ^ 1)
-                else:
-                    self.say(name, "VERIFY_OK", image["crc"])
-            elif action == "erase":
-                image["state"] = "UNPROVISIONED"
-                image["damaged"] = False
-                self.say(name, "ERASE", 256 * 1024)
-                self.say(name, "ERASED", image["size"])
+        for line in DIAG_REPLIES.get(data, []):
+            self.out.append((line + "\r\n").encode())
 
     def readline(self):
         return self.out.popleft() if self.out else b""
@@ -188,30 +122,6 @@ class UploadTest(unittest.TestCase):
     def programmed(self, keyboard):
         return [n for n, a in keyboard.log if a == "program"]
 
-    def test_fresh_keyboard_gets_every_image(self):
-        kb = self.keyboard()
-        code, _ = self.run_script(kb)
-        self.assertIsNone(code)
-        self.assertEqual(self.programmed(kb), ["LAPWING", "PLOVER", "EXTRAS"])
-        self.assertTrue(kb.mapped())
-
-    def test_install_prepares_missing_images_and_verifies_all(self):
-        self.paths["EXTRAS"].unlink()
-        kb = self.keyboard(installed=("LAPWING",))
-        with mock.patch.object(stenosquid, "prepare_base") as prepare:
-            prepare.side_effect = lambda name, _: self.paths[name].write_bytes(self.images[name])
-            code, _ = self.run_script(kb, "--install")
-        self.assertIsNone(code)
-        prepare.assert_called_once_with("EXTRAS", (len(self.images["EXTRAS"]), zlib.crc32(self.images["EXTRAS"])))
-        self.assertEqual(self.programmed(kb), ["PLOVER", "EXTRAS"])
-        self.assertEqual([n for n, action in kb.log if action == "verify"], list(self.images))
-
-    def test_install_checks_all_files_before_any_write(self):
-        self.paths["EXTRAS"].write_bytes(make_image(9))
-        kb = self.keyboard()
-        code, _ = self.run_script(kb, "--install")
-        self.assertIn("is not the EXTRAS image", str(code))
-        self.assertEqual(self.programmed(kb), [])
 
     def test_default_install_uses_hid_and_prepares_images_before_writing(self):
         import import_personal
@@ -374,78 +284,6 @@ class UploadTest(unittest.TestCase):
         self.assertEqual(diag.call_args_list, [mock.call(port, part)
                                                for part in ("status", "log", "rail", "bench")])
 
-    def test_installed_images_are_left_alone(self):
-        kb = self.keyboard(installed=("LAPWING", "PLOVER", "EXTRAS"))
-        code, text = self.run_script(kb)
-        self.assertIsNone(code)
-        self.assertEqual(self.programmed(kb), [])
-        self.assertEqual(text.count("already installed"), 3)
-
-    def test_only_the_missing_image_is_written(self):
-        kb = self.keyboard(installed=("LAPWING", "PLOVER"))
-        self.run_script(kb)
-        self.assertEqual(self.programmed(kb), ["EXTRAS"])
-
-    def test_firmware_without_extras_is_skipped(self):
-        kb = self.keyboard(names=("LAPWING", "PLOVER"))
-        code, text = self.run_script(kb)
-        self.assertIsNone(code)
-        self.assertIn("EXTRAS: not part of this firmware, skipped", text)
-        self.assertEqual(self.programmed(kb), ["LAPWING", "PLOVER"])
-
-    def test_wrong_image_file_is_refused_before_any_write(self):
-        self.paths["PLOVER"].write_bytes(make_image(9))
-        kb = self.keyboard()
-        code, text = self.run_script(kb)
-        self.assertIn("is not the PLOVER image this firmware was built for", str(code))
-        self.assertNotIn("PLOVER", [n for n, a in kb.log if a == "program"])
-
-    def test_status_reads_only(self):
-        kb = self.keyboard(installed=("LAPWING",))
-        code, text = self.run_script(kb, "--status")
-        self.assertIsNone(code)
-        self.assertIn("LAPWING: VERIFIED", text)
-        self.assertIn("PLOVER: UNPROVISIONED", text)
-        self.assertEqual([a for _, a in kb.log if a in ("program", "erase")], [])
-
-    def test_verify_passes_and_writes_nothing(self):
-        kb = self.keyboard(installed=("LAPWING", "PLOVER", "EXTRAS"))
-        code, text = self.run_script(kb, "--verify")
-        self.assertEqual(code, 0)
-        self.assertEqual(text.count(": OK, CRC32"), 3)
-        self.assertEqual([a for _, a in kb.log if a in ("program", "erase")], [])
-
-    def test_verify_reports_a_damaged_image_with_exit_code_1(self):
-        kb = self.keyboard(installed=("LAPWING", "PLOVER", "EXTRAS"), damaged=("PLOVER",))
-        code, text = self.run_script(kb, "--verify")
-        self.assertEqual(code, 1)
-        self.assertIn("PLOVER: FAILED", text)
-
-    def test_repair_erases_then_rewrites_one_base(self):
-        kb = self.keyboard(installed=("LAPWING", "PLOVER", "EXTRAS"), damaged=("PLOVER",))
-        code, _ = self.run_script(kb, "--repair", "--base", "plover")
-        self.assertIsNone(code)
-        self.assertEqual([(n, a) for n, a in kb.log if a in ("erase", "program")],
-                         [("PLOVER", "erase"), ("PLOVER", "program")])
-        self.assertEqual(kb.images["PLOVER"]["state"], "VERIFIED")
-
-    def test_repair_with_wrong_image_erases_nothing(self):
-        self.paths["PLOVER"].write_bytes(make_image(9))
-        kb = self.keyboard(installed=("LAPWING", "PLOVER", "EXTRAS"))
-        with self.assertRaises(RuntimeError) as caught:
-            self.run_script(kb, "--repair", "--base", "plover")
-        self.assertIn("Nothing was erased", str(caught.exception))
-        self.assertEqual([a for _, a in kb.log if a == "erase"], [])
-
-    def test_serial_repair_needs_a_single_base(self):
-        code, _ = self.run_script(self.keyboard(), "--repair")
-        self.assertEqual(code, 2)
-
-    def test_single_base_upload_by_image_path(self):
-        kb = self.keyboard()
-        code, _ = self.run_script(kb, "--base", "lapwing", str(self.paths["LAPWING"]))
-        self.assertIsNone(code)
-        self.assertEqual(self.programmed(kb), ["LAPWING"])
 
     def test_diag_commands_stop_at_their_end_line(self):
         for what, letter in (("status", b"S"), ("log", b"D"), ("clear", b"Z"),

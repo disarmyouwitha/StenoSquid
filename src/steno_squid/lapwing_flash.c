@@ -19,12 +19,12 @@ BUILD_ASSERT(EXTRAS_FLASH_OFFSET + EXTRAS_BYTES <= BASE_DICTIONARY_LIMIT);
 #endif
 
 struct base_image lf_images[IMAGE_COUNT] = {
-    {"LAPWING", 0, LAPWING_BYTES, LAPWING_CRC, 'L', '?', 'E', 'V', 'I'},
+    {"LAPWING", 0, LAPWING_BYTES, LAPWING_CRC},
 #if PLOVER_BYTES > 0
-    {"PLOVER", PLOVER_FLASH_OFFSET, PLOVER_BYTES, PLOVER_CRC, 'P', 'p', 'e', 'v', 'i'},
+    {"PLOVER", PLOVER_FLASH_OFFSET, PLOVER_BYTES, PLOVER_CRC},
 #endif
 #if EXTRAS_BYTES > 0
-    {"EXTRAS", EXTRAS_FLASH_OFFSET, EXTRAS_BYTES, EXTRAS_CRC, 'X', 'x', 'K', 'k', 'n'},
+    {"EXTRAS", EXTRAS_FLASH_OFFSET, EXTRAS_BYTES, EXTRAS_CRC},
 #endif
 };
 
@@ -140,16 +140,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
             if (atomic_cas(&lf_restart_requested, 1, 0) && lf_suspended) {
                 lf_last_restart = k_uptime_get();
                 qspi_ok = lf_bring_up_flash(&config, &mapping_failed);
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
-                lf_provisioning_ready = qspi_ok;
-#endif
-                lf_suspended = false;
-#if IDLE_OFF
-                lf_note_use();
-                atomic_clear(&lf_idle_off);
-#endif
-                lapwing_flash_ready_changed();
-#if SERIAL_PROVISIONING
+#if SERIAL_CONSOLE
                 diag_wake_ready(atomic_get(&lf_mapped_ready) != 0, lf_last_check_quick,
                                 lf_last_check_ms);
 #endif
@@ -176,7 +167,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
             k_mutex_unlock(&flash_lock);
         }
 #endif
-#if SERIAL_PROVISIONING
+#if SERIAL_CONSOLE
         diag_tick();
         if (lf_serial_poll(&config, &qspi_ok, &mapping_failed)) {
             continue;

@@ -1,5 +1,6 @@
 #include "console.h"
 #include "javelin_hid_transport.h"
+#include "console_commands.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
 #include "lapwing_flash_provision.h"
 #endif
@@ -14,11 +15,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/usb/class/usb_hid.h>
 
-extern "C" bool zmk_usb_is_hid_ready(void);
 
-// False when the engine could not take the command, so nothing was written.
-bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer,
-                                      bool (*cancelled)(void *), void *context);
 
 namespace {
 BUILD_ASSERT(CONFIG_USB_HID_DEVICE_COUNT >= 3, "Javelin needs the third USB HID interface");
@@ -32,7 +29,7 @@ struct Report {
     uint32_t session = 0;
 };
 K_MSGQ_DEFINE(received_reports, sizeof(Report), 40, 4);
-alignas(4) Report transmit_report;
+alignas(4) uint8_t transmit_report[REPORT_BYTES];
 
 constexpr uint8_t descriptor[] = {JAVELIN_HID_REPORT_MAP};
 
@@ -77,61 +74,62 @@ public:
 
     bool Failed() const { return failed; }
 
+    ~HidWriter() { Flush(); }
+
     void Write(const char *text, size_t size) override {
-        if (failed) return;
-        if (bluetooth) {
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BLE_HID
-            while (size && !failed) {
-                uint8_t packet[REPORT_BYTES]{};
-                const size_t count = MIN(size, REPORT_BYTES);
-                memcpy(packet, text, count);
-                if (steno_squid_javelin_ble_send(packet, sizeof(packet), session) != 0) {
-                    failed = true;
-                    return;
-                }
-                text += count;
-                size -= count;
-            }
-#endif
-            return;
-        }
-        while (size && hid && zmk_usb_is_hid_ready()) {
-            // A timeout does not transfer ownership of an in-flight buffer.
-            // Stop this response and wait for completion/disconnect to free it.
-            if (k_sem_take(&transmit_ready, K_SECONDS(2)) != 0) {
-                failed = true;
-                return;
-            }
-            memset(transmit_report.bytes, 0, sizeof(transmit_report.bytes));
-            const size_t count = MIN(size, REPORT_BYTES);
-            memcpy(transmit_report.bytes, text, count);
-            const int rc = hid_int_ep_write(hid, transmit_report.bytes,
-                                            sizeof(transmit_report.bytes), nullptr);
-            if (rc != 0) {
-                k_sem_give(&transmit_ready);
-                failed = true;
-                return;
-            }
+        while (size && !failed) {
+            const size_t count = MIN(size, REPORT_BYTES - used);
+            memcpy(pending + used, text, count);
+            used += count;
             text += count;
             size -= count;
+            if (used == REPORT_BYTES) Flush();
         }
-        if (size) failed = true;
+    }
+
+    void Flush() {
+        if (!used || failed) return;
+        memset(pending + used, 0, REPORT_BYTES - used);
+        if (bluetooth) {
+#ifdef CONFIG_ZMK_JAVELIN_STENO_BLE_HID
+            failed = steno_squid_javelin_ble_send(pending, REPORT_BYTES, session) != 0;
+#else
+            failed = true;
+#endif
+        } else if (!hid || !steno_squid_usb_hid_ready() ||
+                   k_sem_take(&transmit_ready, K_SECONDS(2)) != 0) {
+            failed = true;
+        } else {
+            // The endpoint owns this buffer until completion, even after a timeout.
+            memcpy(transmit_report, pending, REPORT_BYTES);
+            if (hid_int_ep_write(hid, transmit_report, REPORT_BYTES, nullptr) != 0) {
+                k_sem_give(&transmit_ready);
+                failed = true;
+            }
+        }
+        used = 0;
     }
 private:
     bool bluetooth;
     uint32_t session;
     bool failed = false;
+    uint8_t pending[REPORT_BYTES];
+    size_t used = 0;
 };
 
-bool is_command(const char *line, const char *name) {
-    const size_t size = strlen(name);
-    return strncmp(line, name, size) == 0 &&
-           (line[size] == ' ' || line[size] == '\n' || line[size] == '\0');
+static int parse_channel(const uint8_t *line, size_t length) {
+    return length >= 4 && line[0] == 'c' && line[1] >= '0' && line[1] <= '9' &&
+           line[2] >= '0' && line[2] <= '9' && line[3] == ' '
+        ? 10 * (line[1] - '0') + line[2] - '0' : -1;
+}
+static void reply_error(HidWriter &writer, const char *line, bool channel, const char *message) {
+    if (channel) writer.Write(line, 4);
+    writer.Write(message, strlen(message));
 }
 
 void dispatch(char *line, size_t size, HidWriter &writer) {
-    const bool channel = size > 4 && line[0] == 'c' && line[1] >= '0' && line[1] <= '9' &&
-                         line[2] >= '0' && line[2] <= '9' && line[3] == ' ';
+    struct FlushResponse { HidWriter &writer; ~FlushResponse() { writer.Flush(); } } flush{writer};
+    const bool channel = parse_channel(reinterpret_cast<const uint8_t *>(line), size) >= 0;
     const char *command = line + (channel ? 4 : 0);
     if (strcmp(command, "start_javelin_console\n") == 0 || strcmp(command, "\n") == 0) {
         return;
@@ -154,25 +152,7 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
     }
 #endif
 
-    // Expose dictionary operations and selection of built-in host layouts.
-    const char *allowed[] = {"hello", "list_dictionaries", "lookup_stroke",
-                             "add_user_entry", "remove_user_entry", "reset_user_dictionary",
-                             "user_dictionary_status", "user_dictionary_verify",
-                             "user_dictionary_rebuild",
-                             "enable_dictionary", "disable_dictionary", "toggle_dictionary",
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
-                             "get_parameter", "set_host_layout",
-#endif
-    };
-    // The Active Dictionaries page updates its checkboxes from status events
-    // after an enable/disable reply. Allow its subscription over this HID link.
-    bool forward = strcmp(command, "print_dictionary user_dictionary\n") == 0 ||
-                   strcmp(command, "enable_events dictionary_status\n") == 0 ||
-                   strcmp(command, "disable_events dictionary_status\n") == 0;
-    for (const char *name : allowed) {
-        forward = forward || is_command(command, name);
-    }
-    forward = forward || (writer.IsUsb() && is_command(command, "user_dictionary_import"));
+    const bool forward = steno_squid_console_command_allowed(command, writer.IsUsb());
     if (forward) {
         const bool handled = steno_squid_javelin_console_line(
             line, size, writer,
@@ -180,13 +160,9 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
         if (handled) return;
     }
 
-    if (channel) {
-        writer.Write(line, 4);
-    }
-    // Always answer, so the browser never waits on a command that was dropped.
-    const char *message = forward ? "ERR Dictionary flash is not ready\n\n"
-                                  : "ERR Command unavailable on this keyboard\n\n";
-    writer.Write(message, strlen(message));
+    // Always answer, so the browser never waits on a dropped command.
+    reply_error(writer, line, channel, forward ? "ERR Dictionary flash is not ready\n\n"
+                                              : "ERR Command unavailable on this keyboard\n\n");
 }
 
 struct CommandBuffer {
@@ -215,7 +191,7 @@ void hid_worker(void *, void *, void *) {
     Report report;
 
     for (;;) {
-        if (!zmk_usb_is_hid_ready()) {
+        if (!steno_squid_usb_hid_ready()) {
             k_sem_give(&transmit_ready);
         }
         bool partial = false;
@@ -223,7 +199,7 @@ void hid_worker(void *, void *, void *) {
             if (buffer.channel == -2) {
                 continue;
             }
-            if ((!buffer.bluetooth && !zmk_usb_is_hid_ready()) ||
+            if ((!buffer.bluetooth && !steno_squid_usb_hid_ready()) ||
                 k_uptime_get() - buffer.last_packet > 5000) {
                 reset_buffer(buffer);
             } else {
@@ -244,7 +220,7 @@ void hid_worker(void *, void *, void *) {
 #else
             continue;
 #endif
-        } else if (!zmk_usb_is_hid_ready()) {
+        } else if (!steno_squid_usb_hid_ready()) {
             k_sem_give(&transmit_ready);
             continue;
         }
@@ -252,11 +228,9 @@ void hid_worker(void *, void *, void *) {
 
         const auto *bytes = report.bytes;
         size_t length = sizeof(report.bytes);
-        int channel = -1;
-        const bool has_channel = bytes[0] == 'c' && bytes[1] >= '0' && bytes[1] <= '9' &&
-                                 bytes[2] >= '0' && bytes[2] <= '9' && bytes[3] == ' ';
+        const int channel = parse_channel(bytes, length);
+        const bool has_channel = channel >= 0;
         if (has_channel) {
-            channel = 10 * (bytes[1] - '0') + bytes[2] - '0';
             bytes += 4;
             length -= 4;
         }

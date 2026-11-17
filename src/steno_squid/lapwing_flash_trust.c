@@ -86,3 +86,10 @@ bool lf_take_wake_trust(void) {
     // The retained byte is only a hint; confirm the full image fingerprint.
     return !trust_invalidated && (lf_trusted || lf_stored_trust());
 }
+
+void lf_forget_wake_trust(void) {
+    NRF_POWER->GPREGRET2 = 0;
+}
+void lf_leave_wake_trust(void) {
+    NRF_POWER->GPREGRET2 = lf_trusted ? lf_trust_marker() : 0;
+}
