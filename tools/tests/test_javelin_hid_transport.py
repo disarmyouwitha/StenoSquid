@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the real console transport worker with native USB/BLE driver doubles."""
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
@@ -236,7 +237,7 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('#include "stubs.h"\n', encoding="utf-8")
         (root / "test.cc").write_text(HARNESS, encoding="utf-8")
-        subprocess.run(["c++", "-std=c++20", "-I", str(root), "-I",
+        subprocess.run([*host_compiler('c++'), "-std=c++20", "-I", str(root), "-I",
                         str(ROOT / "src/steno_squid"), str(root / "test.cc"),
                         "-o", str(root / "test")], check=True)
         subprocess.run([str(root / "test")], check=True)

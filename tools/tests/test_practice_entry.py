@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test Practice layer entry against the pinned ZMK layer-lock implementation."""
 import argparse
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
@@ -93,7 +94,7 @@ static zmk_keymap_layer_id_t active_layer() { return steno_squid_active_layer();
     with tempfile.TemporaryDirectory() as tmp:
         path=Path(tmp)
         (path/'entry.cc').write_text(code+CASES, encoding="utf-8")
-        subprocess.run(['clang++','-std=c++20','-I'+str(ROOT/'include'),
+        subprocess.run([*host_compiler('c++'),'-std=c++20','-I'+str(ROOT/'include'),
                         str(path/'entry.cc'),'-o',str(path/'entry')],check=True)
         subprocess.run([str(path/'entry')],check=True)
 

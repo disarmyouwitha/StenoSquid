@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the bounded BLE transmitter with delayed completion and driver errors."""
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
@@ -97,7 +98,7 @@ def main():
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text('#include "stubs.h"\n', encoding="utf-8")
         (path / 'test.cc').write_text(HARNESS, encoding="utf-8")
-        subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
+        subprocess.run([*host_compiler('c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror',
                         '-Wno-unused-parameter', '-I', folder, '-I', str(ROOT / 'src/steno_squid'),
                         str(path / 'test.cc'), '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)

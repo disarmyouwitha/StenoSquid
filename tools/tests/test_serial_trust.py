@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fault-inject trust invalidation in the real diagnostic write helpers."""
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
@@ -46,7 +47,7 @@ int main(void) {
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder)
         (path / 'test.c').write_text(STUB.replace('#pragma once', '') + harness, encoding="utf-8")
-        subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
+        subprocess.run([*host_compiler('c'), '-std=c11', '-Wall', '-Wextra', '-Werror',
                         '-Wno-unused-function', '-Wno-unused-variable', '-Wno-unused-parameter',
                         str(path / 'test.c'), '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)

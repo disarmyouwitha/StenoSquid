@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the wired provisioning state machine against an in-memory NOR chip."""
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import shutil
 import subprocess
@@ -92,8 +93,13 @@ static inline int nrfx_qspi_erase(int kind, uint32_t offset) {
 static inline int nrfx_qspi_mem_busy_check(void) { return NRFX_SUCCESS; }
 /* The stub needs only an incremental checksum for transfer-state tests. */
 static inline uint32_t crc32_ieee_update(uint32_t crc, const uint8_t *data, size_t size) {
-    for (size_t i = 0; i < size; i++) crc = crc * 31 + data[i];
-    return crc;
+    crc = ~crc;
+    for (size_t i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (int bit = 0; bit < 8; bit++)
+            crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320U : 0);
+    }
+    return ~crc;
 }
 static inline bool lf_image_crc(const struct base_image *img, bool mapped,
                                 uint32_t *crc, uint32_t *failed_at) {
@@ -131,6 +137,7 @@ static void expect(const char *command, const char *prefix) {
 }
 
 int main(void) {
+    assert(crc32_ieee_update(0, (const uint8_t *)"123456789", 9) == 0xcbf43926U);
     const uint8_t lapwing[] = {1,2,3,4,5,6,7,8,9,10,11,12};
     const uint8_t plover[] = {13,14,15,16};
     const char *first = "data 0 0102030405060708\n";
@@ -248,7 +255,7 @@ static inline void steno_squid_upload_status(enum steno_squid_mode mode, uint32_
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
         (root / "test.c").write_text(HARNESS, encoding="utf-8")
-        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", temp,
+        subprocess.run([*host_compiler('c'), "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", temp,
                         str(root / "test.c"), "-o", str(root / "test")], check=True)
         subprocess.run([str(root / "test")], check=True)
     print("PASS: base provisioning preflight, interrupted retry, image bounds, checksum-gated repair, and final recheck")

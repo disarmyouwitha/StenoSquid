@@ -226,41 +226,10 @@ def upload_all(port, paths):
 
 def prepare_base(name, expected=None, output_path=None):
     path = output_path or DEFAULT_IMAGES[name]
-    env = os.environ.copy()
-    # Python.org macOS installs may lack an OpenSSL certificate bundle.
-    system_certs = Path("/etc/ssl/cert.pem")
-    context = None
-    if (sys.platform == "darwin" and not ssl.get_default_verify_paths().cafile
-            and not env.get("SSL_CERT_FILE") and system_certs.is_file()):
-        env["SSL_CERT_FILE"] = str(system_certs)
-        context = ssl.create_default_context(cafile=system_certs)
-    if name in ("PLOVER", "EXTRAS"):
-        subprocess.run([sys.executable, str(DICTIONARY_TOOLS / f"prepare_{name.lower()}.py"),
-                        "--output-dir", str(path.parent)], check=True, env=env)
-        return
-
-    from prepare_extras import URL
-    path.parent.mkdir(parents=True, exist_ok=True)
-    source_path = path.with_suffix(".json")
-    with urlopen(URL + source_path.name, timeout=60, context=context) as response:
-        source = response.read()
-    if hashlib.sha256(source).hexdigest() != "2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484":
-        raise RuntimeError("Pinned Lapwing source checksum mismatch.")
-    source_path.write_bytes(source)
-    command = [sys.executable, str(REPO / "tools/dict_compiler/compile_dict.py"),
-               str(source_path), "--base-addr", "0x12000000", "-o", str(path)]
-    subprocess.run(command + ["--name", "lapwing-base"], check=True)
-    image = path.read_bytes()
-    if expected and (len(image), zlib.crc32(image)) != expected:
-        # Local builds have also used the display name inside the same image.
-        fallback = path.with_suffix(".alternate.bin")
-        try:
-            subprocess.run(command + ["-n", "Lapwing Base", "-o", str(fallback)], check=True)
-            candidate = fallback.read_bytes()
-            if (len(candidate), zlib.crc32(candidate)) == expected:
-                fallback.replace(path)
-        finally:
-            fallback.unlink(missing_ok=True)
+    from prepare import prepare
+    prepared = prepare(name, path.parent)
+    if prepared != path:
+        prepared.replace(path)
 
 
 def install(port):

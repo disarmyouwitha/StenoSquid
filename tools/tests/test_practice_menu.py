@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the actual Practice input/state code with native scheduler doubles."""
 import argparse
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
@@ -283,7 +284,7 @@ def main():
         (directory / 'zephyr').mkdir()
         (directory / 'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x, ...) static_assert(x)\n', encoding="utf-8")
         (directory / 'test.cc').write_text('#include <initializer_list>\n' + code, encoding="utf-8")
-        subprocess.run(['clang++', '-std=c++20', '-I' + str(directory),
+        subprocess.run([*host_compiler('c++'), '-std=c++20', '-I' + str(directory),
                         '-I' + str(args.engine.resolve()), '-I' + str(ROOT / 'src/steno_squid'),
                         str(directory / 'test.cc'), str(args.engine / 'steno_key_state.cc'),
                         '-o', str(directory / 'test')], check=True)
