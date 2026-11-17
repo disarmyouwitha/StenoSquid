@@ -163,7 +163,7 @@ static void save_progress(struct k_work *work) {
             k_mutex_unlock(&progress_mutex);
         }
     }
-    if (err) LOG_WRN("Practice progress save failed (%d)", err);
+    if (err) { LOG_WRN("Practice progress save failed (%d)", err); }
     if (changed) k_work_submit(&save_progress_work);
 }
 
