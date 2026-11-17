@@ -172,7 +172,7 @@ int main(void) {
         for(unsigned x=0;x<48;x++) if(sprite_px(idle_pixels,x,y)) {
             if(left==48) left=x; right=x;
         }
-        for(unsigned x=left;x<=right && x<48;x++) assert(sprite_px(sleep_pixels,x,y));
+        for(unsigned x=left;x<=right && x<48;x++) assert(sprite_px(blink_pixels,x,y));
     }
     lv_init();lv_display_t *d=lv_display_create(68,160);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_L8);
