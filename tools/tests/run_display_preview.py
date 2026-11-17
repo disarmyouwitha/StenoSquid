@@ -43,7 +43,8 @@ def main():
         '#pragma once\n#define BUILD_ASSERT(x, ...) _Static_assert(x, #x)\n', encoding="utf-8")
     (stubs / 'zephyr/sys/util.h').write_text(
         '#include <zephyr/toolchain.h>\n#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))\n', encoding="utf-8")
-    (stubs / 'zmk/activity.h').write_text('''enum zmk_activity_state {
+    (stubs / 'zmk/activity.h').write_text('''#pragma once
+enum zmk_activity_state {
     ZMK_ACTIVITY_ACTIVE, ZMK_ACTIVITY_IDLE
 };
 static enum zmk_activity_state preview_activity = ZMK_ACTIVITY_ACTIVE;

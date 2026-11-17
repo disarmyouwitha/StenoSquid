@@ -9,6 +9,8 @@ extern "C" {
 
 int zmk_javelin_emit_keycode(uint16_t usage_page, uint32_t keycode, bool pressed);
 void zmk_javelin_steno_init(void);
+void zmk_javelin_steno_prepare(void);
+bool zmk_javelin_steno_ready(void);
 void zmk_javelin_steno_process_key(int steno_key_index, bool is_press);
 
 #ifdef __cplusplus

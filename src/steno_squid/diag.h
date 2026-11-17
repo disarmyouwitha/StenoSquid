@@ -44,6 +44,7 @@ void diag_note(enum diag_event event);
 uint32_t diag_session_count(enum diag_event event);
 /* Call from the flash worker, on every pass of its loop. Saves counters. */
 void diag_tick(void);
+int32_t diag_wait_ms(void);
 void diag_wake_requested(bool from_idle);
 void diag_wake_ready(bool mapped, bool quick, uint32_t check_ms);
 
@@ -66,6 +67,7 @@ enum diag_event {
 };
 static inline void diag_note(enum diag_event event) { (void)event; }
 static inline void diag_tick(void) {}
+static inline int32_t diag_wait_ms(void) { return -1; }
 static inline void diag_wake_requested(bool from_idle) { (void)from_idle; }
 static inline void diag_wake_ready(bool mapped, bool quick, uint32_t check_ms) {
     (void)mapped; (void)quick; (void)check_ms;

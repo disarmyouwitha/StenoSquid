@@ -1,4 +1,5 @@
 #include "screen.h"
+#include <zmk/activity.h>
 #include "label_fit.h"
 
 #include <stdio.h>
@@ -171,7 +172,17 @@ void steno_squid_practice_widget_hide(void) {
     last_practice = 0;
 }
 
+void steno_squid_practice_widget_activity(bool active) {
+    if (!results_timer) return;
+    if (active && (last_practice & STENO_SQUID_PRACTICE_ACTIVE) &&
+        !(last_practice & STENO_SQUID_PRACTICE_MENU) &&
+        steno_squid_practice_feedback_value(last_practice) == STENO_SQUID_PRACTICE_DONE)
+        lv_timer_resume(results_timer);
+    else lv_timer_pause(results_timer);
+}
+
 static void result_tick(lv_timer_t *timer) {
+    if (zmk_activity_get_state() != ZMK_ACTIVITY_ACTIVE) return;
     if ((last_practice & STENO_SQUID_PRACTICE_ACTIVE) &&
         !(last_practice & STENO_SQUID_PRACTICE_MENU) &&
         steno_squid_practice_feedback_value(last_practice) == STENO_SQUID_PRACTICE_DONE) {

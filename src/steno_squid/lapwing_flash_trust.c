@@ -56,6 +56,7 @@ bool lf_stored_trust(void) {
 }
 
 void lf_store_trust(void) {
+    lf_scrub_verified();
     const uint32_t value = IMAGE_FINGERPRINT;
     trust_invalidated = false;
 
@@ -65,6 +66,7 @@ void lf_store_trust(void) {
 }
 
 bool lf_clear_trust(void) {
+    lf_scrub_invalidated();
     trust_invalidated = true;
     lf_trusted = false;
     NRF_POWER->GPREGRET2 = 0;
@@ -75,8 +77,14 @@ bool lf_stored_trust(void) {
     return false;
 }
 void lf_store_trust(void) {
+    lf_scrub_verified();
+    trust_invalidated = false;
 }
 bool lf_clear_trust(void) {
+    lf_scrub_invalidated();
+    trust_invalidated = true;
+    lf_trusted = false;
+    NRF_POWER->GPREGRET2 = 0;
     return true;
 }
 #endif

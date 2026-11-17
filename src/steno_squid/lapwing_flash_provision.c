@@ -5,6 +5,7 @@
 
 #include <string.h>
 #include <zephyr/sys/crc.h>
+#include <zephyr/sys/base64.h>
 #include <zephyr/sys/printk.h>
 
 #define TRANSFER_TIMEOUT_MS 30000
@@ -14,7 +15,6 @@ static struct {
     uint32_t offset;
     uint32_t crc;
     int64_t deadline;
-    bool writing;
     bool repair;
 } transfer;
 
@@ -35,73 +35,39 @@ static bool erase_base(const struct base_image *image) {
     return true;
 }
 
-static const char *transfer_data(uint32_t offset, const char *hex, size_t length) {
+static const char *transfer_data(uint32_t offset, const char *encoded, size_t length) {
     const struct base_image *image = transfer.image;
-    const size_t size = MIN(CHUNK_BYTES, image->bytes - transfer.offset);
-    if (offset != transfer.offset || size == 0 || length != size * 2 ||
-        hex2bin(hex, length, incoming, sizeof(incoming)) != size) {
-        return "ERR Invalid chunk";
+    size_t decoded = 0;
+    if (offset >= image->bytes || offset % CHUNK_BYTES || offset > transfer.offset ||
+        base64_decode(incoming, sizeof(incoming), &decoded, (const uint8_t *)encoded, length) != 0 ||
+        decoded != MIN(CHUNK_BYTES, image->bytes - offset)) return "ERR Invalid chunk";
+    const size_t size = decoded;
+    if (nrfx_qspi_read(lf_readback, size, image->offset + offset) != NRFX_SUCCESS) return "ERR Flash read failed";
+    if (offset < transfer.offset) {
+        // The ACK was lost: verify the old chunk without changing CRC or writing again.
+        return memcmp(lf_readback, incoming, size) == 0 ? "OK" : "ERR Retry data differs";
     }
-
-    /* Repair preflight checks the replacement image before erasing. Ordinary
-     * installation also checks that every write is possible without erasing. */
-    if (!transfer.repair || transfer.writing) {
-        if (nrfx_qspi_read(lf_readback, size, image->offset + offset) != NRFX_SUCCESS) {
-            return "ERR Flash read failed";
-        }
-        for (size_t i = 0; i < size; i++) {
-            if ((lf_readback[i] & incoming[i]) != incoming[i]) {
-                return "ERR Base region holds different data. No sectors were erased";
-            }
-        }
+    for (size_t i = 0; i < size; ++i) {
+        if ((lf_readback[i] & incoming[i]) != incoming[i])
+            return "ERR Base region holds different data. No sectors were erased";
     }
-
     const uint32_t crc = crc32_ieee_update(transfer.crc, incoming, size);
-    const bool complete = offset + size == image->bytes;
-    if (complete && crc != image->crc) {
-        return "ERR Image checksum mismatch";
+    if (offset + size == image->bytes && crc != image->crc) return "ERR Image checksum mismatch";
+    for (size_t i = 0; i < size; i += PAGE_BYTES) {
+        const size_t page = MIN(PAGE_BYTES, size - i);
+        if (memcmp(lf_readback + i, incoming + i, page) == 0) continue;
+        if (nrfx_qspi_write(incoming + i, page, image->offset + offset + i) != NRFX_SUCCESS ||
+            squid_qspi_wait_ready(2000) != NRFX_SUCCESS) return "ERR Flash write failed";
     }
-
-    if (transfer.writing) {
-        for (size_t i = 0; i < size; i += PAGE_BYTES) {
-            const size_t page = MIN(PAGE_BYTES, size - i);
-
-            if (memcmp(lf_readback + i, incoming + i, page) == 0) {
-                continue;
-            }
-            if (nrfx_qspi_write(incoming + i, page, image->offset + offset + i) != NRFX_SUCCESS ||
-                squid_qspi_wait_ready(2000) != NRFX_SUCCESS) {
-                return "ERR Flash write failed";
-            }
-        }
-        if (nrfx_qspi_read(lf_readback, size, image->offset + offset) != NRFX_SUCCESS ||
-            memcmp(lf_readback, incoming, size) != 0) {
-            return "ERR Flash readback mismatch";
-        }
-    }
-
-    if (complete && !transfer.writing) {
-        /* The complete file matched and is safe to write. Clear the saved
-         * quick-check record before changing any bytes. */
-        if (!lf_clear_trust()) {
-            return "ERR Could not clear the saved flash verification record";
-        }
-        lf_trusted = false;
-        if (transfer.repair && !erase_base(image)) {
-            return "ERR Base erase failed. Rerun repair for this base";
-        }
-        transfer.writing = true;
-        transfer.offset = 0;
-        transfer.crc = 0;
-    } else {
-        transfer.offset += size;
-        transfer.crc = crc;
-    }
+    if (nrfx_qspi_read(lf_readback, size, image->offset + offset) != NRFX_SUCCESS ||
+        memcmp(lf_readback, incoming, size)) return "ERR Flash readback mismatch";
+    transfer.offset += size;
+    transfer.crc = crc;
     return "OK";
 }
 
-/* Like the serial installer, use fixed image bounds, a no-write preflight,
- * page readback, and a full CRC check. Serialized with power and XIP access. */
+/* Fixed image bounds, device-side NOR checks, page readback and final CRC.
+ * The host checks the complete pinned file before starting any write. */
 static void show_transfer(uint32_t timeout_ms) {
     steno_squid_upload_status(transfer.repair ? STENO_SQUID_MODE_REPAIR : STENO_SQUID_MODE_INSTALL,
                             timeout_ms);
@@ -124,7 +90,7 @@ static const char *handle_command(const char *command, char *reply, size_t reply
         const char *label = state == LAPWING_FLASH_READY ? "READY" :
                             state == LAPWING_FLASH_LOADING ? "LOADING" :
                             lf_provisioning_ready ? "INSTALL" : "ERROR";
-        size_t used = snprintk(reply, reply_size, "1 %s", label);
+        size_t used = snprintk(reply, reply_size, "2 %s", label);
         for (size_t i = 0; i < ARRAY_SIZE(lf_images) && used < reply_size; i++) {
             const struct base_image *image = &lf_images[i];
             used += snprintk(reply + used, reply_size - used, "\n%s %u %u %u",
@@ -145,6 +111,11 @@ static const char *handle_command(const char *command, char *reply, size_t reply
     const bool repair = strncmp(command, "repair ", 7) == 0;
     if (repair || strncmp(command, "begin ", 6) == 0) {
         struct base_image *image = find_base(command + (repair ? 7 : 6));
+        if (image && transfer.image == image && transfer.repair == repair &&
+            k_uptime_get() < transfer.deadline) {
+            snprintk(reply, reply_size, "OK %u", transfer.offset);
+            return NULL;
+        }
         if (!image || (!repair && (image->verified || atomic_get(&lf_mapped_ready))) ||
             !reactivate_after_xip()) {
             return "ERR Base is unknown, already verified, or unavailable";
@@ -162,17 +133,22 @@ static const char *handle_command(const char *command, char *reply, size_t reply
                 return "ERR Base repair requires a readable checksum mismatch and writable settings";
             }
             lf_trusted = false;
-                image->verified = false;
+            image->verified = false;
             lapwing_flash_ready_changed();
+        }
+        if (!lf_clear_trust()) return "ERR Could not clear the saved flash verification record";
+        if (repair) {
+            steno_squid_upload_status(STENO_SQUID_MODE_REPAIR, 600000);
+            if (!erase_base(image)) { show_transfer(0); return "ERR Base erase failed. Rerun repair for this base"; }
         }
         transfer.image = image;
         transfer.offset = 0;
         transfer.crc = 0;
-        transfer.writing = false;
         transfer.repair = repair;
         transfer.deadline = k_uptime_get() + TRANSFER_TIMEOUT_MS;
         show_transfer(TRANSFER_TIMEOUT_MS);
-        return "OK";
+        snprintk(reply, reply_size, "OK 0");
+        return NULL;
     }
     if (atomic_get(&lf_mapped_ready)) {
         return "ERR Flash is unavailable for installation";
@@ -192,14 +168,13 @@ static const char *handle_command(const char *command, char *reply, size_t reply
             return "ERR Invalid chunk offset";
         }
         hex++;
-        /* The final repair preflight chunk can erase hundreds of sectors. */
-        show_transfer(transfer.repair && !transfer.writing &&
-                              transfer.image->bytes - transfer.offset <= CHUNK_BYTES
-                          ? 600000 : TRANSFER_TIMEOUT_MS);
+        show_transfer(TRANSFER_TIMEOUT_MS);
         const char *result = transfer_data(offset, hex, strlen(hex) - 1);
         if (strcmp(result, "OK") == 0) {
             transfer.deadline = k_uptime_get() + TRANSFER_TIMEOUT_MS;
             show_transfer(TRANSFER_TIMEOUT_MS);
+            snprintk(reply, reply_size, "OK %u", transfer.offset);
+            return NULL;
         } else {
             transfer.image = NULL;
             show_transfer(0);
@@ -210,7 +185,7 @@ static const char *handle_command(const char *command, char *reply, size_t reply
         struct base_image *image = transfer.image;
         transfer.image = NULL;
         show_transfer(120000);
-        if (!transfer.writing || transfer.offset != image->bytes || !lf_read_image_crc(image)) {
+        if (transfer.offset != image->bytes || !lf_read_image_crc(image)) {
             show_transfer(0);
             return "ERR Full image verification failed";
         }

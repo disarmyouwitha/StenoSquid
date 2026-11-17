@@ -204,6 +204,13 @@ void diag_print_power(const struct device *console) {
 #endif
 }
 
+int32_t diag_wait_ms(void) {
+    if (!dirty) return -1;
+    const uint32_t now = k_uptime_get_32();
+    const uint32_t earliest = MAX(SAVE_AFTER_MS, last_save_ms ? last_save_ms + SAVE_SPACING_MS : 0);
+    return now < earliest ? (int32_t)(earliest - now) : 1;
+}
+
 void diag_tick(void) {
     const uint32_t now = k_uptime_get_32();
 

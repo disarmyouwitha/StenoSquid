@@ -21,3 +21,5 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent);
 void steno_squid_practice_widget_update(uint32_t practice);
 void steno_squid_practice_widget_set_view(const struct steno_squid_practice_view *view);
 void steno_squid_practice_widget_hide(void);
+
+void steno_squid_practice_widget_activity(bool active);

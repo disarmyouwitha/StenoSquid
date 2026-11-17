@@ -280,10 +280,10 @@ python3 stenosquid.py --base lapwing --repair
 
 `--repair` replaces a base that is damaged or holds other data, including one the keyboard still reports as verified. In order, it:
 
-1. checks the file's size and CRC against the image the firmware expects, before touching the flash;
+1. checks the complete file's size and CRC against the image the firmware expects, before touching the flash;
 2. takes the dictionaries out of use and removes the saved verification record;
 3. erases that base's 4 KiB sectors, including the last, partly used one;
-4. writes the image, reading back every chunk;
+4. sends the image once as base64, with bounded retries/resume and device-side write compatibility checks, reading back every chunk;
 5. runs the full CRC and native lookup checks, and saves the verification record again once every base passes.
 
 It never asks a question, so a script or an agent can run it. Passing `--repair` is the confirmation.
@@ -383,3 +383,27 @@ settings** after flashing to load the new parameter format. This replaces
 saved keymap edits. The updated grid was verified in the native Studio app,
 and the physical keyboard passed a tap/hold check (`q` and `[`) and a
 Javelin typing check. Bluetooth Studio worked on the earlier Studio build.
+
+## Cleanup build testing
+
+The cleanup branch uses base-install protocol 2 and updated split display messages.
+Update both halves and use `stenosquid.py` from the same checkout. Older installer
+versions fail the protocol check before starting a write.
+
+Practice progress now uses a small commit record and alternating 16-word blocks
+in the left internal settings partition. Only changed blocks are saved. This is
+a deliberate fresh start for XP/stats; there is no migration reader. Dictionaries,
+pairings and Studio keymaps keep their existing formats.
+
+Engine initialization and personal-store maintenance share a dedicated 8 KiB
+worker. Key delivery never waits for flash wake and waits at most 10 ms for an
+engine lock; an interrupted chord is cancelled in full. Exports release the
+engine lock while sending each buffered chunk. The main and system workqueue
+stacks return to 4 KiB now that neither carries the full Practice record.
+
+Base images receive an opportunistic CRC scrub in small slices while flash is
+already powered. A trusted quick boot schedules the first scrub after a minute;
+a full check/scrub delays the next pass for 24 hours of uptime. An idle flash is
+not powered or held awake for this work. A mismatch clears trust and marks the
+base unavailable for repair. The proven 2 MHz clock and 50 ms settle time remain
+the defaults; use the probe's `-DQSPI_SCK_DIVIDER=N` only for measured bench tests.

@@ -35,6 +35,7 @@ static zmk_keymap_layers_state_t _zmk_keymap_layer_state = 1, _zmk_keymap_layer_
 static zmk_keymap_layer_id_t _zmk_keymap_layer_default;
 static uint32_t practice_wanted;
 static bool practicing;
+static bool zmk_javelin_steno_ready() { return true; }
 static void apply_layer();
 static int raise_layer_state_changed(uint8_t, bool, bool) { apply_layer(); return 0; }
 static void atomic_set(uint32_t *p, uint32_t v) { *p=v; }

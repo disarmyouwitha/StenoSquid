@@ -6,6 +6,7 @@ CI can instead supply --engine, --zmk and --lvgl individually.
 Dictionary images must be prepared first with tools/dictionaries/prepare.py.
 """
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -34,7 +35,7 @@ def main():
 
     def run(command):
         print('+ ' + ' '.join(map(str, command)), flush=True)
-        subprocess.run(list(map(str, command)), cwd=ROOT, check=True)
+        subprocess.run(list(map(str, command)), cwd=ROOT, check=True, env={**os.environ, "STENO_SQUID_TEST_ZEPHYR": str(zmk.parent / "zephyr")})
 
     # Discover Python tests in all three maintained test directories.
     special = {'test_practice_menu.py': [engine], 'test_practice_entry.py': [zmk / 'app']}

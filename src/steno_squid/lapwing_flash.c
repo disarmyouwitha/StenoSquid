@@ -59,6 +59,7 @@ uintptr_t lapwing_mapped_address(void) {
 }
 
 enum lapwing_flash_state lapwing_flash_status(void) {
+    if (!atomic_get(&lf_checked)) return LAPWING_FLASH_LOADING;
 #if IDLE_OFF
     /* An idle flash comes back on first use, so it still counts as ready. */
     if (atomic_get(&lf_idle_off)) {
@@ -74,6 +75,7 @@ enum lapwing_flash_state lapwing_flash_status(void) {
 void lapwing_flash_hold(bool hold) {
 #if IDLE_OFF
     const bool was_held = atomic_set(&lf_held, hold) != 0;
+    if (hold != was_held) k_sem_give(&lf_restart_wake);
 
     if (hold) {
         /* Start an idle flash without waiting for the first stroke. */
@@ -114,6 +116,9 @@ static void lapwing_worker(void *a, void *b, void *c) {
     diag_log("Flash worker started\n");
 
     bool mapping_failed = false;
+#if SERIAL_CONSOLE
+    lf_serial_init();
+#endif
     bool qspi_ok = false;
 
     for (;;) {
@@ -148,12 +153,12 @@ static void lapwing_worker(void *a, void *b, void *c) {
             k_mutex_unlock(&flash_lock);
         }
 #if IDLE_OFF
-        if ((!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
+        if (!atomic_get(&lf_read_sessions) && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
             k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use) >= IDLE_OFF_MS) {
             k_mutex_lock(&flash_lock, K_FOREVER);
             /* Recheck under the lock: a lookup may have just used the flash. */
             const bool initialized = nrfx_qspi_init_check();
-            if (!lf_suspended && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
+            if (!lf_suspended && !atomic_get(&lf_read_sessions) && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
                 k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use) >= IDLE_OFF_MS &&
                 lf_flash_is_idle(initialized)) {
                 atomic_set(&lf_idle_off, 1);
@@ -169,22 +174,25 @@ static void lapwing_worker(void *a, void *b, void *c) {
 #endif
 #if SERIAL_CONSOLE
         diag_tick();
-        if (lf_serial_poll(&config, &qspi_ok, &mapping_failed)) {
-            continue;
-        }
-        k_msleep(10);
-#else
-        /* Nothing to poll. Sleep until something asks for the mapping again,
-         * waking now and then only while an idle power-down is still due.
-         */
-        ARG_UNUSED(qspi_ok);
+        if (lf_serial_poll(&config, &qspi_ok, &mapping_failed)) continue;
+#endif
+        int32_t wait_ms = -1;
 #if IDLE_OFF
-        k_sem_take(&lf_restart_wake, !lf_suspended
-                                      ? K_MSEC(MAX(IDLE_OFF_MS / 4U, 1000U)) : K_FOREVER);
-#else
-        k_sem_take(&lf_restart_wake, K_FOREVER);
+        if (!lf_suspended && !atomic_get(&lf_read_sessions) && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held))) {
+            const uint32_t elapsed = k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use);
+            wait_ms = elapsed < IDLE_OFF_MS ? (int32_t)(IDLE_OFF_MS - elapsed) : 1;
+        }
 #endif
+#if SERIAL_CONSOLE
+        const int32_t diagnostic_ms = diag_wait_ms();
+        if (diagnostic_ms >= 0 && (wait_ms < 0 || diagnostic_ms < wait_ms)) wait_ms = diagnostic_ms;
 #endif
+        k_mutex_lock(&flash_lock, K_FOREVER);
+        lf_scrub_step();
+        const int32_t scrub_ms = lf_scrub_wait_ms();
+        k_mutex_unlock(&flash_lock);
+        if (scrub_ms >= 0 && (wait_ms < 0 || scrub_ms < wait_ms)) wait_ms = scrub_ms;
+        k_sem_take(&lf_restart_wake, wait_ms < 0 ? K_FOREVER : K_MSEC(wait_ms));
     }
 }
 

@@ -159,7 +159,9 @@ static bool show_tape(bool show) {
     char stroke[STENO_SQUID_TAPE_STROKE_TEXT_MAX + 1];
     steno_squid_stroke_to_text(tape->mask, stroke);
     set_fitted_text(tape_stroke, stroke, tape_stroke_fonts, FONT_COUNT(tape_stroke_fonts));
-    set_fitted_text(tape_text, tape->text, tape_text_fonts, FONT_COUNT(tape_text_fonts));
+    char translation[STENO_SQUID_TAPE_TEXT_MAX + 3];
+    snprintf(translation, sizeof(translation), "%s%s", tape->text, tape->truncated ? ".." : "");
+    set_fitted_text(tape_text, translation, tape_text_fonts, FONT_COUNT(tape_text_fonts));
     lv_obj_remove_flag(tape_stroke, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(tape_text, LV_OBJ_FLAG_HIDDEN);
 
@@ -270,6 +272,7 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
         [STENO_SQUID_MODE_REPAIR] = "Repair",
         [STENO_SQUID_MODE_IMPORT] = "Import",
         [STENO_SQUID_MODE_VERIFY] = "Verify",
+        [STENO_SQUID_MODE_BUSY] = "Busy",
     };
     char battery[8];
     snprintf(battery, sizeof(battery), "%u%%", charge);

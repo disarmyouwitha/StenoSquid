@@ -81,7 +81,7 @@ struct k_spinlock {};
 using k_spinlock_key_t = int;
 int k_spin_lock(k_spinlock *) { return 0; }
 void k_spin_unlock(k_spinlock *, int) {}
-k_spinlock progress_lock;
+int status_lock;
 struct steno_squid_practice_view practice_view;
 struct steno_squid_practice_receiver practice_receiver;
 extern "C" void steno_squid_split_status_refresh() {}
@@ -190,7 +190,7 @@ int main() {
   answer_correct=false;tap(StenoKey::PL);
   assert(practice.multi_count==0 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
   assert(!(practice_screen&STENO_SQUID_PRACTICE_PARTIAL));
-  assert(practice_screen&STENO_SQUID_PRACTICE_SECOND_ERROR);
+  assert(!(practice_screen & STENO_SQUID_PRACTICE_PARTIAL));
   answer_correct=true;tap(StenoKey::KL);tap(StenoKey::PL);
   assert(practice.feedback==STENO_SQUID_PRACTICE_CORRECT);
   now+=250;practice_advance(nullptr);
@@ -277,6 +277,7 @@ def main():
     code += function(source, 'static void practice_switch_drill(') + '\n'
     code += function(source, 'static bool practice_process_key(') + '\n'
     receiver = (ROOT / 'src/steno_squid/split_status_display.c').read_text(encoding="utf-8")
+    code += function(receiver, 'static int status_received_locked(') + '\n'
     code += function(receiver, 'static int status_received(') + '\n'
     code += CASES
     with tempfile.TemporaryDirectory() as tmp:

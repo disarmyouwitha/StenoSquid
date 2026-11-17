@@ -1,4 +1,6 @@
 #include "user_dictionary_store.h"
+#include "engine_work.h"
+#include "engine_stream.h"
 #include "console.h"
 #include "dictionary/dictionary.h"
 #include "javelin_engine_lock.h"
@@ -73,6 +75,7 @@ public:
 } qspi_device;
 Store store(qspi_device);
 bool store_available = false;
+bool exporting;
 // Flash writes go through the QSPI peripheral instead of the memory-mapped
 // window. Hold one of these, under the engine lock, around every store call
 // that can program or erase.
@@ -95,14 +98,12 @@ private:
 // low-priority queue, never on the system work queue that delivers keys. Each
 // slice takes the engine lock for one Step() and then lets keys in.
 constexpr int BACKGROUND_DELAY_MS = 8;
-K_THREAD_STACK_DEFINE(background_stack, 4096);
-k_work_q background_queue;
-bool background_started = false;
+
 void background_step(k_work *);
 K_WORK_DELAYABLE_DEFINE(background_work, background_step);
 void kick_background() {
-  if (background_started)
-    k_work_schedule_for_queue(&background_queue, &background_work,
+  if (store_available)
+    k_work_schedule_for_queue(&steno_squid_engine_queue, &background_work,
                               K_MSEC(BACKGROUND_DELAY_MS));
 }
 void background_step(k_work *) {
@@ -111,7 +112,7 @@ void background_step(k_work *) {
     // False while the flash is asleep. The next edit or status request kicks
     // the work again.
     const JavelinEngineLock lock;
-    if (lock && store_available) {
+    if (lock && store_available && !exporting) {
       WriteMode write;
       more = write && store.Step();
     }
@@ -219,11 +220,15 @@ public:
   void PrintDictionary(PrintDictionaryContext &context) const override {
     if (context.HasName() && strcmp(context.GetName(), GetName()))
       return;
+    struct ExportSession {
+      ExportSession() { exporting = true; lapwing_flash_read_session(true); }
+      ~ExportSession() { exporting = false; lapwing_flash_read_session(false); kick_background(); }
+    } session;
+    StenoSquidExportWriter writer(steno_squid_javelin_response_active());
     TextBuffer buffer;
     Store::Iterator it;
     Entry e{};
-    while (store_available && store.Next(it, e)) {
-      if (steno_squid_javelin_response_cancelled()) return;
+    while (store_available && !writer.Failed() && !steno_squid_javelin_response_cancelled() && store.Next(it, e)) {
       const char *text = buffer.Read(e);
       if (!text)
         return;
@@ -577,12 +582,6 @@ StenoDictionary *steno_squid_user_dictionary_open() {
   }
   dictionary.Refresh();
   if (store_available) {
-    if (!background_started) {
-      k_work_queue_start(&background_queue, background_stack,
-                         K_THREAD_STACK_SIZEOF(background_stack),
-                         K_LOWEST_APPLICATION_THREAD_PRIO, nullptr);
-      background_started = true;
-    }
     kick_background();
   }
   // Keep the wrapper in the collection so a later successful open needs no rebind.

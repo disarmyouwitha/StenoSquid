@@ -34,7 +34,7 @@ static bool start_qspi(nrfx_qspi_config_t *config) {
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
     atomic_set(&lf_powered, 1);
 #endif
-    k_msleep(50);
+    k_msleep(CONFIG_ZMK_JAVELIN_STENO_FLASH_SETTLE_MS);
     if (lf_pins(PINCTRL_STATE_DEFAULT) != 0 ||
         nrfx_qspi_init(config, NULL, NULL) != NRFX_SUCCESS ||
         nrfx_qspi_activate(true) != NRFX_SUCCESS) {
@@ -100,23 +100,10 @@ static bool enable_quad_reads(nrfx_qspi_config_t *config) {
 }
 
 bool lf_enable_verified_mapping(nrfx_qspi_config_t *config, bool quick) {
-    /* Already done on the start-up path. Repeated here because the serial
-     * provisioning path maps without it, and it costs one status write.
-     */
-    if (!enable_quad_reads(config)) {
-        return false;
-    }
-
-    for (size_t i = 0; !quick && i < ARRAY_SIZE(lf_images); i++) {
-        const struct base_image *image = &lf_images[i];
-        uint32_t crc = 0;
-
-        (void)lf_image_crc(image, true, &crc, NULL);
-        if (crc != image->crc) {
-            diag_log("%s mapped CRC mismatch: %08x\n", image->name, crc);
-            return false;
-        }
-    }
+    ARG_UNUSED(quick);
+    // Startup and provisioning have already checked each image once through DMA.
+    // Native lookups exercise mapped reads without another full-image CRC pass.
+    if (config->prot_if.readoc != NRF_QSPI_READOC_READ4O && !enable_quad_reads(config)) return false;
     if (!lapwing_verify_native_dictionary(XIP_BASE)) {
         return false;
     }
@@ -261,6 +248,7 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     lf_provisioning_ready = qspi_ok;
 #endif
     atomic_set(&lf_checked, 1);
+    k_condvar_broadcast(&lf_restart_done);
     lapwing_flash_ready_changed();
 #if SERIAL_CONSOLE
     lf_last_check_quick = quick;

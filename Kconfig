@@ -17,6 +17,7 @@ config ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
 
 config ZMK_JAVELIN_SERIAL_CONSOLE
     bool "Diagnostic commands on the USB logging serial port"
+    select UART_INTERRUPT_DRIVEN
     depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_USB_LOGGING
     help
       Enable from the diagnostic build's logging.conf with the zmk-usb-logging
@@ -56,6 +57,15 @@ config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
       dictionary check after a cold boot. Confirm each new value with
       tools/qspi before relying on it.
 
+config ZMK_JAVELIN_STENO_FLASH_SETTLE_MS
+    int "External flash rail settle time in milliseconds"
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
+    range 1 1000
+    default 50
+    help
+      Keep the proven 50 ms default until rail rise time has been measured
+      on the actual board. Changing this requires hardware validation.
+
 config ZMK_JAVELIN_STENO_FLASH_IDLE_OFF
     bool "Power the external flash down while the dictionaries are idle"
     depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
@@ -80,6 +90,7 @@ config ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 
 config ZMK_JAVELIN_STENO_HID_PROVISIONING
     bool "Install base dictionaries over wired USB HID"
+    select BASE64
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     default y
 

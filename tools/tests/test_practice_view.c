@@ -144,7 +144,7 @@ int main(void) {
         in.state |= STENO_SQUID_PRACTICE_MENU;
       if (scenario == 4)
         in.state =
-            STENO_SQUID_PRACTICE_ACTIVE | STENO_SQUID_PRACTICE_SECOND_ERROR |
+            STENO_SQUID_PRACTICE_ACTIVE | 0 |
             (STENO_SQUID_PRACTICE_MULTI << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
             (STENO_SQUID_PRACTICE_INCORRECT
              << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT);
@@ -166,6 +166,26 @@ int main(void) {
   for (unsigned i = 0; i < (n + 4) / 5; i++)
     assert(deliver(&rx, bytes, n, 1, i, &out) ==
            (i + 1 == (n + 4) / 5 ? -1 : 0));
+  // State-only frames are smaller and cannot attach to missing/different text.
+  in.state = STENO_SQUID_PRACTICE_ACTIVE;
+  in.progress = 100;
+  strcpy(in.prompt, "CAT");strcpy(in.outline, "KAT");in.review[0] = 0;
+  memset(&rx, 0, sizeof(rx));memset(&out, 0, sizeof(out));
+  n = steno_squid_practice_encode_state(&in, bytes, 20);
+  assert(n == 19);
+  for (unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,21,i,&out)==0);
+  assert(!out.state);
+  n = steno_squid_practice_encode(&in, bytes);
+  for (unsigned i=0;i<(n+4)/5;i++) assert(deliver(&rx,bytes,n,22,i,&out)==(i+1==(n+4)/5));
+  in.progress = 101;
+  n = steno_squid_practice_encode_state(&in,bytes,22);
+  for(unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,23,i,&out)==(i==3));
+  assert(out.progress==101 && !strcmp(out.prompt,"CAT") && !strcmp(out.outline,"KAT"));
+  n = steno_squid_practice_encode_state(&in,bytes,21);
+  for(unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,24,i,&out)==0);
+  strcpy(in.prompt,"DOG");n=steno_squid_practice_encode_state(&in,bytes,22);
+  for(unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,25,i,&out)==0);
+  assert(!strcmp(out.prompt,"CAT"));
   puts("Practice text frames: atomic commit, loss/reorder/stale protection, "
        "wrap, corruption and all drills passed");
 }

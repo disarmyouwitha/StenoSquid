@@ -44,6 +44,9 @@ bool lapwing_flash_is_powered(void);
 /* Hold across mapped reads and personal dictionary writes. */
 bool lapwing_flash_acquire(void);
 void lapwing_flash_release(void);
+/* For a streaming reader: always reacquires, even if mapping became unavailable. */
+bool lapwing_flash_resume_read(void);
+void lapwing_flash_read_session(bool active);
 
 #ifdef __cplusplus
 }

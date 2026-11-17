@@ -3,7 +3,6 @@
 #include <drivers/behavior.h>
 #include <lvgl.h>
 #include <zephyr/kernel.h>
-#include <zephyr/spinlock.h>
 #include <zephyr/sys/atomic.h>
 #include <zmk/battery.h>
 #include <zmk/display.h>
@@ -39,7 +38,7 @@ static atomic_t layer_name_high;
 static atomic_t practice_screen;
 static struct steno_squid_practice_view practice_view;
 static struct steno_squid_practice_receiver practice_receiver;
-static struct k_spinlock progress_lock;
+K_MUTEX_DEFINE(status_lock);
 static atomic_t pet_wake;
 static atomic_t pet_typing;
 static atomic_t pet_greeting;
@@ -49,28 +48,40 @@ static atomic_t pet_greeting;
  * and the display work queue reads it.
  */
 static struct steno_squid_tape tape;
-static struct k_spinlock tape_lock;
 
 static void clear_tape(void) {
-    k_spinlock_key_t key = k_spin_lock(&tape_lock);
     memset(&tape, 0, sizeof(tape));
-    k_spin_unlock(&tape_lock, key);
 }
 #else
 static void clear_tape(void) {}
 #endif
 
+struct status_snapshot {
+    unsigned mode, practice;
+    uint32_t name_low, name_high;
+    bool disconnected;
+    struct steno_squid_practice_view view;
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
+    struct steno_squid_tape tape;
+#endif
+};
 static void refresh_status(struct k_work *work) {
-    const unsigned shown = atomic_get(&mode);
+    struct status_snapshot snapshot = {0};
+    k_mutex_lock(&status_lock, K_FOREVER);
+    snapshot.mode = atomic_get(&mode);
+    snapshot.name_low = atomic_get(&layer_name_low);
+    snapshot.name_high = atomic_get(&layer_name_high);
+    snapshot.practice = atomic_get(&practice_screen);
+    snapshot.view = practice_view;
+    snapshot.disconnected = atomic_get(&host_disconnected);
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
+    snapshot.tape = tape;
+#endif
+    k_mutex_unlock(&status_lock);
+    const unsigned shown = snapshot.mode;
+    const uint32_t practice = snapshot.practice;
     char name[STENO_SQUID_LAYER_NAME_CHARS + 1] = {0};
-    if (shown == MODE_LAYER_NAME) {
-        steno_squid_layer_name_decode((uint32_t)atomic_get(&layer_name_low),
-                                      (uint32_t)atomic_get(&layer_name_high), name);
-    }
-    k_spinlock_key_t progress_key = k_spin_lock(&progress_lock);
-    const uint32_t practice = atomic_get(&practice_screen);
-    const struct steno_squid_practice_view shown_view = practice_view;
-    k_spin_unlock(&progress_lock, progress_key);
+    if (shown == MODE_LAYER_NAME) steno_squid_layer_name_decode(snapshot.name_low, snapshot.name_high, name);
     const bool wake = atomic_clear(&pet_wake);
     const bool typing = atomic_clear(&pet_typing);
     const bool practicing = (practice & STENO_SQUID_PRACTICE_ACTIVE) != 0;
@@ -80,16 +91,22 @@ static void refresh_status(struct k_work *work) {
     if (wake && !practicing) {
         steno_squid_pet_set_state(PET_IDLE);
     }
+    static struct status_snapshot previous;
+    static unsigned previous_charge;
+    static bool shown_once;
+    const unsigned charge = zmk_battery_state_of_charge();
+    const bool changed = !shown_once || charge != previous_charge || memcmp(&snapshot, &previous, sizeof(snapshot));
+    if (changed) {
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
-    struct steno_squid_tape shown_tape;
-    k_spinlock_key_t key = k_spin_lock(&tape_lock);
-    shown_tape = tape;
-    k_spin_unlock(&tape_lock, key);
-    steno_squid_screen_set_tape(&shown_tape);
+        steno_squid_screen_set_tape(&snapshot.tape);
 #endif
-    if (practicing) steno_squid_practice_widget_set_view(&shown_view);
-    steno_squid_screen_update(shown, name, practice, zmk_battery_state_of_charge(),
-                         atomic_get(&host_disconnected));
+        if (practicing) steno_squid_practice_widget_set_view(&snapshot.view);
+        steno_squid_screen_update(shown, name, practice, charge, snapshot.disconnected);
+        previous = snapshot;
+        previous_charge = charge;
+        shown_once = true;
+    }
+    steno_squid_practice_widget_activity(zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
     if (!practicing) {
         if (typing && shown == STENO_SQUID_MODE_UNKNOWN) {
             steno_squid_pet_set_state(PET_WAIT_TAP);
@@ -117,7 +134,17 @@ static void queue_refresh(void) {
     }
 }
 
-static int status_received(struct zmk_behavior_binding *binding,
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
+static void expire_wpm(struct k_work *work) {
+    k_mutex_lock(&status_lock, K_FOREVER);
+    tape.wpm = 0;
+    k_mutex_unlock(&status_lock);
+    queue_refresh();
+}
+K_WORK_DELAYABLE_DEFINE(wpm_expiry, expire_wpm);
+#endif
+
+static int status_received_locked(struct zmk_behavior_binding *binding,
                            struct zmk_behavior_binding_event event) {
     if (binding->param2 == STENO_SQUID_HOST_STATUS_PROTOCOL) {
         if (binding->param1 > 1) {
@@ -126,24 +153,21 @@ static int status_received(struct zmk_behavior_binding *binding,
         atomic_set(&host_disconnected, binding->param1);
     } else if ((binding->param2 & 0xffu) == STENO_SQUID_PRACTICE_VIEW_PROTOCOL &&
                !(binding->param2 & (STENO_SQUID_LAYER_NAME_PROTOCOL | STENO_SQUID_TAPE_TAG))) {
-        k_spinlock_key_t key = k_spin_lock(&progress_lock);
-        const int result = steno_squid_practice_receive(&practice_receiver, binding->param1,
+            const int result = steno_squid_practice_receive(&practice_receiver, binding->param1,
                                                        binding->param2, &practice_view);
         if (result == 1) atomic_set(&practice_screen, practice_view.state);
-        k_spin_unlock(&progress_lock, key);
-        if (result < 0) return -EINVAL;
+            if (result < 0) return -EINVAL;
         if (!result) return ZMK_BEHAVIOR_OPAQUE;
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
     } else if ((binding->param2 & STENO_SQUID_TAPE_TAG) &&
                !(binding->param2 & STENO_SQUID_LAYER_NAME_PROTOCOL)) {
-        k_spinlock_key_t key = k_spin_lock(&tape_lock);
-        struct steno_squid_tape next = tape;
+            struct steno_squid_tape next = tape;
         const int kind = steno_squid_tape_decode(binding->param1, binding->param2, &next);
         if (kind >= 0) {
             tape = next;
+            if (kind == STENO_SQUID_TAPE_KIND_STROKE) k_work_reschedule(&wpm_expiry, K_SECONDS(15));
         }
-        k_spin_unlock(&tape_lock, key);
-        if (kind == STENO_SQUID_TAPE_INVALID) {
+            if (kind == STENO_SQUID_TAPE_INVALID) {
             return -EINVAL;
         }
         if (kind == STENO_SQUID_TAPE_STALE) {
@@ -182,6 +206,14 @@ static int status_received(struct zmk_behavior_binding *binding,
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
+static int status_received(struct zmk_behavior_binding *binding,
+                           struct zmk_behavior_binding_event event) {
+    k_mutex_lock(&status_lock, K_FOREVER);
+    const int result = status_received_locked(binding, event);
+    k_mutex_unlock(&status_lock);
+    return result;
+}
+
 static const struct behavior_driver_api status_driver = {
     .binding_pressed = status_received,
 };
@@ -207,14 +239,14 @@ static int display_event(const zmk_event_t *event) {
     if (split) {
         atomic_set(&pet_greeting, split->connected);
         if (!split->connected) {
+            k_mutex_lock(&status_lock, K_FOREVER);
             atomic_clear(&mode);
             atomic_clear(&host_disconnected);
-            k_spinlock_key_t key = k_spin_lock(&progress_lock);
-            atomic_clear(&practice_screen);
+                    atomic_clear(&practice_screen);
             memset(&practice_receiver, 0, sizeof(practice_receiver));
             memset(&practice_view, 0, sizeof(practice_view));
-            k_spin_unlock(&progress_lock, key);
-            clear_tape();
+                    clear_tape();
+            k_mutex_unlock(&status_lock);
         }
     }
     queue_refresh();

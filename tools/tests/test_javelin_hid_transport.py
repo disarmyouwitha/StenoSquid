@@ -82,7 +82,7 @@ bool console_ready = true;
 std::string provision_command;
 extern "C" void lf_provision_command(const char *command, char *reply, size_t size) {
     provision_command = command;
-    std::snprintf(reply, size, "1 INSTALL");
+    std::snprintf(reply, size, "2 INSTALL");
 }
 bool steno_squid_javelin_console_line(const char *p,size_t n,IWriter &w,
                                         bool (*cancelled)(void *), void *context) {
@@ -174,7 +174,7 @@ int main() {
         for (auto byte : report) if (byte) usb_error += char(byte);
     for (const auto &report : ble_tx)
         for (auto byte : report) if (byte) ble_error += char(byte);
-    assert(usb_error == "c15 1 INSTALL\n\n");
+    assert(usb_error == "c15 2 INSTALL\n\n");
     assert(ble_error == "c15 ERR Command unavailable on this keyboard\n\n");
 
     reset();ble("c04 add_user_entry KAT ");

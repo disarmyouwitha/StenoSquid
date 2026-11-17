@@ -9,9 +9,11 @@
 BUILD_ASSERT(IS_ENABLED(CONFIG_ZMK_SLEEP), "External flash requires sleep support");
 BUILD_ASSERT(!IS_ENABLED(CONFIG_ZMK_EXT_POWER), "The QSPI driver owns the flash power pin");
 K_MUTEX_DEFINE(flash_lock);
+atomic_t lf_read_sessions;
 bool lf_suspended = true;
 atomic_t lf_restart_requested = ATOMIC_INIT(1);
 K_SEM_DEFINE(lf_restart_wake, 0, 1);
+K_CONDVAR_DEFINE(lf_restart_done);
 int64_t lf_last_restart = -5000;
 
 void lf_request_restart(void) {
@@ -25,46 +27,27 @@ void lf_request_restart(void) {
         diag_wake_requested(false);
 #endif
     }
+    atomic_clear(&lf_checked);
     atomic_set(&lf_restart_requested, 1);
+    lapwing_flash_ready_changed();
     k_sem_give(&lf_restart_wake);
 }
 
-/* Ask the worker to power an idle flash back up, and wait for the result. */
-static bool wake_idle_flash(void) {
+#include "flash_access.h"
+
+bool lapwing_flash_resume_read(void) {
+    k_mutex_lock(&flash_lock, K_FOREVER);
 #if IDLE_OFF
-    if (!atomic_get(&lf_idle_off)) {
-        return false;
-    }
-    lf_request_restart();
-    for (int waited = 0; atomic_get(&lf_idle_off) && waited < 1000; waited += 2) {
-        k_msleep(2);
-    }
+    lf_note_use();
+#endif
     return atomic_get(&lf_mapped_ready) != 0;
-#else
-    return false;
-#endif
 }
-
-bool lapwing_flash_acquire(void) {
-    /* The second pass covers an idle power-down that won the lock first. */
-    for (int attempt = 0; attempt < 2; attempt++) {
-#if IDLE_OFF
-        lf_note_use();
-#endif
-        if (!atomic_get(&lf_mapped_ready) && !wake_idle_flash()) {
-            return false;
-        }
-        k_mutex_lock(&flash_lock, K_FOREVER);
-        if (atomic_get(&lf_mapped_ready)) {
-            return true;
-        }
-        k_mutex_unlock(&flash_lock);
+void lapwing_flash_read_session(bool active) {
+    if (active) atomic_inc(&lf_read_sessions);
+    else {
+        atomic_dec(&lf_read_sessions);
+        k_sem_give(&lf_restart_wake);
     }
-    return false;
-}
-
-void lapwing_flash_release(void) {
-    k_mutex_unlock(&flash_lock);
 }
 
 /* Hold flash_lock. False while a flash operation is still in progress. */
@@ -96,6 +79,10 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
         return -EBUSY;
     }
 #endif
+    if (atomic_get(&lf_read_sessions)) {
+        k_mutex_unlock(&flash_lock);
+        return -EBUSY;
+    }
     int rc = 0;
     if (lf_suspended) {
 #if IDLE_OFF

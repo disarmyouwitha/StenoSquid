@@ -82,10 +82,12 @@ int lf_power_down_flash(bool initialized);
 
 /* lapwing_flash_pm.c */
 extern struct k_mutex flash_lock;
+extern atomic_t lf_read_sessions;
 /* True until the first bring-up, and again whenever the flash is powered down. */
 extern bool lf_suspended;
 extern atomic_t lf_restart_requested;
 extern struct k_sem lf_restart_wake;
+extern struct k_condvar lf_restart_done;
 extern int64_t lf_last_restart;
 void lf_request_restart(void);
 /* Hold flash_lock. False while a flash operation is still in progress. */
@@ -105,6 +107,12 @@ bool lf_read_image_crc(const struct base_image *image);
 bool lf_enable_verified_mapping(nrfx_qspi_config_t *config, bool quick);
 bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed);
 
+/* Opportunistic CRC scrub; all calls hold flash_lock. */
+void lf_scrub_verified(void);
+void lf_scrub_invalidated(void);
+void lf_scrub_step(void);
+int32_t lf_scrub_wait_ms(void);
+
 /* lapwing_flash_trust.c */
 uint8_t lf_trust_marker(void);
 void lf_forget_wake_trust(void);
@@ -120,6 +128,7 @@ extern const struct device *const lf_console;
 /* Handles one pending serial command. True when the worker should poll again
  * at once instead of sleeping.
  */
+void lf_serial_init(void);
 bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_failed);
 #endif
 

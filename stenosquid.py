@@ -6,6 +6,7 @@ act on it alone; --repair and --verify are the usual reasons to.
 """
 
 import argparse
+import base64
 from pathlib import Path
 import re
 import subprocess
@@ -65,20 +66,20 @@ def hid_install_status(console):
     while time.monotonic() < deadline:
         reply = console.command("base_install status", timeout=120)
         header, *rows = reply.splitlines()
-        if header == "1 LOADING":
+        if header == "2 LOADING":
             time.sleep(0.25)
             continue
-        if header == "1 ERROR":
+        if header == "2 ERROR":
             raise RuntimeError("The keyboard could not bring up dictionary flash. Check its connection and power.")
-        if header not in ("1 INSTALL", "1 READY") or not rows:
-            raise RuntimeError(f"Base install unavailable. Use a current Left-Default or Left-No-Display build. {header}")
+        if header not in ("2 INSTALL", "2 READY") or not rows:
+            raise RuntimeError(f"Base installer protocol mismatch. Update both firmware and stenosquid.py together. {header}")
         images = {}
         for row in rows:
             name, size, crc, verified = row.split()
             if name not in DEFAULT_IMAGES or name in images or verified not in ("0", "1"):
                 raise RuntimeError(f"Invalid base metadata: {row}")
             images[name] = (int(size), int(crc), verified == "1")
-        return header == "1 READY", images
+        return header == "2 READY", images
     raise TimeoutError("The keyboard did not finish checking dictionary flash.")
 
 
@@ -115,23 +116,28 @@ def install_hid(console, repair_base=None):
         missing[name] = image
 
     for name, image in missing.items():
-        if repair_base:
-            print(f"Repairing {name}. Only its base flash region will be erased.", flush=True)
-            send(f"repair {name}")
-        else:
-            print(f"Installing {name}…", flush=True)
-            send(f"begin {name}")
+        print(f"{'Repairing' if repair_base else 'Installing'} {name}…", flush=True)
+        operation = 'repair' if repair_base else 'begin'
+        reply = console.command(f"base_install {operation} {name}", timeout=600 if repair_base else 30)
+        if not reply.startswith('OK ') or not reply[3:].isdigit():
+            raise RuntimeError(reply)
+        start = int(reply[3:])
+        if start > len(image) or (start != len(image) and start % CHUNK_BYTES):
+            raise RuntimeError('Invalid resume offset from keyboard')
         try:
-            for stage in ("Preflight", "Write and read back"):
-                for offset in range(0, len(image), CHUNK_BYTES):
-                    chunk = image[offset:offset + CHUNK_BYTES]
-                    end = offset + len(chunk)
-                    erasing = repair_base and stage == "Preflight" and end == len(image)
-                    if erasing:
-                        print("Checking replacement checksum and erasing the selected base…", flush=True)
-                    send(f"data {offset} {chunk.hex()}", timeout=600 if erasing else 30)
-                    if end == len(image) or end % (64 * 1024) == 0:
-                        print(f"{stage}: {end:,}/{len(image):,} bytes", flush=True)
+            for offset in range(start, len(image), CHUNK_BYTES):
+                chunk = image[offset:offset + CHUNK_BYTES]
+                end = offset + len(chunk)
+                encoded = base64.b64encode(chunk).decode('ascii')
+                for attempt in range(3):
+                    try:
+                        reply = console.command(f"base_install data {offset} {encoded}", timeout=30)
+                        break
+                    except TimeoutError:
+                        if attempt == 2: raise
+                if reply != f"OK {end}": raise RuntimeError(reply)
+                if end == len(image) or end % (64 * 1024) == 0:
+                    print(f"Write and read back: {end:,}/{len(image):,} bytes", flush=True)
             send("commit", timeout=120)
         except (Exception, KeyboardInterrupt) as error:
             try:
@@ -140,10 +146,8 @@ def install_hid(console, repair_base=None):
                 pass
             if (not repair_base and isinstance(error, RuntimeError) and
                     str(error).startswith("ERR Base region holds different data")):
-                raise RuntimeError(
-                    f"{name} conflicts with the image in flash. To replace just this base, "
-                    f"run: python3 stenosquid.py --repair --base {name.lower()}"
-                ) from None
+                raise RuntimeError(f"{name} conflicts with the image in flash. To replace just this base, "
+                                   f"run: python3 stenosquid.py --repair --base {name.lower()}") from None
             raise
 
     ready, images = hid_install_status(console)

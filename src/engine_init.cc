@@ -19,7 +19,7 @@
 #include "steno_key_state.h"
 #include "static_allocate.h"
 #include "stroke.h"
-#if defined(CONFIG_ZMK_STENO_SQUID_PRACTICE) || defined(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
+#if defined(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS) || defined(CONFIG_ZMK_STENO_SQUID_PRACTICE) || defined(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
 #include "steno_squid/split_status.h"
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
@@ -28,6 +28,8 @@
 #include <new>
 
 #include "javelin_engine_lock.h"
+#include "engine_work.h"
+#include "chord_delivery.h"
 #include "javelin_hid_transport.h"
 #include "lapwing_dictionary.h"
 #include "lapwing_flash.h"
@@ -52,7 +54,7 @@ static JavelinStaticAllocate<StenoRepeat> stenoRepeat;
 static JavelinStaticAllocate<StenoAllUp> allUp;
 static StenoProcessor *processor = nullptr;
 
-static bool initialized = false;
+static atomic_t initialized;
 
 // Dictionary selections are stored separately from base images and personal
 // snapshots. A fresh keyboard starts with Lapwing. Personal=1, Lapwing=2,
@@ -251,7 +253,7 @@ extern "C" {
 
 void zmk_javelin_steno_init(void) {
   const JavelinEngineLock lock;
-  if (!lock || initialized) {
+  if (!lock || atomic_get(&initialized)) {
     return;
   }
   if (!lapwing_dictionary()) {
@@ -275,32 +277,34 @@ void zmk_javelin_steno_init(void) {
 
   static StenoProcessor processorInstance(stenoRepeat.value);
   processor = &processorInstance;
-  initialized = true;
+  atomic_set(&initialized, 1);
+  lapwing_flash_ready_changed();
 
   LOG_INF("Steno processor pipeline ready");
 }
 
 void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
-  // Steno keys whose press reached the engine. A key held while the flash
-  // becomes ready must not deliver a release without its press. Key events
-  // all arrive on the system work queue, so this needs no lock.
-  static uint64_t delivered_presses;
-  const uint64_t bit =
-      steno_key_index >= 0 && steno_key_index < 64 ? uint64_t(1) << steno_key_index : 0;
-
+  // On contention discard the whole held chord, including its eventual releases.
+  // A partial chord must never become a different word after the lock is freed.
+  static StenoSquidChordDelivery delivery;
+  delivery.Event(steno_key_index, is_press);
   const JavelinEngineLock lock;
-  const bool ready = lock && processor;
-  if (is_press) {
-    if (!ready) {
-      return;
-    }
-    delivered_presses |= bit;
-  } else {
-    const bool was_delivered = !bit || (delivered_presses & bit);
-    delivered_presses &= ~bit;
-    if (!ready || !was_delivered) {
-      return;
-    }
+  if (!lock || !processor) {
+    delivery.Drop();
+    zmk_javelin_steno_prepare();
+#ifdef CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS
+    if (atomic_get(&initialized) && lapwing_flash_status() == LAPWING_FLASH_READY)
+      steno_squid_upload_status(STENO_SQUID_MODE_BUSY, 500);
+#endif
+    return;
+  }
+  if (delivery.interrupted) {
+    stenoRepeat.value.Process(StenoKeyState(), StenoAction::CANCEL_ALL);
+    new (processor) StenoProcessor(stenoRepeat.value);
+#ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
+    steno_squid_practice_discard_chord();
+#endif
+    if (!delivery.Recover()) return;
   }
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
   if (steno_squid_practice_process_key(steno_key_index, is_press)) {
@@ -325,6 +329,7 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
 // large personal export as soon as its transport reports a terminal failure.
 static bool (*response_cancelled)(void *);
 static void *response_context;
+bool steno_squid_javelin_response_active() { return response_context != nullptr; }
 bool steno_squid_javelin_response_cancelled() {
   return response_cancelled && response_cancelled(response_context);
 }
@@ -336,7 +341,10 @@ bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &wr
     // The flash is asleep, unprovisioned or still verifying.
     return false;
   }
-  zmk_javelin_steno_init();
+  if (!atomic_get(&initialized)) {
+    zmk_javelin_steno_prepare();
+    return false;
+  }
   response_cancelled = cancelled;
   response_context = context;
   ConsoleWriter::Push(&writer);
@@ -347,3 +355,11 @@ bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &wr
   return true;
 }
 #endif
+
+static void prepare_engine(struct k_work *) { zmk_javelin_steno_init(); }
+K_WORK_DEFINE(prepare_engine_work, prepare_engine);
+extern "C" void zmk_javelin_steno_prepare(void) {
+  if (!atomic_get(&initialized))
+    k_work_submit_to_queue(&steno_squid_engine_queue, &prepare_engine_work);
+}
+extern "C" bool zmk_javelin_steno_ready(void) { return atomic_get(&initialized) != 0; }

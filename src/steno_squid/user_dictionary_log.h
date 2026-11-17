@@ -18,7 +18,7 @@ constexpr uint32_t REGION_START = 0x500000, SEG_BYTES = 0x10000,
                    SLOTS_PER_SEG = (SEG_BYTES - SEG_HEADER) / 4,
                    MAX_TABLE_SEGS = 32, RESERVE = 3, MAX_STROKES = 16,
                    MAX_TEXT = 2047, MAGIC = 0x3355445a, STATE_BYTES = 80,
-                   EMPTY = 0xffffffffu, IMPORT_CHUNK = 512;
+                   EMPTY_SLOT = 0xffffffffu, IMPORT_CHUNK = 512;
 static_assert(SEG_COUNT <= 256, "segment IDs fit the on-flash slot encoding");
 constexpr uint32_t F_ALLOC = 1u << 31, F_COMMIT = 1u << 30, F_DEAD = 1u << 29;
 enum Kind : uint8_t { FREE = 0, RECORD = 1, FORWARD = 2, REVERSE = 3, META = 4 };
@@ -289,7 +289,7 @@ public:
     }
     for (; c.probes < slots; ++c.probes, c.index = (c.index + 1) % slots) {
       uint32_t v;
-      if (!ReadSlot(t, c.index, v) || v == EMPTY) {
+      if (!ReadSlot(t, c.index, v) || v == EMPTY_SLOT) {
         c.probes = slots;
         return false;
       }
@@ -798,7 +798,7 @@ private:
     }
     if (!device.Read(Base(seg) + off, &r.word, 4))
       return false;
-    if (r.word == EMPTY) {
+    if (r.word == EMPTY_SLOT) {
       r.end = true;
       return true;
     }
@@ -919,7 +919,7 @@ private:
       uint32_t v;
       if (!ReadSlot(t, index, v))
         return false;
-      if (v == EMPTY)
+      if (v == EMPTY_SLOT)
         return true;
     }
     return false;
@@ -931,7 +931,7 @@ private:
     uint32_t i = hash % slots;
     for (uint32_t n = 0; n < slots; ++n, i = (i + 1) % slots) {
       uint32_t v;
-      if (!ReadSlot(t, i, v) || v == EMPTY)
+      if (!ReadSlot(t, i, v) || v == EMPTY_SLOT)
         return false;
       if (v == value)
         return true;
@@ -948,7 +948,7 @@ private:
     for (uint32_t n = 0; n < slots; ++n, i = (i + 1) % slots) {
       uint32_t v, seg, off;
       Rec r;
-      if (!ReadSlot(t, i, v) || v == EMPTY)
+      if (!ReadSlot(t, i, v) || v == EMPTY_SLOT)
         return false;
       if ((v >> 22) != (hash >> 22) || !Target(v, pending, seg, off, r) ||
           r.strokes != length || Base(seg) + off == exclude)
@@ -987,7 +987,7 @@ private:
       if (!device.Read(Base(s) + off, chunk, m))
         return false;
       for (uint32_t i = 0; i < m / 4; ++i)
-        used += chunk[i] != EMPTY;
+        used += chunk[i] != EMPTY_SLOT;
       off += m;
     }
     segs[s].live = static_cast<uint16_t>(used);
@@ -1007,7 +1007,7 @@ private:
       State s{};
       if (!device.Read(Base(seg) + off, &s, sizeof(s)))
         return false;
-      if (s.flags == EMPTY)
+      if (s.flags == EMPTY_SLOT)
         break;
       if (s.flags == ~(F_ALLOC | F_COMMIT) && s.crc == StateCrc(s) &&
           s.fwd_segments <= MAX_TABLE_SEGS &&

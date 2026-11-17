@@ -45,4 +45,5 @@ class IWriter;
 bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer,
                                       bool (*cancelled)(void *), void *context);
 bool steno_squid_javelin_response_cancelled();
+bool steno_squid_javelin_response_active();
 #endif

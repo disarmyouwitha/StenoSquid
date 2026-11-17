@@ -41,7 +41,6 @@ static struct {
   uint8_t multi_count;
   uint8_t build_stage;
   bool timed_out;
-  bool multi_second_error;
   StenoStroke multi_strokes[2];
   int64_t deadline;
   int64_t advance_at;
@@ -78,7 +77,6 @@ static void practice_publish() {
     snapshot = STENO_SQUID_PRACTICE_ACTIVE |
                (practice.menu ? STENO_SQUID_PRACTICE_MENU : 0) |
                (practice.timed_out ? STENO_SQUID_PRACTICE_TIMEOUT : 0) |
-               (practice.multi_second_error ? STENO_SQUID_PRACTICE_SECOND_ERROR : 0) |
                (practice.multi_count == 1 ? STENO_SQUID_PRACTICE_PARTIAL : 0) |
                (uint32_t(practice.build_stage) << STENO_SQUID_PRACTICE_BUILD_SHIFT) |
                (practice.no_dictionary ? STENO_SQUID_PRACTICE_NO_DICTIONARY : 0) |
@@ -234,7 +232,7 @@ static void practice_switch_drill(int direction) {
 
 extern "C" void steno_squid_practice_set_active(bool active) {
   if (active) {
-    zmk_javelin_steno_init();
+    zmk_javelin_steno_prepare();
   } else {
     // Leaving a layer that never started practice needs no engine access,
     // so ordinary layer changes do not touch the dictionary flash.
@@ -335,7 +333,6 @@ static bool practice_process_key(int index, bool pressed) {
         const StenoStroke stroke = practice.chord.ToStroke();
         const bool first_error = practice.drill == STENO_SQUID_PRACTICE_MULTI &&
             practice.multi_count == 0 && !practice_first_stroke_correct(stroke);
-        practice.multi_second_error = false;
         if (practice.drill == STENO_SQUID_PRACTICE_MULTI && !first_error) {
           practice.multi_strokes[practice.multi_count++] = stroke;
         }
@@ -343,7 +340,6 @@ static bool practice_process_key(int index, bool pressed) {
           practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
         } else {
           const bool correct = !first_error && practice_correct(stroke);
-          practice.multi_second_error = practice.drill == STENO_SQUID_PRACTICE_MULTI && !correct && !first_error;
           practice.multi_count = 0;
           const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
           const uint32_t elapsed_ms = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
@@ -398,5 +394,16 @@ void steno_squid_practice_dictionary_changed() {
     practice_refresh_dictionary();
     practice_publish();
   }
+  k_mutex_unlock(&practice_mutex);
+}
+
+void steno_squid_practice_discard_chord() {
+  k_mutex_lock(&practice_mutex, K_FOREVER);
+  const bool changed = practice.keys.IsNotEmpty() || practice.chord.IsNotEmpty() || practice.multi_count;
+  practice.keys = {};
+  practice.chord = {};
+  practice.multi_count = 0;
+  practice_pending_releases = {};
+  if (changed && practice.active) practice_publish();
   k_mutex_unlock(&practice_mutex);
 }

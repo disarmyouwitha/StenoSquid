@@ -15,7 +15,7 @@ endfunction()
 # Layer handling on the left half: dictionary hold and Practice. It does not
 # depend on the right half having a display.
 if(CONFIG_ZMK_JAVELIN_STENO AND CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-  target_sources(app PRIVATE src/steno_squid/layer_control.c)
+  target_sources(app PRIVATE src/steno_squid/layer_control.c src/steno_squid/engine_work.c)
 endif()
 
 if(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
@@ -72,6 +72,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
         "${LAPWING_SRC}/lapwing_flash_pm.c"
         "${LAPWING_SRC}/lapwing_flash_qspi.c"
         "${LAPWING_SRC}/lapwing_flash_trust.c"
+        "${LAPWING_SRC}/lapwing_flash_scrub.c"
         "${LAPWING_SRC}/w25q_quad.c")
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_SERIAL_CONSOLE app PRIVATE
         "${LAPWING_SRC}/serial_console.c")
