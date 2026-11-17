@@ -1166,7 +1166,11 @@ private:
       if (!WriteSlot(tables[t], index[t], SlotValue(hashes[t], seg, off)))
         return Result::FAILED;
       const uint32_t slots = tables[t].segs * SLOTS_PER_SEG;
-      if (probes[t] > 256 || SlotsUsedIn(tables[t]) > slots / 8 * 7)
+      // A long probe run only justifies a rebuild when the table is crowded:
+      // identical keys (many outlines sharing one translation) cluster no
+      // matter how big the table is, and rebuilding cannot spread them.
+      const uint32_t used = SlotsUsedIn(tables[t]);
+      if ((probes[t] > 256 && used > slots / 2) || used > slots / 8 * 7)
         rebuild_pending[t] = !table_stuck[t];
     }
     return Result::OK;

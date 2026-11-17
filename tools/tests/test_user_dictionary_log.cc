@@ -393,10 +393,12 @@ static void TestConstantCost(uint32_t entries) {
   Nor nor(SEG_COUNT);
   Store store(nor, 0, SEG_COUNT);
   CHECK(store.Open());
-  const std::string text = "translation.";
+  const std::string tail_text = "translation.";
   uint32_t added = 0;
   for (uint32_t i = 0; i < entries; ++i) {
     const Key key{i * 2654435761u + 1, i + 1};
+    // About 60 outlines share each translation, like a real dictionary.
+    const std::string text = "translation " + std::to_string(i % 3000);
     Store::Result r = store.Add(MakeEntry(key, text));
     if (r == Store::Result::BUSY) {
       Settle(store);
@@ -413,7 +415,7 @@ static void TestConstantCost(uint32_t entries) {
   for (uint32_t i = 0; i < 200; ++i) {
     const Key key{0x80000000u + i, 77};
     const uint64_t p0 = nor.programs, e0 = nor.erase_calls;
-    Store::Result r = store.Add(MakeEntry(key, text));
+    Store::Result r = store.Add(MakeEntry(key, tail_text));
     if (r == Store::Result::BUSY) {
       Settle(store);
       continue;
@@ -447,7 +449,7 @@ int main(int argc, char **argv) {
   const bool quick = argc > 1 && std::string(argv[1]) == "--quick";
   if (argc > 1 && std::string(argv[1]) == "--capacity") { // Just the big fill.
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
-    TestConstantCost(190000);
+    TestConstantCost(argc > 2 ? static_cast<uint32_t>(atoi(argv[2])) : 190000);
     std::printf("PASS\n");
     return 0;
   }
