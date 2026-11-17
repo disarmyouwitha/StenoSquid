@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 STUBS = r'''
 #pragma once
+#define BUILD_ASSERT(x, ...) static_assert(x)
+#define CONFIG_USB_HID_DEVICE_COUNT 3
 #include <algorithm>
 #include <cassert>
 #include <cerrno>
