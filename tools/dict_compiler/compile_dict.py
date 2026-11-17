@@ -478,7 +478,7 @@ def main():
 
     dict_entries = []
     for i, input_path in enumerate(args.inputs):
-        with open(input_path, 'r') as f:
+        with open(input_path, 'r', encoding='utf-8') as f:
             raw = json.load(f)
         if args.max_entries > 0:
             items = list(raw.items())[:args.max_entries]
@@ -509,7 +509,7 @@ def main():
         for i in range(0, len(chunk), 16):
             lines.append('.byte ' + ','.join(str(v) for v in chunk[i:i+16]))
         lines.append('_javelin_dict_end:')
-        with open(args.asm_output, 'w') as f:
+        with open(args.asm_output, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')
 
     print(f"Wrote {len(result)} bytes ({len(result)/1024:.1f} KB) to {args.output}", file=sys.stderr)

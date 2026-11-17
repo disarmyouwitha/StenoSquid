@@ -154,14 +154,14 @@ int main(void) {
 def main():
     with tempfile.TemporaryDirectory(prefix='steno-squid-progress-') as directory:
         output = Path(directory)
-        (output / 'stubs.h').write_text(STUBS)
+        (output / 'stubs.h').write_text(STUBS, encoding="utf-8")
         for name in ('zephyr/kernel.h', 'zephyr/random/random.h', 'zephyr/settings/settings.h',
                      'zephyr/sys/crc.h', 'zephyr/logging/log.h', 'zephyr/toolchain.h',
                      'zmk/activity.h', 'zmk/events/activity_state_changed.h'):
             path = output / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text('#include "stubs.h"\n')
-        (output / 'test.c').write_text(HARNESS)
+            path.write_text('#include "stubs.h"\n', encoding="utf-8")
+        (output / 'test.c').write_text(HARNESS, encoding="utf-8")
         binary = output / 'test'
         subprocess.run(['clang', '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
                         '-I' + str(output), '-I' + str(ROOT / 'src/steno_squid'),

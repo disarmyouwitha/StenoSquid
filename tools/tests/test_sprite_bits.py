@@ -75,7 +75,7 @@ def strip_comments(text):
 
 
 def images(path, default_size):
-    text = path.read_text().replace('\r', '')
+    text = path.read_text(encoding="utf-8").replace('\r', '')
     pattern = (r'static const uint8_t (\w+)_pixels\[\] = \{(.*?)\n\};\n'
                r'(?:PET_IMAGE|FX_IMAGE|FX_SIZED_IMAGE)\(\w+(?:, *(\d+), *(\d+))?\);')
     for m in re.finditer(pattern, text, re.S):

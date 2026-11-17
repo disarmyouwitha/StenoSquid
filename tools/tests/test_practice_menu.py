@@ -59,6 +59,7 @@ int64_t now = 0;
 int64_t k_uptime_get() { return now; }
 void k_work_cancel_delayable(int *) {}
 void k_work_reschedule(int *, int64_t) {}
+int *k_work_delayable_from_work(k_work *) { static int delayed; return &delayed; }
 uint32_t sys_rand32_get() { return 3; }
 static steno_squid_practice_model progress_model;
 uint64_t steno_squid_practice_progress() { return 0; }
@@ -267,21 +268,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('engine', type=Path)
     args = parser.parse_args()
-    source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text()
+    source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text(encoding="utf-8")
     start = source.index('K_MUTEX_DEFINE(practice_mutex);')
     end = source.index('static const StenoDictionary *practice_fallback_dictionary()', start)
     code = PREFIX + source[start:end]
     code += '\nstatic void practice_refresh_dictionary() { practice.no_dictionary = false; }\n'
     code += function(source, 'static void practice_switch_drill(') + '\n'
     code += function(source, 'static bool practice_process_key(') + '\n'
-    receiver = (ROOT / 'src/steno_squid/split_status_display.c').read_text()
+    receiver = (ROOT / 'src/steno_squid/split_status_display.c').read_text(encoding="utf-8")
     code += function(receiver, 'static int status_received(') + '\n'
     code += CASES
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
         (directory / 'zephyr').mkdir()
-        (directory / 'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x, ...) static_assert(x)\n')
-        (directory / 'test.cc').write_text('#include <initializer_list>\n' + code)
+        (directory / 'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x, ...) static_assert(x)\n', encoding="utf-8")
+        (directory / 'test.cc').write_text('#include <initializer_list>\n' + code, encoding="utf-8")
         subprocess.run(['clang++', '-std=c++20', '-I' + str(directory),
                         '-I' + str(args.engine.resolve()), '-I' + str(ROOT / 'src/steno_squid'),
                         str(directory / 'test.cc'), str(args.engine / 'steno_key_state.cc'),

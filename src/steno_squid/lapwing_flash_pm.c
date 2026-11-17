@@ -12,8 +12,12 @@ K_MUTEX_DEFINE(flash_lock);
 bool lf_suspended = true;
 atomic_t lf_restart_requested = ATOMIC_INIT(1);
 K_SEM_DEFINE(lf_restart_wake, 0, 1);
+int64_t lf_last_restart = -5000;
 
 void lf_request_restart(void) {
+    if (lf_suspended && atomic_get(&lf_checked) && !lf_trusted && k_uptime_get() - lf_last_restart < 5000) {
+        return;
+    }
     if (lf_suspended) {
 #if IDLE_OFF
         diag_wake_requested(atomic_get(&lf_idle_off) != 0);

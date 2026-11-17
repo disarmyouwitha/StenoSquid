@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text()
+source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text(encoding="utf-8")
 start = source.index('static bool practice_correct(')
 brace = source.index('{', start)
 depth, end = 1, brace + 1
@@ -127,8 +127,8 @@ int main() {
 with tempfile.TemporaryDirectory(prefix='steno-squid-lookup-') as directory:
     output=Path(directory)
     (output/'zephyr').mkdir()
-    (output/'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x,...) static_assert(x)\n')
-    (output/'test.cc').write_text(prefix+function+cases)
+    (output/'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x,...) static_assert(x)\n', encoding="utf-8")
+    (output/'test.cc').write_text(prefix+function+cases, encoding="utf-8")
     subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Werror','-I'+str(output),
                     '-I'+str(ROOT/'src/steno_squid'),str(output/'test.cc'),'-o',str(output/'test')],check=True)
     subprocess.run([str(output/'test')],check=True)

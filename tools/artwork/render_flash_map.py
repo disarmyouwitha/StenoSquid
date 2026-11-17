@@ -16,8 +16,8 @@ def constant(text, name):
     return int(re.search(rf'\b{name}\s*(?:=\s*|\s+)(0x[0-9a-fA-F]+|\d+)', text)[1], 0)
 
 def render():
-    header = (ROOT / 'src/steno_squid/lapwing_flash.h').read_text()
-    store = (ROOT / 'src/steno_squid/user_dictionary_log.h').read_text()
+    header = (ROOT / 'src/steno_squid/lapwing_flash.h').read_text(encoding="utf-8")
+    store = (ROOT / 'src/steno_squid/user_dictionary_log.h').read_text(encoding="utf-8")
     start, count, segment = [constant(store, x) for x in ('REGION_START', 'SEG_COUNT', 'SEG_BYTES')]
     bases = [
         ('Lapwing base', 0, 'lapwing/lapwing-base.bin', '#2faac5'),
@@ -84,7 +84,7 @@ def render():
     text(45,1074,'Region allocation, not a live occupancy report. Image sizes come from the prepared firmware dictionaries.',16,muted)
     parts.append('</svg>')
     out=ROOT/'assets/qspi-flash-map.svg'
-    out.write_text('\n'.join(parts))
+    out.write_text('\n'.join(parts), encoding="utf-8")
     cairosvg.svg2png(url=str(out),write_to=str(out.with_suffix('.png')))
     print(f'Rendered {out.name} and {out.with_suffix(".png").name}: {count} personal segments')
 

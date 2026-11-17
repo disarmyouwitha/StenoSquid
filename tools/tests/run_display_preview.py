@@ -22,7 +22,7 @@ def main():
     args = parser.parse_args()
     output = args.build_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    config = (ROOT / 'config/nicenano-wireless-corne/right-nice-view.conf').read_text()
+    config = (ROOT / 'config/nicenano-wireless-corne/right-nice-view.conf').read_text(encoding="utf-8")
     heap = args.heap_size or int(re.search(r'^CONFIG_LV_Z_MEM_POOL_SIZE=(\d+)$', config, re.M)[1])
     (output / 'lv_conf.h').write_text('''#ifndef LV_CONF_H
 #define LV_CONF_H
@@ -35,20 +35,20 @@ def main():
 #define LV_ASSERT_HANDLER __builtin_trap();
 ''' + f'#define LV_MEM_SIZE {heap}\n' + ''.join(
         f'#define LV_FONT_MONTSERRAT_{size} 1\n' for size in (8, 10, 12, 14, 16, 20, 28)
-    ) + '#define LV_FONT_UNSCII_8 1\n#endif\n')
+    ) + '#define LV_FONT_UNSCII_8 1\n#endif\n', encoding="utf-8")
     stubs = output / 'stubs'
     (stubs / 'zephyr/sys').mkdir(parents=True, exist_ok=True)
     (stubs / 'zmk').mkdir(exist_ok=True)
     (stubs / 'zephyr/toolchain.h').write_text(
-        '#pragma once\n#define BUILD_ASSERT(x, ...) _Static_assert(x, #x)\n')
+        '#pragma once\n#define BUILD_ASSERT(x, ...) _Static_assert(x, #x)\n', encoding="utf-8")
     (stubs / 'zephyr/sys/util.h').write_text(
-        '#include <zephyr/toolchain.h>\n#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))\n')
+        '#include <zephyr/toolchain.h>\n#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))\n', encoding="utf-8")
     (stubs / 'zmk/activity.h').write_text('''enum zmk_activity_state {
     ZMK_ACTIVITY_ACTIVE, ZMK_ACTIVITY_IDLE
 };
 static enum zmk_activity_state preview_activity = ZMK_ACTIVITY_ACTIVE;
 static enum zmk_activity_state zmk_activity_get_state(void) { return preview_activity; }
-''')
+''', encoding="utf-8")
     cmake_conf = 'set(LV_CONF_PATH ' + json.dumps(chr(34) + str(output / 'lv_conf.h') + chr(34)) + ')'
     (output / 'CMakeLists.txt').write_text(f'''cmake_minimum_required(VERSION 3.20)
 project(display_preview C)
@@ -59,7 +59,7 @@ add_subdirectory("{args.lvgl.resolve()}" lvgl)
 add_executable(preview "{ROOT / 'tools/tests/display_preview.c'}")
 target_include_directories(preview PRIVATE "${{CMAKE_CURRENT_SOURCE_DIR}}/stubs")
 target_link_libraries(preview PRIVATE lvgl m)
-''')
+''', encoding="utf-8")
     log_path = output / 'build.log'
     try:
         with log_path.open('w') as log:
@@ -68,7 +68,7 @@ target_link_libraries(preview PRIVATE lvgl m)
             subprocess.run(['cmake', '--build', str(output / 'out'), '-j', '8'],
                            stdout=log, stderr=subprocess.STDOUT, check=True)
     except subprocess.CalledProcessError:
-        print(''.join(log_path.read_text(errors='replace').splitlines(True)[-80:]))
+        print(''.join(log_path.read_text(errors='replace', encoding="utf-8").splitlines(True)[-80:]))
         raise
     subprocess.run([str(output / 'out/preview')], cwd=output, check=True, timeout=30)
     print(f'Rendered screenshots: {output}')

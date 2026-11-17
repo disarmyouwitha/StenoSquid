@@ -45,7 +45,12 @@ void lf_print_flash_status(void) {
  * flash down, and leave it powered and checked again when they finish. They
  * can run for tens of seconds, and dictionary lookups wait meanwhile.
  */
+#if CONFIG_ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN >= 0
 #define RAIL_SENSE_PIN CONFIG_ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
+#else
+#include <zephyr/dt-bindings/pinctrl/nrf-pinctrl.h>
+#define RAIL_SENSE_PIN (DT_PROP_BY_IDX(DT_CHILD(DT_PHANDLE_BY_IDX(QSPI_NODE, pinctrl_0, 0), bus), psels, 0) & NRF_PIN_MSK)
+#endif
 #define BENCH_CYCLES 10
 
 static void take_flash_down(void) {
@@ -64,6 +69,7 @@ static void bring_flash_back(nrfx_qspi_config_t *config, bool *qspi_ok, bool *ma
     lf_note_use();
     atomic_clear(&lf_idle_off);
 #endif
+    lapwing_flash_ready_changed();
 }
 
 /* Microseconds until the sense pin reads the wanted level, or -1 on timeout.
@@ -96,7 +102,7 @@ static int32_t wait_for_sense(bool wanted, uint32_t timeout_ms) {
  * threshold, roughly 1 V to 2 V on a 3.3 V rail, not a scope trace.
  */
 static void rail_test(void) {
-    diag_printf(lf_console, "RAIL test: P0.%d senses the rail, P0.31 enables it", RAIL_SENSE_PIN);
+    diag_printf(lf_console, "RAIL test: P0.%d senses the rail, %s pin %u enables it", RAIL_SENSE_PIN, lf_power.port->name, lf_power.pin);
     take_flash_down();
     (void)gpio_pin_configure_dt(&lf_power, GPIO_OUTPUT_INACTIVE);
     nrf_gpio_cfg_input(RAIL_SENSE_PIN, NRF_GPIO_PIN_NOPULL);
@@ -108,7 +114,7 @@ static void rail_test(void) {
     gpio_pin_set_raw(lf_power.port, lf_power.pin, 1);
     k_msleep(1000);
     const bool high_reads = nrf_gpio_pin_read(RAIL_SENSE_PIN) != 0;
-    diag_printf(lf_console, "RAIL sense reads %d with P0.31 low, %d with P0.31 high", (int)low_reads,
+    diag_printf(lf_console, "RAIL sense reads %d with enable low, %d with enable high", (int)low_reads,
                 (int)high_reads);
 
     if (high_reads && !low_reads) {
@@ -137,7 +143,7 @@ static void rail_test(void) {
                              "change GPIO_ACTIVE_HIGH in src/steno_squid/qspi.overlay");
     } else if (!low_reads && !high_reads) {
         diag_printf(lf_console, "RAIL no rail seen at either level. Check that the 10 k from CS to "
-                             "VCC is fitted, the chip is wired, and P0.31 is the rail enable");
+                             "VCC is fitted, the chip is wired, and the configured GPIO is the rail enable");
     } else {
         diag_printf(lf_console, "RAIL reads high at both levels. The rail is always on, or it "
                              "needs more than 3 s to fall");

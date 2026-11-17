@@ -71,8 +71,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('zmk_app',type=Path)
     args=parser.parse_args()
-    keymap=(args.zmk_app/'src/keymap.c').read_text()
-    central=(ROOT/'src/steno_squid/layer_control.c').read_text()
+    keymap=(args.zmk_app/'src/keymap.c').read_text(encoding="utf-8")
+    central=(ROOT/'src/steno_squid/layer_control.c').read_text(encoding="utf-8")
     code=PREFIX
     for signature in ['zmk_keymap_layer_id_t zmk_keymap_layer_index_to_id(',
                       'zmk_keymap_layer_id_t zmk_keymap_layer_default(',
@@ -92,7 +92,7 @@ static zmk_keymap_layer_id_t active_layer() { return steno_squid_active_layer();
         code+=function(central,signature)+'\n'
     with tempfile.TemporaryDirectory() as tmp:
         path=Path(tmp)
-        (path/'entry.cc').write_text(code+CASES)
+        (path/'entry.cc').write_text(code+CASES, encoding="utf-8")
         subprocess.run(['clang++','-std=c++20','-I'+str(ROOT/'include'),
                         str(path/'entry.cc'),'-o',str(path/'entry')],check=True)
         subprocess.run([str(path/'entry')],check=True)

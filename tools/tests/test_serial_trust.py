@@ -13,7 +13,7 @@ def function(source, name):
 
 
 def main():
-    source = (SOURCE / 'lapwing_flash_serial.c').read_text()
+    source = (SOURCE / 'lapwing_flash_serial.c').read_text(encoding="utf-8")
     helpers = '\n'.join(function(source, name) for name in
                         ('wait_until_ready', 'erase_image', 'transfer_and_program'))
     harness = r'''
@@ -45,7 +45,7 @@ int main(void) {
 '''.replace('HELPERS', helpers)
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder)
-        (path / 'test.c').write_text(STUB.replace('#pragma once', '') + harness)
+        (path / 'test.c').write_text(STUB.replace('#pragma once', '') + harness, encoding="utf-8")
         subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
                         '-Wno-unused-function', '-Wno-unused-variable', '-Wno-unused-parameter',
                         str(path / 'test.c'), '-o', str(path / 'test')], check=True)

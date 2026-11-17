@@ -7,6 +7,7 @@
 
 #if SERIAL_PROVISIONING
 #include <string.h>
+#include <zephyr/sys/crc.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/sys/printk.h>
 

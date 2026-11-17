@@ -25,7 +25,7 @@ The Adafruit #5634 schematic routes IO2 and IO3 to separate pads. Check continui
 
 ## Build
 
-Use the repository's [pinned west manifest](../west.yml) and Zephyr SDK 0.16.9. The [Lapwing preparation commands](../steno-squid-left/README.md#build-and-provision) produce `build/lapwing/lapwing-base.bin`. The left builds use the external images' size and CRC. The UF2s carry the firmware, and the dictionary files are transferred separately when provisioning.
+Use the repository's [pinned west manifest](../west.yml) and Zephyr SDK 0.16.9. The [Lapwing preparation commands](../nicenano-wireless-corne/README.md#build-and-provision) produce `build/lapwing/lapwing-base.bin`. The left builds use the external images' size and CRC. The UF2s carry the firmware, and the dictionary files are transferred separately when provisioning.
 
 Run from this repository's root in a shell with west and the Zephyr SDK available. Set `ws` to the absolute path of the pinned west workspace.
 

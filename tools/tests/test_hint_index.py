@@ -28,7 +28,7 @@ def main():
         queries = []
         for source in sources:
             best = {}
-            for outline, text in json.loads((ROOT / f'build/{source}.json').read_text()).items():
+            for outline, text in json.loads((ROOT / f'build/{source}.json').read_text(encoding="utf-8")).items():
                 strokes = compiler.parse_outline(outline)
                 if len(strokes) != 1 or not strokes[0]:
                     continue

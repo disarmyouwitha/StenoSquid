@@ -615,7 +615,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
+    except (KeyError, ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
         sys.exit(f"Error: {error}")
     except KeyboardInterrupt:
         sys.exit("Cancelled. Reconnect the keyboard and check the dictionary before retrying.")

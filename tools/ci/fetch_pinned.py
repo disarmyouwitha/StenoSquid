@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def main(name, destination):
-    manifest = (ROOT / 'config/west.yml').read_text()
+    manifest = (ROOT / 'config/west.yml').read_text(encoding="utf-8")
     remotes = dict(re.findall(r'- name: (\w+)\s+url-base: (\S+)', manifest))
     match = re.search(rf'- name: {re.escape(name)}\s+remote: (\w+)\s+revision: (\w+)', manifest)
     if not match:

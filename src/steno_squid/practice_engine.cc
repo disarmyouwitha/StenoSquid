@@ -168,10 +168,12 @@ void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) 
   k_mutex_unlock(&practice_mutex);
 }
 
-static void practice_advance(struct k_work *) {
+static void practice_advance(struct k_work *work) {
   k_mutex_lock(&practice_mutex, K_FOREVER);
   if (practice.active && practice.feedback == STENO_SQUID_PRACTICE_CORRECT &&
-      k_uptime_get() >= practice.advance_at) {
+      k_uptime_get() < practice.advance_at) {
+    k_work_reschedule(k_work_delayable_from_work(work), K_TIMEOUT_ABS_MS(practice.advance_at));
+  } else if (practice.active && practice.feedback == STENO_SQUID_PRACTICE_CORRECT) {
     if (practice.drill == STENO_SQUID_PRACTICE_BUILD && practice.build_stage + 1 < STENO_SQUID_BUILD_STEPS) {
       ++practice.build_stage;
       practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
@@ -233,6 +235,9 @@ static void practice_switch_drill(int direction) {
 static bool practice_first_stroke_correct(const StenoStroke &stroke) {
   const char *outline = steno_squid_multi[practice_prompt()].outline;
   const char *slash = strchr(outline, '/');
+  if (!slash) {
+    return false;
+  }
   char first[STENO_SQUID_PRACTICE_OUTLINE_SIZE];
   snprintf(first, sizeof(first), "%.*s", int(slash - outline), outline);
   StenoStroke expected;

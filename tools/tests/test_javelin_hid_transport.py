@@ -227,13 +227,13 @@ int main() {
 def main():
     with tempfile.TemporaryDirectory(prefix="javelin-hid-test-") as temp:
         root = Path(temp)
-        (root / "stubs.h").write_text(STUBS)
+        (root / "stubs.h").write_text(STUBS, encoding="utf-8")
         for name in ("console.h", "zephyr/device.h", "zephyr/init.h", "zephyr/kernel.h",
                      "zephyr/sys/byteorder.h", "zephyr/usb/class/usb_hid.h"):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text('#include "stubs.h"\n')
-        (root / "test.cc").write_text(HARNESS)
+            path.write_text('#include "stubs.h"\n', encoding="utf-8")
+        (root / "test.cc").write_text(HARNESS, encoding="utf-8")
         subprocess.run(["c++", "-std=c++20", "-I", str(root), "-I",
                         str(ROOT / "src/steno_squid"), str(root / "test.cc"),
                         "-o", str(root / "test")], check=True)

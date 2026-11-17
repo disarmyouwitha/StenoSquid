@@ -91,12 +91,12 @@ int main() {
 def main():
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder)
-        (path / 'stubs.h').write_text(STUBS)
+        (path / 'stubs.h').write_text(STUBS, encoding="utf-8")
         for name in ('zephyr/kernel.h', 'zephyr/spinlock.h'):
             p = path / name
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text('#include "stubs.h"\n')
-        (path / 'test.cc').write_text(HARNESS)
+            p.write_text('#include "stubs.h"\n', encoding="utf-8")
+        (path / 'test.cc').write_text(HARNESS, encoding="utf-8")
         subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                         '-Wno-unused-parameter', '-I', folder, '-I', str(ROOT / 'src/steno_squid'),
                         str(path / 'test.cc'), '-o', str(path / 'test')], check=True)

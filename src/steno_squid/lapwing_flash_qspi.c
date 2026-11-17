@@ -263,7 +263,6 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
              atomic_get(&lf_mapped_ready) ? "mapped" : "unavailable", quick ? "quick" : "full",
              (int)(k_uptime_get() - started));
     atomic_set(&lf_checked, 1);
-    lapwing_flash_ready_changed();
 #if SERIAL_PROVISIONING
     lf_last_check_quick = quick;
     lf_last_check_ms = (uint32_t)(k_uptime_get() - started);

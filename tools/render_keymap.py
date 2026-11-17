@@ -12,7 +12,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "config/corne.keymap"
 PROFILE = ROOT / "config/nicenano-wireless-corne/corne.keymap"
-OUTPUT = ROOT / "docs/keymap"
+OUTPUT = ROOT / "assets/keymap"
 LAYERS = [
     (
         "main_layer",
@@ -174,8 +174,8 @@ def key_name(key):
 
 
 def parse_layers():
-    source = re.sub(r"//[^\n]*", "", SOURCE.read_text())
-    profile = re.sub(r"//[^\n]*", "", PROFILE.read_text())
+    source = re.sub(r"//[^\n]*", "", SOURCE.read_text(encoding="utf-8"))
+    profile = re.sub(r"//[^\n]*", "", PROFILE.read_text(encoding="utf-8"))
     macros = dict(re.findall(r"^#define (CORNE_\w+) (.+)$", profile, re.M))
     for name, value in re.findall(r"^#define (CORNE_\w+) (.+)$", source, re.M):
         macros.setdefault(name, value)
@@ -290,12 +290,12 @@ text{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
     content = "\n".join(svg) + "\n"
     digest = hashlib.sha256(content.encode()).hexdigest()[:12]
     target = OUTPUT / f"{filename}-{digest}.svg"
-    target.write_text(content)
+    target.write_text(content, encoding="utf-8")
     readme = ROOT / "README.md"
-    pattern = r"docs/keymap/" + re.escape(filename) + r"(?:-[0-9a-f]{12})?\.svg"
+    pattern = r"assets/keymap/" + re.escape(filename) + r"(?:-[0-9a-f]{12})?\.svg"
     readme.write_text(
-        re.sub(pattern, target.relative_to(ROOT).as_posix(), readme.read_text())
-    )
+        re.sub(pattern, target.relative_to(ROOT).as_posix(), readme.read_text(encoding="utf-8"))
+    , encoding="utf-8")
     for previous in OUTPUT.glob(f"{filename}-*.svg"):
         if previous != target:
             previous.unlink()

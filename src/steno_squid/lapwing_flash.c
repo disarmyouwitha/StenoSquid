@@ -130,7 +130,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
                 /* Each image already passed a raw CRC. Check the mapped bytes
                  * and native lookups before publishing the new mapping. */
                 mapping_failed = !lf_enable_verified_mapping(&config, false);
-                lf_provisioning_ready = qspi_ok && !mapping_failed;
+                lf_provisioning_ready = qspi_ok;
                 if (!mapping_failed) {
                     lf_store_trust();
                 }
@@ -143,15 +143,17 @@ static void lapwing_worker(void *a, void *b, void *c) {
              * is brought up; a request that arrives late is already served.
              */
             if (atomic_cas(&lf_restart_requested, 1, 0) && lf_suspended) {
+                lf_last_restart = k_uptime_get();
                 qspi_ok = lf_bring_up_flash(&config, &mapping_failed);
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
-                lf_provisioning_ready = qspi_ok && !mapping_failed;
+                lf_provisioning_ready = qspi_ok;
 #endif
                 lf_suspended = false;
 #if IDLE_OFF
                 lf_note_use();
                 atomic_clear(&lf_idle_off);
 #endif
+                lapwing_flash_ready_changed();
 #if SERIAL_PROVISIONING
                 diag_wake_ready(atomic_get(&lf_mapped_ready) != 0, lf_last_check_quick,
                                 lf_last_check_ms);
@@ -160,16 +162,16 @@ static void lapwing_worker(void *a, void *b, void *c) {
             k_mutex_unlock(&flash_lock);
         }
 #if IDLE_OFF
-        if (atomic_get(&lf_mapped_ready) && !atomic_get(&lf_held) &&
+        if ((!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
             k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use) >= IDLE_OFF_MS) {
             k_mutex_lock(&flash_lock, K_FOREVER);
             /* Recheck under the lock: a lookup may have just used the flash. */
             const bool initialized = nrfx_qspi_init_check();
-            if (atomic_get(&lf_mapped_ready) && !lf_suspended && !atomic_get(&lf_held) &&
+            if (!lf_suspended && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
                 k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use) >= IDLE_OFF_MS &&
                 lf_flash_is_idle(initialized)) {
+                atomic_set(&lf_idle_off, 1);
                 if (lf_power_down_flash(initialized) == 0) {
-                    atomic_set(&lf_idle_off, 1);
                     diag_note(DIAG_IDLE_DOWN);
                     diag_log("External flash powered down while idle\n");
                 } else {
@@ -192,7 +194,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
          */
         ARG_UNUSED(qspi_ok);
 #if IDLE_OFF
-        k_sem_take(&lf_restart_wake, atomic_get(&lf_mapped_ready)
+        k_sem_take(&lf_restart_wake, !lf_suspended
                                       ? K_MSEC(MAX(IDLE_OFF_MS / 4U, 1000U)) : K_FOREVER);
 #else
         k_sem_take(&lf_restart_wake, K_FOREVER);

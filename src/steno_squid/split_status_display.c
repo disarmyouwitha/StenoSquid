@@ -67,7 +67,8 @@ static void refresh_status(struct k_work *work) {
         const uint64_t packed = (uint64_t)(uint32_t)atomic_get(&layer_name_high) << 32 |
                                 (uint32_t)atomic_get(&layer_name_low);
         for (int i = 0; i < STENO_SQUID_LAYER_NAME_CHARS; i++) {
-            name[i] = (packed >> (7 * i)) & 0x7f;
+            const char ch = (packed >> (7 * i)) & 0x7f;
+            name[i] = ch >= 0x20 && ch <= 0x7e ? ch : 0;
         }
     }
     k_spinlock_key_t progress_key = k_spin_lock(&progress_lock);

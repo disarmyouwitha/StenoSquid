@@ -31,6 +31,7 @@ uint8_t lf_trust_marker(void) {
 }
 
 #define TRUST_SETTING "lapwing/verified"
+static bool trust_invalidated;
 
 #if IS_ENABLED(CONFIG_SETTINGS)
 static int read_trust(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg,
@@ -50,12 +51,13 @@ bool lf_stored_trust(void) {
     /* ZMK has set settings up by now. Before that, nothing is read and the
      * answer is no, which only costs a full check.
      */
-    return settings_load_subtree_direct(TRUST_SETTING, read_trust, &value) == 0 &&
+    return !trust_invalidated && settings_load_subtree_direct(TRUST_SETTING, read_trust, &value) == 0 &&
            value == IMAGE_FINGERPRINT;
 }
 
 void lf_store_trust(void) {
     const uint32_t value = IMAGE_FINGERPRINT;
+    trust_invalidated = false;
 
     if (!lf_stored_trust() && settings_save_one(TRUST_SETTING, &value, sizeof(value)) != 0) {
         printk("Could not record the verified dictionaries\n");
@@ -63,6 +65,9 @@ void lf_store_trust(void) {
 }
 
 bool lf_clear_trust(void) {
+    trust_invalidated = true;
+    lf_trusted = false;
+    NRF_POWER->GPREGRET2 = 0;
     return settings_delete(TRUST_SETTING) == 0;
 }
 #else
@@ -78,10 +83,9 @@ bool lf_clear_trust(void) {
 
 #ifdef CONFIG_ZMK_SLEEP
 bool lf_take_wake_trust(void) {
-    const bool wake = (NRF_POWER->GPREGRET2 & 0xff) == lf_trust_marker();
-
     NRF_POWER->GPREGRET2 = 0;
-    return wake || lf_trusted || lf_stored_trust();
+    // The retained byte is only a hint; confirm the full image fingerprint.
+    return !trust_invalidated && (lf_trusted || lf_stored_trust());
 }
 #else
 bool lf_take_wake_trust(void) {

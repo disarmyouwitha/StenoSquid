@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def main():
-    source = (ROOT / 'src/engine_init.cc').read_text()
+    source = (ROOT / 'src/engine_init.cc').read_text(encoding="utf-8")
     start = source.index('static int javelin_settings_set(')
     end = source.index('\n}', start) + 2
     version = re.search(r'DICTIONARY_SELECTION_VERSION = (\d+)', source)[1]
@@ -47,7 +47,7 @@ int main() {
     harness = '#include <initializer_list>\n' + harness
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder)
-        (path / 'test.cc').write_text(harness)
+        (path / 'test.cc').write_text(harness, encoding="utf-8")
         subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                         str(path / 'test.cc'), '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)

@@ -1,6 +1,9 @@
 # StenoSquid cleanup and engineering spec
 
-Status: **draft for review — no code has been changed.**
+Status: **implementation in progress.** Phase 0 is on `cleanup/phase-0`.
+The personal-dictionary redesign is complete and its separate spec was retired.
+P7, P8 and X1 below are superseded; no migration code will be added.
+The owner chose maximally permissive licensing; use 0BSD for first-party code.
 Reviewed at commit `7908a68` (main), 2026-11-16.
 
 ## 1. Scope
@@ -52,7 +55,7 @@ pure-Python tests. Items that depend on engine internals are marked
 | D6 | **Local `claude/*` branches deleted** (done 2026-11-16, all 14). | Nothing left to do. |
 
 **Personal dictionary writes** are covered by a separate spec,
-[personal-dictionary-spec.md](personal-dictionary-spec.md), which replaces the
+the completed personal-dictionary redesign, which replaces the
 storage format (one 10.9375 MiB region of 64 KiB segments instead of two 4 MiB
 snapshot slots) and the import protocol. Where the two specs touch:
 

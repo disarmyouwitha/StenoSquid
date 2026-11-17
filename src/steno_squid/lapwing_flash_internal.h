@@ -12,6 +12,7 @@
  */
 
 #include "lapwing_flash.h"
+#include "w25q_quad.h"
 
 #include <nrfx_qspi.h>
 #include <zephyr/devicetree.h>
@@ -93,6 +94,7 @@ extern struct k_mutex flash_lock;
 extern bool lf_suspended;
 extern atomic_t lf_restart_requested;
 extern struct k_sem lf_restart_wake;
+extern int64_t lf_last_restart;
 void lf_request_restart(void);
 /* Hold flash_lock. False while a flash operation is still in progress. */
 bool lf_flash_is_idle(bool initialized);

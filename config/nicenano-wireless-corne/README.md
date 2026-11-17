@@ -290,7 +290,7 @@ The other base and the personal dictionary segments are never erased. If a repai
 
 ## Flash and check
 
-Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. The same Lapwing image already on the left half's external flash should verify and load at boot. Use the [dictionary uploader](../../stenosquid.py) with only the USB serial port argument to check for `MAPPED`.
+Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. The same Lapwing image already on the left half's external flash should verify and load at boot. Run `python3 stenosquid.py --status` to check the dictionaries without writing.
 
 Check ordinary typing on both halves, then test `TP / -T / KAT / S / -T / KAT` in Javelin with host Plover closed. Use the right half for the final `-T`. Return to MAIN and check the same cross-half chords in Plover HID.
 
@@ -328,7 +328,7 @@ A controller reset with Plover selected reloaded Plover as enabled and Lapwing a
 
 The firmware recognizes the bare `=repeat_last_translation` macro used by Lapwing's number-bar-only (`#`) outline. It repeats the complete preceding translation, including multi-stroke and multi-word definitions, while retaining formatting commands. Repeated presses repeat the translation again, and undo removes a repeat. With no previous translation it produces no text. The dictionary entry itself remains unchanged, so dictionary-inspection tools still display the macro string.
 
-The build patches a private copy of the pinned segment builder. It leaves the shared engine checkout and external base images unchanged. The behavior follows the [Plover Last Translation macro](https://github.com/nsmarkop/plover_last_translation/blob/master/plover_last_translation/macro.py). This implements the bare macro used by Lapwing, rather than the plugin's optional count arguments.
+The pinned Javelin fork includes the repeat-translation implementation. The build uses it without patching the engine checkout or external base images. The behavior follows the [Plover Last Translation macro](https://github.com/nsmarkop/plover_last_translation/blob/master/plover_last_translation/macro.py). This implements the bare macro used by Lapwing, rather than the plugin's optional count arguments.
 
 Native engine tests capture keyboard events and cover empty history, single-stroke words, multi-stroke words, multi-word translations, consecutive repeats and undo, suffixes, glued fingerspelling, punctuation, and a 40-repeat sequence. The same tests reproduce literal command output with the original engine. Run them with:
 

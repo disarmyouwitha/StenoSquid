@@ -61,6 +61,7 @@ static inline bool lapwing_flash_acquire(void) {
     k_mutex_lock(&flash_lock, K_FOREVER);
     return true;
 }
+static inline void lapwing_flash_ready_changed(void) {}
 static inline bool reactivate_after_xip(void) { return true; }
 static inline void lf_request_restart(void) { assert(flash_lock); restarts++; }
 static inline bool lf_clear_trust(void) { return trust_can_clear; }
@@ -232,7 +233,7 @@ def main():
         root = Path(temp)
         for name in ("lapwing_flash_provision.c", "lapwing_flash_provision.h"):
             shutil.copy(SOURCE / name, root)
-        (root / "lapwing_flash_internal.h").write_text(STUB)
+        (root / "lapwing_flash_internal.h").write_text(STUB, encoding="utf-8")
         (root / "split_status.h").write_text("""
 enum steno_squid_mode {
     STENO_SQUID_MODE_INSTALL = 1, STENO_SQUID_MODE_REPAIR, STENO_SQUID_MODE_VERIFY
@@ -241,12 +242,12 @@ static enum steno_squid_mode upload_mode;
 static inline void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout) {
     upload_mode = timeout ? mode : 0;
 }
-""")
+""", encoding="utf-8")
         for name in ("w25q_quad.h", "zephyr/sys/crc.h", "zephyr/sys/printk.h"):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
-        (root / "test.c").write_text(HARNESS)
+        (root / "test.c").write_text(HARNESS, encoding="utf-8")
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", temp,
                         str(root / "test.c"), "-o", str(root / "test")], check=True)
         subprocess.run([str(root / "test")], check=True)

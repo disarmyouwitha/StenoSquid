@@ -21,6 +21,7 @@ bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &wr
                                       bool (*cancelled)(void *), void *context);
 
 namespace {
+BUILD_ASSERT(CONFIG_USB_HID_DEVICE_COUNT >= 3, "Javelin needs the third USB HID interface");
 constexpr size_t REPORT_BYTES = JAVELIN_HID_REPORT_BYTES;
 const device *hid;
 K_SEM_DEFINE(transmit_ready, 1, 1);

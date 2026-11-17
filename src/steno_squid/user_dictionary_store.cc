@@ -317,6 +317,8 @@ bool parse_outline(const char *line, StrokeListParser &parser) {
 }
 bool can_edit() {
   if (!store_available)
+    steno_squid_user_dictionary_open();
+  if (!store_available)
     Console::Printf("ERR Personal dictionary unavailable\n\n");
   return store_available;
 }
@@ -592,7 +594,8 @@ StenoDictionary *steno_squid_user_dictionary_open() {
     }
     kick_background();
   }
-  return store_available ? &dictionary : nullptr;
+  // Keep the wrapper in the collection so a later successful open needs no rebind.
+  return &dictionary;
 }
 void steno_squid_user_dictionary_register(Console &console,
                                           StenoDictionary &root) {

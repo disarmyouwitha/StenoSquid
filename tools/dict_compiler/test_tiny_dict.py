@@ -41,7 +41,7 @@ numeric_blob = c.DictionaryCollectionBuilder().build([('numeric-test', numeric)]
 for stroke, value in numeric.items():
  assert lookup(numeric_blob, stroke) == value, stroke
 assert len(numeric_blob) % 4 == 0
-raw=json.loads((Path(__file__).resolve().parent/'fixtures/cat-test.json').read_text());b=c.DictionaryCollectionBuilder().build([('cat-test',raw)])
+raw=json.loads((Path(__file__).resolve().parent/'fixtures/cat-test.json').read_text(encoding="utf-8"));b=c.DictionaryCollectionBuilder().build([('cat-test',raw)])
 assert u32(b,0)==0x3443534a
 assert u32(b,32)==u32(b,u32(b,12)+u32(b,8))
 for stroke,value in raw.items():assert lookup(b,stroke)==value

@@ -173,6 +173,7 @@ static const char *handle_command(const char *command, char *reply, size_t reply
             lf_trusted = false;
             NRF_POWER->GPREGRET2 = 0;
             image->verified = false;
+            lapwing_flash_ready_changed();
         }
         transfer.image = image;
         transfer.offset = 0;

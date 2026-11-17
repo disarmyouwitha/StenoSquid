@@ -236,11 +236,6 @@ static bool load_dictionary_collection() {
     entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(4, false)));
   }
 
-  if (entries.IsEmpty()) {
-    LOG_ERR("Steno dict collection empty");
-    return false;
-  }
-
   new (dictionaryList)
       StenoDictionaryList(static_cast<List<StenoDictionaryListEntry> &&>(entries));
 
@@ -272,9 +267,7 @@ static bool load_dictionary_collection() {
                                     select_dictionary, nullptr);
   Console::instance.RegisterCommand("toggle_dictionary", "Toggle and save selection",
                                     select_dictionary, nullptr);
-  if (personal) {
-    steno_squid_user_dictionary_register(Console::instance, dictionaryList.value);
-  }
+  steno_squid_user_dictionary_register(Console::instance, dictionaryList.value);
 #endif
   StenoEngine::container.value.AddConsoleCommands(Console::instance);
 
@@ -293,7 +286,6 @@ void zmk_javelin_steno_init(void) {
     LOG_WRN("External Lapwing dictionary is unavailable");
     return;
   }
-  initialized = true;
   printk("[JAV] lazy init start; thread=%s\n", k_thread_name_get(k_current_get()));
 
   // Construct the manager queried by the emitter even though ZMK handles keys.
@@ -312,6 +304,7 @@ void zmk_javelin_steno_init(void) {
 
   static StenoProcessor processorInstance(stenoRepeat.value);
   processor = &processorInstance;
+  initialized = true;
 
   printk("[JAV] processor pipeline ready\n");
   LOG_INF("Steno processor pipeline ready");
