@@ -1,5 +1,5 @@
-#include "lapwing_flash_internal.h"
-#include "diag.h"
+#include "dictionary_flash_internal.h"
+#include "flash_diagnostics.h"
 #include "w25q_quad.h"
 #include "xip_load.h"
 
@@ -28,7 +28,7 @@ bool lf_all_verified(void) {
 
 static bool start_qspi(nrfx_qspi_config_t *config) {
     if (!gpio_is_ready_dt(&lf_power) || gpio_pin_configure_dt(&lf_power, GPIO_OUTPUT_ACTIVE) != 0) {
-        diag_log("QSPI start failed: flash power pin\n");
+        squid_flash_diag_log("QSPI start failed: flash power pin\n");
         return false;
     }
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
@@ -38,7 +38,7 @@ static bool start_qspi(nrfx_qspi_config_t *config) {
     if (lf_pins(PINCTRL_STATE_DEFAULT) != 0 ||
         nrfx_qspi_init(config, NULL, NULL) != NRFX_SUCCESS ||
         nrfx_qspi_activate(true) != NRFX_SUCCESS) {
-        diag_log("QSPI start failed: pins, init or activate\n");
+        squid_flash_diag_log("QSPI start failed: pins, init or activate\n");
         return false;
     }
 
@@ -47,11 +47,11 @@ static bool start_qspi(nrfx_qspi_config_t *config) {
     };
     uint8_t id[3];
     if (nrfx_qspi_cinstr_xfer(&read_id, NULL, id) != NRFX_SUCCESS) {
-        diag_log("QSPI start failed: JEDEC read\n");
+        squid_flash_diag_log("QSPI start failed: JEDEC read\n");
         return false;
     }
     memcpy(lf_last_jedec, id, sizeof(lf_last_jedec));
-    diag_log("Lapwing JEDEC ID: %02x %02x %02x\n", id[0], id[1], id[2]);
+    squid_flash_diag_log("Lapwing JEDEC ID: %02x %02x %02x\n", id[0], id[1], id[2]);
     return id[0] == 0xef && id[1] == 0x40 && id[2] == 0x18;
 }
 
@@ -173,10 +173,10 @@ static void power_cycle_flash(void) {
     const bool initialized = nrfx_qspi_init_check();
 
     if (initialized) {
-        (void)reactivate_after_xip();
+        (void)squid_qspi_reactivate();
     }
     (void)lf_power_down_flash(initialized);
-    diag_note(DIAG_POWER_CYCLE);
+    squid_flash_diag_note(DIAG_POWER_CYCLE);
     k_msleep(500);
 }
 
@@ -194,8 +194,8 @@ static bool prepare_flash_with_retry(nrfx_qspi_config_t *config, bool *mapping_f
         if (atomic_get(&lf_mapped_ready) || !transient_fault || attempt == BRING_UP_ATTEMPTS) {
             break;
         }
-        diag_note(DIAG_RETRY);
-        diag_log("External flash did not start (attempt %d of %d); trying again\n", attempt,
+        squid_flash_diag_note(DIAG_RETRY);
+        squid_flash_diag_log("External flash did not start (attempt %d of %d); trying again\n", attempt,
                  BRING_UP_ATTEMPTS);
         power_cycle_flash();
     }
@@ -214,12 +214,12 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     bool qspi_ok = prepare_flash_with_retry(config, mapping_failed, quick);
 
     if (quick && (!qspi_ok || *mapping_failed || !atomic_get(&lf_mapped_ready))) {
-        diag_note(DIAG_QUICK_FALLBACK);
-        diag_log("Quick flash check failed; verifying in full\n");
+        squid_flash_diag_note(DIAG_QUICK_FALLBACK);
+        squid_flash_diag_log("Quick flash check failed; verifying in full\n");
         quick = false;
         lf_trusted = false;
         if (nrfx_qspi_init_check()) {
-            (void)reactivate_after_xip();
+            (void)squid_qspi_reactivate();
             nrfx_qspi_uninit();
         }
         qspi_ok = prepare_flash_with_retry(config, mapping_failed, false);
@@ -231,11 +231,11 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
             lf_clear_trust();
         }
     }
-    diag_note(quick ? DIAG_QUICK_CHECK : DIAG_FULL_CHECK);
+    squid_flash_diag_note(quick ? DIAG_QUICK_CHECK : DIAG_FULL_CHECK);
     if (!atomic_get(&lf_mapped_ready)) {
-        diag_note(DIAG_UNAVAILABLE);
+        squid_flash_diag_note(DIAG_UNAVAILABLE);
     }
-    diag_log("External flash %s after %s check in %d ms\n",
+    squid_flash_diag_log("External flash %s after %s check in %d ms\n",
              atomic_get(&lf_mapped_ready) ? "mapped" : "unavailable", quick ? "quick" : "full",
              (int)(k_uptime_get() - started));
     lf_suspended = false;
@@ -248,7 +248,7 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
 #endif
     atomic_set(&lf_checked, 1);
     k_condvar_broadcast(&lf_restart_done);
-    lapwing_flash_ready_changed();
+    dictionary_flash_ready_changed();
 #if SERIAL_CONSOLE
     lf_last_check_quick = quick;
     lf_last_check_ms = (uint32_t)(k_uptime_get() - started);

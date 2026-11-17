@@ -1,5 +1,5 @@
-#include "lapwing_flash_internal.h"
-#include "lapwing_flash_provision.h"
+#include "dictionary_flash_internal.h"
+#include "dictionary_flash_provision.h"
 #include "w25q_quad.h"
 #include "split_status.h"
 
@@ -86,9 +86,9 @@ static struct base_image *find_base(const char *name) {
 
 static const char *handle_command(const char *command, char *reply, size_t reply_size) {
     if (strcmp(command, "status\n") == 0) {
-        const enum lapwing_flash_state state = lapwing_flash_status();
-        const char *label = state == LAPWING_FLASH_READY ? "READY" :
-                            state == LAPWING_FLASH_LOADING ? "LOADING" :
+        const enum dictionary_flash_state state = dictionary_flash_status();
+        const char *label = state == DICTIONARY_FLASH_READY ? "READY" :
+                            state == DICTIONARY_FLASH_LOADING ? "LOADING" :
                             lf_provisioning_ready ? "INSTALL" : "ERROR";
         size_t used = snprintk(reply, reply_size, "2 %s", label);
         for (size_t i = 0; i < ARRAY_SIZE(lf_images) && used < reply_size; i++) {
@@ -117,7 +117,7 @@ static const char *handle_command(const char *command, char *reply, size_t reply
             return NULL;
         }
         if (!image || (!repair && (image->verified || atomic_get(&lf_mapped_ready))) ||
-            !reactivate_after_xip()) {
+            !squid_qspi_reactivate()) {
             return "ERR Base is unknown, already verified, or unavailable";
         }
         if (image->verified) {
@@ -134,7 +134,7 @@ static const char *handle_command(const char *command, char *reply, size_t reply
             }
             lf_trusted = false;
             image->verified = false;
-            lapwing_flash_ready_changed();
+            dictionary_flash_ready_changed();
         }
         if (!lf_clear_trust()) return "ERR Could not clear the saved flash verification record";
         if (repair) {
@@ -205,13 +205,13 @@ static const char *handle_command(const char *command, char *reply, size_t reply
 static void verify_base(const char *name, char *reply, size_t reply_size) {
     /* Acquire wakes a mapped image from idle. An unprovisioned flash can
      * still be checked via raw reads once the controller is up. */
-    if (!lapwing_flash_acquire()) {
+    if (!dictionary_flash_acquire()) {
         k_mutex_lock(&flash_lock, K_FOREVER);
     }
     const struct base_image *image = find_base(name);
 
     if (image && lf_provisioning_ready && !lf_suspended && (!transfer.image || k_uptime_get() >= transfer.deadline) &&
-        reactivate_after_xip()) {
+        squid_qspi_reactivate()) {
         uint32_t crc = 0;
         const bool mapped = atomic_clear(&lf_mapped_ready);
         steno_squid_upload_status(STENO_SQUID_MODE_VERIFY, 120000);
@@ -237,7 +237,7 @@ void lf_provision_command(const char *command, char *reply, size_t reply_size) {
         return;
     }
     /* An explicitly requested repair may have to recheck an idle mapping. */
-    if (strncmp(command, "repair ", 7) != 0 || !lapwing_flash_acquire()) {
+    if (strncmp(command, "repair ", 7) != 0 || !dictionary_flash_acquire()) {
         k_mutex_lock(&flash_lock, K_FOREVER);
     }
     const char *result = handle_command(command, reply, reply_size);

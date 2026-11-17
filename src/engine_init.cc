@@ -32,7 +32,7 @@
 #include "chord_delivery.h"
 #include "javelin_hid_transport.h"
 #include "lapwing_dictionary.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 #include "user_dictionary_store.h"
 #endif
@@ -320,7 +320,7 @@ void zmk_javelin_steno_init(void) {
   static StenoProcessor processorInstance(stenoRepeat.value);
   processor = &processorInstance;
   atomic_set(&initialized, 1);
-  lapwing_flash_ready_changed();
+  dictionary_flash_ready_changed();
 
   LOG_INF("Steno processor pipeline ready");
 }
@@ -335,7 +335,7 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
     delivery.Drop();
     zmk_javelin_steno_prepare();
 #ifdef CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS
-    if (atomic_get(&initialized) && lapwing_flash_status() == LAPWING_FLASH_READY)
+    if (atomic_get(&initialized) && dictionary_flash_status() == DICTIONARY_FLASH_READY)
       steno_squid_upload_status(STENO_SQUID_MODE_BUSY, 500);
 #endif
     return;

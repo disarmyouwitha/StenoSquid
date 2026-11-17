@@ -1,17 +1,17 @@
 #pragma once
 
-/* Shared by the lapwing_flash_*.c files. The public API is lapwing_flash.h.
+/* Shared by the dictionary_flash_*.c files. The public API is dictionary_flash.h.
  *
- * lapwing_flash.c        worker loop, public API, base image table
- * lapwing_flash_power.c  flash rail and QSPI pins
- * lapwing_flash_pm.c     sleep, idle power-down and the flash lock (ZMK_SLEEP)
- * lapwing_flash_qspi.c   QSPI start-up, retry, CRC checks and mapping
- * lapwing_flash_trust.c  records that allow a quick check
+ * dictionary_flash.c        worker loop, public API, base image table
+ * dictionary_flash_power.c  flash rail and QSPI pins
+ * dictionary_flash_pm.c     sleep, idle power-down and the flash lock (ZMK_SLEEP)
+ * dictionary_flash_qspi.c   QSPI start-up, retry, CRC checks and mapping
+ * dictionary_flash_trust.c  records that allow a quick check
  * serial_console.c serial provisioning (SERIAL_CONSOLE)
- * lapwing_flash_diag.c   status and bench commands (diag builds)
+ * dictionary_flash_diag.c   status and bench commands (diag builds)
  */
 
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 #include "w25q_quad.h"
 
 #include <nrfx_qspi.h>
@@ -55,7 +55,7 @@ extern bool lf_provisioning_ready;
 extern bool lf_provisioning_recheck;
 #endif
 
-/* lapwing_flash.c */
+/* dictionary_flash.c */
 extern struct base_image lf_images[IMAGE_COUNT];
 extern atomic_t lf_mapped_ready;
 /* Set once a bring-up attempt has finished, whatever its result. */
@@ -71,7 +71,7 @@ extern atomic_t lf_last_use;
 void lf_note_use(void);
 #endif
 
-/* lapwing_flash_power.c */
+/* dictionary_flash_power.c */
 extern const struct gpio_dt_spec lf_power;
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 extern atomic_t lf_powered;
@@ -80,7 +80,7 @@ int lf_pins(uint8_t state);
 /* Hold flash_lock. Stops QSPI, floats its pins and switches the rail off. */
 int lf_power_down_flash(bool initialized);
 
-/* lapwing_flash_pm.c */
+/* dictionary_flash_pm.c */
 extern struct k_mutex flash_lock;
 extern atomic_t lf_read_sessions;
 /* True until the first bring-up, and again whenever the flash is powered down. */
@@ -93,7 +93,7 @@ void lf_request_restart(void);
 /* Hold flash_lock. False while a flash operation is still in progress. */
 bool lf_flash_is_idle(bool initialized);
 
-/* lapwing_flash_qspi.c */
+/* dictionary_flash_qspi.c */
 extern uint8_t lf_readback[CHUNK_BYTES];
 extern uint8_t lf_last_jedec[3];
 #if SERIAL_CONSOLE
@@ -113,7 +113,7 @@ void lf_scrub_invalidated(void);
 void lf_scrub_step(void);
 int32_t lf_scrub_wait_ms(void);
 
-/* lapwing_flash_trust.c */
+/* dictionary_flash_trust.c */
 uint8_t lf_trust_marker(void);
 void lf_forget_wake_trust(void);
 void lf_leave_wake_trust(void);
@@ -132,7 +132,7 @@ void lf_serial_init(void);
 bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_failed);
 #endif
 
-/* lapwing_flash_diag.c */
+/* dictionary_flash_diag.c */
 #if SERIAL_CONSOLE && defined(CONFIG_ZMK_JAVELIN_DIAG)
 void lf_print_flash_status(void);
 void lf_run_bench(uint8_t command, nrfx_qspi_config_t *config, bool *qspi_ok,

@@ -1,5 +1,5 @@
-#include "lapwing_flash_internal.h"
-#include "diag.h"
+#include "dictionary_flash_internal.h"
+#include "flash_diagnostics.h"
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"
 #endif
@@ -22,27 +22,27 @@ void lf_request_restart(void) {
     }
     if (lf_suspended) {
 #if IDLE_OFF
-        diag_wake_requested(atomic_get(&lf_idle_off) != 0);
+        squid_flash_diag_wake_requested(atomic_get(&lf_idle_off) != 0);
 #else
-        diag_wake_requested(false);
+        squid_flash_diag_wake_requested(false);
 #endif
     }
     atomic_clear(&lf_checked);
     atomic_set(&lf_restart_requested, 1);
-    lapwing_flash_ready_changed();
+    dictionary_flash_ready_changed();
     k_sem_give(&lf_restart_wake);
 }
 
 #include "flash_access.h"
 
-bool lapwing_flash_resume_read(void) {
+bool dictionary_flash_resume_read(void) {
     k_mutex_lock(&flash_lock, K_FOREVER);
 #if IDLE_OFF
     lf_note_use();
 #endif
     return atomic_get(&lf_mapped_ready) != 0;
 }
-void lapwing_flash_read_session(bool active) {
+void dictionary_flash_read_session(bool active) {
     if (active) atomic_inc(&lf_read_sessions);
     else {
         atomic_dec(&lf_read_sessions);
@@ -53,7 +53,7 @@ void lapwing_flash_read_session(bool active) {
 /* Hold flash_lock. False while a flash operation is still in progress. */
 bool lf_flash_is_idle(bool initialized) {
     return !initialized ||
-           (reactivate_after_xip() && nrfx_qspi_mem_busy_check() == NRFX_SUCCESS);
+           (squid_qspi_reactivate() && nrfx_qspi_mem_busy_check() == NRFX_SUCCESS);
 }
 
 static int flash_pm_action(const struct device *dev, enum pm_device_action action) {

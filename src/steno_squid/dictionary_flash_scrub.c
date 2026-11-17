@@ -1,4 +1,4 @@
-#include "lapwing_flash_internal.h"
+#include "dictionary_flash_internal.h"
 #include "xip_load.h"
 #include <zephyr/sys/crc.h>
 
@@ -44,7 +44,7 @@ void lf_scrub_step(void) {
             lf_images[failed_image].verified = false;
             atomic_clear(&lf_mapped_ready);
             atomic_set(&lf_checked, 1);
-            lapwing_flash_ready_changed();
+            dictionary_flash_ready_changed();
             return;
         }
         scrub_crc = scrub_offset = 0;

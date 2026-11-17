@@ -1,4 +1,4 @@
-#include "diag.h"
+#include "flash_diagnostics.h"
 
 
 #include <stdarg.h>
@@ -17,7 +17,7 @@
 #if IS_ENABLED(CONFIG_SETTINGS)
 #include <zephyr/settings/settings.h>
 #endif
-#include "diag_build_id.h"
+#include "flash_diagnostics_build_id.h"
 
 #define RING_BYTES 1024U
 #define RING_MAGIC 0x4a44494cU
@@ -89,7 +89,7 @@ static void ring_put(const char *text, size_t length) {
     k_spin_unlock(&ring_lock, key);
 }
 
-void diag_log(const char *fmt, ...) {
+void squid_flash_diag_log(const char *fmt, ...) {
     char line[LINE_BYTES];
     const uint32_t now = k_uptime_get_32();
     int length = snprintk(line, sizeof(line), "[b%u %u.%03u] ", ring.boot, now / 1000U,
@@ -119,7 +119,7 @@ static void write_text(const struct device *console, const char *text, size_t le
     }
 }
 
-void diag_printf(const struct device *console, const char *fmt, ...) {
+void squid_flash_diag_printf(const struct device *console, const char *fmt, ...) {
     char line[LINE_BYTES];
     va_list args;
 
@@ -163,7 +163,7 @@ static void flush_counters(void) {
         memset(unsaved, 0, sizeof(unsaved));
         dirty = false;
     } else {
-        diag_log("Could not save the diagnostic counters\n");
+        squid_flash_diag_log("Could not save the diagnostic counters\n");
     }
 }
 #else
@@ -176,7 +176,7 @@ static void flush_counters(void) {
 }
 #endif
 
-void diag_note(enum diag_event event) {
+void squid_flash_diag_note(enum squid_flash_diag_event event) {
     if (event >= DIAG_EVENT_COUNT) {
         return;
     }
@@ -187,31 +187,31 @@ void diag_note(enum diag_event event) {
     }
 }
 
-uint32_t diag_session_count(enum diag_event event) {
+uint32_t squid_flash_diag_session_count(enum squid_flash_diag_event event) {
     return event < DIAG_EVENT_COUNT ? session[event] : 0;
 }
 
-void diag_print_power(const struct device *console) {
+void squid_flash_diag_print_power(const struct device *console) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     const char *usb = zmk_usb_is_powered() ? "powered" : "not powered";
 #else
     const char *usb = "unknown";
 #endif
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-    diag_printf(console, "POWER USB %s, battery %u%%", usb, (unsigned)zmk_battery_state_of_charge());
+    squid_flash_diag_printf(console, "POWER USB %s, battery %u%%", usb, (unsigned)zmk_battery_state_of_charge());
 #else
-    diag_printf(console, "POWER USB %s, battery level not reported", usb);
+    squid_flash_diag_printf(console, "POWER USB %s, battery level not reported", usb);
 #endif
 }
 
-int32_t diag_wait_ms(void) {
+int32_t squid_flash_diag_wait_ms(void) {
     if (!dirty) return -1;
     const uint32_t now = k_uptime_get_32();
     const uint32_t earliest = MAX(SAVE_AFTER_MS, last_save_ms ? last_save_ms + SAVE_SPACING_MS : 0);
     return now < earliest ? (int32_t)(earliest - now) : 1;
 }
 
-void diag_tick(void) {
+void squid_flash_diag_tick(void) {
     const uint32_t now = k_uptime_get_32();
 
     if (dirty && now >= SAVE_AFTER_MS && (last_save_ms == 0 || now - last_save_ms >= SAVE_SPACING_MS)) {
@@ -220,7 +220,7 @@ void diag_tick(void) {
     }
 }
 
-void diag_wake_requested(bool from_idle) {
+void squid_flash_diag_wake_requested(bool from_idle) {
     if (!wake_pending) {
         wake_pending = true;
         wake_from_idle = from_idle;
@@ -228,7 +228,7 @@ void diag_wake_requested(bool from_idle) {
     }
 }
 
-void diag_wake_ready(bool mapped, bool quick, uint32_t check_ms) {
+void squid_flash_diag_wake_ready(bool mapped, bool quick, uint32_t check_ms) {
     if (!wake_pending) {
         return;
     }
@@ -236,7 +236,7 @@ void diag_wake_ready(bool mapped, bool quick, uint32_t check_ms) {
 
     wake_pending = false;
     if (!mapped) {
-        diag_log("Wake from %s: flash not ready after %u ms\n",
+        squid_flash_diag_log("Wake from %s: flash not ready after %u ms\n",
                  wake_from_idle ? "idle" : "resume", elapsed);
         return;
     }
@@ -249,16 +249,16 @@ void diag_wake_ready(bool mapped, bool quick, uint32_t check_ms) {
     wake_last_check_ms = check_ms;
     wake_last_quick = quick;
     wake_last_idle = wake_from_idle;
-    diag_log("Wake from %s: ready %u ms after the request (%s check %u ms)\n",
+    squid_flash_diag_log("Wake from %s: ready %u ms after the request (%s check %u ms)\n",
              wake_from_idle ? "idle" : "resume", elapsed, quick ? "quick" : "full", check_ms);
 }
 
 static void print_reset_cause(const struct device *console) {
     if (!reset_cause_known) {
-        diag_printf(console, "RESET unknown");
+        squid_flash_diag_printf(console, "RESET unknown");
         return;
     }
-    diag_printf(console, "RESET 0x%08x%s%s%s%s%s%s", reset_cause,
+    squid_flash_diag_printf(console, "RESET 0x%08x%s%s%s%s%s%s", reset_cause,
                 (reset_cause & RESET_PIN) ? " pin" : "",
                 (reset_cause & RESET_SOFTWARE) ? " software" : "",
                 (reset_cause & RESET_BROWNOUT) ? " brownout" : "",
@@ -267,32 +267,32 @@ static void print_reset_cause(const struct device *console) {
                 (reset_cause & RESET_DEBUG) ? " debug" : "");
 }
 
-void diag_print_status(const struct device *console) {
+void squid_flash_diag_print_status(const struct device *console) {
     uint32_t stored[DIAG_PERSISTED_COUNT];
     const bool have_stored = load_counters(stored);
 
-    diag_printf(console, "BUILD %s %s %s", JAVELIN_BUILD_ID, __DATE__, __TIME__);
-    diag_printf(console, "UPTIME %u ms, boot %u since power loss", k_uptime_get_32(), ring.boot);
+    squid_flash_diag_printf(console, "BUILD %s %s %s", JAVELIN_BUILD_ID, __DATE__, __TIME__);
+    squid_flash_diag_printf(console, "UPTIME %u ms, boot %u since power loss", k_uptime_get_32(), ring.boot);
     print_reset_cause(console);
-    diag_printf(console, "COUNTERS (saved%s + unsaved), this boot in brackets",
+    squid_flash_diag_printf(console, "COUNTERS (saved%s + unsaved), this boot in brackets",
                 have_stored ? "" : ", none read");
     for (size_t i = 0; i < DIAG_PERSISTED_COUNT; i++) {
-        diag_printf(console, "  %s: %u [%u]", event_names[i], stored[i] + unsaved[i],
+        squid_flash_diag_printf(console, "  %s: %u [%u]", event_names[i], stored[i] + unsaved[i],
                     session[i]);
     }
-    diag_printf(console, "CHECKS this boot: %u quick, %u full; idle power-downs %u",
+    squid_flash_diag_printf(console, "CHECKS this boot: %u quick, %u full; idle power-downs %u",
                 session[DIAG_QUICK_CHECK], session[DIAG_FULL_CHECK], session[DIAG_IDLE_DOWN]);
     if (wake_count) {
-        diag_printf(console, "WAKES %u: last %u ms (%s %s check %u ms), max %u ms, mean %u ms",
+        squid_flash_diag_printf(console, "WAKES %u: last %u ms (%s %s check %u ms), max %u ms, mean %u ms",
                     wake_count, wake_last_ms, wake_last_idle ? "idle" : "resume",
                     wake_last_quick ? "quick" : "full", wake_last_check_ms, wake_max_ms,
                     wake_total_ms / wake_count);
     } else {
-        diag_printf(console, "WAKES none since boot");
+        squid_flash_diag_printf(console, "WAKES none since boot");
     }
 }
 
-void diag_dump_log(const struct device *console) {
+void squid_flash_diag_dump_log(const struct device *console) {
     static char copy[RING_BYTES]; /* Static: the worker stack is small. */
     size_t length;
 
@@ -304,12 +304,12 @@ void diag_dump_log(const struct device *console) {
     }
     k_spin_unlock(&ring_lock, key);
 
-    diag_printf(console, "LOG BEGIN %u bytes", (uint32_t)length);
+    squid_flash_diag_printf(console, "LOG BEGIN %u bytes", (uint32_t)length);
     write_text(console, copy, length);
-    diag_printf(console, "LOG END");
+    squid_flash_diag_printf(console, "LOG END");
 }
 
-void diag_clear(const struct device *console) {
+void squid_flash_diag_clear(const struct device *console) {
     k_spinlock_key_t key = k_spin_lock(&ring_lock);
     ring.head = 0;
     ring.used = 0;
@@ -321,5 +321,5 @@ void diag_clear(const struct device *console) {
 #if IS_ENABLED(CONFIG_SETTINGS)
     (void)settings_delete(COUNTER_SETTING);
 #endif
-    diag_printf(console, "CLEARED log and counters");
+    squid_flash_diag_printf(console, "CLEARED log and counters");
 }

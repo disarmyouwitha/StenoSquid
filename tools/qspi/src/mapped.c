@@ -57,7 +57,7 @@ void run_mapped_probe(struct mapped_result *result, uint32_t first_address)
 		}
 	}
 
-	if (!reactivate_after_xip()) {
+	if (!squid_qspi_reactivate()) {
 		result->reactivation_failed = true;
 		result->outcome = "FAIL: QSPI did not become ready after mapped reads";
 		return;

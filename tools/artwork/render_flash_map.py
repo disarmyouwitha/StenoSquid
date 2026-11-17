@@ -16,7 +16,7 @@ def constant(text, name):
     return int(re.search(rf'\b{name}\s*(?:=\s*|\s+)(0x[0-9a-fA-F]+|\d+)', text)[1], 0)
 
 def render():
-    header = (ROOT / 'src/steno_squid/lapwing_flash.h').read_text(encoding="utf-8")
+    header = (ROOT / 'src/steno_squid/dictionary_flash.h').read_text(encoding="utf-8")
     store = (ROOT / 'src/steno_squid/user_dictionary_log.h').read_text(encoding="utf-8")
     start, count, segment = [constant(store, x) for x in ('REGION_START', 'SEG_COUNT', 'SEG_BYTES')]
     bases = [

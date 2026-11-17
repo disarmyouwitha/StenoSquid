@@ -11,7 +11,7 @@ from manifest import BASES, PERSONAL_START, PERSONAL_SEGMENTS, SEGMENT_BYTES
 
 
 def main():
-    header = (ROOT / 'src/steno_squid/lapwing_flash.h').read_text(encoding='utf-8')
+    header = (ROOT / 'src/steno_squid/dictionary_flash.h').read_text(encoding='utf-8')
     store = (ROOT / 'src/steno_squid/user_dictionary_log.h').read_text(encoding='utf-8')
     expected = {'LAPWING': (1830444, 0x00f2d636), 'PLOVER': (2339620, 0x3e8f8d88),
                 'EXTRAS': (469812, 0x98af1ecc)}

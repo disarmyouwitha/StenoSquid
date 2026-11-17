@@ -4,7 +4,7 @@
 #include "console.h"
 #include "dictionary/dictionary.h"
 #include "javelin_engine_lock.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 #include "split_status.h"
 #include "stroke_list_parser.h"
 #include "user_dictionary_log.h"
@@ -81,7 +81,7 @@ bool exporting;
 // that can program or erase.
 class WriteMode {
 public:
-  WriteMode() : ok(reactivate_after_xip()) {
+  WriteMode() : ok(squid_qspi_reactivate()) {
     if (ok)
       qspi_device.mapped = false;
   }
@@ -221,8 +221,8 @@ public:
     if (context.HasName() && strcmp(context.GetName(), GetName()))
       return;
     struct ExportSession {
-      ExportSession() { exporting = true; lapwing_flash_read_session(true); }
-      ~ExportSession() { exporting = false; lapwing_flash_read_session(false); kick_background(); }
+      ExportSession() { exporting = true; dictionary_flash_read_session(true); }
+      ~ExportSession() { exporting = false; dictionary_flash_read_session(false); kick_background(); }
     } session;
     StenoSquidExportWriter writer(steno_squid_javelin_response_active());
     TextBuffer buffer;

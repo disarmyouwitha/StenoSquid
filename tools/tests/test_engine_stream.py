@@ -26,8 +26,8 @@ CODE=r'''
 static bool held=true;
 static unsigned yields;
 static IWriter *logger;
-extern "C" void lapwing_flash_release(void){assert(held && ConsoleWriter::count==0 && ConsoleWriter::active==logger);held=false;yields++;}
-extern "C" bool lapwing_flash_resume_read(void){assert(!held);held=true;return true;}
+extern "C" void dictionary_flash_release(void){assert(held && ConsoleWriter::count==0 && ConsoleWriter::active==logger);held=false;yields++;}
+extern "C" bool dictionary_flash_resume_read(void){assert(!held);held=true;return true;}
 class Sink final:public IWriter {public:
  std::string bytes;
  bool expect_locked;

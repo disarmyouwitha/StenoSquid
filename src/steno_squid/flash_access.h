@@ -21,7 +21,7 @@ static bool wake_idle_flash(void) {
 #endif
 }
 
-bool lapwing_flash_acquire(void) {
+bool dictionary_flash_acquire(void) {
     /* The second pass covers an idle power-down that won the lock first. */
     for (int attempt = 0; attempt < 2; attempt++) {
 #if IDLE_OFF
@@ -40,7 +40,7 @@ bool lapwing_flash_acquire(void) {
     return false;
 }
 
-void lapwing_flash_release(void) {
+void dictionary_flash_release(void) {
     k_mutex_unlock(&flash_lock);
 }
 

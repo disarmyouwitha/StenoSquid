@@ -1,4 +1,4 @@
-#include "lapwing_flash_internal.h"
+#include "dictionary_flash_internal.h"
 
 #include <zephyr/sys/printk.h>
 #if IS_ENABLED(CONFIG_SETTINGS)

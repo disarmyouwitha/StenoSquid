@@ -1,5 +1,5 @@
-#include "lapwing_flash_internal.h"
-#include "diag.h"
+#include "dictionary_flash_internal.h"
+#include "flash_diagnostics.h"
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"
 #endif
@@ -30,8 +30,8 @@ bool lf_serial_poll(nrfx_qspi_config_t *config, bool *qspi_ok, bool *mapping_fai
 #ifdef CONFIG_ZMK_JAVELIN_DIAG
     switch (command) {
     case 'S': lf_print_flash_status(); break;
-    case 'D': diag_dump_log(lf_console); break;
-    case 'Z': diag_clear(lf_console); break;
+    case 'D': squid_flash_diag_dump_log(lf_console); break;
+    case 'Z': squid_flash_diag_clear(lf_console); break;
     case 'R':
     case 'T':
         k_mutex_lock(&flash_lock, K_FOREVER);

@@ -30,14 +30,14 @@ static void atomic_clear(bool *p){*p=false;}
 static void atomic_set(bool *p,bool value){*p=value;}
 void lf_scrub_invalidated(void);
 static bool lf_clear_trust(void){clears++;lf_trusted=false;lf_scrub_invalidated();return false;}
-static void lapwing_flash_ready_changed(void){notifications++;}
+static void dictionary_flash_ready_changed(void){notifications++;}
 static uint32_t crc32_ieee_update(uint32_t crc,const uint8_t *bytes,size_t length){
  crc=~crc;while(length--){crc^=*bytes++;for(unsigned i=0;i<8;i++)crc=(crc>>1)^((crc&1)?0xedb88320u:0);}return ~crc;
 }
 static void copy_xip_bytes(void *out,const void *in,size_t length){reads++;memcpy(out,in,length);}
 '''
 CODE=r'''
-#include "lapwing_flash_scrub.c"
+#include "dictionary_flash_scrub.c"
 int main(void){
  for(unsigned i=0;i<16;i++)nor[i]=(uint8_t)i;
  for(unsigned i=0;i<2;i++)lf_images[i].crc=crc32_ieee_update(0,nor+8*i,8);
@@ -58,8 +58,8 @@ int main(void){
 def main():
  with tempfile.TemporaryDirectory() as folder:
   root=Path(folder)
-  shutil.copy(ROOT/'src/steno_squid/lapwing_flash_scrub.c',root)
-  (root/'lapwing_flash_internal.h').write_text(STUB,encoding='utf-8')
+  shutil.copy(ROOT/'src/steno_squid/dictionary_flash_scrub.c',root)
+  (root/'dictionary_flash_internal.h').write_text(STUB,encoding='utf-8')
   (root/'xip_load.h').touch();(root/'zephyr/sys').mkdir(parents=True);(root/'zephyr/sys/crc.h').touch()
   (root/'test.c').write_text(CODE,encoding='utf-8')
   subprocess.run([*compiler('c'),'-std=c11','-Wall','-Wextra','-Werror','-I',str(root),str(root/'test.c'),'-o',str(root/'test')],check=True)

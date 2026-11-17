@@ -6,7 +6,7 @@ static void apply_layer(void) {
     ARG_UNUSED(steno);
     static bool known, previous_steno, previous_practice, previous_ready, previous_mapped;
     const bool ready = zmk_javelin_steno_ready();
-    const bool mapped = lapwing_mapped_address() != 0;
+    const bool mapped = dictionary_flash_mapped_address() != 0;
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
     const bool requested = steno && atomic_get(&practice_wanted);
 #else
@@ -23,7 +23,7 @@ static void apply_layer(void) {
     previous_mapped = mapped;
 
     /* Keep the dictionaries powered and ready while this layer is selected. */
-    lapwing_flash_hold(steno);
+    dictionary_flash_hold(steno);
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
     /* Leaving the steno layer ends practice. */
     if (!steno) {
@@ -32,10 +32,10 @@ static void apply_layer(void) {
     const bool want_practice = steno && atomic_get(&practice_wanted);
     /* Starting practice takes the engine lock, which waits for an idle flash
      * to power up. This runs on the thread that handles keys, so do not wait
-     * here: lapwing_flash_hold() above has started the wake, and the ready
+     * here: dictionary_flash_hold() above has started the wake, and the ready
      * hook calls apply_layer() again once the dictionaries are mapped.
      */
-    if (want_practice && !lapwing_mapped_address()) {
+    if (want_practice && !dictionary_flash_mapped_address()) {
         refresh_display();
         return;
     }

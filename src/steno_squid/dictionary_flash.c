@@ -1,5 +1,5 @@
-#include "lapwing_flash_internal.h"
-#include "diag.h"
+#include "dictionary_flash_internal.h"
+#include "flash_diagnostics.h"
 #include "split_status.h"
 
 #include <zephyr/sys/printk.h>
@@ -51,28 +51,28 @@ void lf_note_use(void) {
 /* Called whenever the dictionaries become usable or a bring-up gives up.
  * Runs on the flash worker with the flash lock held: only submit work.
  */
-__weak void lapwing_flash_ready_changed(void) {
+__weak void dictionary_flash_ready_changed(void) {
 }
 
-uintptr_t lapwing_mapped_address(void) {
+uintptr_t dictionary_flash_mapped_address(void) {
     return atomic_get(&lf_mapped_ready) ? XIP_BASE : 0;
 }
 
-enum lapwing_flash_state lapwing_flash_status(void) {
-    if (!atomic_get(&lf_checked)) return LAPWING_FLASH_LOADING;
+enum dictionary_flash_state dictionary_flash_status(void) {
+    if (!atomic_get(&lf_checked)) return DICTIONARY_FLASH_LOADING;
 #if IDLE_OFF
     /* An idle flash comes back on first use, so it still counts as ready. */
     if (atomic_get(&lf_idle_off)) {
-        return LAPWING_FLASH_READY;
+        return DICTIONARY_FLASH_READY;
     }
 #endif
     if (atomic_get(&lf_mapped_ready)) {
-        return LAPWING_FLASH_READY;
+        return DICTIONARY_FLASH_READY;
     }
-    return atomic_get(&lf_checked) ? LAPWING_FLASH_UNAVAILABLE : LAPWING_FLASH_LOADING;
+    return atomic_get(&lf_checked) ? DICTIONARY_FLASH_UNAVAILABLE : DICTIONARY_FLASH_LOADING;
 }
 
-void lapwing_flash_hold(bool hold) {
+void dictionary_flash_hold(bool hold) {
 #if IDLE_OFF
     const bool was_held = atomic_set(&lf_held, hold) != 0;
     if (hold != was_held) k_sem_give(&lf_restart_wake);
@@ -97,7 +97,7 @@ bool lf_provisioning_ready;
 bool lf_provisioning_recheck;
 #endif
 
-static void lapwing_worker(void *a, void *b, void *c) {
+static void dictionary_flash_worker(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
     ARG_UNUSED(c);
@@ -112,8 +112,8 @@ static void lapwing_worker(void *a, void *b, void *c) {
     config.phy_if.sck_freq =
         (nrf_qspi_frequency_t)(CONFIG_ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER - 1);
 
-    diag_note(DIAG_BOOT);
-    diag_log("Flash worker started\n");
+    squid_flash_diag_note(DIAG_BOOT);
+    squid_flash_diag_log("Flash worker started\n");
 
     bool mapping_failed = false;
 #if SERIAL_CONSOLE
@@ -136,7 +136,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
                 }
                 atomic_set(&lf_checked, 1);
                 steno_squid_upload_status(STENO_SQUID_MODE_UNKNOWN, 0);
-                lapwing_flash_ready_changed();
+                dictionary_flash_ready_changed();
             }
 #endif
             /* Several callers may ask for one wake. Only a powered-down flash
@@ -146,7 +146,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
                 lf_last_restart = k_uptime_get();
                 qspi_ok = lf_bring_up_flash(&config, &mapping_failed);
 #if SERIAL_CONSOLE
-                diag_wake_ready(atomic_get(&lf_mapped_ready) != 0, lf_last_check_quick,
+                squid_flash_diag_wake_ready(atomic_get(&lf_mapped_ready) != 0, lf_last_check_quick,
                                 lf_last_check_ms);
 #endif
             }
@@ -163,8 +163,8 @@ static void lapwing_worker(void *a, void *b, void *c) {
                 lf_flash_is_idle(initialized)) {
                 atomic_set(&lf_idle_off, 1);
                 if (lf_power_down_flash(initialized) == 0) {
-                    diag_note(DIAG_IDLE_DOWN);
-                    diag_log("External flash powered down while idle\n");
+                    squid_flash_diag_note(DIAG_IDLE_DOWN);
+                    squid_flash_diag_log("External flash powered down while idle\n");
                 } else {
                     lf_request_restart();
                 }
@@ -173,7 +173,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
         }
 #endif
 #if SERIAL_CONSOLE
-        diag_tick();
+        squid_flash_diag_tick();
         if (lf_serial_poll(&config, &qspi_ok, &mapping_failed)) continue;
 #endif
         int32_t wait_ms = -1;
@@ -184,7 +184,7 @@ static void lapwing_worker(void *a, void *b, void *c) {
         }
 #endif
 #if SERIAL_CONSOLE
-        const int32_t diagnostic_ms = diag_wait_ms();
+        const int32_t diagnostic_ms = squid_flash_diag_wait_ms();
         if (diagnostic_ms >= 0 && (wait_ms < 0 || diagnostic_ms < wait_ms)) wait_ms = diagnostic_ms;
 #endif
         k_mutex_lock(&flash_lock, K_FOREVER);
@@ -197,4 +197,4 @@ static void lapwing_worker(void *a, void *b, void *c) {
 }
 
 /* The stack leaves room for the settings read and write above. */
-K_THREAD_DEFINE(lapwing_flash, 3072, lapwing_worker, NULL, NULL, NULL, 5, 0, 200);
+K_THREAD_DEFINE(dictionary_flash, 3072, dictionary_flash_worker, NULL, NULL, NULL, 5, 0, 200);

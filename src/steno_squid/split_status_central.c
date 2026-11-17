@@ -24,8 +24,8 @@
 #include "practice_progress.h"
 #include "practice_view.h"
 #endif
-#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-#include "lapwing_flash.h"
+#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
+#include "dictionary_flash.h"
 #endif
 
 BUILD_ASSERT(ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT == 1);
@@ -87,11 +87,11 @@ void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms) 
 
 /* A layer that needs the dictionaries says so while they are not usable. */
 static enum steno_squid_mode dictionary_mode(enum steno_squid_mode ready) {
-#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-    switch (lapwing_flash_status()) {
-    case LAPWING_FLASH_LOADING:
+#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
+    switch (dictionary_flash_status()) {
+    case DICTIONARY_FLASH_LOADING:
         return STENO_SQUID_MODE_LOADING;
-    case LAPWING_FLASH_UNAVAILABLE:
+    case DICTIONARY_FLASH_UNAVAILABLE:
         return STENO_SQUID_MODE_NO_DICTIONARY;
     default:
         break;

@@ -27,14 +27,14 @@ static int k_condvar_wait(int *cv,int *lock,int ms){(void)cv;(void)lock;(void)ms
 #include "flash_access.h"
 int main(void){
  key_thread=true;lf_mapped_ready=true;lock_result=-1;
- assert(!lapwing_flash_acquire() && timeout==10 && locks==1 && !waits);
+ assert(!dictionary_flash_acquire() && timeout==10 && locks==1 && !waits);
  lf_mapped_ready=false;lf_idle_off=true;lock_result=0;locks=0;
- assert(!lapwing_flash_acquire() && wake_requests==1 && !locks && !waits);
+ assert(!dictionary_flash_acquire() && wake_requests==1 && !locks && !waits);
  key_thread=false;
- assert(lapwing_flash_acquire() && waits==1 && timeout==K_FOREVER);
- lapwing_flash_release();assert(unlocks==2);
+ assert(dictionary_flash_acquire() && waits==1 && timeout==K_FOREVER);
+ dictionary_flash_release();assert(unlocks==2);
  key_thread=true;locks=0;
- assert(lapwing_flash_acquire() && locks==1 && timeout==10);lapwing_flash_release();
+ assert(dictionary_flash_acquire() && locks==1 && timeout==10);dictionary_flash_release();
 }
 '''
 

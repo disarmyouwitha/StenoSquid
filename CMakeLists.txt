@@ -60,24 +60,24 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     endif()
     zephyr_include_directories(${JAVELIN_SRC_DIR})
 
-    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
+    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
       if(NOT EXISTS "${ZMK_JAVELIN_LAPWING_IMAGE}")
         message(FATAL_ERROR "Set ZMK_JAVELIN_LAPWING_IMAGE to the mapped Lapwing JSC4 image")
       endif()
-      set(LAPWING_SRC "${CMAKE_CURRENT_LIST_DIR}/src/steno_squid")
+      set(SQUID_SRC "${CMAKE_CURRENT_LIST_DIR}/src/steno_squid")
       javelin_image_size_crc(LAPWING "${ZMK_JAVELIN_LAPWING_IMAGE}")
       target_sources(app PRIVATE
-        "${LAPWING_SRC}/lapwing_flash.c"
-        "${LAPWING_SRC}/lapwing_flash_power.c"
-        "${LAPWING_SRC}/lapwing_flash_pm.c"
-        "${LAPWING_SRC}/lapwing_flash_qspi.c"
-        "${LAPWING_SRC}/lapwing_flash_trust.c"
-        "${LAPWING_SRC}/lapwing_flash_scrub.c"
-        "${LAPWING_SRC}/w25q_quad.c")
+        "${SQUID_SRC}/dictionary_flash.c"
+        "${SQUID_SRC}/dictionary_flash_power.c"
+        "${SQUID_SRC}/dictionary_flash_pm.c"
+        "${SQUID_SRC}/dictionary_flash_qspi.c"
+        "${SQUID_SRC}/dictionary_flash_trust.c"
+        "${SQUID_SRC}/dictionary_flash_scrub.c"
+        "${SQUID_SRC}/w25q_quad.c")
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_SERIAL_CONSOLE app PRIVATE
-        "${LAPWING_SRC}/serial_console.c")
+        "${SQUID_SRC}/serial_console.c")
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING app PRIVATE
-        "${LAPWING_SRC}/lapwing_flash_provision.c")
+        "${SQUID_SRC}/dictionary_flash_provision.c")
       if(CONFIG_ZMK_JAVELIN_DIAG)
         # Build id shown by the S command: the CI commit, else git describe.
         set(JAVELIN_BUILD_ID "unknown")
@@ -92,13 +92,13 @@ if(CONFIG_ZMK_JAVELIN_STENO)
             set(JAVELIN_BUILD_ID "${JAVELIN_GIT_ID}")
           endif()
         endif()
-        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/diag_build_id.h"
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/flash_diagnostics_build_id.h"
           "#define JAVELIN_BUILD_ID \"${JAVELIN_BUILD_ID}\"\n")
         target_include_directories(app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-        target_sources(app PRIVATE "${LAPWING_SRC}/diag.c" "${LAPWING_SRC}/lapwing_flash_diag.c")
+        target_sources(app PRIVATE "${SQUID_SRC}/flash_diagnostics.c" "${SQUID_SRC}/dictionary_flash_diag.c")
       endif()
-      target_sources_ifdef(CONFIG_ZMK_JAVELIN_BATTERY_LOG app PRIVATE "${LAPWING_SRC}/battery_log.c")
-      target_include_directories(app PRIVATE "${LAPWING_SRC}")
+      target_sources_ifdef(CONFIG_ZMK_JAVELIN_BATTERY_LOG app PRIVATE "${SQUID_SRC}/battery_log.c")
+      target_include_directories(app PRIVATE "${SQUID_SRC}")
       target_compile_definitions(app PRIVATE LAPWING_BYTES=${LAPWING_BYTES} LAPWING_CRC=${LAPWING_CRC})
       # Optional second base, provisioned separately without rewriting Lapwing.
       set(PLOVER_BYTES 0)
@@ -290,19 +290,19 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     )
     endforeach()
     set(ZEPHYR_CURRENT_LIBRARY steno_squid_engine)
-    target_include_directories(javelin_steno PRIVATE "${LAPWING_SRC}")
-    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-      zephyr_library_sources("${LAPWING_SRC}/lapwing_dictionary.cc")
+    target_include_directories(javelin_steno PRIVATE "${SQUID_SRC}")
+    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
+      zephyr_library_sources("${SQUID_SRC}/lapwing_dictionary.cc")
       zephyr_library_include_directories(
-        "${JAVELIN_SRC_DIR}/dictionary" "${LAPWING_SRC}")
+        "${JAVELIN_SRC_DIR}/dictionary" "${SQUID_SRC}")
       zephyr_library_compile_definitions(LAPWING_BYTES=${LAPWING_BYTES} PLOVER_BYTES=${PLOVER_BYTES}
         EXTRAS_BYTES=${EXTRAS_BYTES})
       if(CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY)
-        target_sources(app PRIVATE "${LAPWING_SRC}/javelin_usb.c")
-        zephyr_library_sources("${LAPWING_SRC}/user_dictionary_store.cc" "${LAPWING_SRC}/javelin_web_hid.cc")
+        target_sources(app PRIVATE "${SQUID_SRC}/javelin_usb.c")
+        zephyr_library_sources("${SQUID_SRC}/user_dictionary_store.cc" "${SQUID_SRC}/javelin_web_hid.cc")
         if(CONFIG_ZMK_JAVELIN_STENO_BLE_HID)
-          target_sources(app PRIVATE "${LAPWING_SRC}/javelin_ble_hid.c"
-            "${LAPWING_SRC}/javelin_ble_tx.c")
+          target_sources(app PRIVATE "${SQUID_SRC}/javelin_ble_hid.c"
+            "${SQUID_SRC}/javelin_ble_tx.c")
         endif()
       endif()
     endif()

@@ -32,7 +32,7 @@ STUB = """
 #define NRFX_SUCCESS 0
 #define NRFX_ERROR_BUSY 1
 typedef int nrfx_err_t;
-enum lapwing_flash_state { LAPWING_FLASH_LOADING, LAPWING_FLASH_READY, LAPWING_FLASH_UNAVAILABLE };
+enum dictionary_flash_state { DICTIONARY_FLASH_LOADING, DICTIONARY_FLASH_READY, DICTIONARY_FLASH_UNAVAILABLE };
 struct base_image { const char *name; uint32_t offset, bytes, crc; bool verified; };
 static struct base_image lf_images[] = {{"LAPWING", 0, 12, 0, false},
                                         {"PLOVER", 16, 4, 0, false}};
@@ -59,18 +59,18 @@ static inline bool atomic_clear(bool *value) {
     return previous;
 }
 static inline void atomic_set(bool *value, bool next) { *value = next; }
-static inline bool lapwing_flash_acquire(void) {
+static inline bool dictionary_flash_acquire(void) {
     if (!lf_mapped_ready) return false;
     k_mutex_lock(&flash_lock, K_FOREVER);
     return true;
 }
-static inline void lapwing_flash_ready_changed(void) {}
-static inline bool reactivate_after_xip(void) { return true; }
+static inline void dictionary_flash_ready_changed(void) {}
+static inline bool squid_qspi_reactivate(void) { return true; }
 static inline void lf_request_restart(void) { assert(flash_lock); restarts++; }
 static inline bool lf_clear_trust(void) { lf_trusted = false; power.GPREGRET2 = 0; return trust_can_clear; }
-static inline enum lapwing_flash_state lapwing_flash_status(void) {
-    return lf_mapped_ready ? LAPWING_FLASH_READY
-                           : lf_checked ? LAPWING_FLASH_UNAVAILABLE : LAPWING_FLASH_LOADING;
+static inline enum dictionary_flash_state dictionary_flash_status(void) {
+    return lf_mapped_ready ? DICTIONARY_FLASH_READY
+                           : lf_checked ? DICTIONARY_FLASH_UNAVAILABLE : DICTIONARY_FLASH_LOADING;
 }
 static inline nrfx_err_t squid_qspi_wait_ready(uint32_t timeout) { (void)timeout; return NRFX_SUCCESS; }
 static inline int nrfx_qspi_read(void *out, size_t size, uint32_t offset) {
@@ -128,7 +128,7 @@ static inline size_t hex2bin(const char *hex, size_t len, uint8_t *out, size_t m
 """
 
 HARNESS = r'''
-#include "lapwing_flash_provision.c"
+#include "dictionary_flash_provision.c"
 static void expect(const char *command,const char *prefix) {
     char reply[160];lf_provision_command(command,reply,sizeof(reply));
     if(strncmp(reply,prefix,strlen(prefix))) { fprintf(stderr,"%s => %s; wanted %s\n",command,reply,prefix);assert(false); }
@@ -182,9 +182,9 @@ def main():
         parser.error('Pass --zephyr with the pinned Zephyr checkout (or use run_all.py)')
     with tempfile.TemporaryDirectory(prefix="base-provision-test-") as temp:
         root = Path(temp)
-        for name in ("lapwing_flash_provision.c", "lapwing_flash_provision.h"):
+        for name in ("dictionary_flash_provision.c", "dictionary_flash_provision.h"):
             shutil.copy(SOURCE / name, root)
-        (root / "lapwing_flash_internal.h").write_text(STUB, encoding="utf-8")
+        (root / "dictionary_flash_internal.h").write_text(STUB, encoding="utf-8")
         (root / "split_status.h").write_text("""
 enum steno_squid_mode {
     STENO_SQUID_MODE_INSTALL = 1, STENO_SQUID_MODE_REPAIR, STENO_SQUID_MODE_VERIFY

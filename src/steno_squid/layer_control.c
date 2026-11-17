@@ -7,7 +7,7 @@
 #include "layer_control.h"
 #include "zmk_javelin_steno/zmk_platform_shim.h"
 #include "split_status.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 
 /* What the left half does when the layer changes, whether or not the right
  * half has a display: keep the dictionaries ready while the steno layer is up,
@@ -54,8 +54,8 @@ static void flash_ready(struct k_work *work) {
 
 K_WORK_DEFINE(flash_ready_work, flash_ready);
 
-void lapwing_flash_ready_changed(void) {
-    if (lapwing_mapped_address()) zmk_javelin_steno_prepare();
+void dictionary_flash_ready_changed(void) {
+    if (dictionary_flash_mapped_address()) zmk_javelin_steno_prepare();
     k_work_submit(&flash_ready_work);
 }
 

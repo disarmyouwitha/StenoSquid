@@ -1,7 +1,7 @@
 #pragma once
 #include "console.h"
 #include "javelin_hid_transport.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 #include <string.h>
 
 /* Used only inside the HID console's engine lock and root writer scope.
@@ -31,12 +31,12 @@ public:
         if (allow_yield) {
             ConsoleWriter::Pop(); // This formatter.
             ConsoleWriter::Pop(); // The HID console's root writer.
-            lapwing_flash_release();
+            dictionary_flash_release();
         }
         output->Write(buffer, used);
         used = 0;
         if (allow_yield) {
-            failed = !lapwing_flash_resume_read(); // Always returns with the lock held.
+            failed = !dictionary_flash_resume_read(); // Always returns with the lock held.
             ConsoleWriter::Push(output);
             ConsoleWriter::Push(this);
         }

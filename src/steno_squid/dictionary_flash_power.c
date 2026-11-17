@@ -1,4 +1,4 @@
-#include "lapwing_flash_internal.h"
+#include "dictionary_flash_internal.h"
 
 #include <zephyr/drivers/pinctrl.h>
 
@@ -13,7 +13,7 @@ int lf_pins(uint8_t state) {
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 atomic_t lf_powered;
 
-bool lapwing_flash_is_powered(void) {
+bool dictionary_flash_is_powered(void) {
     return atomic_get(&lf_powered) != 0;
 }
 #endif

@@ -4,7 +4,7 @@
 
 #define W25Q_STATUS_BUSY_OR_WEL (BIT(0) | BIT(1))
 
-bool reactivate_after_xip(void)
+bool squid_qspi_reactivate(void)
 {
 	/* nRF52840 anomaly 215. Use only task/event registers until READY. */
 	nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);

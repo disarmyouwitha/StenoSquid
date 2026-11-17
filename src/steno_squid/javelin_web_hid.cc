@@ -2,7 +2,7 @@
 #include "javelin_hid_transport.h"
 #include "console_commands.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
-#include "lapwing_flash_provision.h"
+#include "dictionary_flash_provision.h"
 #endif
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"

@@ -29,14 +29,14 @@ using zmk_keymap_layers_state_t = uint32_t;
 #define LOG_WRN(...)
 #define ARG_UNUSED(x) (void)(x)
 #define CONFIG_ZMK_STENO_SQUID_PRACTICE 1
-#define CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING 0
+#define CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH 0
 #define IS_ENABLED(x) x
 static zmk_keymap_layers_state_t _zmk_keymap_layer_state = 1, _zmk_keymap_layer_locks;
 static zmk_keymap_layer_id_t _zmk_keymap_layer_default;
 static uint32_t practice_wanted;
 static bool practicing;
-static uintptr_t lapwing_mapped_address() { return 1; }
-static void lapwing_flash_hold(bool) {}
+static uintptr_t dictionary_flash_mapped_address() { return 1; }
+static void dictionary_flash_hold(bool) {}
 static bool zmk_javelin_steno_ready() { return true; }
 static void apply_layer();
 static int raise_layer_state_changed(uint8_t, bool, bool) { apply_layer(); return 0; }

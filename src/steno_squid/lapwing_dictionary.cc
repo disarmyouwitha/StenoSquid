@@ -1,5 +1,5 @@
 #include "lapwing_dictionary.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 #include "dictionary/compact_map_dictionary.h"
 #include "dictionary/dictionary_definition.h"
 #include "xip_load.h"
@@ -69,11 +69,11 @@ private:
 #endif
 
 StenoDictionary *lapwing_dictionary() {
-  return lapwing_mapped_address() ? dictionary : nullptr;
+  return dictionary_flash_mapped_address() ? dictionary : nullptr;
 }
 
 StenoDictionary *plover_dictionary() {
-  return lapwing_mapped_address() ? plover : nullptr;
+  return dictionary_flash_mapped_address() ? plover : nullptr;
 }
 
 const char *extras_dictionary_name(size_t index) {
@@ -81,7 +81,7 @@ const char *extras_dictionary_name(size_t index) {
 }
 
 StenoDictionary *extras_dictionary(size_t index) {
-  return index < EXTRAS_DICTIONARY_COUNT && lapwing_mapped_address() ? extras[index] : nullptr;
+  return index < EXTRAS_DICTIONARY_COUNT && dictionary_flash_mapped_address() ? extras[index] : nullptr;
 }
 
 StenoDictionaryLookupResult lapwing_copy_lookup_text(const uint8_t *text) {
