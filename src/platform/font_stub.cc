@@ -5,7 +5,8 @@
 // stand-ins replace the roughly 40 KB of glyph tables. font.cc still supplies
 // the Font::FONTS table and the width helpers; with no glyphs, every character
 // measures one pixel wide and nothing draws.
-#define EMPTY_FONT {0, 0, 1, 1, 0, 0, nullptr, nullptr}
+#define EMPTY_FONT { .startUnicode = 0, .endUnicode = 0, .width = 1, .height = 1, \
+                     .baseline = 0, .spacing = 0, .glyphOffsets = nullptr, .glyphData = nullptr }
 
 const Font Font::DEFAULT = EMPTY_FONT;
 const Font Font::LARGE = EMPTY_FONT;

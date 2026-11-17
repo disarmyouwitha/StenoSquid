@@ -556,6 +556,8 @@ constexpr struct { uint16_t unicode; char ascii; } plain_characters[] = {
     {0x203a, '>'},
 };
 
+static_assert(host_layout::strictly_sorted(plain_characters), "Host layout must be sorted and unique");
+
 constexpr size_t plain_count = sizeof(plain_characters) / sizeof(plain_characters[0]);
 
 // Constant data in flash: the entries are filled in at compile time.

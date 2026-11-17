@@ -54,6 +54,48 @@ static JavelinStaticAllocate<StenoRepeat> stenoRepeat;
 static JavelinStaticAllocate<StenoAllUp> allUp;
 static StenoProcessor *processor = nullptr;
 
+#include <dt-bindings/zmk/javelin_steno_ids.h>
+
+// Studio/keymap IDs and the engine must describe the same physical keys.
+static_assert(STENO_ID_S1 == int(StenoKey::S1));
+static_assert(STENO_ID_S2 == int(StenoKey::S2));
+static_assert(STENO_ID_TL == int(StenoKey::TL));
+static_assert(STENO_ID_KL == int(StenoKey::KL));
+static_assert(STENO_ID_PL == int(StenoKey::PL));
+static_assert(STENO_ID_WL == int(StenoKey::WL));
+static_assert(STENO_ID_HL == int(StenoKey::HL));
+static_assert(STENO_ID_RL == int(StenoKey::RL));
+static_assert(STENO_ID_A == int(StenoKey::A));
+static_assert(STENO_ID_O == int(StenoKey::O));
+static_assert(STENO_ID_STAR1 == int(StenoKey::STAR1));
+static_assert(STENO_ID_STAR2 == int(StenoKey::STAR2));
+static_assert(STENO_ID_STAR3 == int(StenoKey::STAR3));
+static_assert(STENO_ID_STAR4 == int(StenoKey::STAR4));
+static_assert(STENO_ID_E == int(StenoKey::E));
+static_assert(STENO_ID_U == int(StenoKey::U));
+static_assert(STENO_ID_FR == int(StenoKey::FR));
+static_assert(STENO_ID_RR == int(StenoKey::RR));
+static_assert(STENO_ID_PR == int(StenoKey::PR));
+static_assert(STENO_ID_BR == int(StenoKey::BR));
+static_assert(STENO_ID_LR == int(StenoKey::LR));
+static_assert(STENO_ID_GR == int(StenoKey::GR));
+static_assert(STENO_ID_TR == int(StenoKey::TR));
+static_assert(STENO_ID_SR == int(StenoKey::SR));
+static_assert(STENO_ID_DR == int(StenoKey::DR));
+static_assert(STENO_ID_ZR == int(StenoKey::ZR));
+static_assert(STENO_ID_NUM1 == int(StenoKey::NUM1));
+static_assert(STENO_ID_NUM2 == int(StenoKey::NUM2));
+static_assert(STENO_ID_NUM3 == int(StenoKey::NUM3));
+static_assert(STENO_ID_NUM4 == int(StenoKey::NUM4));
+static_assert(STENO_ID_NUM5 == int(StenoKey::NUM5));
+static_assert(STENO_ID_NUM6 == int(StenoKey::NUM6));
+static_assert(STENO_ID_NUM7 == int(StenoKey::NUM7));
+static_assert(STENO_ID_NUM8 == int(StenoKey::NUM8));
+static_assert(STENO_ID_NUM9 == int(StenoKey::NUM9));
+static_assert(STENO_ID_NUM10 == int(StenoKey::NUM10));
+static_assert(STENO_ID_NUM11 == int(StenoKey::NUM11));
+static_assert(STENO_ID_NUM12 == int(StenoKey::NUM12));
+
 static atomic_t initialized;
 
 // Dictionary selections are stored separately from base images and personal

@@ -9,6 +9,7 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zmk/ble.h>
 
 static const uint8_t report_map[] = {JAVELIN_HID_REPORT_MAP};
@@ -88,8 +89,7 @@ static ssize_t control_point(struct bt_conn *conn, const struct bt_gatt_attr *at
     return len;
 }
 
-/* The input value is attribute 6; keep its index beside the declaration. */
-enum { INPUT_VALUE = 6 };
+static const struct bt_gatt_attr *input_value;
 BT_GATT_SERVICE_DEFINE(javelin_hog,
     BT_GATT_PRIMARY_SERVICE(BT_UUID_HIDS),
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_INFO, BT_GATT_CHRC_READ,
@@ -109,6 +109,21 @@ BT_GATT_SERVICE_DEFINE(javelin_hog,
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_CTRL_POINT, BT_GATT_CHRC_WRITE_WITHOUT_RESP,
         BT_GATT_PERM_WRITE_ENCRYPT, NULL, control_point, NULL));
 
+/* Resolve by its descriptor rather than relying on an attribute index. The
+ * service declaration/order stays unchanged, preserving existing bonds. */
+static int find_input_value(void) {
+    for (size_t i = 0; i < javelin_hog.attr_count; ++i) {
+        const struct bt_gatt_attr *attr = &javelin_hog.attrs[i];
+        if (bt_uuid_cmp(attr->uuid, BT_UUID_HIDS_REPORT) == 0 &&
+            attr->read == read_report && attr->write == NULL) {
+            input_value = attr;
+            return 0;
+        }
+    }
+    return -ENOENT;
+}
+SYS_INIT(find_input_value, APPLICATION, 90);
+
 static struct bt_conn *session_peer(uint32_t session) {
     k_spinlock_key_t key = k_spin_lock(&peer_lock);
     struct bt_conn *conn = peer && generation == session ? bt_conn_ref(peer) : NULL;
@@ -121,8 +136,8 @@ int steno_squid_javelin_ble_session_valid(uint32_t session) {
     if (!conn) {
         return 0;
     }
-    const bool valid = allowed_peer(conn) &&
-        bt_gatt_is_subscribed(conn, &javelin_hog.attrs[INPUT_VALUE], BT_GATT_CCC_NOTIFY);
+    const bool valid = input_value && allowed_peer(conn) &&
+        bt_gatt_is_subscribed(conn, input_value, BT_GATT_CCC_NOTIFY);
     bt_conn_unref(conn);
     return valid;
 }
@@ -136,8 +151,8 @@ int steno_squid_javelin_ble_notify(const void *data, size_t size, uint32_t sessi
         return -ENOTCONN;
     }
     int rc = -ENOTCONN;
-    if (allowed_peer(conn) &&
-        bt_gatt_is_subscribed(conn, &javelin_hog.attrs[INPUT_VALUE], BT_GATT_CCC_NOTIFY)) {
+    if (input_value && allowed_peer(conn) &&
+        bt_gatt_is_subscribed(conn, input_value, BT_GATT_CCC_NOTIFY)) {
         if (bt_gatt_get_mtu(conn) < size + 3) {
             rc = -EMSGSIZE;
         } else {
@@ -145,7 +160,7 @@ int steno_squid_javelin_ble_notify(const void *data, size_t size, uint32_t sessi
              * Only the isolated TX worker can block for buffers; neither the engine
              * nor the Bluetooth RX thread waits here.
              */
-            rc = bt_gatt_notify(conn, &javelin_hog.attrs[INPUT_VALUE], data, size);
+            rc = bt_gatt_notify(conn, input_value, data, size);
         }
     }
     bt_conn_unref(conn);
