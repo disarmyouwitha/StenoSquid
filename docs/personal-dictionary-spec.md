@@ -1,23 +1,21 @@
-# Personal dictionary: constant-time writes in one 10 MiB region
+# Personal dictionary: constant-time writes in one 10.9375 MiB region
 
-Status: **draft for implementation.** Written against commit `7908a68`.
-Not built or run; the design is from reading `user_dictionary_snapshot.h` and
-`user_dictionary_store.cc`. Timings are estimates until measured on hardware.
+Status: **implemented; hardware testing.** The segment store, import tooling, and recovery tests are in place. Three personal entries were restored and verified across reboot on the assembled nice!nano left half. Large-dictionary cleanup latency still needs hardware measurement. The current fixed base starts are 0, 2 and 4.5 MiB; the personal pool starts at 5 MiB.
 
 This revision replaces the earlier two-bank draft. There are no banks.
 
-## 1. Problems
+## 1. Problems addressed in the previous snapshot store
 
 1. **Every edit rewrites everything.** The dictionary is a sorted snapshot, so
    `Store::Save` rewrites all entries into the other slot to add, change or
    delete one. At 90,000 entries that is minutes under the engine lock.
 2. **Half the space is a spare copy.** Two 4 MiB slots hold one dictionary, and
    2 MiB above them is unused. Capacity is about 90,000 entries on a flash that
-   has 10 MiB free.
+   has considerably more room for personal storage.
 
 ## 2. Design in one page
 
-The 10 MiB above the base dictionaries becomes one pool of **64 KiB segments**.
+The 10.9375 MiB above the base dictionaries becomes one pool of **64 KiB segments**.
 Each segment is one of:
 
 | Kind | Holds |
@@ -84,8 +82,8 @@ All integers little-endian.
 
 | | |
 |---|---|
-| Start | flash offset `0x600000` (unchanged `SLOT_START`; base dictionaries stay below it) |
-| Segments | 159 × 64 KiB, numbered 0..158, ending at `0xFF0000` |
+| Start | flash offset `0x500000` (base dictionaries stay below it) |
+| Segments | 175 × 64 KiB, numbered 0..174, ending at `0xFF0000` |
 | Above | `0xFF0000`–`0xFFFFFF` left unused (the existing code already avoids the last sector) |
 
 Segment boundaries line up with the flash's 64 KiB block erase.
@@ -150,7 +148,7 @@ Slot (4 bytes):
 | Bits | Meaning |
 |---|---|
 | 31..22 | `tag` = bits 31..22 of the key's hash |
-| 21..14 | record's segment number (0..158) |
+| 21..14 | record's segment number (0..174) |
 | 13..0 | record's offset within the segment / 4 |
 
 `0xFFFFFFFF` = empty. A slot is never rewritten.
@@ -201,9 +199,9 @@ Typical entry: 28-byte record. At 190,000 entries:
 | Room to rebuild one table | 16 |
 | Meta, plus one while rolling over | 2 |
 | Cleaning reserve | 3 |
-| **Total** | **135 of 159** |
+| **Total** | **135 of 175** |
 
-The 24 segments of slack absorb dead records between cleanings and
+The 40 segments of slack absorb dead records between cleanings and
 longer-than-typical entries. The hard limit is "no free segment after
 cleaning", not an entry count.
 
@@ -279,7 +277,7 @@ Then retire every record segment older than that and the old table segments.
 
 Runs on the engine-init work item, never on the key thread (cleanup spec P3).
 
-1. Read all 159 segment headers. Next sequence = highest seen + 1.
+1. Read all 175 segment headers. Next sequence = highest seen + 1.
 2. Find the current state record (§3.5).
    - No valid meta segment and no valid record segment → **format**: allocate
      meta, one forward and one reverse table segment, one record segment; write
@@ -304,7 +302,7 @@ Runs on the engine-init work item, never on the key thread (cleanup spec P3).
    `stats_ready`. Until then, status reports the count as unknown and cleaning
    picks the oldest record segment instead of the emptiest.
 
-Steps 1–5 cost 159 small reads plus at most two segment walks, whatever the
+Steps 1–5 cost 175 small reads plus at most two segment walks, whatever the
 dictionary size.
 
 ### 5.7 Power-fail behaviour
@@ -438,14 +436,14 @@ the host holds the complete copy — see the backup rule below.
 | File | Change |
 |---|---|
 | `src/steno_squid/user_dictionary_snapshot.h` | Replace with the new store; rename to `user_dictionary_log.h`. Header-only, pointer-free, no Zephyr includes, so host tests compile it. Keep `Device` (`Read` / `Program` / `Erase`), add `EraseBlock64K`. Keep `crc32`, `hash_bytes`, `WriteVerified`. Delete `Source`, `Store::Save`, `PageWriter::Text`, the sorted-index readers, `ReverseStart`, `Validate`, the old import. |
-| `src/steno_squid/user_dictionary_store.cc` | `QspiUserDictionary` calls the new store. Delete `EditSource` and the save path. Add the new commands, the background work item (statistics walk, cleaning, rebuild slices), and `EraseBlock64K` on `QspiDevice` (`NRF_QSPI_ERASE_LEN_64KB`). Replace the `static_assert` on `SLOT_START + 2 * SLOT_BYTES` with one on `0x600000 + 159 × 64 KiB <= 0xFF0000`. |
+| `src/steno_squid/user_dictionary_store.cc` | `QspiUserDictionary` calls the new store. Delete `EditSource` and the save path. Add the new commands, the background work item (statistics walk, cleaning, rebuild slices), and `EraseBlock64K` on `QspiDevice` (`NRF_QSPI_ERASE_LEN_64KB`). Replace the `static_assert` on `SLOT_START + 2 * SLOT_BYTES` with one on `0x500000 + 175 × 64 KiB <= 0xFF0000`. |
 | `src/steno_squid/javelin_web_hid.cc`, `engine_init.cc` | Add the new command names to the console whitelist (or the single table from cleanup spec S6). |
 | `tools/dictionaries/import_personal.py` | New status keys, new import protocol, small-change path, `segment_image.py`. |
 | `stenosquid.py` | `--backup`; backup-before-replace. |
 | `tools/tests/test_user_dictionary_snapshot.cc`, `tools/dictionaries/test_import_personal.py` | Rewrite (§11). |
 | `README.md` | Capacity line (~190,000), "External Memory Map" text, and regenerate `assets/qspi-flash-map.png`. |
 
-Unchanged: base dictionary layout below `0x600000`, the engine-facing
+The current base dictionary area ends at `0x500000`. The engine-facing
 `StenoDictionary` interface, limits of 16 strokes and 2,047 text bytes.
 
 ## 11. Tests (host, against a fake NOR device)

@@ -17,9 +17,9 @@ bool steno_squid_javelin_response_cancelled();
 namespace {
 using namespace squid_user;
 constexpr uint32_t REGION_END = REGION_START + SEG_COUNT * SEG_BYTES;
-static_assert(BASE_DICTIONARY_LIMIT <= REGION_START);
-static_assert(0x600000 + 159 * 64 * 1024 <= 0xff0000);
-static_assert(REGION_END <= 0xff0000);
+static_assert(BASE_DICTIONARY_LIMIT == REGION_START);
+static_assert(REGION_START % SEG_BYTES == 0);
+static_assert(REGION_END == 0xff0000);
 static_assert(sizeof(StenoStroke) == 4);
 constexpr uintptr_t XIP_BASE = DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi), qspi_mm);
 bool wait_ready(int32_t timeout_ms = 2000) {

@@ -21,7 +21,7 @@ def main():
     groups = [
         ('lapwing/lapwing-base', 0x12000000, ['lapwing/lapwing-base']),
         ('plover/plover-main', 0x12200000, ['plover/plover-main']),
-        ('extras/lapwing-extras', 0x12500000, ['extras/lapwing-commands', 'extras/lapwing-numbers',
+        ('extras/lapwing-extras', 0x12480000, ['extras/lapwing-commands', 'extras/lapwing-numbers',
           'extras/lapwing-uk-additions', 'extras/lapwing-proper-nouns']),
     ]
     for image, base, sources in groups:

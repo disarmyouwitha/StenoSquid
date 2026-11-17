@@ -53,7 +53,7 @@ pure-Python tests. Items that depend on engine internals are marked
 
 **Personal dictionary writes** are covered by a separate spec,
 [personal-dictionary-spec.md](personal-dictionary-spec.md), which replaces the
-storage format (one 10 MiB region of 64 KiB segments instead of two 4 MiB
+storage format (one 10.9375 MiB region of 64 KiB segments instead of two 4 MiB
 snapshot slots) and the import protocol. Where the two specs touch:
 
 - It supersedes P7, P8 and X1 here; skip those. Do not add the binary search
@@ -62,7 +62,7 @@ snapshot slots) and the import protocol. Where the two specs touch:
   item) from this spec; do those first or together.
 - S6 (one console command table) should include its two new commands.
 - S16 / the dictionary manifest should carry its region constants
-  (`0x600000`, 159 segments of 64 KiB) instead of `SLOT_BYTES`.
+  (`0x500000`, 175 segments of 64 KiB) instead of `SLOT_BYTES`.
 - T7's rewrite of `test_user_dictionary_snapshot.cc` is replaced by that
   spec's test list.
 - The README's "~90,000 entries" and flash-map picture change there, not here.

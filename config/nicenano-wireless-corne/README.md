@@ -212,12 +212,14 @@ The existing website supplies these controls. Firmware support handles listing, 
 
 | Contents | External flash offset | Image size | CRC32 |
 |---|---|---|---|
-| Lapwing Base, 114,885 outlines | `0x000000` | 1,700,488 bytes | `720cfca6` |
-| Plover Base, 147,424 outlines | `0x200000` | 2,178,864 bytes | `14b65522` |
-| Personal dictionary | `0x600000` | 159 segments of 64 KiB (to `0xFEFFFF`) | Per-record CRC; tables rebuildable from records |
+| Lapwing Base, 114,885 outlines | `0x000000` | 1,830,444 bytes | `00f2d636` |
+| Plover Base, 147,424 outlines | `0x200000` | 2,339,620 bytes | `3e8f8d88` |
+| Lapwing extras | `0x480000` | 469,812 bytes | `98af1ecc` |
+| Personal dictionary | `0x500000` | 175 segments of 64 KiB (to `0xFEFFFF`) | Per-record CRC; indexes rebuildable |
+| Tail reserve | `0xFF0000` | 60 KiB before scratch | — |
 | Diagnostic scratch | `0xFFF000` | 4 KiB reserved | — |
 
-Plover source: [official main.json at the pinned revision](https://github.com/openstenoproject/plover/blob/8a52c5296c502507f9a46820a4a947ca25f998e6/plover/assets/main.json). Source SHA256: `6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92`. Compiled padded image SHA256: `6d74757af03ad1769f6f2d587afcc8957a5486b3e31ed3e20f00410c2624e2c4`.
+Images are pinned and verified by the preparation scripts. The fixed 2 MiB, 2.5 MiB, and 0.5 MiB base regions leave room for dictionary updates without relocating the personal pool.
 
 After flashing the everyday left firmware, let the keyboard reboot and run:
 
@@ -250,7 +252,7 @@ A third image holds four smaller Lapwing dictionaries. Each has its own checkbox
 
 They rank above the bases, in that order: personal entries first, then the four extras, then Lapwing Base, then Plover Base.
 
-`prepare_extras.py` downloads the four pinned sources, compiles them into `build/extras/lapwing-extras.bin` (451,088 bytes) and checks every outline. The image lives at `0x500000` in the external flash and is uploaded, verified and repaired as one unit:
+`prepare_extras.py` downloads the four pinned sources, compiles them into `build/extras/lapwing-extras.bin` (469,812 bytes) and checks every outline. The image lives at `0x480000` in the external flash and is uploaded, verified and repaired as one unit:
 
 ```sh
 python3 stenosquid.py /dev/cu.usbmodem14501 --base extras
@@ -304,11 +306,11 @@ The left firmware exposes a dedicated HID console over USB and Bluetooth for [Ja
 
 Use **Add Translation** to enter an outline and translation, then press Return in the translation field to save. Add, replace, remove, or export personal outlines from the browser. A saved entry takes precedence over the same Lapwing outline in onboard Javelin. Removing the personal entry restores the Lapwing translation. Host Plover HID continues to send raw strokes to the host.
 
-The left half reads the personal dictionary and its two indexes directly from QSPI. Each save writes the live entries to the inactive slot, verifies them, then commits the snapshot header. The previous snapshot remains available if the save is interrupted. Unused parts of a slot are skipped, and replacing or deleting an entry reclaims its space on the next successful save. Writes are batched at 256-byte page boundaries, and single-entry edits relocate existing record offsets instead of searching for every reverse-index entry. The snapshot format, readback checks, CRCs, index validation, and header-last commit are unchanged.
+The left half reads personal records and both lookup tables directly from QSPI. Adds and edits append a record; deletes mark a record dead. Commit flags and per-record checksums support interrupted-write recovery. Lookup tables can be rebuilt from the record log, and background cleanup reuses segments. The old snapshot writer and its `PageWriter` are gone. The new low-level writer still splits writes at 256-byte flash-page boundaries and verifies programmed bytes.
 
 Install or repair base dictionaries over USB HID with `stenosquid.py --install` or `stenosquid.py --repair`. Serial provisioning is available only in Left-Diagnostic. Export the personal dictionary from Javelin Tools to keep an independent backup.
 
-The personal dictionary region fits about 190,000 entries at the average record size of the bundled dictionary sources. Capacity varies with outline length and UTF-8 translation size. Each add, edit or delete writes only the changed entry, so its cost does not grow with the dictionary; space is reclaimed in the background. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers finished segments for the keyboard to verify and commit.
+The personal dictionary region passed a 220,000-entry host test with short, shared translations and two-stroke outlines. Capacity varies with outline length and UTF-8 translation size. Ordinary edits write only the changed record. Segment allocation, cleanup, and occasional table rebuilds take longer; these are not guaranteed constant-latency operations. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers finished segments for the keyboard to verify and commit.
 
 The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checks power loss at every flash write, recovery from damaged tables, and write boundaries.
 

@@ -17,7 +17,6 @@ import struct
 import zlib
 
 SEG_BYTES = 0x10000
-SEG_COUNT = 159
 SEG_HEADER = 16
 SLOTS_PER_SEG = (SEG_BYTES - SEG_HEADER) // 4
 MAX_TABLE_SEGS = 32

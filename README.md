@@ -5,7 +5,7 @@
 ✅Javelin onboard steno\
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!\
-📚 Room for ~190,000 personal dictionary entries!
+📚 Room for 200,000+ personal dictionary entries!
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
 (But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
@@ -129,11 +129,11 @@ https://zmk.studio/
 https://lim.au/#/software/javelin-steno-tools
 
 ## External Memory Map
-The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI. It uses one region from `0x600000` to `0xFF0000`, split into 159 segments of 64 KiB. Entries are appended to record segments, two hash tables find them by outline and by translation, and a small log says which tables are current. An edit appends one record and writes two table slots instead of rewriting the dictionary, and space from deleted entries is reclaimed one segment at a time. Every record carries a checksum, and the tables can be rebuilt from the records.
+The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI. It uses one region from `0x500000` to `0xFF0000`, split into 175 segments of 64 KiB. Entries are appended to record segments, two hash tables find them by outline and by translation, and a small log says which tables are current. An edit appends one record and writes two table slots instead of rewriting the dictionary, and space from deleted entries is reclaimed one segment at a time. Every record carries a checksum, and the tables can be rebuilt from the records.
 
-![Left half QSPI flash map showing the old two-slot personal dictionary layout and 3.57 MiB of unallocated sectors](assets/qspi-flash-map.png)
+![Left-half QSPI flash map with base-image growth room and a shared personal-dictionary segment pool](assets/qspi-flash-map.png)
 
-The dark green sectors show a one-entry dictionary. The lighter green sectors are reserved for growth.
+Base regions start at 0 MiB (Lapwing), 2 MiB (Plover), and 4.5 MiB (extras). Personal storage starts at 5 MiB and has 175 segments (10.9375 MiB). The image shows region allocation, not live dictionary occupancy.
 
 ## NiceNano Wiring Diagram
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)

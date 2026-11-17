@@ -3,12 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// The personal dictionary's segments occupy 600000..FEFFFF.
+// The personal dictionary's segments occupy 500000..FEFFFF.
 #define PLOVER_FLASH_OFFSET 0x200000U
 // One image holding the smaller Lapwing dictionaries, each with its own
 // checkbox in the browser.
-#define EXTRAS_FLASH_OFFSET 0x500000U
-#define BASE_DICTIONARY_LIMIT 0x600000U
+#define EXTRAS_FLASH_OFFSET 0x480000U
+#define BASE_DICTIONARY_LIMIT 0x500000U
 
 #ifdef __cplusplus
 extern "C" {

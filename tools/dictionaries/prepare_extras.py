@@ -27,7 +27,7 @@ DICTIONARIES = [
      "aef0205fa4bc6bcb1bc11c199b0c01737ada5ffa7a0f0a56d48154d024ce66e8"),
 ]
 # XIP base 0x12000000 plus EXTRAS_FLASH_OFFSET in src/steno_squid/lapwing_flash.h.
-BASE_ADDRESS = "0x12500000"
+BASE_ADDRESS = "0x12480000"
 
 
 def main():

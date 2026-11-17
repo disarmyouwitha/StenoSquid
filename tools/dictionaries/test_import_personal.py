@@ -69,7 +69,7 @@ def make_entries(count, seed=7):
 class Harness(Console):
     """import_personal's Console, talking to the C++ store instead of USB HID."""
 
-    def __init__(self, segments=159):
+    def __init__(self, segments=175):
         self.proc = subprocess.Popen([str(BINARY["exe"]), str(segments)], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE)
         self.sent = []
@@ -125,7 +125,7 @@ class Harness(Console):
 
 
 class ImportTest(unittest.TestCase):
-    def harness(self, segments=159):
+    def harness(self, segments=175):
         console = Harness(segments)
         self.addCleanup(console.close)
         return console

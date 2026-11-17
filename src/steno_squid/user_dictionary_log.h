@@ -13,12 +13,13 @@
 #include <zephyr/sys/crc.h>
 #endif
 namespace squid_user {
-constexpr uint32_t REGION_START = 0x600000, SEG_BYTES = 0x10000,
-                   SEG_COUNT = 159, SEG_HEADER = 16,
+constexpr uint32_t REGION_START = 0x500000, SEG_BYTES = 0x10000,
+                   SEG_COUNT = 175, SEG_HEADER = 16,
                    SLOTS_PER_SEG = (SEG_BYTES - SEG_HEADER) / 4,
                    MAX_TABLE_SEGS = 32, RESERVE = 3, MAX_STROKES = 16,
                    MAX_TEXT = 2047, MAGIC = 0x3355445a, STATE_BYTES = 80,
                    EMPTY = 0xffffffffu, IMPORT_CHUNK = 512;
+static_assert(SEG_COUNT <= 256, "segment IDs fit the on-flash slot encoding");
 constexpr uint32_t F_ALLOC = 1u << 31, F_COMMIT = 1u << 30, F_DEAD = 1u << 29;
 enum Kind : uint8_t { FREE = 0, RECORD = 1, FORWARD = 2, REVERSE = 3, META = 4 };
 
