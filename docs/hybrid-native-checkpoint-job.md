@@ -42,6 +42,26 @@ Empty output indexes are omitted. Set/remove/reset semantics are unchanged.
 Old records belonging to deleted identities are filtered from the output; IDs
 must never be reused. Catalog-driven dictionary deletion itself is still pending.
 
+## Native journal rollover
+
+`native_rollover_job.h` now handles the other common maintenance operation.
+It pins the current view, inspects journal epochs, reserves one unowned segment,
+initializes its header, appends the new journal descriptor to a streamed catalog,
+publishes ownership and recovers the writer. It copies existing metadata unchanged
+apart from the extent count. No edit is written into the new journal before its
+ownership commit. Both jobs share the same whole-transaction lease requirement.
+
+It supports a catalog with no journals, preserves an existing recent-edit tail,
+and refuses epoch wrap or insufficient reserve before erase. Failed/cancelled
+staging leaves only an unreferenced journal. Uncertain catalog publication requires
+reopen, just as for checkpointing. This is rollover, not journal cleaning: old
+journal extents remain protected until a future reclamation transaction.
+
+The rollover suite passes 152 interrupted initialization/publication cases,
+maximum-length text and old-reader isolation, cancellation/reuse, first-journal
+creation, metadata copying, reserve refusal and epoch-wrap refusal. The first
+31-record rollover takes 43 steps in its fixture.
+
 ## Cancellation and errors
 
 Before acknowledged publication, cancellation abandons private staging and resumes
@@ -83,9 +103,10 @@ publication/preflight still performs synchronous validation/erase/program work.
 The whole job must not run under a typing-critical lock without scheduling and
 contention measurements.
 
-Local ARM compilation includes this real coordinator in Left-Diagnostic:
-545,700 flash bytes and 238,126 linked RAM bytes. The job is **5,056 bytes** of
-static ARM workspace (host ABI: 5,104); it must not be allocated on the HID stack.
+Local ARM compilation includes both real coordinators in Left-Diagnostic:
+549,564 flash bytes and 239,958 linked RAM bytes. The checkpoint job is **5,056
+bytes**, and rollover is **1,832 bytes**, of static ARM workspace (host ABI: 5,104
+and 1,848). They must not be allocated on the HID stack.
 The diagnostic carries both the old production store and experimental components.
 Default firmware does not allocate this job. Runtime peaks remain unmeasured.
 
@@ -110,8 +131,9 @@ python3 tools/bench/run_checkpoint_probe.py --output build/native-job/hardware.j
 
 It backs up personal entries, checks production state, builds generation 2,
 appends sequence 10, runs the **native checkpoint job** to generation 3/through 10,
-checks a pinned reader while the job steps, reboots normally, recovers the zero-tail
-checkpoint and verifies cleanup/preservation. It then repeats the older checkpoint
+then runs **native rollover** to generation 4 and writes sequence 11 in the new
+journal. It checks pinned readers while each job steps, reboots normally, recovers
+the checkpoint plus one-record tail and verifies cleanup/preservation. It then repeats the older checkpoint
 fixture. A normal software reboot does not replace physical power-cut tests.
 
 Only the left firmware changes. Keep the matching right firmware running and test
@@ -120,8 +142,8 @@ has been claimed yet.
 
 ## Next integration work
 
-- Native journal rollover/publication job, bounded overlong-tail rebuild and
-  reclamation/cleaning, including reserve exhaustion.
+- Bounded overlong-tail rebuild and reclamation/cleaning, including reserve
+  exhaustion. Both maintenance jobs currently retain all old journal extents.
 - Compact-base loading and actual engine/editor/reverse-hint/export integration.
 - Exclusive maintenance scheduling, cancellation and error reporting in firmware.
 - Large-store hardware replay and typing contention, physical power interruption,

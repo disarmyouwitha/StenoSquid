@@ -10,6 +10,7 @@
 #include "../../tools/storage/native_catalog.h"
 #include "../../tools/storage/native_live_journal.h"
 #include "../../tools/storage/native_checkpoint_job.h"
+#include "../../tools/storage/native_rollover_job.h"
 #include "../../tools/storage/native_checkpoint.h"
 #include "../../tools/storage/native_index_sink.h"
 #include "../../tools/storage/binary_record.h"
@@ -73,6 +74,7 @@ NativeJournal<ProbeDevice> probe_journal(probe_device);
 NativeCatalog<ProbeDevice> probe_catalog(probe_device,0,kSegmentBytes,4096);
 LiveJournal<ProbeDevice> probe_live(probe_device,probe_catalog);
 NativeCheckpointJob<ProbeDevice> probe_job(probe_device,probe_catalog,probe_live);
+NativeRolloverJob<ProbeDevice> probe_rollover(probe_device,probe_catalog,probe_live);
 LiveView live_snapshot; // Fixed workspace; never put this on the HID stack.
 IndexSink<ProbeDevice> forward_sink(probe_device),reverse_sink(probe_device);
 alignas(4) uint8_t payload[32+2*96+3*24];
@@ -124,14 +126,20 @@ CheckpointBuilder<BuildOps> builder(build_ops);
 bool CheckExtent(uint32_t,const uint8_t *extent) {
     uint32_t start=uint16_t(extent[0]) | uint16_t(extent[1])<<8;
     uint32_t bytes=Word(extent+4),kind=Word(extent+12);
-    if(start<2 || start>11 || bytes>4096 || !bytes)return false;
+    if(start<2 || start>11 || !bytes || (kind!=2 && bytes>4096))return false;
     if(kind==2) {
-        if(start!=2 || probe_journal.Open(2,Epoch)!=JournalResult::Ok)return false;
+        if((start!=2 && start!=3) || (bytes!=4096 && bytes!=kSegmentBytes))return false;
+        const uint64_t epoch=Epoch+(start==3);
+        if((uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32)!=epoch ||
+           probe_journal.Open(start,epoch)!=JournalResult::Ok)return false;
         JournalScan scan;JournalRecord record;
-        if(probe_journal.BeginScan(2,Epoch,0,scan)!=JournalResult::Ok)return false;
+        if(probe_journal.BeginScan(start,epoch,0,scan)!=JournalResult::Ok)return false;
         unsigned count=0;JournalResult status;
-        while((status=probe_journal.Step(scan,record))==JournalResult::Ok)++count;
-        return status==JournalResult::End && (count==6 || count==9 || count==10);
+        while((status=probe_journal.Step(scan,record))==JournalResult::Ok) {
+            if(start==3 && record.sequence!=11)return false;
+            ++count;
+        }
+        return status==JournalResult::End && (start==3?count<=1:(count==6 || count==9 || count==10));
     }
     if(((kind==3 || kind==4) && start<3) || (kind!=3 && kind!=4) || bytes%4)return false;
     uint32_t crc=0,previous=0;
@@ -189,10 +197,10 @@ public:
 NativeOverlayDictionary probe_dictionary(probe_backend,1,"Checkpoint Test");
 
 bool Verify() {
-    if(probe_catalog.Open(selected,CheckExtent)!=CatalogResult::Ok || (selected.root.generation!=2 && selected.root.generation!=3))return false;
+    if(probe_catalog.Open(selected,CheckExtent)!=CatalogResult::Ok || (selected.root.generation<2 || selected.root.generation>4))return false;
     CatalogShape shape;
     if(probe_catalog.Validate(selected.root,CheckExtent,&shape)!=CatalogResult::Ok || shape.dictionaries!=2 ||
-       shape.extents!=3 || shape.through!=(selected.root.generation==3?10u:9u))return false;
+       shape.extents!=(selected.root.generation==4?4u:3u) || shape.through!=(selected.root.generation>=3?10u:9u))return false;
     uint8_t first[96];
     if(!probe_device.Read(selected.root.address+32,first,96) || first[16]!='N')return false;
     selected_forward=0;
@@ -202,7 +210,7 @@ bool Verify() {
         if(Word(extent+12)==3)selected_forward=(uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes;
     }
     if(!selected_forward)return false;
-    const char *expected=selected.root.generation==3?"live":"newer";
+    const char *expected=selected.root.generation>=3?"live":"newer";
     // Generation 3 checkpoints the live tail using the native transaction job.
     probe_device.mapped=true;
     auto table_read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(selected_forward+offset,out,n);};
@@ -309,9 +317,9 @@ bool LiveText(const LiveView &input,const char *expected) {
         !std::memcmp(text,expected,record.text_bytes);
 }
 bool CheckLive() {
-    if(!Verify() || !RecoverLive() || probe_live.Highwater()!=10 || probe_live.TailCount()!=(selected.root.generation==3?0u:1u))return false;
+    if(!Verify() || !RecoverLive() || probe_live.Highwater()!=(selected.root.generation==4?11u:10u) || probe_live.TailCount()!=(selected.root.generation==3?0u:1u))return false;
     if(probe_live.Snapshot(live_snapshot)!=LiveResult::Ok)return false;
-    const bool valid=LiveText(live_snapshot,"live");
+    const bool valid=LiveText(live_snapshot,selected.root.generation==4?"rolled":"live");
     return probe_live.Release(live_snapshot) && valid;
 }
 bool AppendLive() {
@@ -336,6 +344,22 @@ bool CheckpointLive() {
     }
     probe_job.Cancel();return false;
 }
+bool RolloverLive() {
+    if(!CheckLive() || selected.root.generation!=3)return false;
+    SegmentMap excluded;excluded.Add(12,244);
+    if(probe_rollover.Begin(selected,excluded)!=JobResult::More)return false;
+    for(unsigned i=0;i<10000;++i) {
+        const auto status=probe_rollover.Step(CheckExtent);++steps;
+        if(status==JobResult::Done) {
+            selected=probe_rollover.Selection();uint32_t key=8;
+            const uint8_t text[]={'r','o','l','l','e','d'};
+            return probe_live.Append(1,0,&key,1,text,sizeof(text))==LiveResult::Ok && CheckLive();
+        }
+        if(status!=JobResult::More)return false;
+        if(!LiveText(probe_rollover.Input(),"live")){probe_rollover.Cancel();return false;}
+    }
+    probe_rollover.Cancel();return false;
+}
 bool Clean() {
     if(!Verify() || !RecoverLive())return false;
     if(probe_live.Highwater()!=9 && !CheckLive())return false;
@@ -359,8 +383,8 @@ void steno_squid_checkpoint_probe(void *,const char *line) {
     if(!std::strcmp(command,"reboot")) {
         Console::SendOk();k_work_reschedule(&reboot_work,K_SECONDS(2));return;
     }
-    if(std::strcmp(command,"run") && std::strcmp(command,"hold") && std::strcmp(command,"check") && std::strcmp(command,"clean") && std::strcmp(command,"live") && std::strcmp(command,"live_check") && std::strcmp(command,"job")) {
-        Console::Printf("ERR Expected run, hold, check, live, job, live_check, clean or reboot\n\n");return;
+    if(std::strcmp(command,"run") && std::strcmp(command,"hold") && std::strcmp(command,"check") && std::strcmp(command,"clean") && std::strcmp(command,"live") && std::strcmp(command,"live_check") && std::strcmp(command,"job") && std::strcmp(command,"rollover")) {
+        Console::Printf("ERR Expected run, hold, check, live, job, rollover, live_check, clean or reboot\n\n");return;
     }
     const JavelinEngineLock lock;
     if(!lock || !squid_qspi_reactivate()){Console::Printf("ERR Flash unavailable\n\n");return;}
@@ -369,7 +393,7 @@ void steno_squid_checkpoint_probe(void *,const char *line) {
         Console::Printf("ERR Checkpoint test region nonblank or unreadable; nothing changed\n\n");return;
     }
     const uint32_t start=k_uptime_get_32();
-    bool passed=!std::strcmp(command,"job")?CheckpointLive():!std::strcmp(command,"live")?AppendLive():!std::strcmp(command,"live_check")?CheckLive():
+    bool passed=!std::strcmp(command,"rollover")?RolloverLive():!std::strcmp(command,"job")?CheckpointLive():!std::strcmp(command,"live")?AppendLive():!std::strcmp(command,"live_check")?CheckLive():
         !std::strcmp(command,"check")?Verify():!std::strcmp(command,"clean")?Clean():Prepare();
     bool cleaned=!std::strcmp(command,"clean") && passed;
     if(passed && !std::strcmp(command,"run")){cleaned=Clean();passed=cleaned;}

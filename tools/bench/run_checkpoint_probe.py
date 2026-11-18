@@ -44,6 +44,7 @@ def main():
         prepared = invoke(console, "hold")
         live_append = invoke(console, "live")
         checkpoint_job = invoke(console, "job")
+        rollover_job = invoke(console, "rollover")
         watermark = json.loads(console.command("dictionary_benchmark meta"))
         response = console.command("dictionary_checkpoint_probe reboot")
         if response != "OK":
@@ -77,11 +78,12 @@ def main():
         status = json.loads(console.command("user_dictionary_status"))
         final_metadata = json.loads(console.command("dictionary_benchmark meta"))
     report = dict(
-        schema=3,
+        schema=4,
         metadata=metadata,
         prepared=prepared,
         live_append=live_append,
         checkpoint_job=checkpoint_job,
+        rollover_job=rollover_job,
         live_recovered=live_recovered,
         after_prepare_metadata=watermark,
         after_reboot_metadata=restarted,
@@ -98,7 +100,7 @@ def main():
         limits=[
             "Isolated twelve-sector native catalog/index integration, not engine format replacement",
             "Normal software reboot, not power interruption during a write",
-            "Ten edits and two dictionaries; large-store capacity and maintenance performance unproven",
+            "Eleven edits and two dictionaries; large-store capacity and maintenance performance unproven",
             "Manual keyboard/display smoke tests deferred until owner returns",
         ],
     )

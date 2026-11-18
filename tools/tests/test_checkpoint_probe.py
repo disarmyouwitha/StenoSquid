@@ -37,6 +37,8 @@ int main() {
     command("live");assert(output.find("\"passed\":false")!=std::string::npos);
     command("job");assert(output.find("\"passed\":true")!=std::string::npos);
     assert(output.find("\"generation\":3")!=std::string::npos);
+    command("rollover");assert(output.find("\"passed\":true")!=std::string::npos);
+    assert(output.find("\"generation\":4")!=std::string::npos);
     command("reboot");assert(rebooted && output=="OK\n\n");
     // Discard warm state; verification must use only persistent catalog/records.
     probe_catalog.Invalidate();live_snapshot={};
@@ -55,7 +57,7 @@ int main() {
     command("check");assert(output.find("\"passed\":false")!=std::string::npos);
     command("clean");assert(output.find("\"passed\":false")!=std::string::npos);
     assert(erases==before_erases && writes==before_writes);
-    puts("Checkpoint hardware handler: strict reserved bounds/DMA, streamed indexes, three catalog commits and native coordinator, cold-state reopen, cleanup and quarantine passed");
+    puts("Checkpoint hardware handler: strict reserved bounds/DMA, streamed indexes, four catalog commits, native checkpoint and rollover, cold-state reopen, cleanup and quarantine passed");
 }
 """
 
@@ -85,6 +87,7 @@ def main():
             "native_catalog.h",
             "native_live_journal.h",
             "native_checkpoint_job.h",
+            "native_rollover_job.h",
             "native_checkpoint.h",
             "native_index_sink.h",
             "binary_record.h",

@@ -4,10 +4,9 @@
 #include "native_ownership.h"
 #include "native_merge_ops.h"
 #include "native_checkpoint.h"
+#include "native_maintenance.h"
 
 namespace candidate_b {
-enum class JobResult { More, Done, Invalid, Busy, NoSpace, IoError, Corrupt,
-                       ReadOnly, RecoveryRequired, Cancelled };
 template <class Device>
 class NativeCheckpointJob {
     enum class Phase { Idle, Inspect, Plan, EraseForward, EraseReverse, Build,
