@@ -136,3 +136,9 @@ for the next flash, then test ordinary typing, onboard KAT and Practice/display.
 The prior [catalog/checkpoint milestone](hybrid-native-catalog-checkpoint.md) remains
 valid evidence for the installed build. Host and compiler results above do not
 replace the outstanding hardware gates.
+
+## Follow-up
+
+The [native checkpoint transaction job](hybrid-native-checkpoint-job.md) now
+replaces the host-only orchestration described here. Its newer probe expands the
+reserved fixture to twelve sectors; use that milestone for current test commands.

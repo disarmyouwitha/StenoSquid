@@ -45,6 +45,7 @@ public:
         if(!Flush())return false;
         finished=true;return true;
     }
+    void Cancel(){ready=false;failed=true;finished=false;}
     uint32_t Bytes()const{return written;}
     uint32_t Count()const{return count;}
     uint32_t Checksum()const{return crc;}

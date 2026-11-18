@@ -1,6 +1,6 @@
 # StenoSquid Unified Dictionary Storage and Benchmark Specification
 
-**Status:** P3 native live-edit recovery/snapshots implemented and host-tested; prior catalog/checkpoint reboot hardware test passed; full engine/store integration pending\
+**Status:** P3 native checkpoint transaction coordinator implemented and host-tested; integrated ARM probe compiles; new hardware test and full engine/store integration pending\
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
 
@@ -176,7 +176,9 @@ Current evidence: [Phase-0 measurements](dictionary-benchmark-report.md),
 [first diagnostic QSPI hardware results](hybrid-hardware-probe.md).
 [Native catalog/checkpoint and bridge progress](hybrid-native-catalog-checkpoint.md)
 
-[Native live-edit recovery, ownership and next hardware test](hybrid-native-live-store.md)
+[Native live-edit recovery and snapshots](hybrid-native-live-store.md)
+
+[Native firmware checkpoint transaction and current hardware test](hybrid-native-checkpoint-job.md)
 includes a passed reboot-persistence diagnostic. The host models and isolated native
 helpers do not complete the hardware/performance acceptance gates. P1 design
 freeze and P2 large/near-full capacity work remain open while P3 native core

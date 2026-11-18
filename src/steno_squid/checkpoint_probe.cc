@@ -1,5 +1,5 @@
-/* Integrated native catalog/checkpoint test on seven reserved 4 KiB sectors.
- * No engine storage switch. All physical IO is bounded to FF9000..FFFFFF. */
+/* Integrated native catalog/checkpoint test on twelve reserved 4 KiB sectors.
+ * No engine storage switch. All physical IO is bounded to FF4000..FFFFFF. */
 #include "storage_probe.h"
 #include "console.h"
 #include "dictionary_flash.h"
@@ -9,6 +9,7 @@
 #include "native_dictionary_adapter.h"
 #include "../../tools/storage/native_catalog.h"
 #include "../../tools/storage/native_live_journal.h"
+#include "../../tools/storage/native_checkpoint_job.h"
 #include "../../tools/storage/native_checkpoint.h"
 #include "../../tools/storage/native_index_sink.h"
 #include "../../tools/storage/binary_record.h"
@@ -20,7 +21,7 @@
 
 namespace {
 using namespace candidate_b;
-constexpr uint32_t Physical=0xff9000, Virtual=2*kSegmentBytes;
+constexpr uint32_t Physical=0xff4000, Virtual=2*kSegmentBytes;
 constexpr uint64_t Epoch=0x435050524f424532ULL;
 constexpr uintptr_t Xip=DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi),qspi_mm);
 struct ProbeDevice {
@@ -28,7 +29,7 @@ struct ProbeDevice {
     alignas(4) uint8_t dma[256];
     bool Translate(uint32_t at,uint32_t n,uint32_t &physical) {
         uint32_t segment=at/kSegmentBytes,offset=at%kSegmentBytes;
-        if(segment>=7 || offset>4096 || n>4096-offset)return false;
+        if(segment>=12 || offset>4096 || n>4096-offset)return false;
         physical=Physical+segment*4096+offset;return true;
     }
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
@@ -50,7 +51,7 @@ struct ProbeDevice {
         return nrfx_qspi_write(dma,(n+3)&~3u,physical)==NRFX_SUCCESS && squid_qspi_wait_ready(2000)==NRFX_SUCCESS;
     }
     bool Erase(uint32_t segment) {
-        return segment==2 && EraseRegion(segment*kSegmentBytes);
+        return segment>=2 && segment<12 && EraseRegion(segment*kSegmentBytes);
     }
     bool EraseRegion(uint32_t address) {
         uint32_t physical;
@@ -61,7 +62,7 @@ struct ProbeDevice {
         return (address==0 || address==kSegmentBytes) && bytes==4096 && EraseRegion(address);
     }
     bool Blank() {
-        for(unsigned segment=0;segment<7;++segment)for(uint32_t offset=0;offset<4096;offset+=256) {
+        for(unsigned segment=0;segment<12;++segment)for(uint32_t offset=0;offset<4096;offset+=256) {
             if(!Read(segment*kSegmentBytes+offset,dma,256))return false;
             for(auto byte:dma)if(byte!=255)return false;
         }
@@ -71,12 +72,14 @@ struct ProbeDevice {
 NativeJournal<ProbeDevice> probe_journal(probe_device);
 NativeCatalog<ProbeDevice> probe_catalog(probe_device,0,kSegmentBytes,4096);
 LiveJournal<ProbeDevice> probe_live(probe_device,probe_catalog);
+NativeCheckpointJob<ProbeDevice> probe_job(probe_device,probe_catalog,probe_live);
 LiveView live_snapshot; // Fixed workspace; never put this on the HID stack.
 IndexSink<ProbeDevice> forward_sink(probe_device),reverse_sink(probe_device);
 alignas(4) uint8_t payload[32+2*96+3*24];
 Tail recent;
 uint32_t steps=0;
 CatalogSelection selected;
+uint32_t selected_forward=5*kSegmentBytes;
 
 struct BuildOps {
     int Operation(uint32_t address) {
@@ -121,7 +124,7 @@ CheckpointBuilder<BuildOps> builder(build_ops);
 bool CheckExtent(uint32_t,const uint8_t *extent) {
     uint32_t start=uint16_t(extent[0]) | uint16_t(extent[1])<<8;
     uint32_t bytes=Word(extent+4),kind=Word(extent+12);
-    if(start<2 || start>6 || bytes>4096 || !bytes)return false;
+    if(start<2 || start>11 || bytes>4096 || !bytes)return false;
     if(kind==2) {
         if(start!=2 || probe_journal.Open(2,Epoch)!=JournalResult::Ok)return false;
         JournalScan scan;JournalRecord record;
@@ -130,7 +133,7 @@ bool CheckExtent(uint32_t,const uint8_t *extent) {
         while((status=probe_journal.Step(scan,record))==JournalResult::Ok)++count;
         return status==JournalResult::End && (count==6 || count==9 || count==10);
     }
-    if((kind==3 && start!=3 && start!=5) || (kind==4 && start!=4 && start!=6) || (kind!=3 && kind!=4) || bytes%4)return false;
+    if(((kind==3 || kind==4) && start<3) || (kind!=3 && kind!=4) || bytes%4)return false;
     uint32_t crc=0,previous=0;
     uint8_t data[32];
     for(uint32_t offset=0;offset<bytes;) {
@@ -164,7 +167,7 @@ public:
     EditState Find(uint32_t,uint32_t dictionary,const StenoDictionaryLookup &lookup,EditText &text)override {
         uint32_t strokes[16];for(size_t i=0;i<lookup.length;++i)strokes[i]=lookup.strokes[i].GetKeyState();
         RecordView view;uint32_t address=0;
-        auto read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(5*kSegmentBytes+offset,out,n);};
+        auto read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(selected_forward+offset,out,n);};
         auto compare=[&](uint32_t at) {
             uint8_t header[32];if(!probe_device.Read(at,header,32))return 2;
             return CompareOutline(at+32,Word(header+16),dictionary,strokes,lookup.length,
@@ -186,26 +189,34 @@ public:
 NativeOverlayDictionary probe_dictionary(probe_backend,1,"Checkpoint Test");
 
 bool Verify() {
-    if(probe_catalog.Open(selected,CheckExtent)!=CatalogResult::Ok || selected.root.generation!=2)return false;
+    if(probe_catalog.Open(selected,CheckExtent)!=CatalogResult::Ok || (selected.root.generation!=2 && selected.root.generation!=3))return false;
     CatalogShape shape;
     if(probe_catalog.Validate(selected.root,CheckExtent,&shape)!=CatalogResult::Ok || shape.dictionaries!=2 ||
-       shape.extents!=3 || shape.through!=9)return false;
+       shape.extents!=3 || shape.through!=(selected.root.generation==3?10u:9u))return false;
     uint8_t first[96];
     if(!probe_device.Read(selected.root.address+32,first,96) || first[16]!='N')return false;
-    // Newest checkpoint: (ID1,8)->newer, (ID2,4)->again; reset removed ID1 key4.
+    selected_forward=0;
+    for(unsigned i=0;i<shape.extents;++i) {
+        uint8_t extent[24];
+        if(!probe_device.Read(selected.root.address+32+shape.dictionaries*96+i*24,extent,24))return false;
+        if(Word(extent+12)==3)selected_forward=(uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes;
+    }
+    if(!selected_forward)return false;
+    const char *expected=selected.root.generation==3?"live":"newer";
+    // Generation 3 checkpoints the live tail using the native transaction job.
     probe_device.mapped=true;
-    auto table_read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(5*kSegmentBytes+offset,out,n);};
+    auto table_read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(selected_forward+offset,out,n);};
     uint32_t query=8,found=0;RecordView view;
     auto compare=[&](uint32_t address) {
         uint8_t header[32];if(!probe_device.Read(address,header,32))return 2;
         return CompareOutline(address+32,Word(header+16),1,&query,1,
             [](uint32_t at,uint8_t *out,size_t n){return probe_device.Read(at,out,n);},view);
     };
-    if(FindOrdered(2,table_read,compare,found)!=Result::Found || view.text_bytes!=5)return false;
-    uint8_t text[5];if(!probe_device.Read(view.text_address,text,5) || std::memcmp(text,"newer",5))return false;
+    if(FindOrdered(2,table_read,compare,found)!=Result::Found || view.text_bytes!=std::strlen(expected))return false;
+    uint8_t text[5];if(!probe_device.Read(view.text_address,text,view.text_bytes) || std::memcmp(text,expected,view.text_bytes))return false;
     const StenoStroke stroke(8);
     auto translated=probe_dictionary.Lookup(StenoDictionaryLookup(&stroke,1));
-    const bool bridge=translated.IsValid() && !std::strcmp(translated.GetText(),"newer");
+    const bool bridge=translated.IsValid() && !std::strcmp(translated.GetText(),expected);
     translated.Destroy();if(!bridge)return false;
     probe_device.mapped=false;return squid_qspi_reactivate();
 }
@@ -290,17 +301,17 @@ bool RecoverLive() {
     }
     return false;
 }
-bool LiveText(const char *expected) {
+bool LiveText(const LiveView &input,const char *expected) {
     uint32_t key=8;RecordView record;uint8_t text[8];
-    return probe_live.FindSnapshot(live_snapshot,1,&key,1,record)==LiveResult::Ok &&
+    return probe_live.FindSnapshot(input,1,&key,1,record)==LiveResult::Ok &&
         record.text_bytes==std::strlen(expected) &&
-        probe_live.ReadText(live_snapshot,record,text,record.text_bytes)==LiveResult::Ok &&
+        probe_live.ReadText(input,record,text,record.text_bytes)==LiveResult::Ok &&
         !std::memcmp(text,expected,record.text_bytes);
 }
 bool CheckLive() {
-    if(!Verify() || !RecoverLive() || probe_live.Highwater()!=10 || probe_live.TailCount()!=1)return false;
+    if(!Verify() || !RecoverLive() || probe_live.Highwater()!=10 || probe_live.TailCount()!=(selected.root.generation==3?0u:1u))return false;
     if(probe_live.Snapshot(live_snapshot)!=LiveResult::Ok)return false;
-    const bool valid=LiveText("live");
+    const bool valid=LiveText(live_snapshot,"live");
     return probe_live.Release(live_snapshot) && valid;
 }
 bool AppendLive() {
@@ -309,9 +320,21 @@ bool AppendLive() {
     uint32_t key=8;const uint8_t text[]={'l','i','v','e'};
     const bool appended=probe_live.Append(1,0,&key,1,text,sizeof(text))==LiveResult::Ok;
     // The old snapshot must still see checkpoint data after live publication.
-    const bool isolated=appended && LiveText("newer");
+    const bool isolated=appended && LiveText(live_snapshot,"newer");
     const bool released=probe_live.Release(live_snapshot);
     return isolated && released && CheckLive();
+}
+bool CheckpointLive() {
+    if(!CheckLive() || selected.root.generation!=2)return false;
+    SegmentMap excluded;excluded.Add(12,244);
+    if(probe_job.Begin(selected,excluded)!=JobResult::More)return false;
+    for(unsigned i=0;i<10000;++i) {
+        const auto status=probe_job.Step(CheckExtent);++steps;
+        if(status==JobResult::Done){selected=probe_job.Selection();return CheckLive();}
+        if(status!=JobResult::More)return false;
+        if(!LiveText(probe_job.Input(),"live")){probe_job.Cancel();return false;}
+    }
+    probe_job.Cancel();return false;
 }
 bool Clean() {
     if(!Verify() || !RecoverLive())return false;
@@ -321,7 +344,7 @@ bool Clean() {
     // Record/index sectors first, catalog identities last. Failed cleanup cannot
     // be mistaken for valid data by the next Verify; no automatic force erase.
     probe_catalog.Invalidate();
-    const unsigned cleanup_order[]={2,3,4,5,6,0,1};
+    const unsigned cleanup_order[]={2,3,4,5,6,7,8,9,10,11,0,1};
     for(unsigned segment:cleanup_order)if(!probe_device.EraseRegion(segment*kSegmentBytes))return false;
     return probe_device.Blank();
 }
@@ -336,8 +359,8 @@ void steno_squid_checkpoint_probe(void *,const char *line) {
     if(!std::strcmp(command,"reboot")) {
         Console::SendOk();k_work_reschedule(&reboot_work,K_SECONDS(2));return;
     }
-    if(std::strcmp(command,"run") && std::strcmp(command,"hold") && std::strcmp(command,"check") && std::strcmp(command,"clean") && std::strcmp(command,"live") && std::strcmp(command,"live_check")) {
-        Console::Printf("ERR Expected run, hold, check, live, live_check, clean or reboot\n\n");return;
+    if(std::strcmp(command,"run") && std::strcmp(command,"hold") && std::strcmp(command,"check") && std::strcmp(command,"clean") && std::strcmp(command,"live") && std::strcmp(command,"live_check") && std::strcmp(command,"job")) {
+        Console::Printf("ERR Expected run, hold, check, live, job, live_check, clean or reboot\n\n");return;
     }
     const JavelinEngineLock lock;
     if(!lock || !squid_qspi_reactivate()){Console::Printf("ERR Flash unavailable\n\n");return;}
@@ -346,7 +369,7 @@ void steno_squid_checkpoint_probe(void *,const char *line) {
         Console::Printf("ERR Checkpoint test region nonblank or unreadable; nothing changed\n\n");return;
     }
     const uint32_t start=k_uptime_get_32();
-    bool passed=!std::strcmp(command,"live")?AppendLive():!std::strcmp(command,"live_check")?CheckLive():
+    bool passed=!std::strcmp(command,"job")?CheckpointLive():!std::strcmp(command,"live")?AppendLive():!std::strcmp(command,"live_check")?CheckLive():
         !std::strcmp(command,"check")?Verify():!std::strcmp(command,"clean")?Clean():Prepare();
     bool cleaned=!std::strcmp(command,"clean") && passed;
     if(passed && !std::strcmp(command,"run")){cleaned=Clean();passed=cleaned;}

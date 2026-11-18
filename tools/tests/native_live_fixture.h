@@ -34,7 +34,9 @@ struct LiveFixture {
     auto CheckExtent() {
         return [this](uint32_t,const uint8_t *extent) {
             uint32_t start=uint16_t(extent[0]) | uint16_t(extent[1])<<8,bytes=Word(extent+4),kind=Word(extent+12);
-            if(start>=segments || !bytes || bytes>65536)return false;
+            uint32_t count=uint16_t(extent[2]) | uint16_t(extent[3])<<8;
+            if(start>=segments || !count || count>segments-start || !bytes || bytes>count*65536)return false;
+            if(kind==1)return Crc(0,nor.data.data()+start*65536,bytes)==Word(extent+8);
             if(kind==2) {
                 uint64_t epoch=uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32;
                 JournalScan scan;
@@ -79,7 +81,7 @@ struct LiveFixture {
         unsigned position=0;
         auto extent=[&](uint32_t start,uint32_t bytes,uint32_t crc,uint32_t kind,uint64_t epoch) {
             uint8_t *row=data.data()+224+position++*24;
-            row[0]=start;row[2]=1;PutWord(row+4,bytes);PutWord(row+8,crc);PutWord(row+12,kind);
+            row[0]=start;row[2]=(bytes+65535)/65536;PutWord(row+4,bytes);PutWord(row+8,crc);PutWord(row+12,kind);
             PutWord(row+16,uint32_t(epoch));PutWord(row+20,uint32_t(epoch>>32));
         };
         for(auto j:journals)extent(j.first,65536,0,2,j.second);
@@ -103,7 +105,7 @@ struct LiveFixture {
                     auto row=Row(record.address);
                     if(row.operation==2)expected.erase(row.key);else expected[row.key]=record.address;
                 }
-            } else {
+            } else if(kind==3 || kind==4) {
                 for(unsigned offset=0;offset<Word(extent+4);offset+=4) {
                     uint8_t address[4];assert(device.Read(start*65536+offset,address,4));tables[kind==4].push_back(Word(address));
                 }
@@ -131,7 +133,7 @@ struct LiveFixture {
             if(kind==4){reverse=start;reverse_bytes=Word(row+4);}
         }
         assert(live.Begin(selection)==LiveResult::More);
-        for(unsigned i=0;i<10000;++i){auto step=live.RecoverStep();if(step==LiveResult::Ready)return;assert(step==LiveResult::More);}
+        for(unsigned i=0;i<kMaxEntries+1024;++i){auto step=live.RecoverStep();if(step==LiveResult::Ready)return;assert(step==LiveResult::More);}
         assert(false);
     }
     LiveResult Edit(uint32_t id,uint32_t key,const std::string &text,uint8_t op=0) {

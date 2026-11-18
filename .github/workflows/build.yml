@@ -63,6 +63,7 @@ jobs:
         env:
           CXX: clang++ -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
         run: |
+          python3 tools/tests/test_native_checkpoint_job.py
           python3 tools/tests/test_native_live_journal.py
           python3 tools/tests/test_native_journal.py
           python3 tools/tests/test_native_catalog.py

@@ -35,6 +35,8 @@ int main() {
     command("hold");assert(output.find("nothing changed")!=std::string::npos);
     command("live");assert(output.find("\"passed\":true")!=std::string::npos);
     command("live");assert(output.find("\"passed\":false")!=std::string::npos);
+    command("job");assert(output.find("\"passed\":true")!=std::string::npos);
+    assert(output.find("\"generation\":3")!=std::string::npos);
     command("reboot");assert(rebooted && output=="OK\n\n");
     // Discard warm state; verification must use only persistent catalog/records.
     probe_catalog.Invalidate();live_snapshot={};
@@ -53,21 +55,21 @@ int main() {
     command("check");assert(output.find("\"passed\":false")!=std::string::npos);
     command("clean");assert(output.find("\"passed\":false")!=std::string::npos);
     assert(erases==before_erases && writes==before_writes);
-    puts("Checkpoint hardware handler: strict reserved bounds/DMA, streamed indexes, two catalog commits, cold-state reopen, cleanup and quarantine passed");
+    puts("Checkpoint hardware handler: strict reserved bounds/DMA, streamed indexes, three catalog commits and native coordinator, cold-state reopen, cleanup and quarantine passed");
 }
 """
 
 
 def main():
-    stubs = STUBS.replace("uint8_t flash[4096]", "uint8_t flash[28672]").replace(
-        "0xfff000", "0xff9000"
+    stubs = STUBS.replace("uint8_t flash[4096]", "uint8_t flash[49152]").replace(
+        "0xfff000", "0xff4000"
     )
     stubs = stubs.replace(
-        "assert(at==0xff9000);", "assert(at>=0xff9000 && at<0x1000000 && at%4096==0);"
+        "assert(at==0xff4000);", "assert(at>=0xff4000 && at<0x1000000 && at%4096==0);"
     )
     stubs = stubs.replace(
         "std::memset(flash,255,sizeof(flash));return 0;",
-        "std::memset(flash+(at-0xff9000),255,4096);return 0;",
+        "std::memset(flash+(at-0xff4000),255,4096);return 0;",
     )
     stubs = stubs.replace(
         "struct Console { static void Printf",
@@ -82,6 +84,7 @@ def main():
         for name in (
             "native_catalog.h",
             "native_live_journal.h",
+            "native_checkpoint_job.h",
             "native_checkpoint.h",
             "native_index_sink.h",
             "binary_record.h",

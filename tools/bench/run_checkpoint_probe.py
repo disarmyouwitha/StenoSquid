@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test native catalog/index publication and live edits across a normal reboot.
 
-Left-Diagnostic only, USB HID. Uses seven reserved sectors at FF9000..FFFFFF,
+Left-Diagnostic only, USB HID. Uses twelve reserved sectors at FF4000..FFFFFF,
 refuses nonblank test space, keeps the production dictionary format untouched.
 The command holds the engine lock; do not type during the run.
 """
@@ -43,6 +43,7 @@ def main():
         args.output.with_suffix(".personal-backup.txt").write_text(personal + "\n")
         prepared = invoke(console, "hold")
         live_append = invoke(console, "live")
+        checkpoint_job = invoke(console, "job")
         watermark = json.loads(console.command("dictionary_benchmark meta"))
         response = console.command("dictionary_checkpoint_probe reboot")
         if response != "OK":
@@ -76,10 +77,11 @@ def main():
         status = json.loads(console.command("user_dictionary_status"))
         final_metadata = json.loads(console.command("dictionary_benchmark meta"))
     report = dict(
-        schema=2,
+        schema=3,
         metadata=metadata,
         prepared=prepared,
         live_append=live_append,
+        checkpoint_job=checkpoint_job,
         live_recovered=live_recovered,
         after_prepare_metadata=watermark,
         after_reboot_metadata=restarted,
@@ -94,7 +96,7 @@ def main():
             (ROOT / "src/steno_squid/checkpoint_probe.cc").read_bytes()
         ).hexdigest(),
         limits=[
-            "Isolated seven-sector native catalog/index integration, not engine format replacement",
+            "Isolated twelve-sector native catalog/index integration, not engine format replacement",
             "Normal software reboot, not power interruption during a write",
             "Ten edits and two dictionaries; large-store capacity and maintenance performance unproven",
             "Manual keyboard/display smoke tests deferred until owner returns",
