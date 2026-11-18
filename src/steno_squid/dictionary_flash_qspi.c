@@ -1,4 +1,5 @@
 #include "dictionary_flash_internal.h"
+#include "dictionary_benchmark.h"
 #include "flash_diagnostics.h"
 #include "w25q_quad.h"
 #include "xip_load.h"
@@ -12,6 +13,11 @@
 uint8_t lf_readback[CHUNK_BYTES] __aligned(4);
 /* The last chip ID read, for the status command. */
 uint8_t lf_last_jedec[3];
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+uint32_t steno_squid_benchmark_jedec(void) {
+    return (uint32_t)lf_last_jedec[0] << 16 | (uint32_t)lf_last_jedec[1] << 8 | lf_last_jedec[2];
+}
+#endif
 #if SERIAL_CONSOLE
 bool lf_last_check_quick;
 uint32_t lf_last_check_ms;

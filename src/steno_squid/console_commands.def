@@ -16,3 +16,7 @@ USER_COMMAND("user_dictionary_import", "Import personal dictionary segments", bu
 USER_COMMAND("add_user_entry", "Save a personal translation", add_entry, false)
 USER_COMMAND("remove_user_entry", "Remove a personal translation", remove_entry, false)
 USER_COMMAND("reset_user_dictionary", "Clear personal translations", reset_entries, false)
+
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+USER_COMMAND("dictionary_benchmark", "Read-only diagnostic timing and key traces", steno_squid_dictionary_benchmark, true)
+#endif

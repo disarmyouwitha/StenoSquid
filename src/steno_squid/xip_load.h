@@ -3,9 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "dictionary_benchmark.h"
 
 /* Word-only XIP reads and a DSB per load: nRF52840 anomalies 118 and 216. */
 static inline uint32_t xip_load_word(const void *address) {
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    if (squid_bench_count_reads && ((uintptr_t)address - 0x12000000u) < 0x1000000u) ++squid_bench_xip_words;
+#endif
     const uint32_t value = *(const volatile uint32_t *)address;
     __asm__ volatile("dsb" ::: "memory");
     return value;

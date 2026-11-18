@@ -1,4 +1,5 @@
 #include "user_dictionary_store.h"
+#include "dictionary_benchmark.h"
 #include "engine_work.h"
 #include "engine_stream.h"
 #include "console.h"
@@ -29,6 +30,9 @@ class QspiDevice final : public Device {
 public:
   bool mapped = false;
   bool Read(uint32_t address, void *data, size_t size) override {
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    if (squid_bench_count_reads) { ++squid_bench_personal_reads; squid_bench_personal_bytes += size; }
+#endif
     if (address > 0x1000000 || size > 0x1000000 - address)
       return false;
     if (mapped) {
@@ -572,6 +576,11 @@ void store_rebuild(void *, const char *) {
   Console::SendOk();
 }
 } // namespace
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+StenoDictionary *steno_squid_user_dictionary_current() {
+  return store_available ? &dictionary : nullptr;
+}
+#endif
 StenoDictionary *steno_squid_user_dictionary_open() {
   {
     WriteMode write;

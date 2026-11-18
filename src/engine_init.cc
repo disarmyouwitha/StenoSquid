@@ -30,6 +30,7 @@
 #include "javelin_engine_lock.h"
 #include "engine_work.h"
 #include "chord_delivery.h"
+#include "dictionary_benchmark.h"
 #include "javelin_hid_transport.h"
 #include "lapwing_dictionary.h"
 #include "dictionary_flash.h"
@@ -326,6 +327,9 @@ void zmk_javelin_steno_init(void) {
 }
 
 void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+  StenoSquidKeyBenchmark benchmark(steno_key_index,is_press);
+#endif
   // On contention discard the whole held chord, including its eventual releases.
   // A partial chord must never become a different word after the lock is freed.
   static StenoSquidChordDelivery delivery;
@@ -333,6 +337,9 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
   const JavelinEngineLock lock;
   if (!lock || !processor) {
     delivery.Drop();
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    benchmark.Dropped();
+#endif
     zmk_javelin_steno_prepare();
 #ifdef CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS
     if (atomic_get(&initialized) && dictionary_flash_status() == DICTIONARY_FLASH_READY)
@@ -361,6 +368,9 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
   processor->Process(static_cast<StenoKey>(steno_key_index), is_press);
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_TAPE
   steno_squid_stroke_feed_end();
+#endif
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+  benchmark.Processed();
 #endif
 }
 

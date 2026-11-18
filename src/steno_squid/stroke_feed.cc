@@ -17,7 +17,7 @@
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 // Per-stroke timing is a diagnostic: it exists only in the logging build.
-#if defined(CONFIG_ZMK_STENO_SQUID_STROKE_HINT) && defined(CONFIG_ZMK_JAVELIN_DIAG)
+#if defined(CONFIG_ZMK_STENO_SQUID_STROKE_HINT) && defined(CONFIG_ZMK_JAVELIN_DIAG) && !defined(CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK)
 #define STENO_SQUID_TAPE_TIMING 1
 #endif
 

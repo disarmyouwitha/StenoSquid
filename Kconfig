@@ -35,6 +35,15 @@ config ZMK_JAVELIN_DIAG
       It compiles only with the logging snippet. The implementation is in
       src/steno_squid/flash_diagnostics.c.
 
+config ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    bool "Read-only dictionary measurements and real key-path traces"
+    depends on ZMK_JAVELIN_DIAG && ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    select INIT_STACKS
+    select THREAD_STACK_INFO
+    help
+      Phase-0 instrumentation for diagnostic builds only. Benchmark commands
+      use USB HID and never import, erase or change dictionary selections.
+
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG
