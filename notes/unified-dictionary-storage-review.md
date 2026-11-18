@@ -1,7 +1,9 @@
 # Review: unified dictionary storage and benchmark spec
 
-Reviewed 2026-11-17 against `main` at `4b31c60`. The spec under review is
-`stenosquid-unified-dictionary-storage-spec.md` (kept outside the repo).
+Reviewed 2026-11-17 against `main` at `4b31c60`. The spec under review is now tracked at
+[docs/unified-dictionary-storage-spec.md](../docs/unified-dictionary-storage-spec.md).
+The original review below describes that historical baseline; see the current
+follow-up at the end before treating its implementation claims as current.
 These are opinions plus one back-of-envelope measurement, not benchmark results.
 
 ## Summary
@@ -106,3 +108,92 @@ work and its effect on the store's background work verified.
    the current store, with an explicit migration from format v3.
 4. Named imports and overlays on top.
 5. Only then manager UI, and only if a larger flash is proven separately.
+
+
+## Follow-up against current main — 2026-11-17
+
+Reviewed against `169d1c9` (cleanup and Build-Up merge). This is a source review
+and fresh size/count arithmetic, **not** the proposed latency/churn benchmark.
+
+### Findings to resolve before implementation
+
+1. **Do not treat the old locking description as current.** Cleanup is already
+   merged. `flash_access.h` bounds system/key-thread acquisition to 10 ms and
+   avoids waiting for wake there; `engine_work.c` moves initialization off that
+   thread; `engine_stream.h` releases the lock between export chunks. Background
+   maintenance can still hold it for a slow flash operation. Bounded waiting can
+   discard an interrupted chord, so measure both worst-case lock hold time and
+   dropped input: responsiveness alone does not pass the spec's zero-loss gate.
+
+2. **Candidate C is a scope tradeoff, not a complete implementation of the spec.**
+   Fixed base slots retain the base/personal capacity boundary and cannot borrow
+   unused base capacity for imports. C may be the sensible simpler product, but
+   choosing it requires explicitly relaxing the pooled-capacity goal. B remains
+   the compact-format candidate that meets that goal. Do not quietly select C
+   just because its visible dictionary actions resemble B's.
+
+3. **An outline-only index needs a defined multimap, not the current unique-key
+   table plus a dictionary field.** The current `Store::Find()` returns one live
+   record. One initial probe does not automatically retrieve all dictionaries'
+   entries for that outline. Define grouping/chains or collision scanning,
+   duplicate replacement, per-dictionary tombstones, reverse-index filtering,
+   power-failure recovery and GC before comparing its probe count to `(ID, key)`
+   indexing. More than one flash read may be needed to resolve the winner.
+
+4. **Unrecognized is not blank.** `Store::Open()` ignores invalid segment headers
+   and can reach `Format()` when neither valid metadata nor recognized records
+   exist. `Allocate()` then erases selected 64 KiB blocks. Therefore the original
+   review's "safe subset" wording is insufficient for an unknown/new layout.
+   Detect the layout before calling the old opener; unknown nonblank data must
+   fail without writes. Fresh provisioning must be an explicit host operation.
+   The owner wants no persistent migration reader or compatibility build.
+
+5. **Larger flash requires a new encoding decision, not necessarily larger
+   slots.** Current slots use 10 tag + 8 segment + 14 offset bits. A possible
+   32-bit alternative spends one/two tag bits on 9/10-bit segment IDs, at the cost
+   of more false tag matches and full-key checks. A wider slot or indirection is
+   another choice. None establishes 32/64 MiB driver/XIP support; retain the
+   separate addressing and hardware gates. "Roughly doubling index size" is not
+   an inevitable consequence of higher capacity.
+
+6. **Resolve the decision gate's order.** A host estimator can reject an
+   infeasible footprint before investing in on-device latency work. The spec's
+   "no selection until all results" should apply to selecting the surviving
+   design, rather than requiring every failed candidate to get a device port.
+   C's one-hour estimate is a proposed time-box, not evidence of actual effort.
+
+### Verified current input sizes
+
+The pinned images match `tools/tests/test_dictionary_contracts.py`:
+
+| Image | Bytes | CRC32 |
+| --- | ---: | --- |
+| Lapwing Base | 1,830,444 | `00f2d636` |
+| Plover Base | 2,339,620 | `3e8f8d88` |
+| Grouped Extras | 469,812 | `98af1ecc` |
+| **Total** | **4,639,876** | **4.640 MB / 4.425 MiB** |
+
+The original 4.46 MB baseline and stale-Lapwing claim should not be used for
+current capacity calculations. Counting the pinned source JSON gives 291,403
+entries across the six named dictionaries: 114,885 Lapwing, 147,424 Plover,
+146 Commands, 117 Numbers, 15,788 Proper Nouns and 13,043 UK Additions.
+
+Applying only the current record-size formula gives **8,184,856 bytes** before
+indexes, dictionary IDs, catalog, segment slack or staging. This supports the
+concern that A is substantially larger, but is not a completed multi-dictionary
+image measurement. Use explicitly labeled MB/MiB and actual allocated table
+segments in the estimator; the current tables cap at 32 segments each, so the
+half-full target is not maintained for every possible combined corpus.
+
+The tail's present purpose is documented: `0xFF0000..0xFFEFFF` is 60 KiB reserved,
+and `0xFFF000..0xFFFFFF` is the 4 KiB diagnostic scratch sector used by
+`tools/qspi/src/scratch.c`. Keep it excluded until intentionally redesigned.
+
+### Recommended next action
+
+Build the host footprint estimator first, preserving dictionary identities and
+using the pinned corpus. Compare A, B and the explicitly scoped fixed-slot C;
+then choose whether pooled capacity is actually required. On-device benchmarks
+should focus on worst-case maintenance interference as well as ordinary lookup
+latency. A future manager does not itself require larger flash, and none of
+these design notes implies that the proposed CLI commands already exist.

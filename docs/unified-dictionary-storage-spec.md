@@ -4,6 +4,24 @@
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
 
+## Current review context
+
+The historical baseline above predates the cleanup merged at `169d1c9`.
+Key delivery now has a bounded flash-lock wait, initialization runs on a worker,
+and personal exports yield between chunks. Those changes reduce blocking risk;
+they do not establish the zero-dropped-strokes performance gate below.
+See the [review and current follow-up](../notes/unified-dictionary-storage-review.md).
+
+**Owner constraint:** this is a single-user development project. Do not ship
+migration readers, backward-compatibility shims or a separate migration build.
+References below to migration/conversion mean an explicitly requested, backed-up
+clean reprovisioning during development, not a permanent firmware feature.
+Unknown nonblank storage must still be refused rather than automatically erased.
+
+The proposed manager is StenoSquid-owned. Its features must not depend on changes
+to the externally hosted Javelin Tools website. No A/B/C architecture is selected
+by merging these design notes; Candidate C would relax the shared-pool goal.
+
 ## 1. Goal
 
 Present every installed dictionary (personal, Lapwing Base, Plover Base, individual Lapwing Extras, and user imports) through one StenoSquid-owned interface. Users can independently enable, disable, prioritize, import, update, export, and ultimately edit dictionaries. Javelin remains the translation engine. Flash is managed as one shared capacity pool, with no permanent base-versus-personal quota.
