@@ -9,6 +9,29 @@ constexpr uint32_t kMaxCollisions = 16;
 constexpr uint32_t kIndexStride = 12;
 enum class Result { Missing, Found, Corrupt, IoError };
 
+// Alternative: sort by the complete record key, storing only uint32 addresses.
+// Compare returns stored-key vs query (-1, 0, 1), or 2 for a bad/unreadable record.
+// This trades more full-key reads for 4 rather than 12 index bytes per outline,
+// with no hash collision limit. Sorting/CRC/ownership are publication checks.
+template <class Read, class Compare>
+Result FindOrdered(uint32_t count, Read read, Compare compare, uint32_t &address) {
+    if (count > kMaxEntries) return Result::Corrupt;
+    uint32_t low = 0, high = count;
+    while (low < high) {
+        uint32_t mid = low + (high - low) / 2;
+        uint8_t bytes[4];
+        if (!read(mid * 4, bytes, sizeof(bytes))) return Result::IoError;
+        uint32_t record = 0;
+        for (unsigned i = 0; i < 4; ++i) record |= uint32_t(bytes[i]) << (8*i);
+        const int order = compare(record);
+        if (order == 2 || order < -1 || order > 1) return Result::Corrupt;
+        if (!order) { address = record; return Result::Found; }
+        if (order < 0) low = mid + 1;
+        else high = mid;
+    }
+    return Result::Missing;
+}
+
 // A checkpoint may be followed by at most 256 committed edits. The writer must
 // reserve a slot BEFORE committing an edit; on full, checkpoint or refuse safely.
 // Addresses, not keys/text, are held in RAM. A snapshot copies this fixed state.
@@ -22,6 +45,18 @@ struct Tail {
         return true;
     }
 };
+
+template <class Read, class Compare>
+Result FindLatestOrdered(const Tail &tail, uint32_t count, Read read,
+                         Compare compare, uint32_t &address) {
+    if (tail.count > Tail::kCapacity) return Result::Corrupt;
+    for (uint32_t i = tail.count; i > 0; --i) {
+        const int order = compare(tail.addresses[i-1]);
+        if (order < -1 || order > 1) return Result::Corrupt;
+        if (!order) { address = tail.addresses[i-1]; return Result::Found; }
+    }
+    return FindOrdered(count, read, compare, address);
+}
 
 // The immutable table is sorted by (64-bit hash, record address), little endian.
 // The caller validates table CRC/order/collision bounds before publication.

@@ -28,6 +28,9 @@ def main():
         # Deliberate hash collisions; all 200k distinct full keys must resolve.
         data = build((i // 4, i * 16) for i in range(200000))
         (path / "index.bin").write_bytes(data)
+        (path / "ordered.bin").write_bytes(
+            b"".join(struct.pack("<I", i * 16) for i in range(200000))
+        )
         (path / "records.bin").write_bytes(
             b"".join(
                 struct.pack("<IBBHI4s", 1, 0, 1, 4, i + 1, b"word")
@@ -52,7 +55,12 @@ def main():
             check=True,
         )
         subprocess.run(
-            [str(binary), str(path / "index.bin"), str(path / "records.bin")],
+            [
+                str(binary),
+                str(path / "index.bin"),
+                str(path / "records.bin"),
+                str(path / "ordered.bin"),
+            ],
             check=True,
         )
 

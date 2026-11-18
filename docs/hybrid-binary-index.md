@@ -56,19 +56,39 @@ text is read only after a match. These are operation bounds, **not measured
 keyboard latency**. Native tests check safe capacity refusal, old-tail snapshots,
 corrupt metadata, failing reads and oversized collision groups.
 
+## Smaller ordered-address alternative
+
+The native experiment also tests sorting by the **complete dictionary ID and
+outline**, storing only a four-byte record address per entry. Binary search reads
+and compares the referenced record key directly. It needs neither fingerprints
+nor a collision-group limit, and compares at most sixteen stroke words per step.
+The offline builder must still sort and deduplicate keys and verify the staged
+index before publication. The test fixture is already in full-key order.
+
+All 200,000 fixture keys resolved in at most **18 search steps**, using an
+**800,000-byte** table. Each step reads a four-byte table entry plus the record
+prefix and compared stroke words. Tests cover missing keys, malformed/I/O
+failures, dictionary-ID ordering and multi-stroke prefix ordering. This saves
+1.6 MB per checkpoint relative to the hash table, while doing more record reads.
+It is the preferred space candidate for the next device timing comparison;
+actual latency and checkpoint construction have not been measured on hardware.
+The ordered search uses the same bounded recent-edit tail, checking newest edits
+before the checkpoint. End-to-end publication/recovery is still pending.
+
 ## Resource and space limits
 
 The freestanding Cortex-M4 probe, compiled with Zephyr SDK 0.16.9 at `-Os`, has
-600 bytes of text, no static data/BSS and no undefined allocator symbols. GCC
+788 bytes of text (both search alternatives), no static data/BSS and no undefined allocator symbols. GCC
 reports 80 bytes for `ProbeFind`, 32 for its nested table loader, 24 for
-`ProbeRecord` and 56 for its record matcher. Callbacks, integration, task stacks,
+`ProbeRecord`, 64 for its record comparator and 40 for `ProbeOrdered`. Callbacks, integration, task stacks,
 catalogs and snapshot ownership add costs; these figures are not a replacement
 for linking and measuring a full Left-Diagnostic image. The 1,028-byte tail is
 caller-owned and therefore is not counted in that probe's BSS. Each copied tail
 snapshot would cost another 1,028 bytes.
 
-The table costs **12 bytes per indexed outline**, or 2,400,000 bytes at 200,000
-entries, before recovery copies, records, catalog and staging reserve. This is
+The hash table costs **12 bytes per indexed outline**, or 2,400,000 bytes at 200,000
+entries; the ordered-address alternative costs four bytes, or 800,000 bytes.
+Both need recovery copies, records, catalog and staging reserve as well. This is
 an overlay index; compiled bases keep their existing indexes. It does not claim
 200,000 editable entries will fit alongside all bases. Small-dictionary use has
 much lower space cost. Checkpoint write amplification, bounded index construction

@@ -16,3 +16,8 @@ extern "C" int ProbeRecord(uint32_t address, uint32_t size, uint32_t identity,
         candidate_b::RecordView &view) {
     return candidate_b::MatchOutline(address, size, identity, strokes, count, read, view);
 }
+
+extern "C" candidate_b::Result ProbeOrdered(const candidate_b::Tail &tail, uint32_t count, Read read,
+        Match compare, uint32_t &address) {
+    return candidate_b::FindLatestOrdered(tail, count, read, compare, address);
+}
