@@ -100,3 +100,10 @@ The diagnostic's old per-stroke serial timing print is disabled in this mode.
   measurements where hardware supports them.
 
 Do not turn this initial baseline into a capacity or zero-stroke-loss promise.
+
+
+## Candidate B reference prototype
+
+The next host-only correctness stage lives under `tools/storage/`. See
+[its design, commands and limits](../../docs/hybrid-storage-prototype.md).
+It is independent of the diagnostic firmware and never accesses real USB/flash.
