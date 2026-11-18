@@ -111,11 +111,11 @@ public:
     // Shape/ownership validation is streamed; no catalog-sized RAM mirror.
     // CheckExtent must verify actual extent hash/content/type and journal/index
     // cross references before this catalog may drive engine lookups or writes.
-    template <class CheckExtent>
-    CatalogResult Validate(const CatalogRoot &root,CheckExtent check,CatalogShape *shape=nullptr) {
-        if(!Bounds() || !root.generation || root.bytes<32 || root.bytes>capacity-32 || root.address>0x1000000-root.bytes)return CatalogResult::Invalid;
+    template <class Reader,class CheckExtent>
+    static CatalogResult ValidatePayload(Reader &input,uint32_t limit,const CatalogRoot &root,CheckExtent check,CatalogShape *shape=nullptr) {
+        if(limit<256 || limit>65536 || !root.generation || root.bytes<32 || root.bytes>limit-32 || root.address>0x1000000-root.bytes)return CatalogResult::Invalid;
         uint8_t prefix[32];
-        if(!device.Read(root.address,prefix,32))return CatalogResult::IoError;
+        if(!input.Read(root.address,prefix,32))return CatalogResult::IoError;
         CatalogShape header;
         header.next_id=Word(prefix);
         header.dictionaries=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
@@ -131,7 +131,7 @@ public:
         const uint32_t extent_start=root.address+32+header.dictionaries*kDictionaryBytes;
         for(uint32_t i=0;i<header.extents;++i) {
             uint8_t extent[24];
-            if(!device.Read(extent_start+i*24,extent,24))return CatalogResult::IoError;
+            if(!input.Read(extent_start+i*24,extent,24))return CatalogResult::IoError;
             uint32_t start=uint16_t(extent[0]) | uint16_t(extent[1])<<8;
             uint32_t count=uint16_t(extent[2]) | uint16_t(extent[3])<<8;
             uint32_t bytes=Word(extent+4),kind=Word(extent+12);
@@ -147,7 +147,7 @@ public:
         }
         for(uint32_t i=0;i<header.dictionaries;++i) {
             uint8_t dictionary[96];
-            if(!device.Read(root.address+32+i*96,dictionary,96))return CatalogResult::IoError;
+            if(!input.Read(root.address+32+i*96,dictionary,96))return CatalogResult::IoError;
             uint32_t id=Word(dictionary),flags=Word(dictionary+4);
             uint16_t base=uint16_t(dictionary[8]) | uint16_t(dictionary[9])<<8;
             uint8_t name= dictionary[12];
@@ -163,7 +163,7 @@ public:
             if(base!=kNoExtent) {
                 if(base>=header.extents || bases.Contains(base))return CatalogResult::Corrupt;
                 uint8_t extent[24];
-                if(!device.Read(extent_start+base*24,extent,24))return CatalogResult::IoError;
+                if(!input.Read(extent_start+base*24,extent,24))return CatalogResult::IoError;
                 if(Word(extent+12)!=uint32_t(ExtentKind::Base))return CatalogResult::Corrupt;
                 bases.Add(base,1);
             }
@@ -172,11 +172,17 @@ public:
         // is intentionally unsupported until its rules are explicitly designed.
         for(uint32_t i=0;i<header.extents;++i) {
             uint8_t extent[24];
-            if(!device.Read(extent_start+i*24,extent,24))return CatalogResult::IoError;
+            if(!input.Read(extent_start+i*24,extent,24))return CatalogResult::IoError;
             if(Word(extent+12)==1 && !bases.Contains(i))return CatalogResult::Corrupt;
         }
         if(shape)*shape=header;
         return CatalogResult::Ok;
+    }
+
+    template <class CheckExtent>
+    CatalogResult Validate(const CatalogRoot &root,CheckExtent check,CatalogShape *shape=nullptr) {
+        if(!Bounds())return CatalogResult::Invalid;
+        return ValidatePayload(device,capacity,root,check,shape);
     }
 
     template <class CheckExtent>
@@ -220,8 +226,8 @@ public:
                 return at<=bytes && n<=bytes-at && source(at,out,n);
             }
         } input{source,bytes};
-        NativeCatalog<SourceDevice> preflight(input);
-        auto preflight_status=preflight.Validate({1,0,bytes,0},check);
+        CatalogShape wanted;
+        auto preflight_status=ValidatePayload(input,capacity,{1,0,bytes,0},check,&wanted);
         if(preflight_status!=CatalogResult::Ok)return preflight_status;
         if(!current.root.generation) {
             for(unsigned i=0;i<2;++i)for(uint32_t at=0;at<capacity;at+=256) {
@@ -238,6 +244,23 @@ public:
             status=Inspect(1-current.slot,alternate);
             if(status==CatalogResult::IoError || status==CatalogResult::Corrupt || status==CatalogResult::Invalid)return status;
             if(status==CatalogResult::Ok && alternate.generation>=active.generation)return CatalogResult::Invalid;
+            CatalogShape existing;
+            status=Validate(active,check,&existing);if(status!=CatalogResult::Ok)return status;
+            if(wanted.next_id<existing.next_id)return CatalogResult::Invalid;
+            // A removed identity must never be resurrected for another logical
+            // dictionary while its old journal records can still exist.
+            uint8_t id_bytes[4];
+            for(uint32_t i=0;i<wanted.dictionaries;++i) {
+                if(!source(32+i*96,id_bytes,4))return CatalogResult::IoError;
+                const uint32_t id=Word(id_bytes);
+                if(id>=existing.next_id)continue;
+                bool present=false;
+                for(uint32_t j=0;j<existing.dictionaries;++j) {
+                    if(!device.Read(active.address+32+j*96,id_bytes,4))return CatalogResult::IoError;
+                    if(Word(id_bytes)==id){present=true;break;}
+                }
+                if(!present)return CatalogResult::Invalid;
+            }
         }
         if(!device.EraseCatalog(slots[slot],capacity))return CatalogResult::IoError;
         uint32_t crc=0;

@@ -20,7 +20,10 @@ little-endian; no serialized C++ structs or native pointers.
 | Extent row | 24 | Start/count in 64 KiB segments, used bytes, content CRC, kind, journal epoch |
 
 Dictionary table order determines priority. IDs cannot repeat or reach the next
-unallocated ID. Extents cannot overlap each other, catalogs or the reserved tail.
+unallocated ID. Publication cannot lower the next ID or resurrect a previously
+deleted ID; new dictionaries must use newly allocated identities. This prevents
+old overlay records from attaching to a different dictionary. Extents cannot
+overlap each other, catalogs or the reserved tail.
 Base extents have exactly one dictionary owner; grouped ownership is deliberately
 unsupported. At most one forward and reverse checkpoint root is allowed. The
 caller must also validate actual content, index ordering/coverage and journal
@@ -42,6 +45,11 @@ extents an allocation plan must protect. The store must serialize these calls,
 release cancelled exports, and defer/retry publication until readers finish.
 Two slots therefore do not provide unlimited metadata updates during a long-held
 reader. This is an explicit backpressure policy rather than a hidden RAM copy.
+Preflight schema validation reads directly from its supplied source, sharing the
+same streaming validator as flash recovery. It does not construct a temporary
+catalog object with another workspace and reader registry. In the local ARM
+stack report, the publication frame fell from 912 to 568 bytes; nested validation,
+device callbacks, HID code and interrupts still add to the actual stack peak.
 
 ## Incremental checkpoint construction
 

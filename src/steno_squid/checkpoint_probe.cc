@@ -37,7 +37,7 @@ struct ProbeDevice {
         while(n) {
             uint32_t skip=physical%4,size=n<256-skip?n:256-skip;
             if(nrfx_qspi_read(dma,(size+skip+3)&~3u,physical-skip)!=NRFX_SUCCESS)return false;
-            std::memcpy(out,dma+skip,size);physical+=size;out+=size;n-=size;
+            std::memmove(out,dma+skip,size);physical+=size;out+=size;n-=size;
         }
         return true;
     }

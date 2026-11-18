@@ -35,7 +35,7 @@ struct Scratch {
         while(n) {
             uint32_t skip=address&3, size=n<256-skip?n:256-skip;
             if(nrfx_qspi_read(dma,(size+skip+3)&~3u,Physical+address-Virtual-skip)!=NRFX_SUCCESS) return false;
-            std::memcpy(out,dma+skip,size);
+            std::memmove(out,dma+skip,size);
             address+=size; out+=size; n-=size;
         }
         return true;

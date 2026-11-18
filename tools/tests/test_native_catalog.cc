@@ -134,6 +134,21 @@ int main() {
     for(unsigned i=0;i<4;++i){assert(pinned.ReleasePin(tokens[i]));assert(!pinned.ReleasePin(tokens[i]));}
     assert(pinned.Publish(b,pinData.size(),Source{pinData},accept,c)==CatalogResult::Ok);
     assert(!pinned.AcquirePin(a.root,tokens[0]));
+    // Stable ID allocation is monotonic across deletion and cannot resurrect an
+    // earlier ID whose old overlays might survive in journal/retained roots.
+    Nor idsNor;NativeCatalog<Nor> idsCatalog(idsNor);CatalogSelection idsA,idsB,idsC;
+    auto idsData=payload(2);
+    assert(idsCatalog.Publish(empty,idsData.size(),Source{idsData},accept,idsA)==CatalogResult::Ok);
+    auto removed=payload(1);PutWord(removed.data(),3);
+    assert(idsCatalog.Publish(idsA,removed.size(),Source{removed},accept,idsB)==CatalogResult::Ok);
+    auto idBytes=idsNor.data;
+    assert(idsCatalog.Publish(idsB,idsData.size(),Source{idsData},accept,idsC)==CatalogResult::Invalid);
+    assert(idsNor.data==idBytes);
+    auto lowered=payload(1);
+    assert(idsCatalog.Publish(idsB,lowered.size(),Source{lowered},accept,idsC)==CatalogResult::Invalid);
+    assert(idsNor.data==idBytes);
+    PutWord(idsData.data(),4);PutWord(idsData.data()+32+96,3);
+    assert(idsCatalog.Publish(idsB,idsData.size(),Source{idsData},accept,idsC)==CatalogResult::Ok);
     owned[32+8]=owned[32+9]=0;
     assert(freshCatalog.Publish(first,owned.size(),Source{owned},[](uint32_t,const uint8_t *){return false;},second)==CatalogResult::Corrupt);
     assert(fresh.data==ownedBytes);
