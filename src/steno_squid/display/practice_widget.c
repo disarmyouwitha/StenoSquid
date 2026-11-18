@@ -311,7 +311,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     const bool no_dictionary = (practice & STENO_SQUID_PRACTICE_NO_DICTIONARY) != 0;
     const unsigned build_stage = (practice & STENO_SQUID_PRACTICE_BUILD_MASK) >> STENO_SQUID_PRACTICE_BUILD_SHIFT;
     const unsigned completed = round + (feedback == STENO_SQUID_PRACTICE_CORRECT &&
-        (drill != STENO_SQUID_PRACTICE_BUILD || build_stage == 2));
+        (drill != STENO_SQUID_PRACTICE_BUILD || build_stage == STENO_SQUID_BUILD_REPEAT_STAGE));
     const char *outline = last_view.outline[0] ? last_view.outline : "...";
     const char *prompt = last_view.prompt[0] ? last_view.prompt : "...";
     char progress[32];
@@ -379,6 +379,10 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         lv_obj_remove_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(best_label, LV_OBJ_FLAG_HIDDEN);
         const char *feedback_text = feedback_names[feedback];
+        if (drill == STENO_SQUID_PRACTICE_BUILD && build_stage == STENO_SQUID_BUILD_REPEAT_STAGE &&
+            feedback == STENO_SQUID_PRACTICE_PROMPT) {
+            feedback_text = "REPEAT";
+        }
         if (drill == STENO_SQUID_PRACTICE_MULTI) {
             if (feedback == STENO_SQUID_PRACTICE_PROMPT) {
                 feedback_text = (practice & STENO_SQUID_PRACTICE_PARTIAL) ? "STROKE 2" : "STROKE 1";

@@ -49,7 +49,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 | LEFT | 30 | Random left-hand keys. |
 | RIGHT | 30 | Random right-hand keys. |
 | COLUMNS | 30 | Paired keys: TK, PW, HR, FR, PB, LG, TS, DZ, AO, and EU. |
-| Build-Up | 10 | Three growing chords per ladder, then a word reveal: K → KA → KA-T → CAT. |
+| Build-Up | 10 | Build K → KA → KA-T, reveal CAT, then repeat KA-T with CAT visible. |
 | Multi- | 10 | Ten distinct two-stroke words from 20 verified common Lapwing outlines. |
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |

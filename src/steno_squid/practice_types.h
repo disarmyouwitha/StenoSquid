@@ -7,6 +7,8 @@
 #define STENO_SQUID_HAND_ROUNDS 30u
 #define STENO_SQUID_SPEED_ROUNDS 10u
 #define STENO_SQUID_SPEED_SECONDS 30u
+// Three building chords, followed by the complete chord with its word visible.
+#define STENO_SQUID_BUILD_REPEAT_STAGE 3u
 
 /* Practice snapshot bits, as packed by the left half and read by the display. */
 #define STENO_SQUID_PRACTICE_ACTIVE (1u << 31)

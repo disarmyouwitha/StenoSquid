@@ -94,21 +94,22 @@ int main(void) {
   }
   for (unsigned id = 0; id < STENO_SQUID_BUILD_COUNT; id++) {
     uint32_t previous = 0;
-    for (unsigned stage = 0; stage < STENO_SQUID_BUILD_STEPS; stage++) {
+    for (unsigned stage = 0; stage <= STENO_SQUID_BUILD_REPEAT_STAGE; stage++) {
       uint32_t mask;
-      assert(steno_squid_stroke_from_text(steno_squid_build[id].strokes[stage],
+      assert(steno_squid_stroke_from_text(steno_squid_build[id].strokes[steno_squid_build_outline_stage(stage)],
                                           &mask));
-      assert(mask != previous && (mask & previous) == previous);
+      if (stage == STENO_SQUID_BUILD_REPEAT_STAGE) assert(mask == previous);
+      else assert(mask != previous && (mask & previous) == previous);
       char shown[16];
       uint32_t formatted_mask;
       steno_squid_build_format(shown, sizeof(shown),
-                               steno_squid_build[id].strokes[stage]);
+                               steno_squid_build[id].strokes[steno_squid_build_outline_stage(stage)]);
       /* The extra dash is a visual hand boundary, not dictionary syntax.
        * Removing it must reproduce the exact canonical scoring outline. */
       char canonical[16]; unsigned ncanonical=0;
       for(unsigned k=0;shown[k];k++)if(shown[k]!='-')canonical[ncanonical++]=shown[k];
       canonical[ncanonical]=0;
-      assert(!strcmp(canonical,steno_squid_build[id].strokes[stage]));
+      assert(!strcmp(canonical,steno_squid_build[id].strokes[steno_squid_build_outline_stage(stage)]));
       assert(steno_squid_stroke_from_text(canonical, &formatted_mask) && formatted_mask == mask);
       previous = mask;
       in.state =

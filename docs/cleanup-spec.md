@@ -1,6 +1,6 @@
 # StenoSquid cleanup and engineering spec
 
-Status: **implemented on the stacked `cleanup/*` branches; CI and initial nice!nano hardware checks passed; extended acceptance pending.**
+Status: **implemented and merged into main; CI and initial nice!nano hardware checks passed; extended acceptance pending.**
 The personal-dictionary redesign is complete and its separate spec was retired.
 P7, P8 and X1 are superseded. No migration code was added. The owner explicitly
 approved resetting Practice XP/stats for P17's smaller block-based saves.
@@ -27,7 +27,8 @@ Current verification and intentional exceptions:
   and X8 (cropped effect assets) remain optional follow-ups. Approved artwork and
   text output stay unchanged. X4's sortedness checks and X5 are implemented.
 - The final generic-flash rename is a separate, behaviour-preserving commit.
-- Neither main nor the published v0.1.1 firmware has been replaced during cleanup.
+- Cleanup is merged into main after CI and initial hardware checks. The published
+  v0.1.1 release remains unchanged.
 
 See [development checks](development.md) and [cleanup acceptance](cleanup-acceptance.md).
 

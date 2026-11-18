@@ -19,7 +19,7 @@ static bool practice_first_stroke_correct(const StenoStroke &stroke) {
 static bool practice_correct(const StenoStroke &stroke) {
   if (practice.drill == STENO_SQUID_PRACTICE_BUILD) {
     StenoStroke expected;
-    expected.Set(steno_squid_build[practice_prompt()].strokes[practice.build_stage]);
+    expected.Set(steno_squid_build[practice_prompt()].strokes[steno_squid_build_outline_stage(practice.build_stage)]);
     return stroke == expected;
   }
   if (!steno_squid_practice_word_drill(practice.drill) && practice.drill != STENO_SQUID_PRACTICE_MULTI) {

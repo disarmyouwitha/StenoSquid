@@ -158,10 +158,22 @@ int main() {
   assert(practice.build_stage==2 && progress_model.record.xp==build_xp);
   steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"KA-T"));
   tap(StenoKey::KL);
-  assert(progress_model.record.xp==build_xp+2 && progress_model.run.position==1);
+  assert(progress_model.record.xp==build_xp && progress_model.run.position==0);
   steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"CAT"));
   now+=250;practice_advance(nullptr);assert(practice.round==0);
-  now+=350;practice_advance(nullptr);assert(practice.round==1 && practice.build_stage==0);
+  now+=350;practice_advance(nullptr);
+  assert(practice.round==0 && practice.build_stage==STENO_SQUID_BUILD_REPEAT_STAGE);
+  assert(practice.feedback==STENO_SQUID_PRACTICE_PROMPT);
+  steno_squid_practice_view_snapshot(&build_view);
+  assert(!strcmp(build_view.prompt,"CAT") && !strcmp(build_view.outline,"KA-T"));
+  // An incorrect repeat keeps the translation visible and earns no completion.
+  answer_correct=false;tap(StenoKey::KL);
+  assert(practice.build_stage==STENO_SQUID_BUILD_REPEAT_STAGE && practice.round==0);
+  assert(progress_model.run.position==0 && progress_model.record.xp==build_xp);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"CAT"));
+  answer_correct=true;tap(StenoKey::KL);
+  assert(progress_model.record.xp==build_xp+2 && progress_model.run.position==1);
+  now+=250;practice_advance(nullptr);assert(practice.round==1 && practice.build_stage==0);
   // Multi rejects a wrong first stroke immediately, then keeps a good prefix.
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
   practice_switch_drill(0);tap(StenoKey::A);

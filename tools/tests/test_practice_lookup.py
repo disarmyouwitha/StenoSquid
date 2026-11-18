@@ -71,6 +71,9 @@ int main() {
   stroke.Set("KA");assert(practice_correct(stroke));
   practice.build_stage=2;
   stroke.Set("KAT");assert(practice_correct(stroke));
+  practice.build_stage=STENO_SQUID_BUILD_REPEAT_STAGE;
+  stroke.Set("KA");assert(!practice_correct(stroke));
+  stroke.Set("KAT");assert(practice_correct(stroke));
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
   stroke.Set("K");assert(!practice_first_stroke_correct(stroke));
   stroke.Set("HE");assert(practice_first_stroke_correct(stroke));

@@ -1,5 +1,6 @@
 #pragma once
 #include <zephyr/toolchain.h>
+#include "practice_types.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -7,6 +8,10 @@
  * word. Intermediate chords are raw key targets, not translations. */
 #define STENO_SQUID_BUILD_COUNT 10u
 #define STENO_SQUID_BUILD_STEPS 3u
+BUILD_ASSERT(STENO_SQUID_BUILD_STEPS == STENO_SQUID_BUILD_REPEAT_STAGE);
+static inline unsigned steno_squid_build_outline_stage(unsigned stage) {
+  return stage < STENO_SQUID_BUILD_STEPS ? stage : STENO_SQUID_BUILD_STEPS - 1;
+}
 static const struct {
   const char *word;
   const char *strokes[3];

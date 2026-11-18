@@ -115,11 +115,13 @@ void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) 
       snprintf(view->prompt, sizeof(view->prompt), "%s", steno_squid_multi[id].word);
       snprintf(view->outline, sizeof(view->outline), "%s", outline);
     } else if (practice.drill == STENO_SQUID_PRACTICE_BUILD) {
-      const bool reveal = practice.build_stage == STENO_SQUID_BUILD_STEPS - 1 &&
-                          practice.feedback == STENO_SQUID_PRACTICE_CORRECT;
+      const unsigned outline_stage = steno_squid_build_outline_stage(practice.build_stage);
+      const bool reveal = practice.build_stage == STENO_SQUID_BUILD_REPEAT_STAGE ||
+          (practice.build_stage == STENO_SQUID_BUILD_STEPS - 1 &&
+           practice.feedback == STENO_SQUID_PRACTICE_CORRECT);
       if (reveal) snprintf(view->prompt, sizeof(view->prompt), "%s", steno_squid_build[id].word);
-      else steno_squid_build_format(view->prompt, sizeof(view->prompt), steno_squid_build[id].strokes[practice.build_stage]);
-      if (reveal) steno_squid_build_format(view->outline, sizeof(view->outline), steno_squid_build[id].strokes[practice.build_stage]);
+      else steno_squid_build_format(view->prompt, sizeof(view->prompt), steno_squid_build[id].strokes[outline_stage]);
+      if (reveal) steno_squid_build_format(view->outline, sizeof(view->outline), steno_squid_build[id].strokes[outline_stage]);
       else snprintf(view->outline, sizeof(view->outline), "Step %u/%u", practice.build_stage + 1, STENO_SQUID_BUILD_STEPS);
     } else {
       const char *outline = words ? steno_squid_words[id].outline : steno_squid_practice_outline(practice.drill, id);
@@ -148,7 +150,7 @@ static void practice_advance(struct k_work *work) {
       k_uptime_get() < practice.advance_at) {
     k_work_reschedule(k_work_delayable_from_work(work), K_TIMEOUT_ABS_MS(practice.advance_at));
   } else if (practice.active && practice.feedback == STENO_SQUID_PRACTICE_CORRECT) {
-    if (practice.drill == STENO_SQUID_PRACTICE_BUILD && practice.build_stage + 1 < STENO_SQUID_BUILD_STEPS) {
+    if (practice.drill == STENO_SQUID_PRACTICE_BUILD && practice.build_stage < STENO_SQUID_BUILD_REPEAT_STAGE) {
       ++practice.build_stage;
       practice.feedback = STENO_SQUID_PRACTICE_PROMPT;
       practice_publish();
@@ -267,11 +269,11 @@ static bool practice_process_key(int index, bool pressed) {
           if (steno_squid_practice_word_drill(practice.drill)) {
             steno_squid_words_answer(practice.round, correct, elapsed_ms);
           } else if (!correct || practice.drill != STENO_SQUID_PRACTICE_BUILD ||
-                     practice.build_stage + 1 == STENO_SQUID_BUILD_STEPS) {
+                     practice.build_stage == STENO_SQUID_BUILD_REPEAT_STAGE) {
             steno_squid_hands_answer(practice.round, correct, elapsed_ms);
           }
           if (correct) {
-            if (practice.drill != STENO_SQUID_PRACTICE_BUILD || practice.build_stage + 1 == STENO_SQUID_BUILD_STEPS) {
+            if (practice.drill != STENO_SQUID_PRACTICE_BUILD || practice.build_stage == STENO_SQUID_BUILD_REPEAT_STAGE) {
               ++practice.streak;
               if (practice.streak > practice.best) practice.best = practice.streak;
             }

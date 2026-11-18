@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define STENO_SQUID_PRACTICE_VIEW_PROTOCOL 14u
+#define STENO_SQUID_PRACTICE_VIEW_PROTOCOL 15u
 #define STENO_SQUID_PRACTICE_TEXT_SIZE 16u
 #define STENO_SQUID_PRACTICE_OUTLINE_SIZE 24u
 #define STENO_SQUID_PRACTICE_FRAME_MAX 72u
@@ -174,7 +174,7 @@ steno_squid_practice_receive(struct steno_squid_practice_receiver *rx,
                                STENO_SQUID_PRACTICE_BUILD_SHIFT;
   if (!(next.state & STENO_SQUID_PRACTICE_ACTIVE) || (next.state & (1u << 3)) ||
       drill >= STENO_SQUID_PRACTICE_DRILL_COUNT || round > total ||
-      build_stage > 2 ||
+      build_stage > STENO_SQUID_BUILD_REPEAT_STAGE ||
       (build_stage && (drill != STENO_SQUID_PRACTICE_BUILD || menu ||
                        feedback == STENO_SQUID_PRACTICE_DONE)) ||
       (menu && (round || feedback != STENO_SQUID_PRACTICE_PROMPT)) ||

@@ -526,8 +526,18 @@ int main(void) {
         steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,build|
             (2<<STENO_SQUID_PRACTICE_BUILD_SHIFT)|(STENO_SQUID_PRACTICE_CORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
-        assert(lv_bar_get_value(progress_bar)==1);
+        assert(lv_bar_get_value(progress_bar)==0);
         save("build-reveal");
+        const uint32_t repeat=build|(STENO_SQUID_BUILD_REPEAT_STAGE<<STENO_SQUID_PRACTICE_BUILD_SHIFT);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,repeat,85,false);
+        assert(!strcmp(lv_label_get_text(feedback_label),"REPEAT"));
+        assert(!strcmp(lv_label_get_text(prompt_label),"CAT"));
+        assert(!strcmp(lv_label_get_text(outline_label),"KA-T"));
+        assert(lv_bar_get_value(progress_bar)==0);
+        save("build-repeat");
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,repeat|
+            (STENO_SQUID_PRACTICE_CORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+        assert(lv_bar_get_value(progress_bar)==1);
         strcpy(view.prompt,"FR");strcpy(view.outline,"Chord keys");
         steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|
