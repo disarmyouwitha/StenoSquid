@@ -1,6 +1,7 @@
 // Freestanding ARM compile/stack probe only; this is not a flashable image.
 #include "packed_index.h"
 #include "binary_record.h"
+#include "reverse_cursor.h"
 
 using Read = bool (*)(uint32_t, uint8_t *, size_t);
 using Match = int (*)(uint32_t);
@@ -20,4 +21,19 @@ extern "C" int ProbeRecord(uint32_t address, uint32_t size, uint32_t identity,
 extern "C" candidate_b::Result ProbeOrdered(const candidate_b::Tail &tail, uint32_t count, Read read,
         Match compare, uint32_t &address) {
     return candidate_b::FindLatestOrdered(tail, count, read, compare, address);
+}
+
+extern "C" int ProbeText(uint32_t address, uint32_t size, const uint8_t *text,
+        uint16_t length, Read read) {
+    return candidate_b::CompareText(address, size, text, length, read);
+}
+
+extern "C" candidate_b::Result ProbeSeek(uint32_t count, Read read, Match compare,
+        candidate_b::ReverseCursor &cursor) {
+    return candidate_b::SeekReverse(count, read, compare, cursor);
+}
+
+extern "C" candidate_b::PageResult ProbePage(candidate_b::ReverseCursor &cursor,
+        uint32_t budget, Read read, Match compare, Match accept, void (*emit)(uint32_t)) {
+    return candidate_b::NextReverse(cursor, budget, read, compare, accept, emit);
 }

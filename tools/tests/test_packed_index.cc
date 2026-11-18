@@ -1,5 +1,6 @@
 #include "packed_index.h"
 #include "binary_record.h"
+#include "reverse_cursor.h"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -135,8 +136,75 @@ int main(int argc, char **argv) {
     assert(candidate_b::FindLatestOrdered(orderedTail, 200000, orderedRead, [&](uint32_t record) {
         return candidate_b::CompareOutline(record, 16, 1, &query, 1, recordRead, view);
     }, address) == Result::Found && address == 32);
+    candidate_b::ReverseCursor cursor;
+    static_assert(sizeof(cursor) <= 12);
+    const uint8_t word[] = {'w','o','r','d'};
+    auto compareText = [&](uint32_t record) {
+        return candidate_b::CompareText(record, 16, word, 4, recordRead);
+    };
+    assert(candidate_b::SeekReverse(200000, orderedRead, compareText, cursor) == Result::Found);
+    assert(cursor.next == 0 && cursor.ready);
+    uint32_t accepted = 0, previous = 0;
+    unsigned pages = 0;
+    while (true) {
+        unsigned visited = 0, emitted = 0;
+        auto page = candidate_b::NextReverse(cursor, 7, orderedRead, compareText,
+            [&](uint32_t record) { ++visited; return (record / 16) % 2 == 0 ? 1 : 0; },
+            [&](uint32_t record) {
+                assert(!accepted || record > previous);
+                previous = record;
+                ++accepted; ++emitted;
+            });
+        assert(visited <= 7 && emitted <= 7);
+        ++pages;
+        if (page == candidate_b::PageResult::Done) break;
+        assert(page == candidate_b::PageResult::More);
+    }
+    assert(accepted == 100000 && pages == (200000 + 6) / 7);
+    assert(candidate_b::SeekReverse(1, failedRead, compareText, cursor) == Result::IoError && !cursor.ready);
+    assert(candidate_b::SeekReverse(1, orderedRead, [](uint32_t) { return 2; }, cursor) == Result::Corrupt);
+    assert(candidate_b::SeekReverse(1u << 21, orderedRead, compareText, cursor) == Result::Corrupt);
+    assert(candidate_b::SeekReverse(1, orderedRead, compareText, cursor) == Result::Found);
+    auto accept = [](uint32_t) { return 1; };
+    auto emit = [](uint32_t) {};
+    assert(candidate_b::NextReverse(cursor, 0, orderedRead, compareText, accept, emit) == candidate_b::PageResult::Corrupt);
+    assert(candidate_b::NextReverse(cursor, 1, failedRead, compareText, accept, emit) == candidate_b::PageResult::IoError);
+    assert(candidate_b::NextReverse(cursor, 1, orderedRead, compareText, [](uint32_t) { return -1; }, emit) == candidate_b::PageResult::Corrupt);
+    assert(candidate_b::NextReverse(cursor, 1, orderedRead, [](uint32_t) { return 1; }, accept, emit) == candidate_b::PageResult::Done);
+    assert(candidate_b::SeekReverse(10, orderedRead, compareText, cursor) == Result::Found);
+    unsigned attempt = 0, partial = 0;
+    auto flakyRead = [&](uint32_t at, uint8_t *out, size_t size) {
+        if (++attempt == 2) return false;
+        return orderedRead(at, out, size);
+    };
+    assert(candidate_b::NextReverse(cursor, 7, flakyRead, compareText, accept,
+        [&](uint32_t) { ++partial; }) == candidate_b::PageResult::IoError);
+    assert(cursor.next == 0 && partial == 1); // Discard partial page, retry from 0.
+    partial = 0;
+    assert(candidate_b::NextReverse(cursor, 7, orderedRead, compareText, accept,
+        [&](uint32_t) { ++partial; }) == candidate_b::PageResult::More);
+    assert(cursor.next == 7 && partial == 7);
+    // Cross-chunk UTF-8 and maximum translation lengths compare as exact bytes.
+    std::vector<uint8_t> longRecord(8 + 4 + 2047, 'a');
+    const uint8_t prefix[] = {1,0,0,0,0,1,255,7,1,0,0,0};
+    std::memcpy(longRecord.data(), prefix, sizeof(prefix));
+    auto longRead = [&](uint32_t at, uint8_t *out, size_t size) {
+        if (at > longRecord.size() || size > longRecord.size() - at) return false;
+        std::memcpy(out, longRecord.data() + at, size);
+        return true;
+    };
+    std::vector<uint8_t> textQuery(2047, 'a');
+    longRecord[12+31] = textQuery[31] = 0xc3;
+    longRecord[12+32] = textQuery[32] = 0xa7;
+    assert(candidate_b::CompareText(0, longRecord.size(), textQuery.data(), textQuery.size(), longRead) == 0);
+    textQuery[33] = 'b';
+    assert(candidate_b::CompareText(0, longRecord.size(), textQuery.data(), textQuery.size(), longRead) == -1);
+    assert(candidate_b::CompareText(0, longRecord.size(), nullptr, 0, longRead) == 1);
+    assert(candidate_b::CompareText(0, 16, word, 4, failedRead) == 2);
+    assert(candidate_b::CompareText(0, 16, nullptr, 1, recordRead) == 2);
     std::cout << "200000 exact-key lookups; max " << maximum
               << " 12-byte table reads; 1028-byte bounded tail; collision/corruption/IO bounds passed\n";
     std::cout << "Ordered-address alternative: max " << orderedMaximum
               << " 4-byte table reads plus record comparisons; 800000-byte index\n";
+    std::cout << "Reverse cursor: 200000 duplicate translations; 7-candidate pages; 100000 filtered results\n";
 }

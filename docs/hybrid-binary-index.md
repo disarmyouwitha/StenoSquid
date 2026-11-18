@@ -3,6 +3,8 @@
 Status: **development experiment, not integrated or installed firmware**.
 This follows the [shared journal](hybrid-overlay-journal.md). Production storage,
 the installer and both installed halves are unchanged. There are no migrations.
+The subsequent [publication/reverse experiment](hybrid-index-publication.md)
+connects the ordered indexes to the fake-NOR journal and adds native reverse cursors.
 
 ## Packed records
 
@@ -77,7 +79,8 @@ before the checkpoint. End-to-end publication/recovery is still pending.
 
 ## Resource and space limits
 
-The freestanding Cortex-M4 probe, compiled with Zephyr SDK 0.16.9 at `-Os`, has
+Before adding reverse-cursor helpers, the freestanding Cortex-M4 probe,
+compiled with Zephyr SDK 0.16.9 at `-Os`, had
 788 bytes of text (both search alternatives), no static data/BSS and no undefined allocator symbols. GCC
 reports 80 bytes for `ProbeFind`, 32 for its nested table loader, 24 for
 `ProbeRecord`, 64 for its record comparator and 40 for `ProbeOrdered`. Callbacks, integration, task stacks,
@@ -94,10 +97,11 @@ an overlay index; compiled bases keep their existing indexes. It does not claim
 much lower space cost. Checkpoint write amplification, bounded index construction
 and large-overlay capacity remain design decisions to resolve before adopting it.
 
-Reverse lookup is still the reference oracle's operation. This capped forward
-table cannot simply be reused for translation groups: many outlines can share a
-translation legitimately. Reverse results need a paginated/streaming design and
-winner filtering, without truncating legitimate results at sixteen.
+This capped forward hash table cannot simply be reused for translation groups:
+many outlines can share a translation legitimately. The subsequent
+[reverse-cursor experiment](hybrid-index-publication.md) provides paginated
+ordered-address traversal and host winner filtering without a sixteen-result cap.
+It is not yet integrated into keyboard firmware.
 
 ## Reproduce
 

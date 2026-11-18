@@ -47,4 +47,33 @@ int MatchOutline(uint32_t address, uint32_t payload_size, uint32_t identity,
     const int order = CompareOutline(address, payload_size, identity, strokes, count, read, view);
     return order == 2 ? -1 : order == 0 ? 1 : 0;
 }
+
+// Lexicographic UTF-8 byte comparison in fixed 32-byte chunks. Payload/container
+// CRC and UTF-8 validation happen before publication/open; no Unicode font or
+// decoding is needed to search an exact stored translation.
+template <class Read>
+int CompareText(uint32_t address, uint32_t payload_size, const uint8_t *query,
+                uint16_t query_bytes, Read read) {
+    if ((!query && query_bytes) || query_bytes > 2047 || payload_size < 8 ||
+        payload_size > 8 + 64 + 2047 || address > UINT32_MAX - payload_size) return 2;
+    uint8_t bytes[32];
+    if (!read(address, bytes, 8)) return 2;
+    uint32_t id = 0;
+    for (unsigned i = 0; i < 4; ++i) id |= uint32_t(bytes[i]) << (8*i);
+    const uint8_t count = bytes[5];
+    const uint16_t length = uint16_t(bytes[6]) | uint16_t(bytes[7]) << 8;
+    if (!id || bytes[4] != 0 || count < 1 || count > 16 || length > 2047 ||
+        payload_size != 8u + 4u * count + length) return 2;
+    uint32_t at = address + 8u + 4u * count;
+    uint16_t common = length < query_bytes ? length : query_bytes;
+    for (uint16_t offset = 0; offset < common;) {
+        uint16_t n = common - offset;
+        if (n > sizeof(bytes)) n = sizeof(bytes);
+        if (!read(at + offset, bytes, n)) return 2;
+        for (uint16_t i = 0; i < n; ++i)
+            if (bytes[i] != query[offset+i]) return bytes[i] < query[offset+i] ? -1 : 1;
+        offset += n;
+    }
+    return length == query_bytes ? 0 : length < query_bytes ? -1 : 1;
+}
 }  // namespace candidate_b

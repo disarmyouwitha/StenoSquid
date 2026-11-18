@@ -33,6 +33,10 @@ REC_HEADER = struct.Struct("<4sIQIIII")
 class JournalHybrid(Hybrid):
     ALIGNMENT = PAGE
 
+    @staticmethod
+    def initial_state():
+        return {"generation": 0, "next_id": 1, "dictionaries": [], "journals": []}
+
     @classmethod
     def provision(cls, nor):
         if any(b != 255 for b in nor.data):
@@ -43,12 +47,7 @@ class JournalHybrid(Hybrid):
         instance.locked = False
         instance.slot = 1
         instance.quarantined = False
-        instance.state = {
-            "generation": 0,
-            "next_id": 1,
-            "dictionaries": [],
-            "journals": [],
-        }
+        instance.state = cls.initial_state()
         instance.retained = []
         instance._publish(deepcopy(instance.state))
         return cls(nor)

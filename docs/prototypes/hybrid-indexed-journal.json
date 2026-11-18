@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "host_only": true,
+  "passed": true,
+  "cases": {
+    "checkpoint publication": 224,
+    "compact records and indexes": 316,
+    "checkpoint replacement": 224,
+    "automatic checkpoint before append": 236
+  },
+  "total_torn_cases": 1000,
+  "mixed_edits": 320,
+  "mixed_seed": 43,
+  "shared_translation_outlines": 65,
+  "source_sha256": {
+    "tools/storage/hybrid.py": "3a1101615728ead5a7863a2a95f1569c5574c1aa861fbe004b40fb4b86e690cc",
+    "tools/storage/journal.py": "a894e1432e12517fb94512f669e12efee380505a5b7abdbf58e710029ed32441",
+    "tools/storage/binary_journal.py": "042851673073237cf43bef60a361116aa9d024325d189c34f0de9fa74997347a",
+    "tools/storage/indexed_journal.py": "bc91b6853d43bc1cb7cb89448a3315acb7cf42fd947209e05f7dc320bc9a8621",
+    "tools/tests/test_indexed_journal.py": "84d7221b2ff844729f907c18d89465e6eea477fe0d500b2f290b76af9003697f"
+  },
+  "limits": [
+    "Small fake-NOR fixtures, not hardware or capacity evidence",
+    "Whole-live-overlay compaction and unrestricted host builder",
+    "Native reader tests and full firmware resource tests are separate"
+  ]
+}
