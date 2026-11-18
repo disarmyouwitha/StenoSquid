@@ -1,7 +1,7 @@
 # Candidate B: first native-core QSPI diagnostic
 
 Status: **two hardware runs passed on Boardsource left; owner confirmed typing
-and onboard Javelin output**. RHS Practice/display check remains unconfirmed. It is compiled only
+onboard Javelin output and Practice**. It is compiled only
 with `CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK` in Left-Diagnostic. Left-Default and
 the engine's current dictionary storage remain unchanged. No migration reader or
 automatic new-store provisioning is introduced.
@@ -84,9 +84,9 @@ the separate Phase-0 DWT timer described by `dictionary_benchmark meta`.
 These are tiny three-entry index results, not large-overlay latency or meaningful
 production p99 evidence. Use DWT for the subsequent performance diagnostic.
 
-The owner subsequently confirmed ordinary text and onboard Javelin output
-(“Hi hello! the cat is the cat!”). That response does not independently confirm
-each half or the RHS Practice menu; those checks remain unconfirmed.
+The owner subsequently confirmed ordinary text, onboard Javelin output
+(“Hi hello! the cat is the cat!”), and Practice. Independent typing checks
+for each half were not separately reported.
 
 The [sanitized report](benchmarks/candidate-b-native-scratch.json) retains both
 raw sample batches, artifact provenance, preservation checks and timing limits.

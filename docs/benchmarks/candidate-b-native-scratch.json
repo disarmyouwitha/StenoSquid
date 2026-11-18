@@ -128,12 +128,12 @@
     "Command holds engine lock during synchronous flash operations; do not type during run",
     "Coarse kernel clock; small repeated batch, not precise p99 or CPU time",
     "No physical power cuts or new catalog/allocator integration tested",
-    "Independent each-half typing and RHS Practice/display checks unconfirmed"
+    "Independent typing from each half was not separately reported"
   ],
   "manual_smoke_test": {
     "ordinary_text": "owner confirmed",
     "onboard_javelin": "owner confirmed",
     "each_half_independently": "unconfirmed",
-    "rhs_practice_display": "unconfirmed"
+    "rhs_practice_display": "owner confirmed"
   }
 }
