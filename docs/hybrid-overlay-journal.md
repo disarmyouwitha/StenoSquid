@@ -1,6 +1,8 @@
 # Shared overlay journal reference
 
 Status: **host-only append/compaction prototype; no firmware integration**.
+The next [binary-record and native-index experiment](hybrid-binary-index.md)
+addresses record padding and lookup bounds; it has not replaced this oracle.
 This extends the [B reference model](hybrid-storage-prototype.md), without changing
 its snapshot implementation or adding migration readers. The two host models are
 separate development formats. Neither can open a hardware device.

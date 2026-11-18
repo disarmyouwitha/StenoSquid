@@ -31,6 +31,8 @@ REC_HEADER = struct.Struct("<4sIQIIII")
 
 
 class JournalHybrid(Hybrid):
+    ALIGNMENT = PAGE
+
     @classmethod
     def provision(cls, nor):
         if any(b != 255 for b in nor.data):
@@ -106,8 +108,8 @@ class JournalHybrid(Hybrid):
                 return entries, offset, True  # Torn tail: never reuse its pages.
             if (
                 magic != REC_MAGIC
-                or span % PAGE
-                or span < PAGE
+                or span % self.ALIGNMENT
+                or span < REC_HEADER.size + 1
                 or span > SEGMENT - offset
                 or size < 1
                 or size > span - REC_HEADER.size
@@ -119,10 +121,7 @@ class JournalHybrid(Hybrid):
             )
             if zlib.crc32(struct.pack("<Q", sequence) + payload) != crc:
                 raise Corrupt("Committed journal CRC")
-            try:
-                entry = __import__("json").loads(payload)
-            except ValueError as error:
-                raise Corrupt("Journal JSON") from error
+            entry = self._decode_payload(payload)
             if (
                 set(entry) != {"id", "outline", "op", "text"}
                 or not isinstance(entry["id"], int)
@@ -195,9 +194,23 @@ class JournalHybrid(Hybrid):
             self.pins.remove(state)
 
     @staticmethod
-    def _encoded(entry, sequence):
-        payload = encode(entry)
-        span = ((len(payload) + REC_HEADER.size + PAGE - 1) // PAGE) * PAGE
+    def _payload(entry):
+        return encode(entry)
+
+    @staticmethod
+    def _decode_payload(payload):
+        try:
+            return __import__("json").loads(payload)
+        except ValueError as error:
+            raise Corrupt("Journal JSON") from error
+
+    @classmethod
+    def _encoded(cls, entry, sequence):
+        payload = cls._payload(entry)
+        alignment = cls.ALIGNMENT
+        span = (
+            (len(payload) + REC_HEADER.size + alignment - 1) // alignment
+        ) * alignment
         if span > SEGMENT - PAGE:
             raise ValueError("Journal entry too large")
         first = struct.pack(

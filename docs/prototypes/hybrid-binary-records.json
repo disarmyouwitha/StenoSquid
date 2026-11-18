@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "host_only": true,
+  "sources": [
+    {
+      "file": "lapwing-base.json",
+      "sha256": "2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484",
+      "entries": 114885
+    },
+    {
+      "file": "plover-main.json",
+      "sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+      "entries": 147424
+    },
+    {
+      "file": "lapwing-commands.json",
+      "sha256": "6160e19084c77381f66aeda72473d807bcf3ea7f0c6303a37189ca60bf59ff3d",
+      "entries": 146
+    },
+    {
+      "file": "lapwing-numbers.json",
+      "sha256": "d104b9d6f8ea7935bdf3129d69bcdc4100e2b55fa717b41be2307043a4bd4b73",
+      "entries": 117
+    },
+    {
+      "file": "lapwing-uk-additions.json",
+      "sha256": "e6d3190d0417c9912b34ebf9a3d02be08935d5c1c1b46bb47f0b580ed21717d3",
+      "entries": 13043
+    },
+    {
+      "file": "lapwing-proper-nouns.json",
+      "sha256": "aef0205fa4bc6bcb1bc11c199b0c01737ada5ffa7a0f0a56d48154d024ce66e8",
+      "entries": 15788
+    }
+  ],
+  "entries": 291403,
+  "binary_payload_bytes": 7743780,
+  "json_payload_bytes": 18589345,
+  "binary_page_bytes": 17509752,
+  "json_page_bytes": 74599168,
+  "passed": true,
+  "limits": [
+    "Codec stress corpus only: bases remain compiled, not journal records",
+    "Page padding and record headers remain; payload savings are not equal capacity savings",
+    "Does not establish firmware latency or total memory"
+  ]
+}
