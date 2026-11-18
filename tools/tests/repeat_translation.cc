@@ -7,6 +7,7 @@
 #include "key.h"
 #include "clock.h"
 #include "native_input_queue.h"
+#include "native_collection_sync.h"
 #include "processor/all_up.h"
 #include "processor/jeff_modifiers.h"
 #include "processor/repeat.h"
@@ -124,6 +125,16 @@ void check_native_store_engine() {
   storage.Open();root.OnLookupDataChanged();play({"HE","HROE"},"greeting");
   assert(storage.store.Enable(2,false,storage.Check())==CatalogResult::Ok);root.DisableDictionary("Upper");storage.Open();
   play({"KAT"},"lower");
+  // Simulate warm reopen recovering persisted flags different from the live
+  // collection, including all-disabled state and cache invalidation.
+  struct Flag { const char *name;bool enabled; } flags[]={{"user_dictionary",false},{"Upper",true},{"Lower",false}};
+  assert(StenoSquidSyncNativeCollection(root,3,[&](unsigned i)->const Flag &{return flags[i];}));
+  play({"KAT"},"cat");
+  flags[1].enabled=false;
+  assert(StenoSquidSyncNativeCollection(root,3,[&](unsigned i)->const Flag &{return flags[i];}));
+  play({"KAT"},"KAT");
+  flags[0].enabled=flags[2].enabled=true;
+  assert(StenoSquidSyncNativeCollection(root,3,[&](unsigned i)->const Flag &{return flags[i];}));
   edit(1,"KAT","fault target");
   LiveView broken;assert(storage.store.Snapshot(broken));RecordView corrupt;const uint32_t kat=StenoStroke("KAT").GetKeyState();
   assert(storage.store.live.FindSnapshot(broken,1,&kat,1,corrupt)==LiveResult::Ok);

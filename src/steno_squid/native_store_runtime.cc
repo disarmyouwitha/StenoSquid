@@ -1,6 +1,7 @@
 // Opt-in full-engine integration for Candidate B. Normal firmware is unchanged.
 #include "native_store_runtime.h"
 #include "native_input.h"
+#include "native_collection_sync.h"
 #include "native_dictionary_adapter.h"
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
@@ -512,6 +513,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
     cell_count=count;loaded=true;flash_device.mapped=true;
     for(size_t i=0;i<count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
     healthy=true;
+    if(parent && !StenoSquidSyncNativeCollection(*parent,count,[](unsigned i)->const Cell &{return cells[i];})) {
+        base_provider.Fault();return false;
+    }
     const uint32_t fingerprint=BaseFingerprint(store.selected.root);
     if(!scrub_due)scrub_due=k_uptime_get()+(fingerprint && fingerprint==verified_fingerprint?60000:24*60*60*1000LL);
     if(fingerprint && fingerprint!=verified_fingerprint) {
