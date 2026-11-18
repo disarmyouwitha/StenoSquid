@@ -1,6 +1,6 @@
 # Candidate B: full engine/store integration test build
 
-Status: **opt-in native engine implemented; local ARM and host tests pass; final CI/hardware validation pending**.
+Status: **opt-in native engine implemented; first full CI passed; buffered-input checkpoint in verification; hardware validation pending**.
 Branch: `prototype/native-engine-integration`, based on the CI-verified
 `prototype/native-checkpoint-job` checkpoint. Main and normal firmware remain on
 the production store until the new path passes hardware acceptance.
@@ -27,6 +27,12 @@ store for this build; it does not read, convert or migrate their storage format.
 - Checkpoint and rollover jobs run in slices on the existing engine work queue.
   Append pauses during a job; lookup pins its immutable input while recovery runs.
   Editors get Busy and retry rather than receiving a false success.
+- Native-only input buffering retains up to 512 physical press/release events
+  during flash maintenance, preserving their order and original timestamps.
+  Mode changes cancel pending chords. Overflow cancels the whole pending batch
+  and waits for all physical keys up, rather than translating a partial chord.
+  `native_manage.py --status` reports queue high-water and overflow counters.
+  Speed deadlines use captured event times; timer work waits for pending replay.
 - Read sessions keep the flash awake during maintenance and export. Normal idle
   shutdown/deep sleep retain the existing power driver and pin configuration.
 
@@ -150,10 +156,18 @@ this small merge command.
   retry, invalid NUL and incomplete-entry refusal.
 - Explicit clean provisioning: erase ordering, page/readback verification,
   idempotent retry, final CRC and out-of-pool refusal.
+- Input buffering: nested pauses, retry, timestamp wrap, mode cancellation,
+  overflow recovery and 50,000 FIFO batches. Queued physical keys also pass
+  through the actual Repeat → AllUp → JeffModifiers → Javelin pipeline for
+  translation, repeat, undo and multi-stroke. The real Practice state machine
+  tests queued on-time input after a delayed Speed timer and deferred advance.
 - All earlier native catalog/checkpoint/rollover fault tests remain enabled.
 
-Local native ARM linking was approximately 459 kB flash and 226 kB RAM (about
-86% RAM); final CI figures and artifact checksums will be recorded after its gate.
+The first full integration passed [CI 44401203921](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44401203921)
+with both native boards, normal variants, host regressions and Linux sanitizers.
+Its source is preserved at `checkpoint/native-engine-first-ci` (`d1667bb`).
+The subsequent buffered-input local ARM build links at 464,560 bytes of flash and
+230,126 bytes of RAM (87.79%). Final CI artifacts will be recorded after its gate.
 These are static figures, not measured runtime stack/heap peaks.
 
 ## Hardware acceptance when the owner returns

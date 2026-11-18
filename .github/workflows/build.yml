@@ -68,6 +68,7 @@ jobs:
         run: |
           python3 tools/tests/test_native_engine_backend.py
           python3 tools/tests/test_native_entry_stager.py
+          python3 tools/tests/test_native_input_queue.py
           python3 tools/tests/test_native_store.py
           python3 tools/tests/test_native_provisioner.py
           python3 tools/tests/test_native_image.py

@@ -1,5 +1,6 @@
 // Opt-in full-engine integration for Candidate B. Normal firmware is unchanged.
 #include "native_store_runtime.h"
+#include "native_input.h"
 #include "native_dictionary_adapter.h"
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
@@ -192,11 +193,13 @@ void Kick() {
     k_work_schedule_for_queue(&steno_squid_engine_queue,&maintenance_work,K_MSEC(8));
 }
 void StepWork(k_work *) {
+    if(steno_squid_native_input_pending()){Kick();return;}
     const JavelinEngineLock lock;
     if(!lock){
         if(!healthy){if(maintenance_hold){dictionary_flash_read_session(false);maintenance_hold=false;}return;}
         Kick();return;
     }
+    const NativeInputPause input_pause;
     flash_device.mapped=false;
     const auto result=store.Step([](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
     flash_device.mapped=true;
@@ -206,6 +209,8 @@ void StepWork(k_work *) {
 }
 LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t count,const char *text,size_t bytes) {
     if(!healthy || !count || count>16 || bytes>2047)return LiveResult::Invalid;
+    if(steno_squid_native_input_pending())return LiveResult::Busy;
+    const NativeInputPause input_pause;
     uint32_t strokes[16];for(size_t i=0;i<count;++i)strokes[i]=outline[i].GetKeyState();
     flash_device.mapped=false;
     const auto result=store.Edit(cell.identity,operation,strokes,count,reinterpret_cast<const uint8_t *>(text),bytes);
@@ -385,12 +390,14 @@ void lookup_outline(void *,const char *line) {
 }
 void store_status(void *,const char *) {
     const auto *personal=ByName("user_dictionary");
-    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),personal?personal->identity:0,unsigned(cell_count));
+    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
     for(size_t i=0;i<cell_count;++i)Console::Printf("%s%u",i?",":"",cells[i].identity);
     Console::Printf("]}\n\n");
 }
 void store_verify(void *,const char *) {
     if(store.work!=NativeStore<FlashDevice>::Work::None){Console::Printf("ERR Native maintenance busy\n\n");return;}
+    if(steno_squid_native_input_pending()){Console::Printf("ERR Input replay busy\n\n");return;}
+    const NativeInputPause input_pause;
     flash_device.Invalidate();flash_device.mapped=false;const bool good=validator.Validate(store.selected.root)==CatalogResult::Ok;flash_device.mapped=true;
     if(good){scrub_due=k_uptime_get()+24*60*60*1000LL;Console::SendOk();}else {base_provider.Fault();Console::Printf("ERR Native integrity failure\n\n");}
 }
@@ -400,7 +407,8 @@ void store_rebuild(void *,const char *) {
 }
 void reset_entries(void *,const char *) {
     auto *cell=ByName("user_dictionary");uint32_t replacement=0;
-    if(!cell || !healthy || exporting){Console::Printf("ERR Native reset unavailable\n\n");return;}
+    if(!cell || !healthy || exporting || steno_squid_native_input_pending()){Console::Printf("ERR Native reset unavailable\n\n");return;}
+    const NativeInputPause input_pause;
     flash_device.mapped=false;
     const auto result=store.Clear(cell->identity,replacement,[](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
     flash_device.mapped=true;
@@ -517,7 +525,8 @@ bool steno_squid_native_dictionary_ready(){return healthy && store.opened;}
 size_t steno_squid_native_dictionary_count(){return healthy?cell_count:0;}
 bool steno_squid_native_dictionary_enabled(size_t i){return i<cell_count && cells[i].enabled;}
 bool steno_squid_native_select(const char *name,int operation,bool *enabled) {
-    auto *cell=ByName(name);if(!healthy || !cell || exporting)return false;
+    auto *cell=ByName(name);if(!healthy || !cell || exporting || steno_squid_native_input_pending())return false;
+    const NativeInputPause input_pause;
     const bool value=operation==0?true:operation==1?false:!cell->enabled;
     flash_device.mapped=false;
     const auto result=store.Enable(cell->identity,value,[](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});

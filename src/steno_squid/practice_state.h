@@ -1,5 +1,12 @@
 #pragma once
 
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+#include "native_input.h"
+#define SQUID_PRACTICE_NOW steno_squid_native_input_time
+#else
+#define SQUID_PRACTICE_NOW k_uptime_get
+#endif
+
 // Private Practice state and input transitions. Engine/scoring adapters live
 // in practice_engine.cc; native tests provide scheduler and lookup doubles.
 K_MUTEX_DEFINE(practice_mutex);
@@ -73,7 +80,7 @@ K_WORK_DELAYABLE_DEFINE(practice_clock_work, practice_clock);
  * the deadline here prevents a delayed work queue from accepting late input. */
 static bool practice_speed_expired() {
   if (!practice.active || practice.menu || practice.drill != STENO_SQUID_PRACTICE_SPEED ||
-      practice.feedback == STENO_SQUID_PRACTICE_DONE || k_uptime_get() < practice.deadline) return false;
+      practice.feedback == STENO_SQUID_PRACTICE_DONE || SQUID_PRACTICE_NOW() < practice.deadline) return false;
   practice.timed_out = true;
   practice.feedback = STENO_SQUID_PRACTICE_DONE;
   practice_pending_releases |= practice.keys;
@@ -85,11 +92,14 @@ static bool practice_speed_expired() {
 }
 
 static void practice_clock(struct k_work *) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  if(steno_squid_native_input_pending()){k_work_reschedule(&practice_clock_work,K_MSEC(8));return;}
+#endif
   k_mutex_lock(&practice_mutex, K_FOREVER);
   if (!practice_speed_expired() && practice.active && !practice.menu &&
       practice.drill == STENO_SQUID_PRACTICE_SPEED && practice.feedback != STENO_SQUID_PRACTICE_DONE) {
     practice_publish();
-    const int64_t now = k_uptime_get();
+    const int64_t now = SQUID_PRACTICE_NOW();
     const int64_t next = practice.deadline < now + 1000 ? practice.deadline : now + 1000;
     k_work_reschedule(&practice_clock_work, K_TIMEOUT_ABS_MS(next));
   }
@@ -103,7 +113,7 @@ void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) 
   view->progress = steno_squid_practice_progress();
   if (practice.active && !practice.menu && practice.drill == STENO_SQUID_PRACTICE_SPEED &&
       practice.feedback != STENO_SQUID_PRACTICE_DONE) {
-    const int64_t left = practice.deadline - k_uptime_get();
+    const int64_t left = practice.deadline - SQUID_PRACTICE_NOW();
     const unsigned seconds = left > 0 ? (left + 999) / 1000 : 0;
     view->progress |= uint64_t(seconds > STENO_SQUID_SPEED_SECONDS ? STENO_SQUID_SPEED_SECONDS : seconds) << PRACTICE_SECONDS_SHIFT;
   }
@@ -145,9 +155,12 @@ void steno_squid_practice_view_snapshot(struct steno_squid_practice_view *view) 
 }
 
 static void practice_advance(struct k_work *work) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  if(steno_squid_native_input_pending()){k_work_reschedule(k_work_delayable_from_work(work),K_MSEC(8));return;}
+#endif
   k_mutex_lock(&practice_mutex, K_FOREVER);
   if (practice.active && practice.feedback == STENO_SQUID_PRACTICE_CORRECT &&
-      k_uptime_get() < practice.advance_at) {
+      SQUID_PRACTICE_NOW() < practice.advance_at) {
     k_work_reschedule(k_work_delayable_from_work(work), K_TIMEOUT_ABS_MS(practice.advance_at));
   } else if (practice.active && practice.feedback == STENO_SQUID_PRACTICE_CORRECT) {
     if (practice.drill == STENO_SQUID_PRACTICE_BUILD && practice.build_stage < STENO_SQUID_BUILD_REPEAT_STAGE) {
@@ -165,7 +178,7 @@ static void practice_advance(struct k_work *work) {
     if (practice.feedback == STENO_SQUID_PRACTICE_PROMPT && !steno_squid_practice_is_word_like(practice.drill)) {
       practice_draw_hand_prompt(true);
     }
-    practice.prompt_started_at = k_uptime_get();
+    practice.prompt_started_at = SQUID_PRACTICE_NOW();
     if (practice.feedback == STENO_SQUID_PRACTICE_DONE) {
       steno_squid_practice_finish();
     }
@@ -236,10 +249,10 @@ static bool practice_process_key(int index, bool pressed) {
           else if (practice.drill == STENO_SQUID_PRACTICE_WORDS || practice.drill == STENO_SQUID_PRACTICE_SPEED) steno_squid_words_begin();
           else if (!steno_squid_practice_word_drill(practice.drill)) steno_squid_hands_begin();
           if (practice.drill == STENO_SQUID_PRACTICE_SPEED) {
-            practice.deadline = k_uptime_get() + STENO_SQUID_SPEED_SECONDS * 1000;
-            k_work_reschedule(&practice_clock_work, K_TIMEOUT_ABS_MS(k_uptime_get() + 1000));
+            practice.deadline = SQUID_PRACTICE_NOW() + STENO_SQUID_SPEED_SECONDS * 1000;
+            k_work_reschedule(&practice_clock_work, K_TIMEOUT_ABS_MS(SQUID_PRACTICE_NOW() + 1000));
           }
-          practice.prompt_started_at = k_uptime_get();
+          practice.prompt_started_at = SQUID_PRACTICE_NOW();
           practice_refresh_dictionary();
           practice_publish();
         } else {
@@ -264,7 +277,7 @@ static bool practice_process_key(int index, bool pressed) {
         } else {
           const bool correct = !first_error && practice_correct(stroke);
           practice.multi_count = 0;
-          const int64_t elapsed = k_uptime_get() - practice.prompt_started_at;
+          const int64_t elapsed = SQUID_PRACTICE_NOW() - practice.prompt_started_at;
           const uint32_t elapsed_ms = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
           if (steno_squid_practice_word_drill(practice.drill)) {
             steno_squid_words_answer(practice.round, correct, elapsed_ms);
@@ -281,7 +294,7 @@ static bool practice_process_key(int index, bool pressed) {
               ++practice.round;
               practice.feedback = practice.round == STENO_SQUID_SPEED_ROUNDS ?
                   STENO_SQUID_PRACTICE_DONE : STENO_SQUID_PRACTICE_PROMPT;
-              practice.prompt_started_at = k_uptime_get();
+              practice.prompt_started_at = SQUID_PRACTICE_NOW();
               if (practice.feedback == STENO_SQUID_PRACTICE_DONE) {
                 k_work_cancel_delayable(&practice_clock_work);
                 steno_squid_practice_finish();
@@ -290,7 +303,7 @@ static bool practice_process_key(int index, bool pressed) {
               practice.feedback = STENO_SQUID_PRACTICE_CORRECT;
               const unsigned pause = practice.drill == STENO_SQUID_PRACTICE_BUILD &&
                   practice.build_stage + 1 == STENO_SQUID_BUILD_STEPS ? 600 : 250;
-              practice.advance_at = k_uptime_get() + pause;
+              practice.advance_at = SQUID_PRACTICE_NOW() + pause;
               k_work_reschedule(&practice_advance_work, K_TIMEOUT_ABS_MS(practice.advance_at));
             }
           } else {

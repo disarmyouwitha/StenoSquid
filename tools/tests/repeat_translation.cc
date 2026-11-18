@@ -5,6 +5,11 @@
 #include "dictionary/dictionary.h"
 #include "dictionary/dictionary_list.h"
 #include "key.h"
+#include "clock.h"
+#include "native_input_queue.h"
+#include "processor/all_up.h"
+#include "processor/jeff_modifiers.h"
+#include "processor/repeat.h"
 #include <cstdio>
 #include <cstdlib>
 #include <new>
@@ -128,9 +133,57 @@ void check_native_store_engine() {
   puts("PASS native catalog engine: priority, personal/base overlays, tombstone/reset, multi-stroke, repeat/undo, pinned maintenance reads and persistent selection");
 }
 
+void check_buffered_input_pipeline() {
+  Fixture dictionary;StenoCompiledOrthography orthography(StenoOrthography::emptyOrthography);
+  alignas(StenoEngine) unsigned char memory[sizeof(StenoEngine)]{};
+  auto &engine=*new (memory) StenoEngine(dictionary,nullptr,orthography);
+  StenoJeffModifiers jeff(engine);StenoAllUp all_up(jeff);StenoRepeat repeat(all_up);
+  StenoProcessor processor(repeat);candidate_b::NativeInputQueue<16> queue;
+  uint32_t now=Clock::GetMilliseconds();Key::history.clear();
+  auto chord=[&](std::initializer_list<StenoKey> keys) {
+    for(bool down:{true,false})for(auto key:keys) {
+      assert(queue.Offer(int(key),down,++now)==candidate_b::InputOffer::Queued);
+    }
+  };
+  auto drain=[&]() {
+    candidate_b::NativeInputEvent event;assert(queue.BeginDrain());
+    while(queue.Pop(event)) {
+      Clock::AdvanceMilliseconds(event.when-Clock::GetMilliseconds());
+      if(event.key==255) {
+        repeat.Process(StenoKeyState(),StenoAction::CANCEL_ALL);
+        new (&processor) StenoProcessor(repeat);
+      } else processor.Process(StenoKey(event.key),event.pressed);
+    }
+    queue.FinishDrain();
+  };
+  queue.Pause();chord({StenoKey::KL,StenoKey::A,StenoKey::TR});
+  chord({StenoKey::NUM1});queue.Resume();drain();assert(output()=="cat cat");
+  queue.Pause();chord({StenoKey::STAR1});queue.Resume();drain();assert(output()=="cat");
+  // A mode barrier cannot turn the pending half-chord into a word.
+  queue.Pause();assert(queue.Offer(int(StenoKey::KL),true,++now)==candidate_b::InputOffer::Queued);
+  queue.Cancel(++now);queue.Resume();drain();
+  assert(queue.Offer(int(StenoKey::KL),false,++now)==candidate_b::InputOffer::Discarded);drain();
+  assert(output()=="cat");
+  queue.Pause();chord({StenoKey::HL,StenoKey::E});
+  chord({StenoKey::HL,StenoKey::RL,StenoKey::O,StenoKey::E});queue.Resume();drain();
+  assert(output()=="cat hello");
+  // Overflow after a press was already consumed must cancel that held chord,
+  // including its later release. Otherwise it could emit a different word.
+  queue.Pause();queue.Offer(int(StenoKey::KL),true,++now);queue.Resume();drain();
+  queue.Pause();
+  for(unsigned i=0;i<10;++i)for(bool down:{true,false})queue.Offer(int(StenoKey::A),down,++now);
+  queue.Offer(int(StenoKey::KL),false,++now);queue.Resume();drain();
+  assert(queue.Overflows()==1 && output()=="cat hello");
+  queue.Pause();chord({StenoKey::KL,StenoKey::A,StenoKey::TR});queue.Resume();drain();
+  assert(output()=="cat hello cat");
+  repeat.Process(StenoKeyState(),StenoAction::CANCEL_ALL);engine.~StenoEngine();
+  puts("PASS buffered input through actual Repeat/AllUp/JeffModifiers/Javelin: cat, repeat, undo, mode barrier, multi-stroke and partial-chord overflow recovery");
+}
+
 int main(){
  alignas(4) static const uint8_t script[64]={0x4a,0x53,0x53,0x34};ButtonScriptManager::Initialize(script);
  check_native_store_engine();
+ check_buffered_input_pipeline();
  check_disabled_dictionaries();
  check("empty history",{"#"},"");
  check("single stroke",{"KAT","#"},"cat cat");

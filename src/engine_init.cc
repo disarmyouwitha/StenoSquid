@@ -35,6 +35,7 @@
 #include "lapwing_dictionary.h"
 #ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
 #include "steno_squid/native_store_runtime.h"
+#include "steno_squid/native_input.h"
 #endif
 #include "dictionary_flash.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
@@ -57,6 +58,9 @@ static JavelinStaticAllocate<StenoJeffModifiers> jeffModifiers;
 static JavelinStaticAllocate<StenoRepeat> stenoRepeat;
 static JavelinStaticAllocate<StenoAllUp> allUp;
 static StenoProcessor *processor = nullptr;
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+static StenoSquidChordDelivery native_delivery;
+#endif
 
 #include <dt-bindings/zmk/javelin_steno_ids.h>
 
@@ -129,6 +133,9 @@ static bool dictionary_enabled(uint8_t, bool fallback) { return fallback; }
 
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
 bool steno_squid_engine_cancel_strokes(StenoKeyState &held) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  steno_squid_native_input_cancel();
+#endif
   if (!processor) {
     return false;
   }
@@ -355,16 +362,28 @@ void zmk_javelin_steno_init(void) {
   LOG_INF("Steno processor pipeline ready");
 }
 
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+void zmk_javelin_steno_native_process_key(int steno_key_index, bool is_press,uint32_t when) {
+#else
 void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
+#endif
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
   StenoSquidKeyBenchmark benchmark(steno_key_index,is_press);
 #endif
   // On contention discard the whole held chord, including its eventual releases.
   // A partial chord must never become a different word after the lock is freed.
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  auto &delivery=native_delivery;
+  const auto before=delivery;
+#else
   static StenoSquidChordDelivery delivery;
+#endif
   delivery.Event(steno_key_index, is_press);
   const JavelinEngineLock lock;
   if (!lock || !processor) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    if(processor && steno_squid_native_input_retry(steno_key_index,is_press,when)){delivery=before;return;}
+#endif
     delivery.Drop();
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
     benchmark.Dropped();
@@ -402,6 +421,25 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
   benchmark.Processed();
 #endif
 }
+
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+void zmk_javelin_steno_process_key(int key,bool pressed) {
+  const uint32_t when=k_uptime_get_32();
+  if(steno_squid_native_input_offer(key,pressed,when))return;
+  zmk_javelin_steno_native_process_key(key,pressed,when);
+}
+// Called only with the flash/engine mutex held, including the raw failure path.
+void zmk_javelin_steno_native_cancel(void) {
+  if(processor) {
+    stenoRepeat.value.Process(StenoKeyState(),StenoAction::CANCEL_ALL);
+    new (processor) StenoProcessor(stenoRepeat.value);
+#ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
+    steno_squid_practice_discard_chord();
+#endif
+  }
+  native_delivery={};
+}
+#endif
 
 } // extern "C"
 

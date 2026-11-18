@@ -31,6 +31,7 @@ unsigned steno_squid_practice_rounds(unsigned drill) {
 #define CONFIG_ZMK_STENO_SQUID_STROKE_TAPE 0
 #define K_MUTEX_DEFINE(n) int n
 #define K_FOREVER 0
+#define K_MSEC(n) n
 #define K_TIMEOUT_ABS_MS(n) n
 #define K_WORK_DELAYABLE_DEFINE(n,f) int n
 using atomic_val_t = uint32_t;
@@ -46,6 +47,12 @@ void k_mutex_unlock(int *) {}
 struct k_work {};
 int64_t now = 0;
 int64_t k_uptime_get() { return now; }
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+bool input_pending=false, input_replaying=false;
+int64_t input_time=0;
+extern "C" bool steno_squid_native_input_pending() { return input_pending; }
+extern "C" int64_t steno_squid_native_input_time() { return input_replaying?input_time:now; }
+#endif
 void k_work_cancel_delayable(int *) {}
 void k_work_reschedule(int *, int64_t) {}
 int *k_work_delayable_from_work(k_work *) { static int delayed; return &delayed; }
@@ -122,6 +129,10 @@ int main() {
   tap(StenoKey::KL);  // A chord during feedback is ignored.
   assert(lookups == 1);
   now = 250;
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  input_pending=true;practice_advance(nullptr);assert(practice.round==0);
+  input_pending=false;
+#endif
   practice_advance(nullptr);
   assert(practice.round == 1 && practice.feedback == STENO_SQUID_PRACTICE_PROMPT);
   tap(StenoKey::STAR3);  // Switching during a run returns to selection.
@@ -215,8 +226,17 @@ int main() {
   tap(StenoKey::KL);assert(practice.round==1 && practice.feedback==STENO_SQUID_PRACTICE_PROMPT);
   now=deadline-1;
   tap(StenoKey::KL);assert(practice.round==2);
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  // Timer work waits for a queued on-time chord even if flash IO ended late.
+  now=deadline+100;input_pending=true;practice_clock(nullptr);
+  assert(!practice.timed_out);
+  input_replaying=true;input_time=deadline-1;tap(StenoKey::KL);
+  assert(practice.round==3 && !practice.timed_out);
+  input_replaying=false;input_pending=false;
+#endif
+  const auto on_time_rounds=practice.round;
   now=deadline;tap(StenoKey::KL);
-  assert(practice.round==2 && practice.timed_out && practice.feedback==STENO_SQUID_PRACTICE_DONE);
+  assert(practice.round==on_time_rounds && practice.timed_out && practice.feedback==STENO_SQUID_PRACTICE_DONE);
   assert(progress_model.run.finished);
   // A key held across expiry is consumed; releasing a vowel cannot dismiss results.
   tap(StenoKey::A);tap(StenoKey::A); // Menu then a new round.
@@ -278,11 +298,12 @@ def main():
         (directory / 'zephyr').mkdir()
         (directory / 'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x, ...) static_assert(x)\n', encoding="utf-8")
         (directory / 'test.cc').write_text('#include <initializer_list>\n' + code, encoding="utf-8")
-        subprocess.run([*host_compiler('c++'), '-std=c++20', '-I' + str(directory),
-                        '-I' + str(args.engine.resolve()), '-I' + str(ROOT / 'src/steno_squid'),
-                        str(directory / 'test.cc'), str(args.engine / 'steno_key_state.cc'),
-                        '-o', str(directory / 'test')], check=True)
-        subprocess.run([str(directory / 'test')], check=True)
+        for defines in ([], ['-DCONFIG_ZMK_STENO_SQUID_NATIVE_STORE=1']):
+            subprocess.run([*host_compiler('c++'), '-std=c++20', *defines, '-I' + str(directory),
+                            '-I' + str(args.engine.resolve()), '-I' + str(ROOT / 'src/steno_squid'),
+                            str(directory / 'test.cc'), str(args.engine / 'steno_key_state.cc'),
+                            '-o', str(directory / 'test')], check=True)
+            subprocess.run([str(directory / 'test')], check=True)
 
 
 if __name__ == '__main__':
