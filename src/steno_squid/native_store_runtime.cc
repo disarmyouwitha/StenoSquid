@@ -411,7 +411,7 @@ void reset_entries(void *,const char *) {
     if(!cell || !healthy || exporting || steno_squid_native_input_pending()){Console::Printf("ERR Native reset unavailable\n\n");return;}
     const NativeInputPause input_pause;
     flash_device.mapped=false;
-    const auto result=store.Clear(cell->identity,replacement,[](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
+    const auto result=store.Clear(cell->identity,replacement,export_view,[](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
     flash_device.mapped=true;
     if(result!=CatalogResult::Ok){if(!store.opened)base_provider.Fault();Console::Printf("ERR Native reset refused\n\n");return;}
     cell->identity=replacement;cell->Bind();if(parent)parent->OnLookupDataChanged();Console::SendOk();
@@ -533,7 +533,7 @@ bool steno_squid_native_select(const char *name,int operation,bool *enabled) {
     const NativeInputPause input_pause;
     const bool value=operation==0?true:operation==1?false:!cell->enabled;
     flash_device.mapped=false;
-    const auto result=store.Enable(cell->identity,value,[](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
+    const auto result=store.Enable(cell->identity,value,export_view,[](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
     flash_device.mapped=true;
     if(result!=CatalogResult::Ok){if(!store.opened)base_provider.Fault();return false;}
     cell->enabled=value;*enabled=value;return true;

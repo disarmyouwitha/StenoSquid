@@ -80,15 +80,16 @@ public:
     }
     // Atomically clear an overlay-only logical dictionary by replacing its ID.
     // Old IDs are never reused; old records remain unreachable until cleaning.
+    // Caller owns the scratch view and may not reuse a leased export/lookup view.
     template<class Check>
-    CatalogResult Clear(uint32_t id,uint32_t &replacement,Check check) {
-        if(!opened || work!=Work::None || !id)return CatalogResult::Busy;
+    CatalogResult Clear(uint32_t id,uint32_t &replacement,LiveView &pin,Check check) {
+        if(!opened || work!=Work::None || !id || pin.token)return CatalogResult::Busy;
         uint8_t row[96]{},prefix[32];uint32_t index=0;
         for(;Row(index,row);++index)if(Word(row)==id)break;
         if(Word(row)!=id || row[8]!=255 || row[9]!=255 || !device.Read(selected.root.address,prefix,32))return CatalogResult::Invalid;
         const uint32_t next_id=Word(prefix);
         if(!next_id || next_id==UINT32_MAX)return CatalogResult::Invalid;
-        LiveView pin;if(!Snapshot(pin))return CatalogResult::Busy;
+        if(!Snapshot(pin))return CatalogResult::Busy;
         auto source=[&](uint32_t at,uint8_t *out,uint32_t n) {
             if(at>pin.root.bytes || n>pin.root.bytes-at || !device.Read(pin.root.address+at,out,n))return false;
             for(uint32_t i=0;i<n;++i) {
@@ -109,15 +110,15 @@ public:
 
     // Catalog-only flag update. Extents, IDs, ordering and checkpoint sequence
     // stay byte-identical, so the live tail can be retargeted without replay.
+    // An existing lease in caller-owned scratch is refused before any mutation.
     template<class Check>
-    CatalogResult Enable(uint32_t id,bool enabled,Check check) {
-        if(!opened || work!=Work::None)return CatalogResult::Busy;
+    CatalogResult Enable(uint32_t id,bool enabled,LiveView &pin,Check check) {
+        if(!opened || work!=Work::None || pin.token)return CatalogResult::Busy;
         if(!id)return CatalogResult::Invalid;
         uint8_t row[96]{};uint32_t index=0;
         for(;Row(index,row);++index)if(Word(row)==id)break;
         if(Word(row)!=id)return CatalogResult::Invalid;
         if(Word(row+4)==unsigned(enabled))return CatalogResult::Ok;
-        LiveView pin;
         if(!Snapshot(pin))return CatalogResult::Busy;
         const uint32_t patch=32+index*96+4;
         auto source=[&](uint32_t offset,uint8_t *out,uint32_t n) {

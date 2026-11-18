@@ -123,7 +123,7 @@ void check_native_store_engine() {
     auto status=storage.store.Step(storage.Check());assert(status==JobResult::More || status==JobResult::Done);
   }
   storage.Open();root.OnLookupDataChanged();play({"HE","HROE"},"greeting");
-  assert(storage.store.Enable(2,false,storage.Check())==CatalogResult::Ok);root.DisableDictionary("Upper");storage.Open();
+  LiveView metadata_scratch;assert(storage.store.Enable(2,false,metadata_scratch,storage.Check())==CatalogResult::Ok);root.DisableDictionary("Upper");storage.Open();
   play({"KAT"},"lower");
   // Simulate warm reopen recovering persisted flags different from the live
   // collection, including all-disabled state and cache invalidation.

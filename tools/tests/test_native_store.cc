@@ -2,7 +2,13 @@
 #include <iostream>
 int main() {
     NativeFixture f;assert(f.Edit(1,1,"first")==LiveResult::Ok);
-    const auto high=f.store.live.Highwater();assert(f.store.Enable(2,false,f.Check())==CatalogResult::Ok);
+    LiveView scratch;
+    const auto high=f.store.live.Highwater();assert(f.store.Enable(2,false,scratch,f.Check())==CatalogResult::Ok);
+    assert(!scratch.token);
+    assert(f.store.Snapshot(scratch));
+    assert(f.store.Enable(2,true,scratch,f.Check())==CatalogResult::Busy);
+    uint32_t blocked=0;assert(f.store.Clear(1,blocked,scratch,f.Check())==CatalogResult::Busy);
+    assert(f.store.Release(scratch));
     assert(f.store.live.Highwater()==high && f.store.live.TailCount()==1);
     f.Open();uint8_t row[96];assert(f.store.Row(1,row) && !Word(row+4));
     assert(f.store.Start(NativeStore<NativeDevice>::Work::Checkpoint)==JobResult::More);
@@ -11,7 +17,7 @@ int main() {
     assert(f.store.live.FindSnapshot(held,1,&key,1,record)==LiveResult::Ok && record.text_bytes==5);
     assert(f.store.Release(held));
     LiveView before_clear;assert(f.store.Snapshot(before_clear));
-    uint32_t replacement=0;assert(f.store.Clear(1,replacement,f.Check())==CatalogResult::Ok && replacement==4);
+    uint32_t replacement=0;assert(f.store.Clear(1,replacement,scratch,f.Check())==CatalogResult::Ok && replacement==4);
     assert(f.store.live.FindSnapshot(before_clear,1,&key,1,record)==LiveResult::Ok && record.text_bytes==5);
     assert(f.store.Release(before_clear));
     LiveView fresh;assert(f.store.Snapshot(fresh));
