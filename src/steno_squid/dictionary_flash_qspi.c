@@ -3,6 +3,9 @@
 #include "flash_diagnostics.h"
 #include "w25q_quad.h"
 #include "xip_load.h"
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+#include "native_store_runtime.h"
+#endif
 
 #include <string.h>
 #include <zephyr/drivers/pinctrl.h>
@@ -109,6 +112,9 @@ bool lf_enable_verified_mapping(nrfx_qspi_config_t *config) {
     // Startup and provisioning have already checked each image once through DMA.
     // Native lookups exercise mapped reads without another full-image CRC pass.
     if (config->prot_if.readoc != NRF_QSPI_READOC_READ4O && !enable_quad_reads(config)) return false;
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    if (!steno_squid_native_flash_open()) return false;
+#else
     if (!lapwing_verify_native_dictionary(XIP_BASE)) {
         return false;
     }
@@ -123,6 +129,7 @@ bool lf_enable_verified_mapping(nrfx_qspi_config_t *config) {
     }
 #endif
 
+#endif
     // The personal-dictionary store serializes its QSPI operations with mapped lookups.
     lf_trusted = true;
     atomic_set(&lf_mapped_ready, 1);
@@ -155,6 +162,11 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed, bool
         transient_fault = true;
         return true;
     }
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    ARG_UNUSED(quick);
+    *mapping_failed = !lf_enable_verified_mapping(config);
+    return true;
+#else
     for (size_t i = 0; i < ARRAY_SIZE(lf_images); i++) {
         struct base_image *image = &lf_images[i];
         uint32_t magic = 0;
@@ -166,6 +178,7 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed, bool
         *mapping_failed = !lf_enable_verified_mapping(config);
     }
     return true;
+#endif
 }
 
 #define BRING_UP_ATTEMPTS 3

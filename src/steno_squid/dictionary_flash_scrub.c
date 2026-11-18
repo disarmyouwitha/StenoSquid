@@ -1,5 +1,8 @@
 #include "dictionary_flash_internal.h"
 #include "xip_load.h"
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+#include "native_store_runtime.h"
+#endif
 #include <zephyr/sys/crc.h>
 
 #define SCRUB_INTERVAL_MS (24 * 60 * 60 * 1000LL)
@@ -22,6 +25,9 @@ void lf_scrub_invalidated(void) {
 }
 /* All calls hold flash_lock. Scrubbing never powers or holds the flash on. */
 int32_t lf_scrub_wait_ms(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    return steno_squid_native_scrub_wait();
+#endif
     if (!atomic_get(&lf_mapped_ready) || !lf_trusted || lf_suspended) return -1;
     if (!scrub_scheduled) {
         scrub_at = k_uptime_get() + 60000;
@@ -31,6 +37,10 @@ int32_t lf_scrub_wait_ms(void) {
     return remaining > 0 ? (int32_t)remaining : 0;
 }
 void lf_scrub_step(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    steno_squid_native_scrub_step();
+    return;
+#endif
     if (lf_scrub_wait_ms() != 0) return;
     const struct base_image *image = &lf_images[scrub_image];
     const uint32_t size = MIN(CHUNK_BYTES, image->bytes - scrub_offset);

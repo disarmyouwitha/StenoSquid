@@ -14,6 +14,9 @@ static int javelin_settings_set(const char *name, size_t length,
     return 0;
   }
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  return -ENOENT;
+#else
   if (strcmp(name, "dictionaries") != 0) {
     return -ENOENT;
   }
@@ -25,5 +28,6 @@ static int javelin_settings_set(const char *name, size_t length,
   }
   dictionary_selection = record[1];
   return 0;
+#endif
 }
 

@@ -144,6 +144,25 @@ public:
         recovering=false;ready=true;return LiveResult::Ready;
     }
 
+    // Caller has published a metadata-only edit under the same exclusive lease.
+    // Compare immutable ownership and identity order before retaining live cursors.
+    bool Retarget(const CatalogSelection &next) {
+        if(!ready || maintenance || next.quarantine || !catalog.CanWrite(next.root))return false;
+        uint8_t old_prefix[32],new_prefix[32];
+        if(!device.Read(live.root.address,old_prefix,32) || !device.Read(next.root.address,new_prefix,32) ||
+           std::memcmp(old_prefix,new_prefix,32) || next.root.bytes!=live.root.bytes)return false;
+        for(uint32_t i=0;i<live.dictionary_count;++i) {
+            uint8_t id[4];
+            if(!device.Read(next.root.address+32+i*96,id,4) || Word(id)!=live.identities[i])return false;
+        }
+        for(uint32_t i=0;i<shape.extents;++i) {
+            uint8_t a[24],b[24];const uint32_t offset=32+shape.dictionaries*96+i*24;
+            if(!device.Read(live.root.address+offset,a,24) || !device.Read(next.root.address+offset,b,24) ||
+               std::memcmp(a,b,24))return false;
+        }
+        live.root=next.root;return true;
+    }
+
     LiveResult Append(uint32_t id,uint8_t operation,const uint32_t *strokes,uint8_t count,
                        const uint8_t *text,uint16_t bytes) {
         if(!ready)return LiveResult::Invalid;

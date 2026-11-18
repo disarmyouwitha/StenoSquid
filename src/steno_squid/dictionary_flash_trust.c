@@ -56,6 +56,9 @@ bool lf_stored_trust(void) {
 }
 
 void lf_store_trust(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    return;
+#endif
     lf_scrub_verified();
     const uint32_t value = IMAGE_FINGERPRINT;
     trust_invalidated = false;
@@ -66,6 +69,10 @@ void lf_store_trust(void) {
 }
 
 bool lf_clear_trust(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    lf_trusted = false;
+    return true;
+#endif
     lf_scrub_invalidated();
     trust_invalidated = true;
     lf_trusted = false;
@@ -77,10 +84,17 @@ bool lf_stored_trust(void) {
     return false;
 }
 void lf_store_trust(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    return;
+#endif
     lf_scrub_verified();
     trust_invalidated = false;
 }
 bool lf_clear_trust(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    lf_trusted = false;
+    return true;
+#endif
     lf_scrub_invalidated();
     trust_invalidated = true;
     lf_trusted = false;
@@ -90,6 +104,10 @@ bool lf_clear_trust(void) {
 #endif
 
 bool lf_take_wake_trust(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+    // The native validator owns its range cache; fixed-image trust cannot apply.
+    return false;
+#endif
     NRF_POWER->GPREGRET2 = 0;
     // The retained byte is only a hint; confirm the full image fingerprint.
     return !trust_invalidated && (lf_trusted || lf_stored_trust());

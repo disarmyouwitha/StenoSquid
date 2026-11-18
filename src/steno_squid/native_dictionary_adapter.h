@@ -1,4 +1,4 @@
-// Candidate-B development bridge. Not installed in the normal engine collection.
+// Candidate-B bridge, installed by the opt-in native engine/store profile.
 // Backend owns catalog pins, extent validation and scheduling. Returned lookup
 // text is copied before releasing its pin so callers never retain QSPI pointers.
 #pragma once

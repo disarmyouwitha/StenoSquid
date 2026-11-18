@@ -27,7 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Prepare and verify every image
-        run: python3 tools/dictionaries/prepare.py
+        run: |
+          python3 tools/dictionaries/prepare.py
+          python3 tools/storage/build_native_image.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dictionary-images
@@ -35,6 +37,7 @@ jobs:
             build/lapwing/
             build/plover/
             build/extras/
+            build/native-store/
 
   host-tests:
     name: host tests
@@ -63,6 +66,11 @@ jobs:
         env:
           CXX: clang++ -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
         run: |
+          python3 tools/tests/test_native_engine_backend.py
+          python3 tools/tests/test_native_entry_stager.py
+          python3 tools/tests/test_native_store.py
+          python3 tools/tests/test_native_provisioner.py
+          python3 tools/tests/test_native_image.py
           python3 tools/tests/test_native_rollover_job.py
           python3 tools/tests/test_native_checkpoint_job.py
           python3 tools/tests/test_native_live_journal.py
@@ -90,6 +98,11 @@ jobs:
             snippet: zmk-usb-logging
             dictionaries: true
             diagnostics: true
+          - name: NiceNano-Left-Native
+            shield: corne_left
+            snippet: studio-rpc-usb-uart
+            dictionaries: true
+            native: true
           - name: NiceNano-Left-Default
             shield: corne_left
             snippet: studio-rpc-usb-uart
@@ -110,6 +123,11 @@ jobs:
             snippet: zmk-usb-logging
             dictionaries: true
             diagnostics: true
+          - name: Boardsource-Left-Native
+            boardsource: left
+            snippet: studio-rpc-usb-uart
+            dictionaries: true
+            native: true
           - name: Boardsource-Left-Default
             boardsource: left
             snippet: studio-rpc-usb-uart
@@ -200,6 +218,9 @@ jobs:
             left)
               board=blecorne_left
               conf="$split/corne.conf;$split/corne_left.conf"
+              if [ "${{ matrix.native }}" = "true" ]; then
+                conf="$conf;$split/native-store.conf"
+              fi
               if [ "${{ matrix.no_display }}" = "true" ]; then
                 conf="$conf;$split/left-no-display.conf"
               fi
@@ -244,6 +265,9 @@ jobs:
               if [ "${{ matrix.diagnostics }}" = "true" ]; then
                 args+=("-DEXTRA_CONF_FILE=$split/logging.conf"
                        "-DEXTRA_DTC_OVERLAY_FILE=$split/logging.overlay")
+              fi
+              if [ "${{ matrix.native }}" = "true" ]; then
+                args+=("-DEXTRA_CONF_FILE=$split/native-store.conf")
               fi
               if [ -n "${{ matrix.extra }}" ]; then
                 args+=(${{ matrix.extra }})

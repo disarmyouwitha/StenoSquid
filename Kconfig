@@ -97,6 +97,21 @@ config ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH
     depends on USB_DEVICE_STACK && USB_HID_DEVICE_COUNT >= 3
 
+config ZMK_STENO_SQUID_NATIVE_STORE
+    bool "Experimental catalog-driven native dictionary engine"
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    depends on !ZMK_JAVELIN_SERIAL_CONSOLE && !ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    help
+      Candidate-B engine/store integration. Requires an explicit clean native
+      provisioning image; never reads or migrates the old personal-store format.
+      Keep disabled in normal firmware until the hardware acceptance tests pass.
+
+config ZMK_STENO_SQUID_NATIVE_DICTIONARIES
+    int "Maximum resident native dictionary wrappers"
+    depends on ZMK_STENO_SQUID_NATIVE_STORE
+    range 7 64
+    default 16
+
 config ZMK_JAVELIN_STENO_HID_PROVISIONING
     bool "Install base dictionaries over wired USB HID"
     select BASE64

@@ -33,6 +33,9 @@
 #include "dictionary_benchmark.h"
 #include "javelin_hid_transport.h"
 #include "lapwing_dictionary.h"
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+#include "steno_squid/native_store_runtime.h"
+#endif
 #include "dictionary_flash.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 #include "user_dictionary_store.h"
@@ -102,6 +105,7 @@ static atomic_t initialized;
 // Dictionary selections are stored separately from base images and personal
 // snapshots. A fresh keyboard starts with Lapwing. Personal=1, Lapwing=2,
 // Plover=4, then the Lapwing extras from bit 3 up.
+#ifndef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
 #define EXTRAS_SELECTION_SHIFT 3
 static constexpr uint8_t PERSONAL_SELECTION = 1;
 static constexpr uint8_t LAPWING_SELECTION = 2;
@@ -119,6 +123,8 @@ static bool dictionary_enabled(uint8_t bit, bool) { return dictionary_selection 
 #else
 // Without the browser tool nothing can change the selection.
 static bool dictionary_enabled(uint8_t, bool fallback) { return fallback; }
+#endif
+
 #endif
 
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
@@ -190,6 +196,13 @@ static void select_dictionary(void *, const char *line) {
     return;
   }
   ++name;
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  bool enabled=false;
+  const int operation=!strncmp(line,"enable_dictionary ",18)?0:!strncmp(line,"disable_dictionary ",19)?1:2;
+  if(!steno_squid_native_select(name,operation,&enabled)) {
+    Console::Printf("ERR Unable to save native dictionary selection\n\n");return;
+  }
+#else
   uint8_t bit = 0;
   if (strcmp(name, "user_dictionary") == 0) {
     bit = PERSONAL_SELECTION;
@@ -224,9 +237,14 @@ static void select_dictionary(void *, const char *line) {
     return;
   }
   dictionary_selection = selected;
+#endif
   BufferWriter events;
   ConsoleWriter::Push(&events);
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  if (enabled) {
+#else
   if (selected & bit) {
+#endif
     StenoEngine::container.value.EnableDictionary(name);
   } else {
     StenoEngine::container.value.DisableDictionary(name);
@@ -242,6 +260,10 @@ static void select_dictionary(void *, const char *line) {
 
 static bool load_dictionary_collection() {
   List<StenoDictionaryListEntry> entries;
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  for(size_t i=0;i<steno_squid_native_dictionary_count();++i)
+    entries.Add(StenoDictionaryListEntry(steno_squid_native_dictionary(i),steno_squid_native_dictionary_enabled(i)));
+#else
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
   auto *personal = steno_squid_user_dictionary_open();
   if (personal) {
@@ -260,6 +282,8 @@ static bool load_dictionary_collection() {
     // Personal overrides remain first. Fresh settings default to Lapwing.
     entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(PLOVER_SELECTION, false)));
   }
+
+#endif
 
   new (dictionaryList)
       StenoDictionaryList(static_cast<List<StenoDictionaryListEntry> &&>(entries));
@@ -299,8 +323,13 @@ void zmk_javelin_steno_init(void) {
   if (!lock || atomic_get(&initialized)) {
     return;
   }
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  if (!steno_squid_native_dictionary_ready()) {
+    LOG_WRN("Native dictionary catalog is unavailable");
+#else
   if (!lapwing_dictionary()) {
     LOG_WRN("External Lapwing dictionary is unavailable");
+#endif
     return;
   }
 

@@ -1,4 +1,6 @@
 #include "engine.h"
+#include "native_store_fixture.h"
+#include "native_engine_backend.h"
 #include "button_script_manager.h"
 #include "dictionary/dictionary.h"
 #include "dictionary/dictionary_list.h"
@@ -74,8 +76,61 @@ void check_disabled_dictionaries() {
   engine.~StenoEngine();
 }
 
+void check_native_store_engine() {
+  NativeFixture storage;
+  struct Bases final : candidate_b::NativeBaseProvider {
+    bool ready=true;Fixture upper;
+    bool Ready()const override{return ready;}
+    void Fault()override{ready=false;}
+    StenoDictionaryLookupResult Lookup(uint32_t id,const StenoDictionaryLookup &query)override {
+      if(id==2)return upper.Lookup(query);
+      if(id==3 && query.length==1 && query.strokes[0]==StenoStroke("KAT"))return StenoDictionaryLookupResult::CreateStaticString("lower");
+      return StenoDictionaryLookupResult::CreateInvalid();
+    }
+  } bases;
+  candidate_b::NativeEngineBackend<NativeDevice> backend(storage.store,bases);
+  candidate_b::NativeOverlayDictionary personal(backend,1,"user_dictionary"),upper(backend,2,"Upper"),lower(backend,3,"Lower");
+  List<StenoDictionaryListEntry> entries;for(auto *d:{&personal,&upper,&lower})entries.Add(StenoDictionaryListEntry(d,true));
+  StenoDictionaryList root(static_cast<List<StenoDictionaryListEntry> &&>(entries));
+  auto play=[&](std::vector<const char *> strokes,const char *expected) {
+    StenoCompiledOrthography orthography(StenoOrthography::emptyOrthography);
+    alignas(StenoEngine) unsigned char memory[sizeof(StenoEngine)]{};
+    auto &engine=*new (memory) StenoEngine(root,nullptr,orthography);
+    Key::history.clear();for(auto text:strokes){StenoStroke stroke;stroke.Set(text);engine.Process(stroke);}
+    if(output()!=expected){fprintf(stderr,"FAIL native engine expected [%s], got [%s]\n",expected,output().c_str());exit(1);}
+    engine.~StenoEngine();
+  };
+  play({"KAT","#"},"cat cat");
+  auto edit=[&](uint32_t id,const char *outline,const char *text,uint8_t op=0) {
+    StenoStroke key;key.Set(outline);assert(storage.Edit(id,key.GetKeyState(),text,op)==LiveResult::Ok);root.OnLookupDataChanged();
+  };
+  edit(1,"KAT","dog");play({"KAT","#","*"},"dog");
+  edit(1,"KAT","",2);edit(2,"KAT","",1);play({"KAT"},"lower");
+  edit(2,"KAT","",2);play({"KAT"},"cat");
+  const uint32_t multi[]={StenoStroke("HE").GetKeyState(),StenoStroke("HROE").GetKeyState()};
+  const uint8_t greeting[]={'g','r','e','e','t','i','n','g'};
+  assert(storage.store.Edit(1,0,multi,2,greeting,sizeof(greeting))==LiveResult::Ok);root.OnLookupDataChanged();
+  play({"HE","HROE","#","*"},"greeting");
+  assert(storage.store.Start(NativeStore<NativeDevice>::Work::Checkpoint)==JobResult::More);
+  while(storage.store.work!=NativeStore<NativeDevice>::Work::None) {
+    auto result=upper.Lookup(StenoDictionaryLookup(reinterpret_cast<const StenoStroke *>(multi),1));result.Destroy();
+    auto status=storage.store.Step(storage.Check());assert(status==JobResult::More || status==JobResult::Done);
+  }
+  storage.Open();root.OnLookupDataChanged();play({"HE","HROE"},"greeting");
+  assert(storage.store.Enable(2,false,storage.Check())==CatalogResult::Ok);root.DisableDictionary("Upper");storage.Open();
+  play({"KAT"},"lower");
+  edit(1,"KAT","fault target");
+  LiveView broken;assert(storage.store.Snapshot(broken));RecordView corrupt;const uint32_t kat=StenoStroke("KAT").GetKeyState();
+  assert(storage.store.live.FindSnapshot(broken,1,&kat,1,corrupt)==LiveResult::Ok);
+  storage.nor.data[corrupt.text_address]^=1;assert(storage.store.Release(broken));root.OnLookupDataChanged();
+  auto refused=root.Lookup(StenoDictionaryLookup(reinterpret_cast<const StenoStroke *>(&kat),1));
+  assert(!refused.IsValid() && !bases.ready);refused.Destroy();
+  puts("PASS native catalog engine: priority, personal/base overlays, tombstone/reset, multi-stroke, repeat/undo, pinned maintenance reads and persistent selection");
+}
+
 int main(){
  alignas(4) static const uint8_t script[64]={0x4a,0x53,0x53,0x34};ButtonScriptManager::Initialize(script);
+ check_native_store_engine();
  check_disabled_dictionaries();
  check("empty history",{"#"},"");
  check("single stroke",{"KAT","#"},"cat cat");

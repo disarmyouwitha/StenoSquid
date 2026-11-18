@@ -1,6 +1,6 @@
 # StenoSquid Unified Dictionary Storage and Benchmark Specification
 
-**Status:** P3 native checkpoint and journal-rollover coordinators pass all firmware/host/sanitizer CI gates; new hardware test and full engine/store integration pending\
+**Status:** P3 opt-in catalog-driven engine/store and clean USB provisioning implemented; full native-profile CI and hardware acceptance pending\
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
 
@@ -183,3 +183,5 @@ includes a passed reboot-persistence diagnostic. The host models and isolated na
 helpers do not complete the hardware/performance acceptance gates. P1 design
 freeze and P2 large/near-full capacity work remain open while P3 native core
 development starts; no production storage format has changed.
+
+Current implementation: [native engine integration and acceptance plan](native-engine-integration.md).

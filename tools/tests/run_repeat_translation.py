@@ -40,7 +40,8 @@ def main():
         obj = objects_dir / (name + ".o")
         command = [*cxx, "-std=c++20", "-O0", "-w", "-DRUN_TESTS=1",
                    "-DJAVELIN_USE_EMBEDDED_STENO=1", "-DJAVELIN_BOARD_CONFIG=<stddef.h>",
-                   "-I" + str(stubs), "-I" + str(engine), "-c", str(source), "-o", str(obj)]
+                   "-I" + str(stubs), "-I" + str(engine),
+                   "-I" + str(repo / "tools/storage"), "-I" + str(repo / "src/steno_squid"), "-c", str(source), "-o", str(obj)]
         result = subprocess.run(command, text=True, capture_output=True)
         if result.returncode:
             raise RuntimeError(str(source) + "\n" + result.stderr)
