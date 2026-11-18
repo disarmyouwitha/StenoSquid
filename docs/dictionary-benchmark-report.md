@@ -71,3 +71,20 @@ queue wait and eventual host delivery. See the tool README for exact boundaries.
 how much Candidate A prototyping remains justified by its footprint. Candidate C
 still requires explicitly relaxing the pooled-capacity goal. No migration reader,
 compatibility shim or automatic destructive reprovisioning is part of this work.
+
+
+## First hardware smoke test
+
+The CI diagnostic image `06e4cdb` booted on nice!nano, reported Winbond JEDEC
+`EF 40 18`, 2 MHz QSPI and a working 64 MHz DWT timer. All three personal entries
+matched the pre-flash backup. Initial sampled forward lookups passed content
+checks, but the run was stopped: the test's fixed 16-stroke miss exceeded one
+compact dictionary's maximum. Direct compact lookup assumes the caller already
+checks that bound. This is a benchmark-harness bug; the normal engine dispatcher
+already filters by dictionary outline length.
+
+The harness now checks that precondition explicitly, has a native regression
+for an over-length query, and generates valid one-stroke misses for actual hash
+miss measurements. The incomplete first run is not a benchmark acceptance result.
+Reflash and repeat the read-only baseline with the corrected CI image before
+publishing a latency table or drawing storage conclusions.

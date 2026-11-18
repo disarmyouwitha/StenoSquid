@@ -49,6 +49,7 @@ struct StenoDictionaryLookup { const StenoStroke *strokes;size_t length; };
 struct StenoDictionaryLookupResult { bool hit;bool IsValid()const{return hit;}const char *GetText()const{return "cat";}void Destroy(){} };
 struct StenoReverseDictionaryLookup { explicit StenoReverseDictionaryLookup(const char *){} struct {size_t GetCount()const{return 2;}}results; };
 struct StenoDictionary {
+ size_t GetMaximumOutlineLength()const{return 1;}
  StenoDictionaryLookupResult Lookup(const StenoDictionaryLookup &q)const;
  void ReverseLookup(StenoReverseDictionaryLookup &)const;
 };
@@ -58,7 +59,7 @@ struct StenoEngine::Allocation { StenoEngine value; };
 StenoEngine::Allocation StenoEngine::container;
 struct StrokeListParser {
  std::vector<StenoStroke> list;const char *failureOrEnd="";
- bool Parse(const char *s){if(!strcmp(s,"KAT")){list.push_back({1});return true;}return false;}
+ bool Parse(const char *s){if(!strcmp(s,"KAT")){list.push_back({1});return true;}if(!strcmp(s,"KAT/KAT")){list.push_back({1});list.push_back({1});return true;}return false;}
  size_t GetCount(){return list.size();}const StenoStroke *GetData(){return list.data();}
 };
 '''
@@ -88,6 +89,8 @@ int main(){
  assert(output.find("\"xip_word_loads\":7")!=std::string::npos); // Count one untimed pass only.
  assert(output.find("\"fingerprint\":108289031")!=std::string::npos);
  assert(!(dwt.CTRL&1) && !(debug.DEMCR&1) && !squid_bench_count_reads);
+ command("dictionary_benchmark lookup lapwing KAT/KAT");
+ assert(output.find("\"hits\":0")!=std::string::npos && output.find("\"xip_word_loads\":0")!=std::string::npos);
  command("dictionary_benchmark lookup nope KAT");assert(output.find("ERR")!=std::string::npos);
  command("dictionary_benchmark lookup lapwing BAD");assert(output.find("ERR")!=std::string::npos);
  command("dictionary_benchmark reverse lapwing cat");assert(output.find("\"hits\":2")!=std::string::npos);

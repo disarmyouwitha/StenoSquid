@@ -47,6 +47,25 @@ def cases(source, count, seed):
     return chosen
 
 
+
+def missing_outline(source, seed):
+    """A real one-stroke hash miss, not an out-of-range-length shortcut."""
+    present={parse_outline(outline) for outline in source}
+    rng=random.Random(seed)
+    left=((2,'S'),(4,'T'),(8,'K'),(16,'P'),(32,'W'),(64,'H'),(128,'R'))
+    middle=((256,'A'),(512,'O'),(1024,'*'),(2048,'E'),(4096,'U'))
+    right=((8192,'F'),(16384,'R'),(32768,'P'),(65536,'B'),(131072,'L'),(262144,'G'),(524288,'T'),(1048576,'S'),(2097152,'D'),(4194304,'Z'))
+    for _ in range(1024):
+        mask=rng.randrange(1,1<<23)
+        a=''.join(c for bit,c in left if mask&bit)
+        b=''.join(c for bit,c in middle if mask&bit)
+        c=''.join(c for bit,c in right if mask&bit)
+        outline=('#' if mask&1 else '')+a+b+('-' if c and not b else '')+c
+        key=parse_outline(outline)
+        assert key==(mask,)
+        if key not in present:return outline
+    raise RuntimeError('Could not select an absent one-stroke outline')
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--serial',help='USB serial number, not a serial port')
@@ -107,9 +126,7 @@ def main():
                     source=json.loads(raw.decode('utf-8'))
                     chosen=cases(source,args.samples_per_length,report['seed']+index)
                     # A generated absent outline tests misses without assuming a familiar chord is absent.
-                    missing='S/T/K/P/W/H/R/A/O/*/E/U/-F/-R/-P/-B'
-                    while parse_outline(missing) in {parse_outline(s) for s in source}:missing+='/-G'
-                    if len(parse_outline(missing))>16:raise RuntimeError('Could not select a bounded miss')
+                    missing=missing_outline(source,report['seed']+index)
                     for outline,expected in [*chosen,(missing,None)]:
                         result=command(f'lookup {target} {outline}')
                         samples=result['samples_cycles']

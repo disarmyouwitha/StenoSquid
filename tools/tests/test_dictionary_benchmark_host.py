@@ -23,6 +23,9 @@ def main():
     x=footprint.estimate_log([{'KAT':'cat'},{'KAT':'dog'}])
     assert x['entries']==2 and x['packed_record_bytes']==40
     assert x['index_allocated_bytes']==2*65536
+    for seed in range(32):
+        miss=runner.missing_outline({'KAT':'cat'},seed)
+        assert len(runner.parse_outline(miss))==1 and miss!='KAT'
     assert runner.fnv('cat')==108289031
     assert runner.percentile([4,1,3,2],0.95)==4
     assert runner.summarize([64,128],64000000)['max_us']==2

@@ -36,7 +36,12 @@ void timer_stop() {
     if (owned_dwt) DWT->CTRL = DWT->CTRL & ~DWT_CTRL_CYCCNTENA_Msk;
     if (owned_trace) CoreDebug->DEMCR = CoreDebug->DEMCR & ~CoreDebug_DEMCR_TRCENA_Msk;
 }
-uint32_t cycles() { return DWT->CYCCNT; }
+uint32_t cycles() {
+    __asm__ volatile("" ::: "memory");
+    const uint32_t value=DWT->CYCCNT;
+    __asm__ volatile("" ::: "memory");
+    return value;
+}
 StenoDictionary *target(const char *name) {
     if (!strcmp(name,"lapwing")) return lapwing_dictionary();
     if (!strcmp(name,"plover")) return plover_dictionary();
@@ -143,6 +148,9 @@ void steno_squid_dictionary_benchmark(void *, const char *line) {
             dictionary->ReverseLookup(query);
             return unsigned(query.results.GetCount());
         }
+        // Compact dictionaries rely on their caller to bound outline length.
+        // Match DictionaryList's dispatch contract before direct target lookup.
+        if (parser.GetCount()>dictionary->GetMaximumOutlineLength()) return 0u;
         auto result=dictionary->Lookup(StenoDictionaryLookup(parser.GetData(),parser.GetCount()));
         unsigned found=result.IsValid();
         if (found && hash_result) for (const unsigned char *p=reinterpret_cast<const unsigned char *>(result.GetText());*p;p++) fingerprint=(fingerprint^*p)*16777619u;
