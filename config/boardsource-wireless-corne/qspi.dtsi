@@ -3,7 +3,7 @@
 
 / {
 	zephyr,user {
-		flash-power-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
+		flash-power-gpios = <&gpio0 31 GPIO_ACTIVE_LOW>;
 	};
 };
 

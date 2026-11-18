@@ -17,7 +17,15 @@ Number the connector by the vendor pinout and verify pin 1 on each physical boar
 | 7 | P0.19 | CLK | CS, active high |
 | 8 | P0.05 | IO2 | |
 
-The [left QSPI overlay](qspi.dtsi) disables SPI2, uses high drive in both directions, pulls IO2 and IO3 high in the active state, and sets all six pins to low-power inputs with pulls disabled for sleep. The existing QSPI driver owns P0.31, powers up the flash before enabling its signal pins, and removes flash power during deep sleep. The right uses the vendor's SPI2 pinctrl and the standard ZMK external-power driver on P0.31. The pinned vendor devicetree declares SPI2 but has no P0.31 power driver. Both overlays assume **active-high** rail enable pending measurement.
+The [left QSPI overlay](qspi.dtsi) disables SPI2, uses high drive in both directions, pulls IO2 and IO3 high in the active state, and sets all six pins to low-power inputs with pulls disabled for sleep. The existing QSPI driver owns P0.31, powers up the flash before enabling its signal pins, and removes flash power during deep sleep. The right uses the vendor's SPI2 pinctrl and the standard ZMK external-power driver on P0.31. The pinned vendor devicetree declares SPI2 but has no P0.31 power driver. Both overlays use **active-low** rail enable.
+
+On 2026-11-17–18, the left header measured 3.32 V on USB with P0.31 LOW and
+approximately 0 V with it HIGH. The owner also measured approximately 3.3 V on
+battery and approximately 3.3 V on USB with the flash breakout attached. USB and
+battery/Bluetooth flash idle-off and immediate Javelin wake passed functionally.
+The right display works with the same polarity setting, although its header was
+not measured independently. Precise discharge timing and transient/load margin
+remain unqualified. [Verified bringup record](../../docs/boardsource-bringup.md)
 
 The owner locked the Steno Squid pin map on 2026-11-11. Clock uses Nordic’s recommended P0.19 QSPI/SCK pin. IO0 and IO1 use P0.21 and P0.23, which Nordic marks for QSPI. IO2 remains on P0.05, IO3 moves to P0.12, and CS# stays on P0.07. Both active and sleep pinctrl states use this map. Begin hardware tests at the configured 2 MHz. [Nordic nRF52840 pin assignments](https://docs.nordicsemi.com/bundle/ps_nrf52840/page/pin.html)
 
@@ -88,21 +96,32 @@ build_probe Boardsource-Quad-Probe -DQUAD_PROBE=ON
 | `Boardsource-Quad-Probe/zephyr/zephyr.uf2` | Follow-up left probe. Compares single-line and quad reads, using a volatile QE update when required. |
 | `Boardsource-Right-Default/zephyr/zmk.uf2` | Right split peripheral with nice!view. |
 | `Boardsource-Left-Default/zephyr/zmk.uf2` | Everyday left central, including browser HID over USB and Bluetooth. |
-| `boardsource-provision/zephyr/zmk.uf2` | Same left target with USB logging and the serial base-dictionary uploader interface. |
+| `Boardsource-Left-Diagnostic/zephyr/zmk.uf2` | Left application with USB logging and diagnostic commands; dictionary provisioning uses USB HID. |
 
 The factory application partition is `0x1000–0xD3FFF`. The settings partition starts at `0xD4000` and the UF2 bootloader starts at `0xF4000`. The vendor board keeps USB HID on the central and uses ADC channel 2 for its battery divider. This port shares the split keymap and settings in [nicenano-wireless-corne](../nicenano-wireless-corne), so ZMK Studio is on and starts unlocked, and battery test logging is left out. The everyday left build adds Studio over USB with the `studio-rpc-usb-uart` snippet; every left build has Studio over Bluetooth.
 
 ## Test on the new pair
 
 1. **Establish recovery.** Save the matching [factory left and right UF2s](https://github.com/boardsource/wireless-corne_zmk_config), confirm stock typing and split pairing, and check that double-tap RESET mounts each integrated board's bootloader over USB. Record each `INFO_UF2.TXT` and flash one identified half at a time.
-2. **Measure the empty header.** Confirm orientation, ground, and VCC with the accessories disconnected. Load the first left probe. Open its USB CDC serial port at 115200 with DTR asserted, which starts the probe and asserts P0.31. Verify the enabled rail is suitable for 3.3 V flash and logic. Check rail rise and behavior on USB and battery, then repeat under load. Verify the nice!view rail and connector orientation separately. Once the Steno Squid is fitted with R1, the left diagnostic build can measure the same rail for you: run `stenosquid.py <port> --diag rail` on USB and again on battery, and `--diag bench` to power-cycle the flash ten times through the wake path (see the [diagnostics notes](../nicenano-wireless-corne/README.md)).
+2. **Measure the empty header.** Confirm orientation, ground, and VCC with the accessories disconnected. Load the first left probe. Open its USB CDC serial port at 115200 with DTR asserted, which starts the probe and drives P0.31 LOW to enable the rail. Verify the enabled rail is suitable for 3.3 V flash and logic. Check rail rise and behavior on USB and battery, then repeat under load. Verify the nice!view rail and connector orientation separately. Once the Steno Squid is fitted with R1, the left diagnostic build can measure the same rail for you: run `stenosquid.py <port> --diag rail` on USB and again on battery, and `--diag bench` to power-cycle the flash ten times through the wake path (see the [diagnostics notes](../nicenano-wireless-corne/README.md)).
 3. **Read the flash ID and sample.** With power off, attach the flash to the left header. Reboot, open the probe's serial port, and expect `JEDEC ID: EF 40 18` followed by a 16-byte `FASTREAD` at address zero. Compare against known bytes when available. An erased chip normally reads all `FF`. The first probe issues neither write-enable nor program/erase commands.
 4. **Check quad reads.** Use the separate quad probe only after the rail and JEDEC checks. It compares standard SPI and quad reads over the first 64 KiB. Use a spare, independently preloaded reference chip with data exercising both bit states on all four lanes and look for a pass with lane mask `0xf`. An all-`FF` comparison is inconclusive. This build may temporarily set and restore the flash's volatile Quad Enable bit. It leaves the flash array alone.
-5. **Test mapped reads and the split.** A reference flash with both expected bases lets you test Javelin before any provisioning through the keyboard. Flash the matching right UF2 and the provisioning left UF2. Use [stenosquid.py](../../stenosquid.py) with the serial port and `--status` for a read-only status query and look for `MAPPED`. Confirm ordinary typing on both halves, onboard `KAT` → “cat” with host Plover closed, raw Plover HID strokes, and nice!view mode and Practice updates. If you have only a blank flash, complete the electrical checks first and return to dictionary-dependent checks after initial provisioning.
-6. **Test wireless and sleep.** Pair **Steno Squid** and unplug USB. Test ordinary typing, Plover HID, onboard Javelin, and Javelin Steno Tools **Connect via HID**. Let both halves reach deep sleep. Check that the left rail turns off, wake each half with one of its own keys, and check display and split reconnection, flash verification, and onboard output. Use the left provisioning console command `W` to distinguish `CHECK_QUICK` from `CHECK_FULL`. Check right display rail behavior and battery readings independently.
-7. **Provision and test persistence.** Once the power and read checks pass, use the [existing dual-base provisioning procedure](../nicenano-wireless-corne/README.md#flash-regions-and-initial-plover-provisioning) with the Boardsource provisioning UF2 and its serial device. Send the Lapwing image to `--base lapwing`, the [Lapwing extras](../nicenano-wireless-corne/README.md#lapwing-extras) image to `--base extras`, and the Plover image to `--base plover`. Check for `MAPPED` after both bases verify. Switch bases in the browser, save a temporary personal edit, reboot, verify persistence, and remove the test entry. Switch to the everyday left UF2 and repeat the HID and wake checks.
+5. **Test mapped reads and the split.** A reference flash with both expected bases lets you test Javelin before any provisioning through the keyboard. Flash the matching right and everyday left UF2s. Use [stenosquid.py](../../stenosquid.py) over USB HID with `--status` for a read-only status query and look for `MAPPED`. Confirm ordinary typing on both halves, onboard `KAT` → “cat” with host Plover closed, raw Plover HID strokes, and nice!view mode and Practice updates. If you have only a blank flash, complete the electrical checks first and return to dictionary-dependent checks after initial provisioning.
+6. **Test wireless and sleep.** Pair **Steno Squid** and unplug USB. Test ordinary typing, Plover HID, onboard Javelin, and Javelin Steno Tools **Connect via HID**. Let both halves reach deep sleep. Check that the left rail turns off, wake each half with one of its own keys, and check display and split reconnection, flash verification, and onboard output. On a diagnostic build, use `stenosquid.py <port> --diag status` after USB reconnection to inspect the last check path. Check right display rail behavior and battery readings independently.
+7. **Provision and test persistence.** Once power and patterned read checks pass,
+   flash the everyday Boardsource left UF2 and run `python3 stenosquid.py --install`
+   over USB HID. It installs the matching Lapwing, extras and Plover images.
+   Use `--verify` for a separate full CRC check and `--status` to confirm `MAPPED`.
+   Switch bases in the browser, save a temporary personal edit, reboot, verify
+   persistence, and remove the test entry. Repeat the HID and wake checks.
 
-Compilation and generated pin/partition checks cover the firmware configuration. On-device boot and recovery, rail polarity and voltage, connector fit, all flash reads and writes, battery calibration, Bluetooth, nice!view behavior, and sleep/wake on the Boardsource pair still need physical verification.
+The wired 16 MB breakout passed recovery, rail polarity, patterned quad reads,
+program/erase, USB HID dictionary installation with full CRC verification, both-half
+typing, nice!view updates, reboot output, and flash idle/wake on USB and
+battery/Bluetooth at 2 MHz. Full keyboard deep sleep, personal-entry persistence,
+precise discharge timing, current/transient margin, battery calibration, final
+populated-board fit and RF performance still need verification. See the
+[bringup record](../../docs/boardsource-bringup.md) for evidence and limits.
 
 ## Steno Squid LED
 
@@ -121,7 +140,6 @@ Use the Boardsource artifacts from one successful workflow run:
    run `python3 stenosquid.py --install` to provision the dictionaries. Use
    `Boardsource-Left-No-Display` when using the right build without nice!view.
 
-These firmware builds still need physical verification on the Boardsource
-pair, starting with recovery, accessory rail voltage/polarity, and read-only
-flash diagnostics. The nice!nano prototype's successful tests do not establish
-that the new board's rail, battery, USB bootloader, or sleep behavior matches.
+The corrected everyday pair and wired Adafruit breakout passed the functional
+checks recorded above. Higher QSPI speeds and the populated daughterboard need
+separate tests; the 32/64 MB variants are not qualified by these 16 MB results.

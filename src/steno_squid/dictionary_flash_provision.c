@@ -236,8 +236,11 @@ void lf_provision_command(const char *command, char *reply, size_t reply_size) {
         verify_base(command + 7, reply, reply_size);
         return;
     }
-    /* An explicitly requested repair may have to recheck an idle mapping. */
-    if (strncmp(command, "repair ", 7) != 0 || !dictionary_flash_acquire()) {
+    /* Every command counts as use and wakes an idle flash. A blank chip can
+     * wake successfully without a mapping; acquire then returns false, so
+     * take the lock and let handle_command check raw provisioning readiness.
+     */
+    if (!dictionary_flash_acquire()) {
         k_mutex_lock(&flash_lock, K_FOREVER);
     }
     const char *result = handle_command(command, reply, reply_size);
