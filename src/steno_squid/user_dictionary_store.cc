@@ -1,5 +1,6 @@
 #include "user_dictionary_store.h"
 #include "dictionary_benchmark.h"
+#include "storage_probe.h"
 #include "engine_work.h"
 #include "engine_stream.h"
 #include "console.h"
