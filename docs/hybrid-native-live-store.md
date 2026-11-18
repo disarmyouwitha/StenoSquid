@@ -1,6 +1,6 @@
 # Candidate B: native live-edit recovery and snapshots
 
-Status: **implemented and host-tested; extended hardware probe ready to build**.
+Status: **implemented; full CI and sanitizer gates passed; hardware probe ready to flash**.
 Development branch: `prototype/native-live-store`. Preserved hardware checkpoint:
 `checkpoint/native-catalog-reboot` (`5af818f`). Neither branch changes the everyday
 engine's production format-3 dictionary store. No migrations are introduced.
@@ -75,6 +75,27 @@ flash and 233,070 bytes linked RAM**. The live state object is 1,728 bytes; a re
 snapshot is 1,376 bytes; the catalog object is 392 bytes. Keep snapshots off the
 small HID stack. These are static/compiler measurements, not runtime peaks.
 The probe is diagnostic-only; this does not add those objects to Left-Default.
+
+## CI checkpoint and prepared artifacts
+
+[Actions run 44350590802](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44350590802)
+passed all 12 firmware/probe variants, the full host suite and Linux ASan/UBSan at
+`0b16d77`. [Machine-readable results and checksums](prototypes/hybrid-native-live-store.json)
+record the exact artifacts. The left CI image links 537,652 flash bytes and
+233,070 RAM bytes; the local compiler figure above differs by 8 flash bytes.
+
+Downloaded locally:
+
+- `build/native-live-ci-left/zmk.uf2`: Boardsource Left-Diagnostic, SHA-256
+  `7e60621f19e4b237bc4886a976c14bfff8a52c63feadb0af8222f0fc97059773`.
+- `build/native-live-ci-right/zmk.uf2`: Boardsource Right-Default, SHA-256
+  `6734baad5ae72e828a2cd472b7225caa79a4d9f8382a5907baae1bcf6b473598`.
+
+UF2 block headers, target addresses and nRF52840 family were checked. Neither
+artifact was flashed during this milestone: NICENANO was not mounted. The right
+image is byte-identical to the installed checkpoint's right firmware; **only the
+left needs flashing** for the extended probe. These local build files are ignored
+by git; the Actions run holds the downloadable artifacts.
 
 ## Hardware test prepared for the next flash
 

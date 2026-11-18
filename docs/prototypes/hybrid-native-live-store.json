@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "milestone": "Candidate B native live-edit recovery and pinned snapshots",
+  "branch": "prototype/native-live-store",
+  "checkpoint_branch": "checkpoint/native-catalog-reboot",
+  "source_commit": "0b16d773f2ac663807c9d9ab006463d550616725",
+  "ci": {
+    "run": 44350590802,
+    "url": "https://github.com/disarmyouwitha/StenoSquid/actions/runs/44350590802",
+    "conclusion": "success",
+    "firmware_and_probe_builds": 12,
+    "host_tests": "passed",
+    "asan_ubsan": "passed"
+  },
+  "host_tests": {
+    "seed": 20261118,
+    "mixed_edits": 700,
+    "oracle_lookups": 22400,
+    "torn_appends": 16,
+    "torn_checkpoints": 220,
+    "torn_journal_rollovers": 152,
+    "full_tail_missing_lookup_read_bytes": 14336
+  },
+  "artifacts": [
+    {
+      "ci_run": 44350590802,
+      "commit": "0b16d773f2ac663807c9d9ab006463d550616725",
+      "artifact": "Boardsource-Left-Diagnostic",
+      "sha256": "7e60621f19e4b237bc4886a976c14bfff8a52c63feadb0af8222f0fc97059773",
+      "bytes": 1075712,
+      "linked_flash_bytes": 537652,
+      "linked_ram_bytes": 233070,
+      "uf2_family": "0xada52840",
+      "uf2_blocks": 2101,
+      "address_start": "0x1000",
+      "address_end_exclusive": "0x84500",
+      "flashed": false
+    },
+    {
+      "ci_run": 44350590802,
+      "commit": "0b16d773f2ac663807c9d9ab006463d550616725",
+      "artifact": "Boardsource-Right-Default",
+      "sha256": "6734baad5ae72e828a2cd472b7225caa79a4d9f8382a5907baae1bcf6b473598",
+      "bytes": 885760,
+      "linked_flash_bytes": 442748,
+      "linked_ram_bytes": 88928,
+      "uf2_family": "0xada52840",
+      "uf2_blocks": 1730,
+      "address_start": "0x1000",
+      "address_end_exclusive": "0x6d200",
+      "flashed": false
+    }
+  ],
+  "hardware": {
+    "extended_probe": "not run",
+    "flashed": false,
+    "reason": "No NICENANO volume mounted; previous checkpoint remains installed"
+  },
+  "limits": [
+    "Development core; production engine remains on existing format 3",
+    "Ownership staging orchestration is host fixture, not a firmware coordinator",
+    "No runtime typing latency or physical power-cut acceptance claim",
+    "Post-validation key corruption can require scrub/reopen to detect false misses"
+  ]
+}
