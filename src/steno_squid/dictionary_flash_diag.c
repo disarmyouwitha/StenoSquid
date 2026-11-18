@@ -107,17 +107,23 @@ static void rail_test(void) {
     squid_flash_diag_printf(lf_console, "RAIL sense reads %d with enable low, %d with enable high", (int)low_reads,
                 (int)high_reads);
 
-    if (high_reads && !low_reads) {
-        /* The rail is up now. Switch it off and time the fall, then back on for the rise. */
-        gpio_pin_set_raw(lf_power.port, lf_power.pin, 0);
+    if (high_reads != low_reads) {
+        const int on_level = high_reads ? 1 : 0;
+        const int configured_on_level = (lf_power.dt_flags & GPIO_ACTIVE_LOW) ? 0 : 1;
+        squid_flash_diag_printf(lf_console, "RAIL %s enables the rail; firmware polarity %s",
+                               on_level ? "HIGH" : "LOW",
+                               on_level == configured_on_level ? "matches" : "MISMATCH: fix flash-power-gpios");
+        /* Start with the rail on, then time its fall and rise for either polarity. */
+        gpio_pin_set_raw(lf_power.port, lf_power.pin, on_level);
+        k_msleep(1000);
+        gpio_pin_set_raw(lf_power.port, lf_power.pin, !on_level);
         const int32_t fall = wait_for_sense(false, 3000);
         int32_t rise = -1;
         if (fall >= 0) {
             k_msleep(300);
-            gpio_pin_set_raw(lf_power.port, lf_power.pin, 1);
+            gpio_pin_set_raw(lf_power.port, lf_power.pin, on_level);
             rise = wait_for_sense(true, 300);
         }
-        squid_flash_diag_printf(lf_console, "RAIL high enables the rail, as the firmware assumes");
         if (rise >= 0) {
             squid_flash_diag_printf(lf_console, "RAIL rise: the pin read high after %d us", rise);
         }
@@ -128,9 +134,6 @@ static void rail_test(void) {
             squid_flash_diag_printf(lf_console, "RAIL fall: the pin was still high 3 s after switch-off, so "
                                  "the rail barely discharges. Fit R2");
         }
-    } else if (low_reads && !high_reads) {
-        squid_flash_diag_printf(lf_console, "RAIL LOW enables the rail. The firmware drives it the wrong way: "
-                             "change GPIO_ACTIVE_HIGH in src/steno_squid/qspi.overlay");
     } else if (!low_reads && !high_reads) {
         squid_flash_diag_printf(lf_console, "RAIL no rail seen at either level. Check that the 10 k from CS to "
                              "VCC is fitted, the chip is wired, and the configured GPIO is the rail enable");

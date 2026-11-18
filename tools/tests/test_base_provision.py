@@ -42,7 +42,8 @@ static struct { uint32_t GPREGRET2; } power;
 static bool lf_provisioning_ready = true, lf_provisioning_recheck, lf_suspended;
 static bool lf_mapped_ready, lf_checked = true, lf_trusted;
 static bool trust_can_clear = true;
-static int flash_lock, writes, erases, restarts;
+static int flash_lock, writes, erases, restarts, acquires;
+static bool idle_off;
 static int64_t now;
 
 static inline int64_t k_uptime_get(void) { return now; }
@@ -60,6 +61,8 @@ static inline bool atomic_clear(bool *value) {
 }
 static inline void atomic_set(bool *value, bool next) { *value = next; }
 static inline bool dictionary_flash_acquire(void) {
+    acquires++;
+    if (idle_off) { idle_off = false; lf_suspended = false; }
     if (!lf_mapped_ready) return false;
     k_mutex_lock(&flash_lock, K_FOREVER);
     return true;
@@ -143,9 +146,13 @@ int main(void) {
     expect("status\n","2 INSTALL");expect("verify LAPWING\n","MISMATCH ");
     expect("begin PERSONAL\n","ERR");
     trust_can_clear=false;expect("begin LAPWING\n","ERR Could not clear");assert(!writes && !erases);
+    // Blank flash must wake for first installation, even without a mapping.
+    idle_off=true;lf_suspended=true;
     trust_can_clear=true;expect("begin LAPWING\n","OK 0");
+    assert(!idle_off && !lf_suspended);
     expect("data 4294967296 AQIDBAUGBwg=\n","ERR");assert(!writes);
-    expect("begin LAPWING\n","OK 0");expect(first,"OK 8");assert(writes==2);
+    expect("begin LAPWING\n","OK 0");
+    int before=acquires;expect(first,"OK 8");assert(writes==2 && acquires==before+1);
     expect(first,"OK 8");assert(writes==2); // Lost ACK: no duplicate write or CRC update.
     expect("begin LAPWING\n","OK 8"); // Resume the active transfer.
     now+=TRANSFER_TIMEOUT_MS;expect(last,"ERR No active transfer");
@@ -169,7 +176,7 @@ int main(void) {
     assert(!memcmp(nor,lapwing,sizeof(lapwing)) && !memcmp(nor+16,plover,sizeof(plover)));
     lf_provisioning_recheck=false;lf_mapped_ready=false;lf_images[0].verified=false;
     expect("begin LAPWING\n","OK 0");expect("data 0 !!!!!!!!\n","ERR Invalid chunk");
-    puts("PASS: single-pass base64 provisioning, duplicate ACK/restart, bounds, CRC, repair and healthy-base protection");
+    puts("PASS: base64 provisioning, blank-chip idle wake, per-chunk activity, duplicate ACK/restart, bounds, CRC and repair protection");
 }
 '''
 
