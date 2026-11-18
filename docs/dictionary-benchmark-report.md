@@ -1,7 +1,8 @@
 # Dictionary storage Phase-0 measurements
 
 Status: **host footprints and first read-only hardware baseline measured; Phase 0 remains open**.
-No architecture has been selected and no new on-flash format is implemented.
+Candidate A failed the tightened footprint gate; Candidate B is the development
+direction. No new on-flash format is implemented.
 See [the commands and measurement limits](../tools/bench/README.md).
 
 ## Reproducible host results
@@ -111,10 +112,16 @@ backup and trace outlines remain under ignored `build/dictionary-phase0/`.
 
 ## Decision record
 
-**Pending.** First run the existing-layout baseline on the nRF52840, then decide
-how much Candidate A prototyping remains justified by its footprint. Candidate C
-still requires explicitly relaxing the pooled-capacity goal. No migration reader,
-compatibility shim or automatic destructive reprovisioning is part of this work.
+**Retire current-log-derived A and continue B.** The host-only serialized model
+verified every forward entry and dictionary-qualified reverse key. Its allocation
+matches the earlier estimate. Even a deliberately favorable record-only bound
+exceeds the spec's 2 MiB overhead rejection threshold, independently of index,
+reserve, ID and staging assumptions.
+
+See [the decision, lower bounds and remaining B gates](dictionary-storage-decision.md)
+and [machine-readable evidence](benchmarks/candidate-a-footprint.json). B is a
+selected development direction, not a validated production format. Its allocator,
+overlays, relocation, power-failure and hardware gates remain open.
 
 
 ## First hardware smoke test

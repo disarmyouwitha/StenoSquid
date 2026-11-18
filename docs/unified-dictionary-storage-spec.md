@@ -1,6 +1,6 @@
 # StenoSquid Unified Dictionary Storage and Benchmark Specification
 
-**Status:** Design proposal, not implemented  
+**Status:** Candidate A rejected on footprint; develop Candidate B, implementation pending\
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
 
@@ -19,8 +19,10 @@ clean reprovisioning during development, not a permanent firmware feature.
 Unknown nonblank storage must still be refused rather than automatically erased.
 
 The proposed manager is StenoSquid-owned. Its features must not depend on changes
-to the externally hosted Javelin Tools website. No A/B/C architecture is selected
-by merging these design notes; Candidate C would relax the shared-pool goal.
+to the externally hosted Javelin Tools website. The subsequent [Phase-0 footprint decision](dictionary-storage-decision.md)
+rejects current-log-derived Candidate A and selects B for further development.
+B still requires design and hardware validation. Candidate C would relax the
+shared-pool goal.
 
 ## 1. Goal
 
@@ -74,7 +76,7 @@ Collect median, p95, p99, maximum, total flash reads, CPU time, heap/stack/RAM, 
 - **Prefer A (all log)** if the same dictionary corpus costs no more than about **1 MiB extra on the 16 MiB model**, fits with a healthy GC/update reserve, and shows no perceptible typing penalty. Proposed performance gate: no dropped/reordered strokes at 200 WPM or burst load; p99 end-to-end dictionary-path latency no more than 25% above existing compiled-base baseline, with a review of any reproducible lookup stalls over 10 ms. Evaluate *absolute* latencies too. These are engineering targets, not pre-existing measurements.
 - **Discuss a tradeoff** if A costs 1–2 MiB more or shows modest but non-disruptive latency differences. Include data per dictionary and priority stack.
 - **Prefer B (hybrid)** if A costs substantially over 2 MiB extra, materially harms latency, or cannot maintain safe GC/update headroom. B must still permit visible edits to compact dictionaries through overlays.
-- **No selection until** footprint, realistic lookup, near-full churn, and 16 MiB capacity results have been published. Do not infer 200,000-entry capacity from a 190,000-entry stress target alone.
+- **Selection gate:** a candidate may be rejected early when a conservative footprint bound already fails its target. Choosing the surviving design for production still requires footprint, realistic lookup, near-full churn, and 16 MiB capacity results. Do not infer 200,000-entry capacity from a 190,000-entry stress target alone.
 
 Deliverable: `docs/dictionary-benchmark-report.md` plus machine-readable artifacts, reproducible commands, raw metrics and a signed-off decision record.
 

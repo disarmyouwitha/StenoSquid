@@ -22,6 +22,20 @@ Measurement `.bin` files are compiled at one comparison address to measure
 space. They are not firmware installation files. Keep using `stenosquid.py`
 for ordinary setup and provisioning.
 
+### Tightened Candidate A gate
+
+```sh
+python3 tools/bench/candidate_a_footprint.py
+```
+
+Reads the hash-verified source files and compact report from the first command.
+Builds and validates three host-only shared-log byte images and writes
+`build/dictionary-phase0/candidate-a/report.json`. Index probes, exact record and
+index allocations, lower bounds and staging assumptions are reported separately.
+The `.bin` files are never uploadable keyboard images. This experiment does not
+implement catalog recovery or GC; it evaluates space before investing in them.
+See [the resulting decision](../../docs/dictionary-storage-decision.md).
+
 ## 2. Read-only hardware baseline
 
 Flash this branch's **Left-Diagnostic** image and a matching **Right-Default**
