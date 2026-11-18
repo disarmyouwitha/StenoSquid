@@ -1,6 +1,6 @@
 # StenoSquid cleanup and engineering spec
 
-Status: **implemented on the stacked `cleanup/*` branches; hardware acceptance pending.**
+Status: **implemented on the stacked `cleanup/*` branches; CI and initial nice!nano hardware checks passed; extended acceptance pending.**
 The personal-dictionary redesign is complete and its separate spec was retired.
 P7, P8 and X1 are superseded. No migration code was added. The owner explicitly
 approved resetting Practice XP/stats for P17's smaller block-based saves.
@@ -10,7 +10,10 @@ Current verification and intentional exceptions:
 
 - Phases 0–4 and the test foundation passed every CI firmware/probe build and native test.
 - The final code passes local left/right/diagnostic builds, native power-loss/storage
-  tests, protocol tests and the real LVGL renderer. Later CI results are tracked per branch.
+  tests, protocol tests and the real LVGL renderer. The final CI matrix is green.
+- Both nice!nano halves are flashed. Typing, Javelin, all Practice drills and
+  XP persistence after reboot passed on hardware; extended checks remain listed
+  in cleanup-acceptance.md.
 - P12 retains full heartbeat snapshots: without a return acknowledgement path, a
   hash-only heartbeat cannot repair a lost text frame. Unchanged snapshots no
   longer redraw the screen; ordinary Practice updates carry state without text.

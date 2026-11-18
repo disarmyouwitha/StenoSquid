@@ -27,7 +27,25 @@ largest first-party frame is 464 bytes (personal export), and Practice block
 scratch is static. Individual frame sizes do not prove a whole call-chain peak;
 confirm normal operation and diagnostics on hardware before merging.
 
-## Hardware checks before merging
+## Hardware results — 2026-11-17
+
+Both nice!nano halves were flashed with the exact GitHub Actions default UF2s
+from commit `996c2aaf46f1c2c2f65fc667802fe88e8c043d4d`.
+[All 12 firmware/probe builds and native tests passed](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44113869749).
+
+- The user confirmed ordinary typing, onboard Javelin and all Practice drills.
+- After resetting the left half, finishing another round continued the saved
+  level/XP rather than starting over. The new block-based saves persist on hardware.
+- USB HID returned all three mapped base images, KAT → cat, the existing
+  checkbox selections and three intact personal entries with zero integrity errors.
+
+Deep sleep/idle wake, Bluetooth browser editing, large-transfer responsiveness,
+blank provisioning/repair and diagnostic hardware checks remain unverified on
+this cleanup build. Boardsource electrical/timing checks await the PCB. The
+complete acceptance checklist follows; this report does not mark those checks
+as passed.
+
+## Full hardware checklist
 
 1. Cold boot, enter Javelin and type KAT. Repeat after at least 30 seconds on Qwerty.
 2. Confirm normal typing from both halves, Plover output, display layers, hints,
