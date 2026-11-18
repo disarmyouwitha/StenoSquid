@@ -104,7 +104,8 @@ The native journal is not a complete store. Still required:
    hold times, RAM/stack and actual lookup performance, before routing translation
    or editor writes through the new store.
 
-No reflashing is useful for this isolated core yet. A diagnostic adapter should
-first exercise explicitly owned test data without erasing working dictionaries.
+The [first diagnostic adapter](hybrid-hardware-probe.md) now exercises this core
+against the reserved QSPI scratch sector; two runs passed on Boardsource hardware.
+It does not route the translation engine through the new store or publish catalogs.
 Firmware/installer replacement requires a fresh verified personal backup and
 deliberate provisioning after the remaining gates pass.

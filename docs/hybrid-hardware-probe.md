@@ -1,6 +1,7 @@
 # Candidate B: first native-core QSPI diagnostic
 
-Status: diagnostic implementation, hardware results pending. It is compiled only
+Status: **two hardware runs passed on Boardsource left**, manual typing/display
+smoke test pending. It is compiled only
 with `CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK` in Left-Diagnostic. Left-Default and
 the engine's current dictionary storage remain unchanged. No migration reader or
 automatic new-store provisioning is introduced.
@@ -55,10 +56,37 @@ page, DMA alignment and NOR programming doubles. It covers refusal before writes
 successful core/XIP/reverse operations, cleanup, program failure and safe refusal
 on a subsequent run. CI still runs native recovery/fault tests separately.
 
-The Boardsource local diagnostic compile used 521,124 bytes of internal flash and
-224,926 bytes of RAM before the final reverse-check addition. Use CI's final
-artifact size for the installed revision. This includes unrelated diagnostics
+The installed Boardsource CI diagnostic uses **521,432 bytes** of internal flash
+and **224,926 bytes** of RAM (85.80% of 256 KiB). This includes unrelated diagnostics
 and battery logging, not just the new core. It is not a Left-Default size increase.
+
+## Hardware results — 2026-11-18
+
+The exact `Boardsource-Left-Diagnostic` UF2 from
+[CI run 44324302402](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44324302402)
+at `4661404` was flashed onto the identified Boardsource left. The UF2 SHA-256 is
+`d1b99cef3384d8c59ea49aab3f75841fa5db0e7906cf581d454ba3253f8876be`.
+The board reported Winbond `EF 40 18` and 2 MHz QSPI.
+
+Both runs passed all five records, sequence recovery, sealed-tail detection,
+ordered XIP lookup, UTF-8/maximum-length text comparison, reverse seek/page and
+full scratch cleanup. Total command durations were **149 ms** and **148 ms**,
+including both scratch erases. The runner verified unchanged KAT lookup and
+personal export before/after each run. Separate full readback CRC checks passed
+for Lapwing `00f2d636`, Plover `3e8f8d88` and extras `98af1ecc`. Personal storage
+reported zero integrity errors. HID stack inspection after the test reported
+2,660 bytes unused at its observed watermark; this is not a worst-case guarantee.
+
+Forward lookup batches contained 32 samples each, with **92–214 µs** observed
+over both runs. This probe uses `k_cycle_get_32()` at **32,768 Hz**, converted by
+`k_cyc_to_us_ceil32`: resolution is approximately **30.5 µs**, much coarser than
+the separate Phase-0 DWT timer described by `dictionary_benchmark meta`.
+These are tiny three-entry index results, not large-overlay latency or meaningful
+production p99 evidence. Use DWT for the subsequent performance diagnostic.
+
+The [sanitized report](benchmarks/candidate-b-native-scratch.json) retains both
+raw sample batches, artifact provenance, preservation checks and timing limits.
+Personal backups, unique device serials and local flash manifest remain ignored.
 
 This is a five-record/three-index-entry probe. It does not establish large-store
 latency, the proposed capacity, native catalog publication, full engine adapters,

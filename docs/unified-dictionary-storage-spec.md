@@ -1,6 +1,6 @@
 # StenoSquid Unified Dictionary Storage and Benchmark Specification
 
-**Status:** Candidate B host prototype tested; bounded native core development started, no firmware integration\
+**Status:** Candidate B host prototype tested; first native-core diagnostic passed on hardware; full engine/storage integration pending\
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
 
@@ -172,7 +172,8 @@ The separate StenoSquid Manager should use the existing HID transport where supp
 Current evidence: [Phase-0 measurements](dictionary-benchmark-report.md),
 [A/B decision](dictionary-storage-decision.md),
 [indexed host prototype](hybrid-index-publication.md), and
-[bounded native core](hybrid-native-core.md). The host models and isolated native
+[bounded native core](hybrid-native-core.md), with
+[first diagnostic QSPI hardware results](hybrid-hardware-probe.md). The host models and isolated native
 helpers do not complete the hardware/performance acceptance gates. P1 design
 freeze and P2 large/near-full capacity work remain open while P3 native core
 development starts; no production storage format has changed.
