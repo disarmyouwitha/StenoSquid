@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "model_sha256": "3a1101615728ead5a7863a2a95f1569c5574c1aa861fbe004b40fb4b86e690cc",
+  "passed": true,
+  "sources": [
+    {
+      "file": "lapwing-base.json",
+      "sha256": "2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484",
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-base.json"
+    },
+    {
+      "file": "plover-main.json",
+      "sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+      "url": "https://raw.githubusercontent.com/openstenoproject/plover/8a52c5296c502507f9a46820a4a947ca25f998e6/plover/assets/main.json"
+    },
+    {
+      "file": "lapwing-commands.json",
+      "sha256": "6160e19084c77381f66aeda72473d807bcf3ea7f0c6303a37189ca60bf59ff3d",
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-commands.json"
+    },
+    {
+      "file": "lapwing-numbers.json",
+      "sha256": "d104b9d6f8ea7935bdf3129d69bcdc4100e2b55fa717b41be2307043a4bd4b73",
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-numbers.json"
+    },
+    {
+      "file": "lapwing-uk-additions.json",
+      "sha256": "e6d3190d0417c9912b34ebf9a3d02be08935d5c1c1b46bb47f0b580ed21717d3",
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-uk-additions.json"
+    },
+    {
+      "file": "lapwing-proper-nouns.json",
+      "sha256": "aef0205fa4bc6bcb1bc11c199b0c01737ada5ffa7a0f0a56d48154d024ce66e8",
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-proper-nouns.json"
+    }
+  ],
+  "entries": 291403,
+  "physical_bytes": 16711680,
+  "active_segments": 77,
+  "retained_and_active_segments": 78,
+  "maximum_observed_occupied_segments": 105,
+  "active_bytes": 5046272,
+  "available_bytes_excluding_retained_and_three_reserve": 11403264,
+  "programmed_bytes": 6485724,
+  "erase_sector_steps": 1888,
+  "elapsed_host_seconds": 119.63651011500042,
+  "checks": [
+    "All six pinned images compiled at actual allocated XIP addresses",
+    "All dictionary exports compared byte-for-byte after canonicalizing outline spelling",
+    "Per-dictionary override and tombstone priority",
+    "Full Lapwing replacement with a pinned old reader and preserved overlay",
+    "Catalog and extents reopened after replacement"
+  ],
+  "limits": [
+    "Host-only heap-rich reference; no firmware RAM/latency claim",
+    "No fragmentation defragmenter or live-segment GC",
+    "Overlay snapshots are intentionally not a production write strategy",
+    "Fault injection uses small fixtures separately, not every operation of these full images"
+  ]
+}

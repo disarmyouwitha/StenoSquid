@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "model_sha256": "3a1101615728ead5a7863a2a95f1569c5574c1aa861fbe004b40fb4b86e690cc",
+  "operations": 10000,
+  "seed": 20261117,
+  "physical_bytes": 16711680,
+  "final_generation": 10274,
+  "maximum_occupied_segments": 7,
+  "retained_catalog_generations": 2,
+  "final_occupied_segments": 7,
+  "programmed_bytes": 11752040,
+  "sector_erase_steps": 324416,
+  "elapsed_host_seconds": 11.308977996988688,
+  "passed": true,
+  "limits": [
+    "Tiny dictionaries; not full pinned corpus or capacity proof",
+    "Copy-on-write overlay snapshots rewrite the whole small overlay per edit",
+    "The high erase/program count is expected reference-model overhead, not a production strategy",
+    "Unreferenced extents are erased lazily on reuse; no live-segment GC or automatic defragmenter"
+  ]
+}

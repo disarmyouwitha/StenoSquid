@@ -71,6 +71,30 @@ Small-fixture fault injection covers add, edit, tombstone, image update, relocat
 reorder and deletion. It tests four torn-prefix lengths at every modeled operation;
 this is not exhaustive testing of every byte value or every possible full image.
 
+## Results for this reference revision
+
+- **928** torn-operation cut points passed across seven operation types. Recovery
+  exposed exactly the old or new committed state, and repeated reboots wrote
+  nothing. [Fault-test summary](prototypes/hybrid-fault-tests.json).
+- **10,000** deterministic edits/clears/tombstones, with periodic priority changes
+  and reboots, passed an independent expected-lookup model. This tiny-corpus run
+  programmed **11,752,040 bytes** and executed **324,416 modeled 4 KiB erase
+  steps**. That deliberately high write amplification rules out shipping the
+  snapshot strategy unchanged. [Churn report](prototypes/hybrid-churn.json).
+- The full **291,403-entry** pinned corpus was compiled into six separately
+  allocated/rebased compact images, exported from those actual bytes and checked
+  against canonicalized source outlines and UTF-8 translations. A full Lapwing
+  replacement retained its local overlay and the old reader's extent. Reopening
+  the catalog preserved the result. [Pinned-corpus report](prototypes/hybrid-pinned.json).
+- The final pinned experiment had **77 active segments** (5,046,272 bytes,
+  including catalog and one overlay snapshot), with up to **105 observed occupied
+  segments** while retaining generations/readers during the experiment. These
+  are host-model observations, not a guarantee about arbitrary fragmentation or
+  future overlay/index overhead. Largest-Plover staging and near-full full-corpus
+  workloads remain additional tests.
+
+All reports include the model source hash. No hardware state was touched.
+
 ## Deliberate limits before production design freeze
 
 1. **Overlay writes are whole snapshots.** This makes the reference easy to

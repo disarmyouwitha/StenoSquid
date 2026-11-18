@@ -1,0 +1,21 @@
+{
+  "model_sha256": "3a1101615728ead5a7863a2a95f1569c5574c1aa861fbe004b40fb4b86e690cc",
+  "passed": true,
+  "cut_points_by_operation": {
+    "add": 156,
+    "edit": 152,
+    "tombstone": 152,
+    "update": 152,
+    "relocate": 152,
+    "reorder": 84,
+    "delete": 80
+  },
+  "total": 928,
+  "torn_prefix_bytes": [
+    0,
+    1,
+    127,
+    4095
+  ],
+  "scope": "Small fixtures, every modeled program/4KiB erase step; not every possible data value or all full-corpus operations"
+}
