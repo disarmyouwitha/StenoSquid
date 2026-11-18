@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "milestone": "Candidate B native checkpoint and journal rollover coordinators",
+  "branch": "prototype/native-checkpoint-job",
+  "checkpoint_branch": "checkpoint/native-live-recovery",
+  "source_commit": "4f1a4b61c0634df9f3ae8556ceb0aed73cd7b88b",
+  "ci": {
+    "run": 44379237087,
+    "url": "https://github.com/disarmyouwitha/StenoSquid/actions/runs/44379237087",
+    "conclusion": "success",
+    "firmware_and_probe_builds": 12,
+    "host_tests": "passed",
+    "asan_ubsan": "passed"
+  },
+  "tests": {
+    "checkpoint_first_steps": 54,
+    "rollover_with_31_records_steps": 43,
+    "cancel_prepublication_points": 26,
+    "cancel_postcommit_refusals": 8,
+    "torn_checkpoint_cases": 220,
+    "torn_rollover_cases": 152,
+    "large_store_records": 20000,
+    "large_store_steps": 160101,
+    "catalog_capacity_refusal": "before erase/program",
+    "metadata_multistroke_and_utf8": "passed",
+    "uncertain_catalog_commit_reopen": "passed"
+  },
+  "arm_workspace_bytes": {
+    "checkpoint_job": 5056,
+    "rollover_job": 1832
+  },
+  "artifacts": [
+    {
+      "ci_run": 44379237087,
+      "commit": "4f1a4b61c0634df9f3ae8556ceb0aed73cd7b88b",
+      "artifact": "Boardsource-Left-Diagnostic",
+      "sha256": "d5a9dbca2fb0a4a3ba78d20838914dde3967146abd0050b7564bb6eb4205fbef",
+      "bytes": 1099776,
+      "linked_flash_bytes": 549656,
+      "linked_ram_bytes": 239958,
+      "uf2_family": "0xada52840",
+      "uf2_blocks": 2148,
+      "address_start": "0x1000",
+      "address_end_exclusive": "0x87400",
+      "flashed": false
+    },
+    {
+      "ci_run": 44379237087,
+      "commit": "4f1a4b61c0634df9f3ae8556ceb0aed73cd7b88b",
+      "artifact": "Boardsource-Right-Default",
+      "sha256": "6734baad5ae72e828a2cd472b7225caa79a4d9f8382a5907baae1bcf6b473598",
+      "bytes": 885760,
+      "linked_flash_bytes": 442748,
+      "linked_ram_bytes": 88928,
+      "uf2_family": "0xada52840",
+      "uf2_blocks": 1730,
+      "address_start": "0x1000",
+      "address_end_exclusive": "0x6d200",
+      "flashed": false
+    }
+  ],
+  "default_firmware_comparison": {
+    "previous_ci": 44350590802,
+    "boardsource_left_default_byte_identical": true,
+    "boardsource_left_default_sha256": "b214115e5cbbf5eafe9c9fdaa4426feab3fdff8bfb63753d156b562167a3154a",
+    "boardsource_right_default_byte_identical": true
+  },
+  "hardware": {
+    "extended_probe": "not run",
+    "flashed": false,
+    "reason": "No NICENANO volume mounted; owner will test later",
+    "region": "0xFF4000..0xFFFFFF",
+    "physical_sectors": 12,
+    "physical_sector_bytes": 4096
+  },
+  "limits": [
+    "Production engine remains on existing format 3",
+    "Core jobs require an exclusive maintenance lease across the whole transaction",
+    "Catalog publication is synchronous; typing-contention gate remains open",
+    "Journal cleaning/reclamation and overlong-tail rebuilding are not implemented",
+    "Physical power cuts and large-store device tests remain pending"
+  ]
+}

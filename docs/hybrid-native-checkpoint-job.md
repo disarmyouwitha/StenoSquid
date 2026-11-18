@@ -1,6 +1,6 @@
 # Candidate B: firmware checkpoint transaction job
 
-Status: **native implementation and targeted host tests pass; hardware validation pending**.
+Status: **native implementation, all firmware builds and sanitizer gates pass; hardware validation pending**.
 Branch: `prototype/native-checkpoint-job`. Preserved checkpoint:
 `checkpoint/native-live-recovery` at `7f5907c`. Everyday firmware still uses the
 existing production dictionary store. This is development code, not a format
@@ -111,6 +111,31 @@ bytes**, and rollover is **1,832 bytes**, of static ARM workspace (host ABI: 5,1
 and 1,848). They must not be allocated on the HID stack.
 The diagnostic carries both the old production store and experimental components.
 Default firmware does not allocate this job. Runtime peaks remain unmeasured.
+
+## Verified CI checkpoint
+
+[Actions run 44379237087](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44379237087)
+passed all 12 firmware/probe variants, full native/display regressions, and Linux
+ASan/UBSan at source `4f1a4b6`. Local UBSan also passes. The
+[machine-readable report](prototypes/hybrid-native-checkpoint-job.json) records
+checksums, workspaces, test counts and outstanding gates.
+
+The final Boardsource Left-Diagnostic CI image links **549,656 flash bytes and
+239,958 RAM bytes** (91.54% linked RAM). That includes the production engine,
+logging and all experimental workspaces; runtime stack peaks remain pending.
+The normal Boardsource Left-Default and Right-Default UF2s are **byte-identical**
+to the previous live-recovery milestone, verified against run 44350590802.
+
+Downloaded, UF2-family/address-checked artifacts:
+
+- `build/native-jobs-ci-left/zmk.uf2`: Left-Diagnostic, SHA-256
+  `d5a9dbca2fb0a4a3ba78d20838914dde3967146abd0050b7564bb6eb4205fbef`.
+- `build/native-jobs-ci-right/zmk.uf2`: Right-Default, SHA-256
+  `6734baad5ae72e828a2cd472b7225caa79a4d9f8382a5907baae1bcf6b473598`.
+
+**Not flashed:** NICENANO was not mounted. Only the left needs updating for this
+probe; the right artifact matches the installed right firmware. The local files
+are ignored by git; CI retains the downloadable artifacts. Main is unchanged.
 
 ## Prepared hardware sequence
 

@@ -1,6 +1,6 @@
 # StenoSquid Unified Dictionary Storage and Benchmark Specification
 
-**Status:** P3 native checkpoint transaction coordinator implemented and host-tested; integrated ARM probe compiles; new hardware test and full engine/store integration pending\
+**Status:** P3 native checkpoint and journal-rollover coordinators pass all firmware/host/sanitizer CI gates; new hardware test and full engine/store integration pending\
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
 
