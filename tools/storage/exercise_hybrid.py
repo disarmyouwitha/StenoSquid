@@ -10,10 +10,16 @@ import time
 from hybrid import FakeNor, Hybrid, SEGMENT
 
 
-def exercise(operations=10000, segments=255):
+def exercise(operations=10000, segments=255, journal=False):
     rng = random.Random(20261117)
     nor = FakeNor(segments)
-    db = Hybrid.provision(nor)
+    if journal:
+        from journal import JournalHybrid
+
+        backend = JournalHybrid
+    else:
+        backend = Hybrid
+    db = backend.provision(nor)
     base = {"KAT": "cat", "TKOG": "dog", "HE/HROE": "hello"}
     a = db.add("Base A", base)
     b = db.add("Base B", {"KAT": "kitty", "TKOG": "hound"})
@@ -47,8 +53,10 @@ def exercise(operations=10000, segments=255):
         if i % 37 == 0:
             order = list(reversed(order))
             db.reorder(order)
+        if journal and (i + 1) % 256 == 0:
+            db.compact()
         if i % 101 == 0:
-            db = Hybrid(nor)
+            db = backend(nor)
         max_occupied = max(max_occupied, len(db.occupied()))
         for word in words:
             expected = None
@@ -62,13 +70,19 @@ def exercise(operations=10000, segments=255):
                     expected = (target, text)
                     break
             assert db.lookup(word) == expected
-    restarted = Hybrid(nor)
+    restarted = backend(nor)
     assert restarted.state == db.state
     return dict(
         schema=1,
         model_sha256=hashlib.sha256(
             Path(__file__).with_name("hybrid.py").read_bytes()
         ).hexdigest(),
+        journal=journal,
+        journal_sha256=hashlib.sha256(
+            Path(__file__).with_name("journal.py").read_bytes()
+        ).hexdigest()
+        if journal
+        else None,
         operations=operations,
         seed=20261117,
         physical_bytes=segments * SEGMENT,
@@ -82,8 +96,10 @@ def exercise(operations=10000, segments=255):
         passed=True,
         limits=[
             "Tiny dictionaries; not full pinned corpus or capacity proof",
-            "Copy-on-write overlay snapshots rewrite the whole small overlay per edit",
-            "The high erase/program count is expected reference-model overhead, not a production strategy",
+            "Journal compacts every 256 input edits"
+            if journal
+            else "Copy-on-write overlay snapshots rewrite the whole small overlay per edit",
+            "Catalog still erases one slot on metadata change; no production wear claim",
             "Unreferenced extents are erased lazily on reuse; no live-segment GC or automatic defragmenter",
         ],
     )
@@ -94,12 +110,13 @@ def main():
     parser.add_argument("--operations", type=int, default=10000)
     parser.add_argument("--segments", type=int, default=255)
     parser.add_argument("--output", type=Path, default=Path("build/hybrid/churn.json"))
+    parser.add_argument("--journal", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.operations <= 100000:
         parser.error("operations must be 1..100000")
     if not 10 <= args.segments <= 255:
         parser.error("segments must be 10..255")
-    report = exercise(args.operations, args.segments)
+    report = exercise(args.operations, args.segments, args.journal)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

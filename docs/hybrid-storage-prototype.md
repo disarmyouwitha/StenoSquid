@@ -123,3 +123,8 @@ All reports include the model source hash. No hardware state was touched.
 
 Candidate B remains the development direction. This reference establishes testable
 semantics and recovery invariants; it does not freeze a production flash format.
+
+
+The next [shared append-journal reference](hybrid-overlay-journal.md) implements
+record-level commits and staged live-overlay compaction without per-edit snapshot
+rewrites. It remains host-only and does not replace this correctness oracle.
