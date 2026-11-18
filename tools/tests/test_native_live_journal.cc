@@ -138,4 +138,45 @@ void bounded_lookup_and_invalidation() {
     assert(fixture.live.Release(snapshot));
     std::cout<<"Live journal: full-tail miss reads "<<miss_bytes<<" bytes; zero-read pins, matched-payload corruption and trust invalidation passed\n";
 }
-int main(){basic_and_snapshots();churn();bounds_and_rollover();recovery_failures();bounded_lookup_and_invalidation();}
+void maintenance_power_cuts() {
+    LiveFixture source;
+    assert(source.Edit(1,1,"old")==LiveResult::Ok);
+    assert(source.Edit(2,2,"remove me")==LiveResult::Ok);
+    assert(source.Checkpoint()==CatalogResult::Ok);
+    assert(source.Edit(1,1,"committed latest")==LiveResult::Ok);
+    assert(source.Edit(2,2,"",1)==LiveResult::Ok);
+    assert(source.Edit(1,3,"third")==LiveResult::Ok);
+    const auto baseline=source.nor;
+    unsigned tested[2]{};
+    for(unsigned rollover=0;rollover<2;++rollover) {
+        LiveFixture dry;dry.nor=baseline;dry.Recover();dry.nor.operations=0;
+        if(rollover)assert(dry.Rollover());else assert(dry.Checkpoint(false)==CatalogResult::Ok);
+        const auto operations=dry.nor.operations;
+        for(unsigned point=1;point<=operations;++point)for(unsigned tear:{0u,1u,127u,4095u}) {
+            Nor interrupted;
+            {
+                LiveFixture running;running.nor=baseline;running.Recover();
+                running.nor.operations=0;running.nor.cut=point;running.nor.tear=tear;
+                try {
+                    if(rollover)running.Rollover();else running.Checkpoint(false);
+                    assert(false);
+                }catch(const Cut &){}
+                interrupted=running.nor;
+            }
+            interrupted.cut=0;
+            // Fresh native objects: no warm pin, tail, catalog trust or topology.
+            LiveFixture boot;boot.nor=interrupted;const auto bytes=boot.nor.data;
+            boot.Recover();assert(boot.nor.data==bytes);
+            assert(boot.Text(1,1)=="committed latest" && boot.Text(2,2)=="<absent>" && boot.Text(1,3)=="third");
+            if(boot.selection.quarantine) {
+                assert(boot.Edit(1,1,"blocked")==LiveResult::ReadOnly && boot.nor.data==bytes);
+            } else {
+                assert(boot.Edit(1,4,"after reboot")==LiveResult::Ok);
+                boot.Recover();assert(boot.Text(1,4)=="after reboot");
+            }
+            ++tested[rollover];
+        }
+    }
+    std::cout<<"Live journal: "<<tested[0]<<" integrated torn checkpoints and "<<tested[1]<<" torn journal rollovers preserve committed edits after cold reconstruction\n";
+}
+int main(){basic_and_snapshots();churn();bounds_and_rollover();recovery_failures();bounded_lookup_and_invalidation();maintenance_power_cuts();}

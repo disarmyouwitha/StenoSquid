@@ -117,6 +117,19 @@ struct LiveFixture {
     void Recover() {
         const auto status=catalog.OpenValidated(selection,[&](const CatalogRoot &root){return ValidateRoot(root);});
         assert(status==CatalogResult::Ok || status==CatalogResult::Quarantined);
+        // Rebuild orchestration metadata from persistent bytes too. Never retain
+        // a staged journal/index topology across a simulated reboot.
+        journals.clear();forward=forward_bytes=reverse=reverse_bytes=0;
+        uint8_t prefix[32];assert(device.Read(selection.root.address,prefix,32));
+        const uint32_t dictionaries=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
+        const uint32_t extents=uint16_t(prefix[6]) | uint16_t(prefix[7])<<8;
+        for(uint32_t i=0;i<extents;++i) {
+            uint8_t row[24];assert(device.Read(selection.root.address+32+dictionaries*96+i*24,row,24));
+            const uint32_t start=uint16_t(row[0]) | uint16_t(row[1])<<8,kind=Word(row+12);
+            if(kind==2)journals.emplace_back(start,uint64_t(Word(row+16)) | uint64_t(Word(row+20))<<32);
+            if(kind==3){forward=start;forward_bytes=Word(row+4);}
+            if(kind==4){reverse=start;reverse_bytes=Word(row+4);}
+        }
         assert(live.Begin(selection)==LiveResult::More);
         for(unsigned i=0;i<10000;++i){auto step=live.RecoverStep();if(step==LiveResult::Ready)return;assert(step==LiveResult::More);}
         assert(false);

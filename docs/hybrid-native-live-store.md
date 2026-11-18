@@ -60,6 +60,9 @@ sanitizer gate explicitly includes it as well.
   incremental recovery and checkpoint replacement.
 - Snapshot isolation across append/publication; pinned catalog reuse returns Busy;
   released/cancelled tokens cannot authorize reads.
+- 220 integrated torn-checkpoint cases and 152 torn journal-rollover cases,
+  rebuilding fresh native objects and orchestration metadata from persistent bytes.
+  Every committed edit survives; quarantined recovery remains read-only.
 - 16 torn append cases, a committed write with failed readback, sealed-tail
   rollover, maximum-length translations, full-tail and near-full safe refusal.
 - Recovery refuses an overlong 257-record tail. Matched payload corruption stops
