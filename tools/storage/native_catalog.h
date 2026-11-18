@@ -57,6 +57,8 @@ public:
     // but cannot authorize reads or writes until a validated reopen.
     void Invalidate(){trusted[0]={};trusted[1]={};write_blocked=true;}
 
+    uint32_t PayloadCapacity()const{return Bounds()?capacity-32:0;}
+
     bool IsTrusted(const CatalogRoot &root)const {
         for(const auto &known:trusted)
             if(root.generation && root.generation==known.generation && root.address==known.address &&

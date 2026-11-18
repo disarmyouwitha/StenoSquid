@@ -152,7 +152,7 @@ public:
                 else if(kind!=3 && kind!=4)return Stop(JobResult::Corrupt);
                 ++inspected;return JobResult::More;
             }
-            if(kept>251 || frozen.forward_count>kMaxEntries-frozen.tail.count ||
+            if(kept>251 || 32u+dictionaries*96u+(kept+2u)*24u>catalog.PayloadCapacity() || frozen.forward_count>kMaxEntries-frozen.tail.count ||
                old_reverse_count>kMaxEntries-frozen.tail.count)return Stop(JobResult::NoSpace);
             ops.ReverseInput(old_reverse_address,old_reverse_count);phase=Phase::Plan;return JobResult::More;
         }

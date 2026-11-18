@@ -1,4 +1,5 @@
 #include "native_checkpoint_job.h"
+#include "native_rollover_job.h"
 #include "native_live_fixture.h"
 #include <iostream>
 using Job=NativeCheckpointJob<LiveDevice>;
@@ -219,4 +220,36 @@ void multisegment_indexes() {
     assert(fixture.Text(1,20000)=="word20000" && fixture.Text(1,20001)=="new");
     std::cout<<"Native checkpoint job: "<<count<<" records, multi-segment output indexes and semantic coverage verified in "<<steps<<" bounded steps\n";
 }
-int main(){basic();cancellation_and_refusal();power_cuts();metadata_and_multistroke();failures();multisegment_indexes();}
+void catalog_capacity_preflight() {
+    struct SmallDevice : LiveDevice {
+        bool EraseCatalog(uint32_t at,uint32_t bytes){assert(bytes==4096);return nor.EraseBytes(at,bytes);}
+    };
+    Nor nor;nor.data.resize(16*65536,255);SmallDevice device{{nor}};
+    NativeCatalog<SmallDevice> catalog(device,0,65536,4096);
+    NativeJournal<SmallDevice> journal(device);LiveJournal<SmallDevice> live(device,catalog);
+    std::vector<uint8_t> data(4064,0);PutWord(data.data(),41);data[4]=40;data[6]=8;
+    for(unsigned i=0;i<40;++i) {
+        auto *row=data.data()+32+i*96;PutWord(row,i+1);PutWord(row+4,1);
+        row[8]=row[9]=255;row[12]=4;std::memcpy(row+16,"Test",4);
+    }
+    for(unsigned i=0;i<8;++i) {
+        assert(journal.Initialize(2+i,1+i)==JournalResult::Ok);
+        auto *row=data.data()+32+40*96+i*24;row[0]=2+i;row[2]=1;
+        PutWord(row+4,65536);PutWord(row+12,2);PutWord(row+16,1+i);
+    }
+    auto check=[&](uint32_t,const uint8_t *row){return journal.Open(row[0],Word(row+16))==JournalResult::Ok;};
+    CatalogSelection empty,selection;
+    assert(catalog.Publish(empty,data.size(),Source{data},check,selection)==CatalogResult::Ok);
+    assert(catalog.PayloadCapacity()==4064 && live.Begin(selection)==LiveResult::More);
+    LiveResult recovered;do{recovered=live.RecoverStep();}while(recovered==LiveResult::More);assert(recovered==LiveResult::Ready);
+    uint32_t key=1;assert(live.Append(1,0,&key,1,nullptr,0)==LiveResult::Ok);
+    const auto bytes=nor.data;
+    NativeRolloverJob<SmallDevice> rollover(device,catalog,live);
+    assert(rollover.Begin(selection)==JobResult::NoSpace && nor.data==bytes && live.Ready());
+    NativeCheckpointJob<SmallDevice> checkpoint(device,catalog,live);
+    assert(checkpoint.Begin(selection)==JobResult::More);JobResult result;
+    do{result=checkpoint.Step(check);}while(result==JobResult::More);
+    assert(result==JobResult::NoSpace && nor.data==bytes && live.Ready());
+    std::cout<<"Native maintenance jobs: catalog metadata capacity refuses before any erase or program passed\n";
+}
+int main(){basic();cancellation_and_refusal();power_cuts();metadata_and_multistroke();failures();multisegment_indexes();catalog_capacity_preflight();}

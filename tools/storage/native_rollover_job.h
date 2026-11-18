@@ -66,7 +66,7 @@ public:
         dictionaries=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
         extents=uint16_t(prefix[6]) | uint16_t(prefix[7])<<8;
         if(dictionaries>64 || extents>253 || root.bytes!=32+dictionaries*96+extents*24)return Stop(JobResult::Corrupt);
-        if(extents==253)return Stop(JobResult::NoSpace);
+        if(extents==253 || root.bytes+24>catalog.PayloadCapacity())return Stop(JobResult::NoSpace);
         phase=Phase::Inspect;return JobResult::More;
     }
     JobResult Cancel() {

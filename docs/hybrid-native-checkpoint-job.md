@@ -26,7 +26,7 @@ The job:
    extents and records the old forward/reverse indexes.
 2. Collects both catalogs and reader ownership, reserves worst-case capacity for
    **both** replacement indexes, and maintains the three-segment free reserve.
-   Insufficient space refuses before erase.
+   Insufficient index or catalog-metadata space refuses before erase.
 3. Erases one output segment per step, then streams the native merge through
    page-buffered, readback-verified sinks.
 4. Validates output ordering, full record CRCs, active identities and latest-record
@@ -91,6 +91,8 @@ and independent map/metadata checks:
 - A committed catalog followed by failed readback: reopen recovers
   it, and the stale writer cannot retry.
 - Staged index damage refuses publication and preserves the original catalogs.
+- A full 4 KiB catalog refuses both maintenance operations before any erase or
+  program, even when free data segments remain.
 - 16-stroke outlines, UTF-8 and empty text, source hashes, reordered base
   descriptors, and all-reset output with no index extents.
 - **20,000 records**, indexes spanning two 64 KiB segments each, replacement,
