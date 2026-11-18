@@ -1,0 +1,7 @@
+compiled_base_address,name,entries,unique_texts,compiled_bytes,compiled_crc32,current_log_record_bytes,current_log_image_segments,current_log_image_bytes,contiguous_extent_bytes,source_sha256,source
+0x12000000,lapwing-base,114885,47402,1830444,00f2d636,3271112,80,5242880,1835008,2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484,build/dictionary-phase0/footprint/sources/lapwing-base.json
+0x12000000,Plover Base,147424,70353,2339620,8252d79d,4021024,100,6553600,2359296,6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92,build/dictionary-phase0/footprint/sources/plover-main.json
+0x12000000,Lapwing Commands,146,86,3524,8cea9531,4996,3,196608,65536,6160e19084c77381f66aeda72473d807bcf3ea7f0c6303a37189ca60bf59ff3d,build/dictionary-phase0/footprint/sources/lapwing-commands.json
+0x12000000,Lapwing Numbers,117,114,2652,3f861636,2672,3,196608,65536,d104b9d6f8ea7935bdf3129d69bcdc4100e2b55fa717b41be2307043a4bd4b73,build/dictionary-phase0/footprint/sources/lapwing-numbers.json
+0x12000000,Lapwing UK Additions,13043,1717,204280,bdb38df9,452908,11,720896,262144,e6d3190d0417c9912b34ebf9a3d02be08935d5c1c1b46bb47f0b580ed21717d3,build/dictionary-phase0/footprint/sources/lapwing-uk-additions.json
+0x12000000,Lapwing Proper Nouns,15788,8880,259528,4e264fe2,432144,11,720896,262144,aef0205fa4bc6bcb1bc11c199b0c01737ada5ffa7a0f0a56d48154d024ce66e8,build/dictionary-phase0/footprint/sources/lapwing-proper-nouns.json

@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "firmware_sha": "06e4cdb77682d126ce3f38d44022ba4ba9016efe",
+  "python": "3.13.7",
+  "compiler_source_sha256": "5cfd0956eb7514a094c24a474d174a978a9691b89b635049ec09f2c577549c05",
+  "javelin_manifest": "manifest:\n  remotes:\n    - name: zmkfirmware\n      url-base: https://github.com/zmkfirmware\n    - name: jthlim\n      url-base: https://github.com/jthlim\n    - name: disarmyouwitha\n      url-base: https://github.com/disarmyouwitha\n  projects:\n    - name: zmk\n      remote: zmkfirmware\n      revision: 4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85\n      import: app/west.yml\n    # Override ZMK's mutable Zephyr tag with the tested commit.\n    - name: zephyr\n      remote: zmkfirmware\n      revision: 10ba6d0cb38bc3d258775d27982f707599320085\n      import: true\n    # Fork of jthlim/javelin-steno at 2272667, plus the firmware's changes as\n    # commits (branch steno-squid).\n    - name: javelin-steno\n      remote: disarmyouwitha\n      revision: de5a629bb383581882dfd6a5b2b5b9b44b71dc9c\n      path: javelin-steno\n    # Fork of petercpark/zmk-hid-io-plover-hid at d895457, plus key names\n    # for ZMK Studio (branch studio-key-names).\n    - name: zmk-hid-io-plover-hid\n      remote: disarmyouwitha\n      revision: 73b112ccab30d2a9bf40609657daef35560575f1\n  self:\n    path: config\n",
+  "pins": {
+    "lapwing": "4ac5d53cf039a2b1f4c484456663c85e7df4e859",
+    "plover": "8a52c5296c502507f9a46820a4a947ca25f998e6"
+  },
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-base.json",
+      "sha256": "2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484",
+      "file": "lapwing-base.json"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openstenoproject/plover/8a52c5296c502507f9a46820a4a947ca25f998e6/plover/assets/main.json",
+      "sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+      "file": "plover-main.json"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-commands.json",
+      "sha256": "6160e19084c77381f66aeda72473d807bcf3ea7f0c6303a37189ca60bf59ff3d",
+      "file": "lapwing-commands.json"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-numbers.json",
+      "sha256": "d104b9d6f8ea7935bdf3129d69bcdc4100e2b55fa717b41be2307043a4bd4b73",
+      "file": "lapwing-numbers.json"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-uk-additions.json",
+      "sha256": "e6d3190d0417c9912b34ebf9a3d02be08935d5c1c1b46bb47f0b580ed21717d3",
+      "file": "lapwing-uk-additions.json"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-proper-nouns.json",
+      "sha256": "aef0205fa4bc6bcb1bc11c199b0c01737ada5ffa7a0f0a56d48154d024ce66e8",
+      "file": "lapwing-proper-nouns.json"
+    }
+  ],
+  "measurements": [
+    {
+      "compiled_base_address": "0x12000000",
+      "name": "lapwing-base",
+      "entries": 114885,
+      "unique_texts": 47402,
+      "compiled_bytes": 1830444,
+      "compiled_crc32": "00f2d636",
+      "current_log_record_bytes": 3271112,
+      "current_log_image_segments": 80,
+      "current_log_image_bytes": 5242880,
+      "contiguous_extent_bytes": 1835008,
+      "source_sha256": "2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484",
+      "source": "build/dictionary-phase0/footprint/sources/lapwing-base.json"
+    },
+    {
+      "compiled_base_address": "0x12000000",
+      "name": "Plover Base",
+      "entries": 147424,
+      "unique_texts": 70353,
+      "compiled_bytes": 2339620,
+      "compiled_crc32": "8252d79d",
+      "current_log_record_bytes": 4021024,
+      "current_log_image_segments": 100,
+      "current_log_image_bytes": 6553600,
+      "contiguous_extent_bytes": 2359296,
+      "source_sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+      "source": "build/dictionary-phase0/footprint/sources/plover-main.json"
+    },
+    {
+      "compiled_base_address": "0x12000000",
+      "name": "Lapwing Commands",
+      "entries": 146,
+      "unique_texts": 86,
+      "compiled_bytes": 3524,
+      "compiled_crc32": "8cea9531",
+      "current_log_record_bytes": 4996,
+      "current_log_image_segments": 3,
+      "current_log_image_bytes": 196608,
+      "contiguous_extent_bytes": 65536,
+      "source_sha256": "6160e19084c77381f66aeda72473d807bcf3ea7f0c6303a37189ca60bf59ff3d",
+      "source": "build/dictionary-phase0/footprint/sources/lapwing-commands.json"
+    },
+    {
+      "compiled_base_address": "0x12000000",
+      "name": "Lapwing Numbers",
+      "entries": 117,
+      "unique_texts": 114,
+      "compiled_bytes": 2652,
+      "compiled_crc32": "3f861636",
+      "current_log_record_bytes": 2672,
+      "current_log_image_segments": 3,
+      "current_log_image_bytes": 196608,
+      "contiguous_extent_bytes": 65536,
+      "source_sha256": "d104b9d6f8ea7935bdf3129d69bcdc4100e2b55fa717b41be2307043a4bd4b73",
+      "source": "build/dictionary-phase0/footprint/sources/lapwing-numbers.json"
+    },
+    {
+      "compiled_base_address": "0x12000000",
+      "name": "Lapwing UK Additions",
+      "entries": 13043,
+      "unique_texts": 1717,
+      "compiled_bytes": 204280,
+      "compiled_crc32": "bdb38df9",
+      "current_log_record_bytes": 452908,
+      "current_log_image_segments": 11,
+      "current_log_image_bytes": 720896,
+      "contiguous_extent_bytes": 262144,
+      "source_sha256": "e6d3190d0417c9912b34ebf9a3d02be08935d5c1c1b46bb47f0b580ed21717d3",
+      "source": "build/dictionary-phase0/footprint/sources/lapwing-uk-additions.json"
+    },
+    {
+      "compiled_base_address": "0x12000000",
+      "name": "Lapwing Proper Nouns",
+      "entries": 15788,
+      "unique_texts": 8880,
+      "compiled_bytes": 259528,
+      "compiled_crc32": "4e264fe2",
+      "current_log_record_bytes": 432144,
+      "current_log_image_segments": 11,
+      "current_log_image_bytes": 720896,
+      "contiguous_extent_bytes": 262144,
+      "source_sha256": "aef0205fa4bc6bcb1bc11c199b0c01737ada5ffa7a0f0a56d48154d024ce66e8",
+      "source": "build/dictionary-phase0/footprint/sources/lapwing-proper-nouns.json"
+    }
+  ],
+  "totals": {
+    "entries": 291403,
+    "cross_dictionary_duplicate_outlines": 35362,
+    "all_dictionary_compiled_bytes": 4178732,
+    "separate_compiled_bytes": 4640048,
+    "current_grouped_compiled_bytes": 4639876,
+    "extras_grouped_compiled_bytes": 469812,
+    "current_packed_record_bytes": 8184856
+  },
+  "candidate_a_estimates": {
+    "0.5": {
+      "entries": 291403,
+      "packed_record_bytes": 9350468,
+      "record_segments": 143,
+      "index_allocated_bytes": 4718592,
+      "catalog_allocated_bytes": 131072,
+      "gc_reserve_bytes": 196608,
+      "allocated_bytes": 14417920,
+      "free_bytes": 2293760,
+      "fits_16_mib": true,
+      "dictionary_id_bytes": 4,
+      "index_target_load": 0.5
+    },
+    "0.7": {
+      "entries": 291403,
+      "packed_record_bytes": 9350468,
+      "record_segments": 143,
+      "index_allocated_bytes": 3407872,
+      "catalog_allocated_bytes": 131072,
+      "gc_reserve_bytes": 196608,
+      "allocated_bytes": 13107200,
+      "free_bytes": 3604480,
+      "fits_16_mib": true,
+      "dictionary_id_bytes": 4,
+      "index_target_load": 0.7
+    },
+    "0.875": {
+      "entries": 291403,
+      "packed_record_bytes": 9350468,
+      "record_segments": 143,
+      "index_allocated_bytes": 2752512,
+      "catalog_allocated_bytes": 131072,
+      "gc_reserve_bytes": 196608,
+      "allocated_bytes": 12451840,
+      "free_bytes": 4259840,
+      "fits_16_mib": true,
+      "dictionary_id_bytes": 4,
+      "index_target_load": 0.875
+    }
+  },
+  "candidate_b_estimate": {
+    "extent_bytes": 4849664,
+    "catalog_bytes": 131072,
+    "gc_reserve_bytes": 196608,
+    "update_staging_bytes": 2359296,
+    "empty_overlay_bytes": 262144,
+    "note": "Analytical fresh allocator; fragmentation and overlay churn NOT measured"
+  },
+  "synthetic_growth_estimates": [
+    {
+      "entries": 50000,
+      "record_bytes_each": 32,
+      "allocated_bytes": 2883584,
+      "note": "Analytical uniform 32-byte records; not an imported image or churn measurement"
+    },
+    {
+      "entries": 100000,
+      "record_bytes_each": 32,
+      "allocated_bytes": 5242880,
+      "note": "Analytical uniform 32-byte records; not an imported image or churn measurement"
+    },
+    {
+      "entries": 190000,
+      "record_bytes_each": 32,
+      "allocated_bytes": 9568256,
+      "note": "Analytical uniform 32-byte records; not an imported image or churn measurement"
+    },
+    {
+      "entries": 200000,
+      "record_bytes_each": 32,
+      "allocated_bytes": 10027008,
+      "note": "Analytical uniform 32-byte records; not an imported image or churn measurement"
+    }
+  ],
+  "pending": [
+    "10k-edit allocator/GC churn",
+    "multi-dictionary log prototype",
+    "on-device candidate comparisons",
+    "hardware current measurements"
+  ],
+  "assumptions": [
+    "Candidate A adds 4 dictionary-ID bytes per record and two shared 4-byte indexes",
+    "Catalog: two 64 KiB generations; GC reserve: three segments",
+    "All measured images use 0x12000000 for footprint parity, not their production offsets; never install these measurement files",
+    "All-collection compact image is footprint-only, not an installed replacement"
+  ]
+}
