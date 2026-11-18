@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "metadata": {
+    "version": 1,
+    "firmware": "8ea690c",
+    "compiler": "12.2.0",
+    "timer": "DWT CYCCNT",
+    "timer_hz": 64000000,
+    "qspi_hz": 2000000,
+    "jedec": 15679512,
+    "capture_capacity": 128,
+    "hid_stack_free_bytes": 2660
+  },
+  "prepared": {
+    "probe": "native-checkpoint",
+    "command": "hold",
+    "passed": true,
+    "cleaned": false,
+    "generation": 2,
+    "steps": 59,
+    "elapsed_ms": 434
+  },
+  "after_prepare_metadata": {
+    "version": 1,
+    "firmware": "8ea690c",
+    "compiler": "12.2.0",
+    "timer": "DWT CYCCNT",
+    "timer_hz": 64000000,
+    "qspi_hz": 2000000,
+    "jedec": 15679512,
+    "capture_capacity": 128,
+    "hid_stack_free_bytes": 1604
+  },
+  "after_reboot_metadata": {
+    "version": 1,
+    "firmware": "8ea690c",
+    "compiler": "12.2.0",
+    "timer": "DWT CYCCNT",
+    "timer_hz": 64000000,
+    "qspi_hz": 2000000,
+    "jedec": 15679512,
+    "capture_capacity": 128,
+    "hid_stack_free_bytes": 3244
+  },
+  "recovered": {
+    "probe": "native-checkpoint",
+    "command": "check",
+    "passed": true,
+    "cleaned": false,
+    "generation": 2,
+    "steps": 0,
+    "elapsed_ms": 15
+  },
+  "cleanup": {
+    "probe": "native-checkpoint",
+    "command": "clean",
+    "passed": true,
+    "cleaned": true,
+    "generation": 2,
+    "steps": 0,
+    "elapsed_ms": 373
+  },
+  "repeated": {
+    "probe": "native-checkpoint",
+    "command": "run",
+    "passed": true,
+    "cleaned": true,
+    "generation": 2,
+    "steps": 59,
+    "elapsed_ms": 811
+  },
+  "final_metadata": {
+    "version": 1,
+    "firmware": "8ea690c",
+    "compiler": "12.2.0",
+    "timer": "DWT CYCCNT",
+    "timer_hz": 64000000,
+    "qspi_hz": 2000000,
+    "jedec": 15679512,
+    "capture_capacity": 128,
+    "hid_stack_free_bytes": 1708
+  },
+  "production_status": {
+    "version": 3,
+    "available": true,
+    "entries": 0,
+    "free_segments": 172,
+    "record_segments": 0,
+    "dead_bytes": 0,
+    "fwd_slots_used": 0,
+    "fwd_slots": 16380,
+    "rev_slots_used": 0,
+    "rev_slots": 16380,
+    "integrity_errors": 0,
+    "next_sequence": 4,
+    "max_strokes": 0,
+    "state": "ready",
+    "bulk_import": 2
+  },
+  "unchanged_lookup": true,
+  "unchanged_personal": true,
+  "handler_sha256": "6e5d020f18f9e67246bf081b7957e242a932f4ad006ff8a951f0528c84223c97",
+  "limits": [
+    "Isolated seven-sector native catalog/index integration, not engine format replacement",
+    "Normal software reboot, not power interruption during a write",
+    "Nine edits and two dictionaries; large-store capacity and maintenance performance unproven",
+    "Manual keyboard/display smoke tests deferred until owner returns"
+  ],
+  "date": "2026-11-18",
+  "ci_run": 44333531690,
+  "firmware_commit": "8ea690c4685c2a40f8b74972136e40fd2be4e650",
+  "board": "Boardsource Wireless Corne SMT pair; Winbond EF 40 18; 2 MHz QSPI",
+  "artifacts": {
+    "left": {
+      "artifact": "Boardsource-Left-Diagnostic",
+      "sha256": "4479bf50ff9deb84e7417213fac9191bb16c25e43d4f7f2880595f2b6d7dedd9",
+      "bytes": 1068032
+    },
+    "right": {
+      "artifact": "Boardsource-Right-Default",
+      "sha256": "6734baad5ae72e828a2cd472b7225caa79a4d9f8382a5907baae1bcf6b473598",
+      "bytes": 885760
+    }
+  },
+  "memory": {
+    "left_diagnostic": {
+      "internal_flash_bytes": 533928,
+      "static_ram_bytes": 229918
+    },
+    "right_default": {
+      "internal_flash_bytes": 442748,
+      "static_ram_bytes": 88928
+    }
+  },
+  "base_crc_verification": {
+    "lapwing": "00f2d636",
+    "plover": "3e8f8d88",
+    "extras": "98af1ecc",
+    "all_passed": true
+  },
+  "operation_timer": "k_uptime_get_32 milliseconds; metadata DWT describes separate benchmark only",
+  "ci_native_and_sanitizers_passed": true,
+  "manual_checks": "Deferred until owner returns; no hands-on typing/display acceptance yet for this revision"
+}

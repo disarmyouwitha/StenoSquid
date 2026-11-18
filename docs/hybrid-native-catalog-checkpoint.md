@@ -1,6 +1,6 @@
 # Candidate B: native catalog, checkpoint construction and dictionary bridge
 
-Status: **implemented native components, integrated diagnostic; hardware run pending**.
+Status: **native components implemented; publication/reboot/recovery hardware test passed**.
 This is P3 development on `prototype/hybrid-overlay-journal`, not a production
 format switch. No permanent migration readers, compatibility builds or changes to
 the default firmware's dictionary commands are introduced.
@@ -147,6 +147,48 @@ python3 tools/bench/run_checkpoint_probe.py --serial USB_SERIAL \
 The diagnostic intentionally holds the engine lock during synchronous I/O; do not
 type during it. It does not exercise the future background scheduler or typing
 under maintenance. Personal backups and unique serials remain local.
+
+## Boardsource hardware results — 2026-11-18
+
+The exact GitHub Actions artifacts from
+[run 44333531690](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44333531690)
+at `8ea690c` were flashed: `Boardsource-Left-Diagnostic` and
+`Boardsource-Right-Default`. All twelve firmware/probe builds, native tests and
+Linux ASan/UBSan checks passed. The diagnostic reported the expected build ID,
+Winbond `EF 40 18` and 2 MHz QSPI.
+
+The automated sequence passed:
+
+| Operation | Observed result |
+| --- | --- |
+| Prepare records, build initial and replacement tables, publish two roots | Passed; 59 builder steps; 434 ms |
+| Normal software reboot | Acknowledged; USB HID reconnected |
+| Recover from flash with warm state discarded | Generation 2 and expected Javelin adapter result; 15 ms |
+| Verify then clear all seven test sectors | Passed, all FF; 373 ms |
+| Repeat prepare/verify/cleanup | Passed; 59 steps; 811 ms |
+
+Elapsed times use millisecond uptime, not the separate DWT lookup benchmark.
+The observed HID stack free watermark was **1,604 bytes** after preparation,
+versus 2,660 before. After reboot/repeat it reported 1,708 bytes free. These are
+observed workload watermarks, not worst-case guarantees or heap measurements.
+
+The installed left diagnostic uses **533,928 bytes of internal flash** and
+**229,918 bytes of static RAM** (87.71% of 256 KiB). This includes Studio BLE,
+existing diagnostics/battery logging and both storage test harnesses; it is not
+the default firmware's memory cost. The right default uses 442,748 flash bytes
+and 88,928 RAM bytes. Default firmware does not compile these diagnostic helpers.
+
+KAT lookup and personal export matched before/after. Production storage remained
+format 3, ready, with zero integrity errors. Full base readback CRCs passed for
+Lapwing `00f2d636`, Plover `3e8f8d88` and extras `98af1ecc`. The right accepted its
+UF2 and returned from bootloader; hands-on split typing, display and Practice
+tests are deferred until the owner returns.
+
+The [hardware report](benchmarks/candidate-b-native-checkpoint.json) includes
+artifact hashes, phase results, stack observations and preservation checks. The
+[native test report](prototypes/hybrid-native-catalog-checkpoint.json) records
+fault counts, the large merge case and source hashes. Neither includes personal
+entries or unique USB serials.
 
 ## Remaining work
 

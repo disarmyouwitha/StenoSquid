@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "date": "2026-11-18",
+  "firmware_commit": "8ea690c4685c2a40f8b74972136e40fd2be4e650",
+  "ci_run": 44333531690,
+  "passed": true,
+  "native_torn_cases": {
+    "catalog_replacement_small": 76,
+    "catalog_replacement_64_dictionaries": 268,
+    "catalog_first_provisioning": 76,
+    "index_sink": 16,
+    "combined_staging_indexes_catalog": 212
+  },
+  "merge_oracle": {
+    "cases": 181,
+    "maximum_old_records": 200000,
+    "maximum_tail_edits": 256,
+    "seed": 43,
+    "total_steps": 2104876
+  },
+  "reader_pins": 4,
+  "source_sha256": {
+    "tools/storage/native_catalog.h": "045ea71a1b8aeeeaad0f7a1e9ddc34cf6d21dfa75c0341c3f2f4ecc10a2885d9",
+    "tools/storage/native_checkpoint.h": "43a8f6db3c24e14844754b6e6f7384fc4a70e89a77adf8543979995fb7179031",
+    "tools/storage/native_index_sink.h": "55429e18fcd9ce6747179a9fe223d9e606dc5ff0cb53cced65ac0582e0c44235",
+    "src/steno_squid/native_dictionary_adapter.h": "7167a02badffb5dab128314f1e9765a4efb677f642fc4655f55bd51a071bdc05",
+    "tools/tests/test_native_catalog.cc": "248f94856f0ac75a37542345085f1cc3bbcd287cd38bd383f1f7df6cc1a14101",
+    "tools/tests/test_native_transaction.cc": "ddb3eedf14db3331dfb3ff42ac4b2a0736753ccfb5e4c791e30c3b2d4c004b8e",
+    "tools/tests/test_native_checkpoint.cc": "9f7869140a2041709ff6a3d9092af71780d9fb5317a5d4c283116c6f9631558a",
+    "tools/tests/test_native_dictionary_adapter.cc": "fbebe652f63c777a63fc1d8eab3a164ae5e425d6674f2cefd71da61f9eb19939"
+  },
+  "limits": [
+    "Fake-NOR fault injection is not electrical power-cut testing",
+    "Fixed-memory components and small hardware fixture are not complete store integration",
+    "200000 indexed-record merge does not demonstrate 200000-entry device capacity"
+  ]
+}
