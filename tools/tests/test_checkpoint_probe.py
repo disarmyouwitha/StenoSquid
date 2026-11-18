@@ -33,10 +33,14 @@ int main() {
     assert(output.find("\"passed\":true")!=std::string::npos);
     assert(output.find("\"generation\":2")!=std::string::npos);
     command("hold");assert(output.find("nothing changed")!=std::string::npos);
+    command("live");assert(output.find("\"passed\":true")!=std::string::npos);
+    command("live");assert(output.find("\"passed\":false")!=std::string::npos);
     command("reboot");assert(rebooted && output=="OK\n\n");
     // Discard warm state; verification must use only persistent catalog/records.
+    probe_catalog.Invalidate();live_snapshot={};
     selected={};recent={};steps=0;std::memset(payload,0,sizeof(payload));
     command("check");assert(output.find("\"passed\":true")!=std::string::npos);
+    command("live_check");assert(output.find("\"passed\":true")!=std::string::npos);
     auto before_erases=erases;
     command("check");assert(output.find("\"passed\":true")!=std::string::npos && erases==before_erases);
     command("clean");assert(output.find("\"cleaned\":true")!=std::string::npos);
@@ -77,6 +81,7 @@ def main():
         f'#include "{ROOT / "tools/storage" / name}"'
         for name in (
             "native_catalog.h",
+            "native_live_journal.h",
             "native_checkpoint.h",
             "native_index_sink.h",
             "binary_record.h",

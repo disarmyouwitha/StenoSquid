@@ -123,7 +123,9 @@ int main() {
     auto pinData=payload();
     assert(pinned.Publish(empty,pinData.size(),Source{pinData},accept,a)==CatalogResult::Ok);
     uint32_t tokens[5]{};
+    const auto pinReads=pinNor.reads;
     for(unsigned i=0;i<4;++i)assert(pinned.AcquirePin(a.root,tokens[i]));
+    assert(pinNor.reads==pinReads); // No metadata CRC/read work per dictionary lookup.
     assert(!pinned.AcquirePin(a.root,tokens[4]) && !tokens[4]);
     assert(pinned.Publish(a,pinData.size(),Source{pinData},accept,b)==CatalogResult::Ok);
     auto pinnedBytes=pinNor.data;
@@ -134,6 +136,12 @@ int main() {
     for(unsigned i=0;i<4;++i){assert(pinned.ReleasePin(tokens[i]));assert(!pinned.ReleasePin(tokens[i]));}
     assert(pinned.Publish(b,pinData.size(),Source{pinData},accept,c)==CatalogResult::Ok);
     assert(!pinned.AcquirePin(a.root,tokens[0]));
+    NativeCatalog<Nor> reopenedPins(pinNor);
+    assert(!reopenedPins.AcquirePin(c.root,tokens[0]));
+    CatalogSelection reopenedSelection;
+    assert(reopenedPins.Open(reopenedSelection,accept)==CatalogResult::Ok);
+    assert(reopenedPins.AcquirePin(c.root,tokens[0]));
+    assert(reopenedPins.ReleasePin(tokens[0]));
     // Stable ID allocation is monotonic across deletion and cannot resurrect an
     // earlier ID whose old overlays might survive in journal/retained roots.
     Nor idsNor;NativeCatalog<Nor> idsCatalog(idsNor);CatalogSelection idsA,idsB,idsC;
@@ -152,6 +160,17 @@ int main() {
     owned[32+8]=owned[32+9]=0;
     assert(freshCatalog.Publish(first,owned.size(),Source{owned},[](uint32_t,const uint8_t *){return false;},second)==CatalogResult::Corrupt);
     assert(fresh.data==ownedBytes);
+    // Explicit reset cannot leave old validated roots usable through the cache.
+    uint32_t resetPin=0;
+    assert(idsCatalog.AcquirePin(idsC.root,resetPin));
+    idsCatalog.Invalidate();
+    assert(!idsCatalog.HasPin(resetPin,idsC.root) && !idsCatalog.CanWrite(idsC.root));
+    assert(idsCatalog.ReleasePin(resetPin));
+    assert(idsNor.EraseCatalog(0,65536) && idsNor.EraseCatalog(65536,65536));
+    CatalogSelection resetRoot;
+    assert(idsCatalog.Publish(empty,initial.size(),Source{initial},accept,resetRoot)==CatalogResult::Ok);
+    assert(resetRoot.root.generation==1 && idsCatalog.CanWrite(resetRoot.root));
+    assert(!idsCatalog.IsTrusted(idsC.root));
     // Streaming staged index writes verify each page and do not publish roots.
     Nor indexNor;IndexSink<Nor> sink(indexNor);
     assert(sink.Begin(3*65536,4096));

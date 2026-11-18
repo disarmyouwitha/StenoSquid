@@ -8,6 +8,7 @@
 #include "xip_load.h"
 #include "native_dictionary_adapter.h"
 #include "../../tools/storage/native_catalog.h"
+#include "../../tools/storage/native_live_journal.h"
 #include "../../tools/storage/native_checkpoint.h"
 #include "../../tools/storage/native_index_sink.h"
 #include "../../tools/storage/binary_record.h"
@@ -69,6 +70,8 @@ struct ProbeDevice {
 } probe_device;
 NativeJournal<ProbeDevice> probe_journal(probe_device);
 NativeCatalog<ProbeDevice> probe_catalog(probe_device,0,kSegmentBytes,4096);
+LiveJournal<ProbeDevice> probe_live(probe_device,probe_catalog);
+LiveView live_snapshot; // Fixed workspace; never put this on the HID stack.
 IndexSink<ProbeDevice> forward_sink(probe_device),reverse_sink(probe_device);
 alignas(4) uint8_t payload[32+2*96+3*24];
 Tail recent;
@@ -125,7 +128,7 @@ bool CheckExtent(uint32_t,const uint8_t *extent) {
         if(probe_journal.BeginScan(2,Epoch,0,scan)!=JournalResult::Ok)return false;
         unsigned count=0;JournalResult status;
         while((status=probe_journal.Step(scan,record))==JournalResult::Ok)++count;
-        return status==JournalResult::End && (count==6 || count==9);
+        return status==JournalResult::End && (count==6 || count==9 || count==10);
     }
     if((kind==3 && start!=3 && start!=5) || (kind==4 && start!=4 && start!=6) || (kind!=3 && kind!=4) || bytes%4)return false;
     uint32_t crc=0,previous=0;
@@ -278,12 +281,46 @@ bool Prepare() {
     if(probe_catalog.Publish(first,sizeof(payload),Source,CheckExtent,selected)!=CatalogResult::Ok)return false;
     return Verify();
 }
+bool RecoverLive() {
+    if(probe_live.Begin(selected)!=LiveResult::More)return false;
+    for(unsigned step=0;step<64;++step) {
+        const auto status=probe_live.RecoverStep();
+        if(status==LiveResult::Ready)return true;
+        if(status!=LiveResult::More)return false;
+    }
+    return false;
+}
+bool LiveText(const char *expected) {
+    uint32_t key=8;RecordView record;uint8_t text[8];
+    return probe_live.FindSnapshot(live_snapshot,1,&key,1,record)==LiveResult::Ok &&
+        record.text_bytes==std::strlen(expected) &&
+        probe_live.ReadText(live_snapshot,record,text,record.text_bytes)==LiveResult::Ok &&
+        !std::memcmp(text,expected,record.text_bytes);
+}
+bool CheckLive() {
+    if(!Verify() || !RecoverLive() || probe_live.Highwater()!=10 || probe_live.TailCount()!=1)return false;
+    if(probe_live.Snapshot(live_snapshot)!=LiveResult::Ok)return false;
+    const bool valid=LiveText("live");
+    return probe_live.Release(live_snapshot) && valid;
+}
+bool AppendLive() {
+    if(!Verify() || !RecoverLive() || probe_live.Highwater()!=9 || probe_live.TailCount())return false;
+    if(probe_live.Snapshot(live_snapshot)!=LiveResult::Ok)return false;
+    uint32_t key=8;const uint8_t text[]={'l','i','v','e'};
+    const bool appended=probe_live.Append(1,0,&key,1,text,sizeof(text))==LiveResult::Ok;
+    // The old snapshot must still see checkpoint data after live publication.
+    const bool isolated=appended && LiveText("newer");
+    const bool released=probe_live.Release(live_snapshot);
+    return isolated && released && CheckLive();
+}
 bool Clean() {
-    if(!Verify())return false;
+    if(!Verify() || !RecoverLive())return false;
+    if(probe_live.Highwater()!=9 && !CheckLive())return false;
     probe_device.mapped=false;
     if(!squid_qspi_reactivate())return false;
     // Record/index sectors first, catalog identities last. Failed cleanup cannot
     // be mistaken for valid data by the next Verify; no automatic force erase.
+    probe_catalog.Invalidate();
     const unsigned cleanup_order[]={2,3,4,5,6,0,1};
     for(unsigned segment:cleanup_order)if(!probe_device.EraseRegion(segment*kSegmentBytes))return false;
     return probe_device.Blank();
@@ -299,8 +336,8 @@ void steno_squid_checkpoint_probe(void *,const char *line) {
     if(!std::strcmp(command,"reboot")) {
         Console::SendOk();k_work_reschedule(&reboot_work,K_SECONDS(2));return;
     }
-    if(std::strcmp(command,"run") && std::strcmp(command,"hold") && std::strcmp(command,"check") && std::strcmp(command,"clean")) {
-        Console::Printf("ERR Expected run, hold, check, clean or reboot\n\n");return;
+    if(std::strcmp(command,"run") && std::strcmp(command,"hold") && std::strcmp(command,"check") && std::strcmp(command,"clean") && std::strcmp(command,"live") && std::strcmp(command,"live_check")) {
+        Console::Printf("ERR Expected run, hold, check, live, live_check, clean or reboot\n\n");return;
     }
     const JavelinEngineLock lock;
     if(!lock || !squid_qspi_reactivate()){Console::Printf("ERR Flash unavailable\n\n");return;}
@@ -309,7 +346,8 @@ void steno_squid_checkpoint_probe(void *,const char *line) {
         Console::Printf("ERR Checkpoint test region nonblank or unreadable; nothing changed\n\n");return;
     }
     const uint32_t start=k_uptime_get_32();
-    bool passed=!std::strcmp(command,"check")?Verify():!std::strcmp(command,"clean")?Clean():Prepare();
+    bool passed=!std::strcmp(command,"live")?AppendLive():!std::strcmp(command,"live_check")?CheckLive():
+        !std::strcmp(command,"check")?Verify():!std::strcmp(command,"clean")?Clean():Prepare();
     bool cleaned=!std::strcmp(command,"clean") && passed;
     if(passed && !std::strcmp(command,"run")){cleaned=Clean();passed=cleaned;}
     probe_device.mapped=false;squid_qspi_reactivate();

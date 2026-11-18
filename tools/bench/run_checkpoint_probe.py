@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test native catalog/index publication across an automatic normal reboot.
+"""Test native catalog/index publication and live edits across a normal reboot.
 
 Left-Diagnostic only, USB HID. Uses seven reserved sectors at FF9000..FFFFFF,
 refuses nonblank test space, keeps the production dictionary format untouched.
@@ -42,6 +42,7 @@ def main():
             raise RuntimeError("Cannot verify production dictionary before test")
         args.output.with_suffix(".personal-backup.txt").write_text(personal + "\n")
         prepared = invoke(console, "hold")
+        live_append = invoke(console, "live")
         watermark = json.loads(console.command("dictionary_benchmark meta"))
         response = console.command("dictionary_checkpoint_probe reboot")
         if response != "OK":
@@ -63,6 +64,7 @@ def main():
         raise RuntimeError("Keyboard did not return after reboot: " + str(last_error))
     with open_console(args.serial) as console:
         recovered = invoke(console, "check")
+        live_recovered = invoke(console, "live_check")
         cleaned = invoke(console, "clean")
         if cleaned.get("cleaned") is not True:
             raise RuntimeError("Test regions were not verified clean")
@@ -74,9 +76,11 @@ def main():
         status = json.loads(console.command("user_dictionary_status"))
         final_metadata = json.loads(console.command("dictionary_benchmark meta"))
     report = dict(
-        schema=1,
+        schema=2,
         metadata=metadata,
         prepared=prepared,
+        live_append=live_append,
+        live_recovered=live_recovered,
         after_prepare_metadata=watermark,
         after_reboot_metadata=restarted,
         recovered=recovered,
@@ -92,7 +96,7 @@ def main():
         limits=[
             "Isolated seven-sector native catalog/index integration, not engine format replacement",
             "Normal software reboot, not power interruption during a write",
-            "Nine edits and two dictionaries; large-store capacity and maintenance performance unproven",
+            "Ten edits and two dictionaries; large-store capacity and maintenance performance unproven",
             "Manual keyboard/display smoke tests deferred until owner returns",
         ],
     )
@@ -107,7 +111,17 @@ def main():
         )
     print(
         json.dumps(
-            {k: report[k] for k in ("prepared", "recovered", "cleanup", "repeated")},
+            {
+                k: report[k]
+                for k in (
+                    "prepared",
+                    "live_append",
+                    "recovered",
+                    "live_recovered",
+                    "cleanup",
+                    "repeated",
+                )
+            },
             indent=2,
         )
     )

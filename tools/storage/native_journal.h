@@ -41,6 +41,15 @@ struct Utf8 {
         return true;
     }
 };
+inline bool ValidEdit(uint32_t identity,uint8_t operation,const uint32_t *strokes,uint8_t count,
+                      const uint8_t *text,uint16_t length) {
+    if(!identity || operation>2 || count<1 || count>16 || !strokes || length>2047 ||
+       (length && !text) || (operation && length))return false;
+    for(uint8_t i=0;i<count;++i)if(!strokes[i] || strokes[i]>>25)return false;
+    Utf8 utf;
+    for(uint16_t i=0;i<length;++i)if(!utf.Push(text[i]))return false;
+    return !utf.remaining;
+}
 
 struct JournalRecord {
     uint64_t sequence = 0;
@@ -118,11 +127,10 @@ public:
         return JournalResult::Ok;
     }
 
-    JournalResult Read(uint32_t address, JournalRecord &record) {
+    JournalResult ReadEnvelope(uint32_t address, JournalRecord &record,uint8_t (&header)[32]) {
         const uint32_t offset = address % kSegmentBytes;
         if (address / kSegmentBytes < 2 || address / kSegmentBytes >= 255 || address % 4 ||
             offset < kPageBytes || offset > kSegmentBytes-32) return JournalResult::Invalid;
-        uint8_t header[32];
         if (!device.Read(address, header, 32)) return JournalResult::IoError;
         bool blank = true;
         for (auto byte : header) blank &= byte == 255;
@@ -133,6 +141,32 @@ public:
         if (std::memcmp(header,"SQJR",4) || !sequence || span%4 || span<44 ||
             span>kSegmentBytes-offset || size<12 || size>2119 ||
             span != ((size+35)&~3u) || Word(header+24)!=Crc(0,header,24)) return JournalResult::Corrupt;
+        record={sequence,address,span,size};
+        return JournalResult::Ok;
+    }
+
+    // Only for records validated at append/recovery and held in owned immutable
+    // extents. Misses do not scan translation text. This is not a scrub: payload
+    // damage introduced after recovery may require reopen to detect a false miss.
+    JournalResult ReadKey(uint32_t address,JournalRecord &record) {
+        uint8_t header[32],key[72];
+        auto status=ReadEnvelope(address,record,header);
+        if(status!=JournalResult::Ok)return status;
+        if(!device.Read(address+32,key,8))return JournalResult::IoError;
+        const uint8_t op=key[4],count=key[5];
+        const uint16_t text=uint16_t(key[6]) | uint16_t(key[7])<<8;
+        if(!Word(key) || op>2 || count<1 || count>16 || text>2047 ||
+           (op && text) || record.payload_bytes!=8u+4u*count+text)return JournalResult::Corrupt;
+        if(!device.Read(address+40,key,4u*count))return JournalResult::IoError;
+        for(uint8_t i=0;i<count;++i)if(!Word(key+4*i) || Word(key+4*i)>>25)return JournalResult::Corrupt;
+        return JournalResult::Ok;
+    }
+
+    JournalResult Read(uint32_t address, JournalRecord &record) {
+        uint8_t header[32];
+        auto status=ReadEnvelope(address,record,header);
+        if(status!=JournalResult::Ok)return status;
+        const uint32_t size=record.payload_bytes;
         uint32_t crc=Crc(0, header+8, 8), position=0;
         uint8_t count=0, op=0;
         uint32_t text_start=0;
@@ -158,7 +192,6 @@ public:
             position+=n;
         }
         if (utf.remaining || crc!=Word(header+20)) return JournalResult::Corrupt;
-        record={sequence,address,span,size};
         return JournalResult::Ok;
     }
 
@@ -171,13 +204,8 @@ public:
         const uint32_t offset=address%kSegmentBytes, size=8u+4u*count+length;
         const uint32_t span=(32u+size+3)&~3u;
         if (address/kSegmentBytes<2 || address/kSegmentBytes>=255 || address%4 ||
-            offset<256 || !sequence || !identity || operation>2 || count<1 || count>16 ||
-            !strokes || length>2047 || (length && !text) || (operation && length)) return JournalResult::Invalid;
+            offset<256 || !sequence || !ValidEdit(identity,operation,strokes,count,text,length)) return JournalResult::Invalid;
         if (span>kSegmentBytes-offset) return JournalResult::Full;
-        for (uint8_t i=0;i<count;++i) if (!strokes[i] || strokes[i]>>25) return JournalResult::Invalid;
-        Utf8 utf;
-        for (uint16_t i=0;i<length;++i) if (!utf.Push(text[i])) return JournalResult::Invalid;
-        if (utf.remaining) return JournalResult::Invalid;
         for (uint32_t at=0;at<span;) {
             uint32_t n=span-at; if (n>sizeof(buffer)) n=sizeof(buffer);
             if (!device.Read(address+at,buffer,n)) return JournalResult::IoError;

@@ -7,9 +7,11 @@ namespace native_test {
 struct Cut {};
 struct Nor {
     std::vector<uint8_t> data=std::vector<uint8_t>(7*65536,255);
-    uint32_t operations=0,cut=0,tear=0;
+    uint32_t operations=0,cut=0,tear=0,reads=0,read_bytes=0;
     bool fail_read=false,fail_program=false,fail_erase=false;
+    bool fail_after_commit=false;
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
+        ++reads;read_bytes+=n;
         if(fail_read || at>data.size() || n>data.size()-at)return false;
         std::memcpy(out,data.data()+at,n);return true;
     }
@@ -20,6 +22,9 @@ struct Nor {
         bool stop=++operations==cut;
         uint32_t amount=stop?(tear<n?tear:n):n;
         for(uint32_t i=0;i<amount;++i)data[at+i]&=in[i];
+        if(!stop && fail_after_commit && n==4 && in[0]==0x54 && in[1]==0x4d && in[2]==0x4f && in[3]==0x43) {
+            fail_after_commit=false;fail_read=true;
+        }
         if(stop)throw Cut{};
         return true;
     }
@@ -29,7 +34,7 @@ struct Nor {
         return EraseBytes(at,size);
     }
     bool EraseSegment(uint32_t segment) {
-        assert(segment>=2 && segment<7);
+        assert(segment>=2 && segment<data.size()/65536);
         return EraseBytes(segment*65536,65536);
     }
     bool EraseBytes(uint32_t at,uint32_t size) {

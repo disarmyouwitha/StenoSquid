@@ -90,9 +90,11 @@ text rather than return a reclaimable QSPI pointer.
 
 The isolated diagnostic uses this bridge against its native index. It is **not**
 registered in the everyday engine collection. Native compact-base loading,
-reverse hints/export through the adapter, live tail snapshots, catalog-driven
+reverse hints/export through the adapter, catalog-driven
 enable/priority updates, editor operations and full-engine publication remain
-integration work. Backend errors must not be mistaken for normal absence when
+integration work. Native live-tail snapshots and recovery are now implemented on
+`prototype/native-live-store`; see the [next milestone](hybrid-native-live-store.md).
+Backend errors must not be mistaken for normal absence when
 the eventual store decides overall engine readiness.
 
 ## Tests so far

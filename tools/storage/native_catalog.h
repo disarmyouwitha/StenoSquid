@@ -32,6 +32,8 @@ class NativeCatalog {
     uint32_t slots[2], capacity;
     uint8_t buffer[256]{};
     struct Pin { uint64_t generation=0;uint32_t token=0;uint8_t slot=0; } pins[4];
+    CatalogRoot trusted[2]{};
+    bool write_blocked=true;
     uint32_t next_token=1;
     bool Bounds() const {
         return capacity>=256 && capacity<=65536 && !(capacity%256) &&
@@ -51,15 +53,38 @@ public:
     NativeCatalog(Device &value,uint32_t a=0,uint32_t b=65536,uint32_t bytes=65536)
         :device(value),slots{a,b},capacity(bytes){}
 
+    // Before any out-of-band erase/reset. Existing tokens can still be released,
+    // but cannot authorize reads or writes until a validated reopen.
+    void Invalidate(){trusted[0]={};trusted[1]={};write_blocked=true;}
+
+    bool IsTrusted(const CatalogRoot &root)const {
+        for(const auto &known:trusted)
+            if(root.generation && root.generation==known.generation && root.address==known.address &&
+               root.bytes==known.bytes && root.crc==known.crc)return true;
+        return false;
+    }
+    bool IsLatestTrusted(const CatalogRoot &root)const {
+        if(!IsTrusted(root))return false;
+        for(const auto &other:trusted)if(other.generation>root.generation)return false;
+        return true;
+    }
+    bool CanWrite(const CatalogRoot &root)const{return !write_blocked && IsLatestTrusted(root);}
+    bool HasPin(uint32_t token,const CatalogRoot &root)const {
+        if(!token || !IsTrusted(root))return false;
+        for(const auto &pin:pins)if(pin.token==token && pin.generation==root.generation &&
+                                   root.address==slots[pin.slot]+32)return true;
+        return false;
+    }
+
     // Serialize with Open/Publish. Pins protect catalog metadata itself as well
     // as the extents the allocator must collect through VisitPins. No hidden heap.
     bool AcquirePin(const CatalogRoot &root,uint32_t &token) {
         token=0;
         if(!next_token || next_token==UINT32_MAX)return false;
         for(uint8_t slot=0;slot<2;++slot)if(root.address==slots[slot]+32) {
-            CatalogRoot actual;
-            if(Inspect(slot,actual)!=CatalogResult::Ok || actual.generation!=root.generation ||
-               actual.bytes!=root.bytes || actual.crc!=root.crc)return false;
+            // Open/publication validated this immutable root. No flash reads on
+            // the per-lookup pin path. Scrub/reopen handles later corruption.
+            if(!IsTrusted(root))return false;
             for(auto &pin:pins)if(!pin.token) {
                 token=next_token++;pin={root.generation,token,slot};return true;
             }
@@ -185,16 +210,18 @@ public:
         return ValidatePayload(device,capacity,root,check,shape);
     }
 
-    template <class CheckExtent>
-    CatalogResult Open(CatalogSelection &selection,CheckExtent check) {
+    template <class ValidateRoot>
+    CatalogResult OpenValidated(CatalogSelection &selection,ValidateRoot validate) {
         selection={};
+        write_blocked=true;
+        trusted[0]={};trusted[1]={};
         CatalogRoot roots[2];CatalogResult states[2];
         bool valid[2]{};
         for(unsigned i=0;i<2;++i) {
             states[i]=Inspect(i,roots[i]);
             if(states[i]==CatalogResult::IoError || states[i]==CatalogResult::Invalid)return states[i];
             if(states[i]==CatalogResult::Ok) {
-                states[i]=Validate(roots[i],check);
+                states[i]=validate(roots[i]);
                 if(states[i]==CatalogResult::IoError)return states[i];
                 valid[i]=states[i]==CatalogResult::Ok;
             }
@@ -202,9 +229,16 @@ public:
         if(!valid[0] && !valid[1])return states[0]==CatalogResult::Corrupt || states[1]==CatalogResult::Corrupt?
             CatalogResult::Corrupt:CatalogResult::Empty;
         if(valid[0] && valid[1] && roots[0].generation==roots[1].generation)return CatalogResult::Corrupt;
+        for(unsigned i=0;i<2;++i)if(valid[i])trusted[i]=roots[i];
         uint8_t slot=valid[1] && (!valid[0] || roots[1].generation>roots[0].generation)?1:0;
         selection={roots[slot],states[1-slot]==CatalogResult::Corrupt,slot};
+        write_blocked=selection.quarantine;
         return selection.quarantine?CatalogResult::Quarantined:CatalogResult::Ok;
+    }
+
+    template <class CheckExtent>
+    CatalogResult Open(CatalogSelection &selection,CheckExtent check) {
+        return OpenValidated(selection,[&](const CatalogRoot &root){return Validate(root,check);});
     }
 
     // Source(offset,out,n) supplies an immutable serialized payload. Validate
@@ -218,7 +252,7 @@ public:
         if(!Bounds() || bytes<32 || bytes%4 || bytes>capacity-32 || current.slot>1 || current.quarantine ||
            current.root.generation==UINT64_MAX)return CatalogResult::Invalid;
         const uint8_t slot=current.root.generation?uint8_t(1-current.slot):0;
-        for(const auto &pin:pins)if(pin.token && pin.slot==slot)return CatalogResult::Busy;
+        for(const auto &pin:pins)if(pin.token && (!current.root.generation || pin.slot==slot))return CatalogResult::Busy;
         struct SourceDevice {
             Source &source;
             uint32_t bytes;
@@ -261,7 +295,11 @@ public:
                 }
                 if(!present)return CatalogResult::Invalid;
             }
+            trusted[current.slot]=active;
         }
+        if(!current.root.generation)Invalidate();
+        trusted[slot]={}; // Erase/program failures must not leave a trusted old root.
+        write_blocked=true;
         if(!device.EraseCatalog(slots[slot],capacity))return CatalogResult::IoError;
         uint32_t crc=0;
         for(uint32_t offset=0;offset<bytes;) {
@@ -292,6 +330,8 @@ public:
         if(!Write(slots[slot]+28,copy,4))return CatalogResult::IoError;
         CatalogRoot verified;
         status=Inspect(slot,verified);if(status!=CatalogResult::Ok)return status;
+        trusted[slot]=verified;
+        write_blocked=false;
         published={verified,false,slot};return CatalogResult::Ok;
     }
 };
