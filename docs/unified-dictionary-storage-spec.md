@@ -1,6 +1,6 @@
 # StenoSquid Unified Dictionary Storage and Benchmark Specification
 
-**Status:** Candidate A rejected on footprint; develop Candidate B, implementation pending\
+**Status:** Candidate B host prototype tested; bounded native core development started, no firmware integration\
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
 
@@ -169,4 +169,10 @@ The separate StenoSquid Manager should use the existing HID transport where supp
 - `tools/tests/test_user_dictionary_log.cc` and `tools/tests/test_user_dictionary_import.cc` — fake NOR, capacity, import and fault-injection starting points.
 - `.github/workflows/build.yml` — pinned dictionary compilation and current CI commands.
 
-**No benchmarks have yet been executed for this specification.** The overhead percentages and latency targets above are hypotheses/gates to evaluate, not empirical findings.
+Current evidence: [Phase-0 measurements](dictionary-benchmark-report.md),
+[A/B decision](dictionary-storage-decision.md),
+[indexed host prototype](hybrid-index-publication.md), and
+[bounded native core](hybrid-native-core.md). The host models and isolated native
+helpers do not complete the hardware/performance acceptance gates. P1 design
+freeze and P2 large/near-full capacity work remain open while P3 native core
+development starts; no production storage format has changed.

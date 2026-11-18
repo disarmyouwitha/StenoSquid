@@ -59,6 +59,10 @@ jobs:
           python3 tools/render_keymap.py --check
       - name: Run every native regression and display renderer
         run: python3 tools/tests/run_all.py
+      - name: Sanitize candidate-B native storage core
+        env:
+          CXX: clang++ -fsanitize=address,undefined -fno-omit-frame-pointer
+        run: python3 tools/tests/test_native_journal.py
 
   build:
     needs: dictionaries

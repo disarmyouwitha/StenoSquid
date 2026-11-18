@@ -3,6 +3,8 @@
 Status: **integrated host model and native reader building blocks**, not installed
 firmware. Production storage and the installer are unchanged; no migrations.
 This follows the [binary/index experiment](hybrid-binary-index.md).
+The next [bounded native-core milestone](hybrid-native-core.md) implements record
+I/O, incremental scanning and allocation planning in C++, without firmware linkage.
 
 ## Publication and readers
 
