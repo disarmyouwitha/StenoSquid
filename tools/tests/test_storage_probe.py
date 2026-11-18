@@ -36,7 +36,7 @@ unsigned writes=0,erases=0,fail_write=0;
 void bounds(uint32_t at,uint32_t n) {assert(at>=0xfff000 && at<=0x1000000 && n<=0x1000000-at);}
 int nrfx_qspi_read(void *out,uint32_t n,uint32_t at) {
     bounds(at,n); assert(!(at%4) && !(n%4) && !(reinterpret_cast<uintptr_t>(out)%4));
-    std::memcpy(out,flash+at-0xfff000,n); return 0;
+    std::memcpy(out,flash+(at-0xfff000),n); return 0;
 }
 int nrfx_qspi_write(const void *in,uint32_t n,uint32_t at) {
     bounds(at,n); assert(!(at%4) && !(n%4) && !(reinterpret_cast<uintptr_t>(in)%4));
@@ -55,7 +55,7 @@ int squid_qspi_wait_ready(uint32_t){return 0;}
 bool squid_qspi_reactivate(){return true;}
 void copy_xip_bytes(void *out,const void *source,size_t size) {
     uintptr_t at=reinterpret_cast<uintptr_t>(source)-0x12000000u;
-    bounds(at,size); std::memcpy(out,flash+at-0xfff000,size);
+    bounds(at,size); std::memcpy(out,flash+(at-0xfff000),size);
 }
 """
 HARNESS = r"""

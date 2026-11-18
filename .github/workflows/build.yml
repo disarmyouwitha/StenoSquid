@@ -61,8 +61,15 @@ jobs:
         run: python3 tools/tests/run_all.py
       - name: Sanitize candidate-B native storage core
         env:
-          CXX: clang++ -fsanitize=address,undefined -fno-omit-frame-pointer
-        run: python3 tools/tests/test_native_journal.py
+          CXX: clang++ -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+        run: |
+          python3 tools/tests/test_native_journal.py
+          python3 tools/tests/test_native_catalog.py
+          python3 tools/tests/test_native_transaction.py
+          python3 tools/tests/test_native_checkpoint.py
+          python3 tools/tests/test_native_dictionary_adapter.py
+          python3 tools/tests/test_storage_probe.py
+          python3 tools/tests/test_checkpoint_probe.py
 
   build:
     needs: dictionaries
