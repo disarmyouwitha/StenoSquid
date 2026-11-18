@@ -185,7 +185,7 @@ static void test_messages(void) {
         "tenchars10", "elevenchar1", "twelve chars", "thirteen char",
     };
     for (unsigned t = 0; t < sizeof(texts) / sizeof(texts[0]); t++) {
-        for (unsigned seq = 0; seq < 2; seq++) {
+        for (unsigned seq = 0; seq < 4; seq++) {
             struct steno_squid_tape sent, shown;
             make_tape(&sent, parse("TKPW"), texts[t], seq, t * 20);
             memset(&shown, 0, sizeof(shown));
@@ -195,6 +195,7 @@ static void test_messages(void) {
             CHECK(shown.mask == sent.mask);
             CHECK(shown.wpm == sent.wpm);
             CHECK(shown.hint_count == 0);
+            CHECK(shown.truncated == sent.truncated);
             CHECK(strcmp(shown.text, sent.text) == 0);
         }
     }
@@ -202,7 +203,7 @@ static void test_messages(void) {
     /* Hints, and the full range of WPM. */
     for (unsigned wpm = 0; wpm < 256; wpm++) {
         struct steno_squid_tape sent, shown;
-        make_tape(&sent, 0x7fffffu, "ninechars", wpm & 1, wpm);
+        make_tape(&sent, 0x7fffffu, "ninechars", wpm & 3, wpm);
         sent.hint_mask = parse("KAT");
         sent.hint_count = (uint8_t)(1 + wpm % 7);
         memset(&shown, 0, sizeof(shown));
@@ -241,6 +242,15 @@ static void test_messages(void) {
     CHECK(steno_squid_tape_decode(p1, p2, &shown) == STENO_SQUID_TAPE_STALE);
     CHECK_STR(shown.text, "cat");
     CHECK(shown.hint_count == 0);
+
+    /* A two-stroke gap no longer aliases the one-bit sequence. */
+    make_tape(&sent, parse("KAT"), "cat", 2, 12);
+    sent.truncated = true;
+    steno_squid_tape_encode_stroke(&sent, &p1, &p2);
+    CHECK(steno_squid_tape_decode(p1, p2, &shown) == STENO_SQUID_TAPE_KIND_STROKE);
+    CHECK(shown.truncated);
+    steno_squid_tape_encode_more(&older, &p1, &p2);
+    CHECK(steno_squid_tape_decode(p1, p2, &shown) == STENO_SQUID_TAPE_STALE);
 
     /* Nothing to continue or hint before any stroke. */
     struct steno_squid_tape empty;

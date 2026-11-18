@@ -1,23 +1,12 @@
 #!/usr/bin/env python3
 """Exercise the actual Practice input/state code with native scheduler doubles."""
 import argparse
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def function(source, name):
-    start = source.index(name)
-    start = source.rfind('\n', 0, start) + 1
-    brace = source.index('{', start)
-    depth = 1
-    end = brace + 1
-    while depth:
-        depth += (source[end] == '{') - (source[end] == '}')
-        end += 1
-    return source[start:end]
 
 
 PREFIX = r'''
@@ -59,6 +48,7 @@ int64_t now = 0;
 int64_t k_uptime_get() { return now; }
 void k_work_cancel_delayable(int *) {}
 void k_work_reschedule(int *, int64_t) {}
+int *k_work_delayable_from_work(k_work *) { static int delayed; return &delayed; }
 uint32_t sys_rand32_get() { return 3; }
 static steno_squid_practice_model progress_model;
 uint64_t steno_squid_practice_progress() { return 0; }
@@ -79,7 +69,7 @@ struct k_spinlock {};
 using k_spinlock_key_t = int;
 int k_spin_lock(k_spinlock *) { return 0; }
 void k_spin_unlock(k_spinlock *, int) {}
-k_spinlock progress_lock;
+int status_lock;
 struct steno_squid_practice_view practice_view;
 struct steno_squid_practice_receiver practice_receiver;
 extern "C" void steno_squid_split_status_refresh() {}
@@ -168,10 +158,22 @@ int main() {
   assert(practice.build_stage==2 && progress_model.record.xp==build_xp);
   steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"KA-T"));
   tap(StenoKey::KL);
-  assert(progress_model.record.xp==build_xp+2 && progress_model.run.position==1);
+  assert(progress_model.record.xp==build_xp && progress_model.run.position==0);
   steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"CAT"));
   now+=250;practice_advance(nullptr);assert(practice.round==0);
-  now+=350;practice_advance(nullptr);assert(practice.round==1 && practice.build_stage==0);
+  now+=350;practice_advance(nullptr);
+  assert(practice.round==0 && practice.build_stage==STENO_SQUID_BUILD_REPEAT_STAGE);
+  assert(practice.feedback==STENO_SQUID_PRACTICE_PROMPT);
+  steno_squid_practice_view_snapshot(&build_view);
+  assert(!strcmp(build_view.prompt,"CAT") && !strcmp(build_view.outline,"KA-T"));
+  // An incorrect repeat keeps the translation visible and earns no completion.
+  answer_correct=false;tap(StenoKey::KL);
+  assert(practice.build_stage==STENO_SQUID_BUILD_REPEAT_STAGE && practice.round==0);
+  assert(progress_model.run.position==0 && progress_model.record.xp==build_xp);
+  steno_squid_practice_view_snapshot(&build_view);assert(!strcmp(build_view.prompt,"CAT"));
+  answer_correct=true;tap(StenoKey::KL);
+  assert(progress_model.record.xp==build_xp+2 && progress_model.run.position==1);
+  now+=250;practice_advance(nullptr);assert(practice.round==1 && practice.build_stage==0);
   // Multi rejects a wrong first stroke immediately, then keeps a good prefix.
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
   practice_switch_drill(0);tap(StenoKey::A);
@@ -188,7 +190,7 @@ int main() {
   answer_correct=false;tap(StenoKey::PL);
   assert(practice.multi_count==0 && lookups==before_multi+1 && practice.feedback==STENO_SQUID_PRACTICE_INCORRECT);
   assert(!(practice_screen&STENO_SQUID_PRACTICE_PARTIAL));
-  assert(practice_screen&STENO_SQUID_PRACTICE_SECOND_ERROR);
+  assert(!(practice_screen & STENO_SQUID_PRACTICE_PARTIAL));
   answer_correct=true;tap(StenoKey::KL);tap(StenoKey::PL);
   assert(practice.feedback==STENO_SQUID_PRACTICE_CORRECT);
   now+=250;practice_advance(nullptr);
@@ -267,22 +269,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('engine', type=Path)
     args = parser.parse_args()
-    source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text()
-    start = source.index('K_MUTEX_DEFINE(practice_mutex);')
-    end = source.index('static const StenoDictionary *practice_fallback_dictionary()', start)
-    code = PREFIX + source[start:end]
+    code = PREFIX + '#include "practice_state.h"\n'
     code += '\nstatic void practice_refresh_dictionary() { practice.no_dictionary = false; }\n'
-    code += function(source, 'static void practice_switch_drill(') + '\n'
-    code += function(source, 'static bool practice_process_key(') + '\n'
-    receiver = (ROOT / 'src/steno_squid/split_status_display.c').read_text()
-    code += function(receiver, 'static int status_received(') + '\n'
+    code += '#include "status_receive.h"\n'
     code += CASES
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
         (directory / 'zephyr').mkdir()
-        (directory / 'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x, ...) static_assert(x)\n')
-        (directory / 'test.cc').write_text('#include <initializer_list>\n' + code)
-        subprocess.run(['clang++', '-std=c++20', '-I' + str(directory),
+        (directory / 'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x, ...) static_assert(x)\n', encoding="utf-8")
+        (directory / 'test.cc').write_text('#include <initializer_list>\n' + code, encoding="utf-8")
+        subprocess.run([*host_compiler('c++'), '-std=c++20', '-I' + str(directory),
                         '-I' + str(args.engine.resolve()), '-I' + str(ROOT / 'src/steno_squid'),
                         str(directory / 'test.cc'), str(args.engine / 'steno_key_state.cc'),
                         '-o', str(directory / 'test')], check=True)

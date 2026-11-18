@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -28,6 +29,8 @@
 extern "C" {
 #endif
 
+bool steno_squid_usb_hid_ready(void);
+
 /* Queue a Bluetooth report without running the engine on the Bluetooth thread. */
 int steno_squid_javelin_ble_receive(const void *data, size_t size, uint32_t session);
 int steno_squid_javelin_ble_send(const void *data, size_t size, uint32_t session);
@@ -35,4 +38,12 @@ int steno_squid_javelin_ble_session_valid(uint32_t session);
 
 #ifdef __cplusplus
 }
+#endif
+
+#ifdef __cplusplus
+class IWriter;
+bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer,
+                                      bool (*cancelled)(void *), void *context);
+bool steno_squid_javelin_response_cancelled();
+bool steno_squid_javelin_response_active();
 #endif

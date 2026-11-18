@@ -1,3 +1,4 @@
+#include <behaviors/steno_squid_status.dtsi>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 
 / {
@@ -6,10 +7,4 @@
         control-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
     };
 
-    behaviors {
-        zrst: zrst {
-            compatible = "zmk,behavior-steno-squid-status";
-            #binding-cells = <2>;
-        };
-    };
 };

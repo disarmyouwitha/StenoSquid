@@ -3,41 +3,43 @@ menu "Javelin Steno Engine"
 config ZMK_JAVELIN_STENO
     bool "Enable Javelin steno engine"
     default n
+    select ZMK_JAVELIN_STENO_EXTERNAL_FLASH if ZMK_SPLIT_ROLE_CENTRAL
     select CPP
     select REQUIRES_FULL_LIBCPP
 
 if ZMK_JAVELIN_STENO
 
-config ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
-    bool "Use the Steno Squid's external QSPI Lapwing dictionary"
-    depends on SOC_NRF52840 && ZMK_SLEEP
+config ZMK_JAVELIN_STENO_EXTERNAL_FLASH
+    bool "Use the Steno Squid's external QSPI dictionaries"
+    depends on SOC_NRF52840 && ZMK_SLEEP && ZMK_SPLIT_ROLE_CENTRAL
     select NRFX_QSPI
     select CRC
 
-config ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
-    bool "Provision base dictionaries over the USB logging serial port"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_USB_LOGGING
+config ZMK_JAVELIN_SERIAL_CONSOLE
+    bool "Diagnostic commands on the USB logging serial port"
+    select UART_INTERRUPT_DRIVEN
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH && ZMK_USB_LOGGING
     help
       Enable from the diagnostic build's logging.conf with the zmk-usb-logging
       snippet. Everyday builds use wired USB HID for dictionary maintenance.
 
 config ZMK_JAVELIN_DIAG
     bool "Diagnostics on the logging serial port"
-    depends on ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
+    depends on ZMK_JAVELIN_SERIAL_CONSOLE
     select HWINFO
     default y
     help
       Adds a boot log that survives a soft reset, a status command, fault
       counters saved across reboots, and wake timing for the external flash.
       Serial commands: S status, D dump the boot log, Z clear log and counters.
-      It compiles in only with the logging snippet. Turn it off, or delete
-      src/steno_squid/diag.c and the diag_*() calls, once debugging is done.
+      It compiles only with the logging snippet. The implementation is in
+      src/steno_squid/flash_diagnostics.c.
 
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG
-    range 0 31
-    default 7
+    range -1 31
+    default -1
     help
       The R serial command switches the flash rail and reads this pin to see
       the rail rise and fall. Use the pin that the 10 k pull-up on the Steno
@@ -46,7 +48,7 @@ config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
 
 config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
     int "External flash clock divider (32 MHz / n)"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH
     range 1 16
     default 16
     help
@@ -55,9 +57,18 @@ config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
       dictionary check after a cold boot. Confirm each new value with
       tools/qspi before relying on it.
 
+config ZMK_JAVELIN_STENO_FLASH_SETTLE_MS
+    int "External flash rail settle time in milliseconds"
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH
+    range 1 1000
+    default 50
+    help
+      Keep the proven 50 ms default until rail rise time has been measured
+      on the actual board. Changing this requires hardware validation.
+
 config ZMK_JAVELIN_STENO_FLASH_IDLE_OFF
     bool "Power the external flash down while the dictionaries are idle"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH
     default y
     help
       Switch the flash rail and QSPI off after a period with no dictionary
@@ -74,12 +85,13 @@ config ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS
 
 config ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     bool "Edit the personal dictionary over Javelin WebHID"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH
+    depends on USB_DEVICE_STACK && USB_HID_DEVICE_COUNT >= 3
 
 config ZMK_JAVELIN_STENO_HID_PROVISIONING
     bool "Install base dictionaries over wired USB HID"
-    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY && ZMK_SLEEP
-    depends on !ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
+    select BASE64
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     default y
 
 config ZMK_JAVELIN_STENO_BLE_HID
@@ -91,7 +103,7 @@ config ZMK_JAVELIN_STENO_BLE_HID
 
 config ZMK_JAVELIN_BATTERY_LOG
     bool "Record Steno Squid battery samples in a dedicated internal flash partition"
-    depends on ZMK_JAVELIN_STENO_EXTERNAL_LAPWING && ZMK_JAVELIN_STENO_SERIAL_PROVISIONING
+    depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH && ZMK_JAVELIN_SERIAL_CONSOLE
     depends on ZMK_BLE && FLASH_MAP && HWINFO
     select FCB
     default n
@@ -143,3 +155,7 @@ config ZMK_STENO_SQUID_PRACTICE
     bool "Offline single-stroke practice on the right nice!view"
     depends on SETTINGS
     depends on ZMK_STENO_SQUID_SPLIT_STATUS && ZMK_JAVELIN_STENO && ZMK_SPLIT_ROLE_CENTRAL
+
+# Practice publishes several split frames per prompt.
+config ZMK_SPLIT_BLE_CENTRAL_SPLIT_RUN_QUEUE_SIZE
+    default 40 if ZMK_STENO_SQUID_PRACTICE

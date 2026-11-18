@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Render the default split keymap as SVGs using only the Python standard library.
 
-The split profile overrides the shared keymap's CORNE_* binding groups.
+Reads the canonical split keymap and its named binding groups.
 """
 
 from pathlib import Path
 import html
 import hashlib
 import re
+import sys
+
+CHECK = "--check" in sys.argv
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "config/corne.keymap"
-PROFILE = ROOT / "config/nicenano-wireless-corne/corne.keymap"
-OUTPUT = ROOT / "docs/keymap"
+OUTPUT = ROOT / "assets/keymap"
 LAYERS = [
     (
         "main_layer",
@@ -174,11 +176,8 @@ def key_name(key):
 
 
 def parse_layers():
-    source = re.sub(r"//[^\n]*", "", SOURCE.read_text())
-    profile = re.sub(r"//[^\n]*", "", PROFILE.read_text())
-    macros = dict(re.findall(r"^#define (CORNE_\w+) (.+)$", profile, re.M))
-    for name, value in re.findall(r"^#define (CORNE_\w+) (.+)$", source, re.M):
-        macros.setdefault(name, value)
+    source = re.sub(r"//[^\n]*", "", SOURCE.read_text(encoding="utf-8"))
+    macros = dict(re.findall(r"^#define (CORNE_\w+) (.+)$", source, re.M))
     source = re.sub(r"^\s*#.*$", "", source, flags=re.M)
     for name, value in macros.items():
         source = re.sub(r"\b" + re.escape(name) + r"\b", lambda match: value, source)
@@ -290,14 +289,18 @@ text{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
     content = "\n".join(svg) + "\n"
     digest = hashlib.sha256(content.encode()).hexdigest()[:12]
     target = OUTPUT / f"{filename}-{digest}.svg"
-    target.write_text(content)
     readme = ROOT / "README.md"
-    pattern = r"docs/keymap/" + re.escape(filename) + r"(?:-[0-9a-f]{12})?\.svg"
-    readme.write_text(
-        re.sub(pattern, target.relative_to(ROOT).as_posix(), readme.read_text())
-    )
-    for previous in OUTPUT.glob(f"{filename}-*.svg"):
-        if previous != target:
+    pattern = r"assets/keymap/" + re.escape(filename) + r"(?:-[0-9a-f]{12})?\.svg"
+    current_readme = readme.read_text(encoding="utf-8")
+    updated_readme = re.sub(pattern, target.relative_to(ROOT).as_posix(), current_readme)
+    obsolete = [path for path in OUTPUT.glob(f"{filename}-*.svg") if path != target]
+    if CHECK:
+        if not target.exists() or target.read_text(encoding="utf-8") != content or obsolete or updated_readme != current_readme:
+            raise SystemExit(f"Keymap render is stale: run python3 tools/render_keymap.py ({filename})")
+    else:
+        target.write_text(content, encoding="utf-8")
+        readme.write_text(updated_readme, encoding="utf-8")
+        for previous in obsolete:
             previous.unlink()
     print(target.relative_to(ROOT))
 

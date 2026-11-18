@@ -1,5 +1,7 @@
 # nice!nano wireless Corne configuration
 
+This module supports split central/peripheral keyboards; one-piece boards are not supported.
+
 The handwired Steno Squid left half is the Bluetooth split central and the Corne Ultralight right half is the peripheral. Each half scans its own wiring and reports positions in the same 42-key Corne layout. The left half handles USB typing, host Plover HID, and onboard Javelin from the base dictionaries on the W25Q128.
 
 The split uses the [default keymap](../../README.md#default-keymap). The outer right thumb starts Practice from Javelin or Plover. The outer left thumb returns to Qwerty.
@@ -45,7 +47,7 @@ west build -s zmk/app -d "$repo/build/split-right" -b nice_nano//zmk -- \
 ```
 
 The Left-Diagnostic build combines `-S zmk-usb-logging` with `logging.conf` for
-legacy serial provisioning and diagnostics. Left-Default uses wired HID for
+diagnostics and battery logging. Both left builds use wired HID for
 dictionary maintenance. Send `W` to the diagnostics port for the last flash
 check path (`CHECK_QUICK` or `CHECK_FULL`) and its time in milliseconds.
 
@@ -57,7 +59,7 @@ On a Left-Diagnostic build, `python3 stenosquid.py --diag` detects the USB seria
 - `R` (`--diag rail`) is the switched-rail test. It takes the flash down, drives P0.31 low and then high while reading one pin, and reports which level raises the rail, how many microseconds the pin takes to read high after switch-on, and how long it takes to read low after switch-off. The pin is chip select (P0.07 by default, `CONFIG_ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN`), which the Steno Squid's 10 k pull-up ties to the switched rail, so **R1 must be fitted or wired** for it to see anything. It is a digital threshold, roughly 1 V to 2 V on a 3.3 V rail, not a scope trace. Run it on USB and again on battery with USB unplugged (`S` shows which is which). If the fall takes well under a second, leave R2 and C2 off. If it is slow or the pin never falls, see the rail notes in the Steno Squid repo. The test takes about ten seconds and holds the flash lock, so dictionary lookups wait. It then starts the flash again.
 - `T` (`--diag bench`) powers the flash off and on ten times through the same start-up path a wake uses, with the same 500 ms off time as a retry. It prints each cycle's result and time, then the number mapped, the mean and maximum time, and how many start-up retries and quick-to-full fallbacks happened. It is the way to get real numbers on the retry logic before relying on it. The retry counters it raises are saved; clear them with `Z` afterwards if you want a clean count.
 
-Counters saved across reboots, with this boot's count in brackets: boots, start-up retries, rail power cycles, quick checks that fell back to a full check, bring-ups with no dictionaries, serial erases and serial writes. They are written to settings five seconds or more after boot, at most every two seconds, and only when something changed, so they do not wear the settings flash. Wake timing is since boot only: for each idle or resume wake it records how long passed from the request to a mapped flash, with the check path and time. A line `Wake from idle: ready N ms after the request` also goes to the log.
+Counters saved across reboots, with this boot's count in brackets: boots, start-up retries, rail power cycles, quick checks that fell back to a full check, bring-ups with no dictionaries, base erases and base writes. They are written to settings five seconds or more after boot, at most every two seconds, and only when something changed, so they do not wear the settings flash. Wake timing is since boot only: for each idle or resume wake it records how long passed from the request to a mapped flash, with the check path and time. A line `Wake from idle: ready N ms after the request` also goes to the log.
 
 If `retries` and `power cycles` stay at 0 after days of use, the retry logic never ran. A non-zero `bring-ups with no dictionaries` means the flash failed to start even after the retries.
 
@@ -237,7 +239,7 @@ over wired HID and replaces only the ones that need repair. Use
 `--repair --base lapwing` (or `plover` or `extras`) to check just one image.
 The replacement must match the firmware checksum before the selected region is erased.
 
-For hardware recovery with a Left-Diagnostic build, `stenosquid.py --install PORT` selects the serial installer. `stenosquid.py PORT --status` shows the state of each base. Use `--repair --base lapwing|plover|extras` to explicitly erase and rewrite a single conflicting base.
+Both left builds use the same USB HID installer and repair commands. Serial is reserved for diagnostics.
 
 ### Lapwing extras
 
@@ -264,24 +266,24 @@ Eight of the command entries are Plover application commands, such as lookup and
 
 ### Verify or repair a base dictionary
 
-Left-Default runs both commands over USB HID without a port argument. The port examples below select the legacy serial tools on Left-Diagnostic.
+Both left builds run these commands over USB HID without a port argument.
 
 ```sh
-python3 stenosquid.py /dev/cu.usbmodem14501 --verify
+python3 stenosquid.py --verify
 ```
 
 `--verify` reads every byte of the chosen image, or of all of them, and compares the CRC with the image the firmware was built for. It writes and erases nothing, and it works when a dictionary cannot load. It prints `OK`, a CRC mismatch, or the offset of a read error, and exits with status 1 if any base fails.
 
 ```sh
-python3 stenosquid.py /dev/cu.usbmodem14501 --base lapwing --repair
+python3 stenosquid.py --base lapwing --repair
 ```
 
 `--repair` replaces a base that is damaged or holds other data, including one the keyboard still reports as verified. In order, it:
 
-1. checks the file's size and CRC against the image the firmware expects, before touching the flash;
+1. checks the complete file's size and CRC against the image the firmware expects, before touching the flash;
 2. takes the dictionaries out of use and removes the saved verification record;
 3. erases that base's 4 KiB sectors, including the last, partly used one;
-4. writes the image, reading back every chunk;
+4. sends the image once as base64, with bounded retries/resume and device-side write compatibility checks, reading back every chunk;
 5. runs the full CRC and native lookup checks, and saves the verification record again once every base passes.
 
 It never asks a question, so a script or an agent can run it. Passing `--repair` is the confirmation.
@@ -290,7 +292,7 @@ The other base and the personal dictionary segments are never erased. If a repai
 
 ## Flash and check
 
-Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. The same Lapwing image already on the left half's external flash should verify and load at boot. Use the [dictionary uploader](../../stenosquid.py) with only the USB serial port argument to check for `MAPPED`.
+Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. The same Lapwing image already on the left half's external flash should verify and load at boot. Run `python3 stenosquid.py --status` to check the dictionaries without writing.
 
 Check ordinary typing on both halves, then test `TP / -T / KAT / S / -T / KAT` in Javelin with host Plover closed. Use the right half for the final `-T`. Return to MAIN and check the same cross-half chords in Plover HID.
 
@@ -308,7 +310,7 @@ Use **Add Translation** to enter an outline and translation, then press Return i
 
 The left half reads personal records and both lookup tables directly from QSPI. Adds and edits append a record; deletes mark a record dead. Commit flags and per-record checksums support interrupted-write recovery. Lookup tables can be rebuilt from the record log, and background cleanup reuses segments. The old snapshot writer and its `PageWriter` are gone. The new low-level writer still splits writes at 256-byte flash-page boundaries and verifies programmed bytes.
 
-Install or repair base dictionaries over USB HID with `stenosquid.py --install` or `stenosquid.py --repair`. Serial provisioning is available only in Left-Diagnostic. Export the personal dictionary from Javelin Tools to keep an independent backup.
+Install or repair base dictionaries over USB HID with `stenosquid.py --install` or `stenosquid.py --repair`. Left-Diagnostic adds serial diagnostics, not another installer. Export the personal dictionary from Javelin Tools to keep an independent backup.
 
 The personal dictionary region passed a 220,000-entry host test with short, shared translations and two-stroke outlines. Capacity varies with outline length and UTF-8 translation size. Ordinary edits write only the changed record. Segment allocation, cleanup, and occasional table rebuilds take longer; these are not guaranteed constant-latency operations. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers finished segments for the keyboard to verify and commit.
 
@@ -328,7 +330,7 @@ A controller reset with Plover selected reloaded Plover as enabled and Lapwing a
 
 The firmware recognizes the bare `=repeat_last_translation` macro used by Lapwing's number-bar-only (`#`) outline. It repeats the complete preceding translation, including multi-stroke and multi-word definitions, while retaining formatting commands. Repeated presses repeat the translation again, and undo removes a repeat. With no previous translation it produces no text. The dictionary entry itself remains unchanged, so dictionary-inspection tools still display the macro string.
 
-The build patches a private copy of the pinned segment builder. It leaves the shared engine checkout and external base images unchanged. The behavior follows the [Plover Last Translation macro](https://github.com/nsmarkop/plover_last_translation/blob/master/plover_last_translation/macro.py). This implements the bare macro used by Lapwing, rather than the plugin's optional count arguments.
+The pinned Javelin fork includes the repeat-translation implementation. The build uses it without patching the engine checkout or external base images. The behavior follows the [Plover Last Translation macro](https://github.com/nsmarkop/plover_last_translation/blob/master/plover_last_translation/macro.py). This implements the bare macro used by Lapwing, rather than the plugin's optional count arguments.
 
 Native engine tests capture keyboard events and cover empty history, single-stroke words, multi-stroke words, multi-word translations, consecutive repeats and undo, suffixes, glued fingerspelling, punctuation, and a 40-repeat sequence. The same tests reproduce literal command output with the original engine. Run them with:
 
@@ -381,3 +383,27 @@ settings** after flashing to load the new parameter format. This replaces
 saved keymap edits. The updated grid was verified in the native Studio app,
 and the physical keyboard passed a tap/hold check (`q` and `[`) and a
 Javelin typing check. Bluetooth Studio worked on the earlier Studio build.
+
+## Cleanup build testing
+
+The cleanup branch uses base-install protocol 2 and updated split display messages.
+Update both halves and use `stenosquid.py` from the same checkout. Older installer
+versions fail the protocol check before starting a write.
+
+Practice progress now uses a small commit record and alternating 16-word blocks
+in the left internal settings partition. Only changed blocks are saved. This is
+a deliberate fresh start for XP/stats; there is no migration reader. Dictionaries,
+pairings and Studio keymaps keep their existing formats.
+
+Engine initialization and personal-store maintenance share a dedicated 8 KiB
+worker. Key delivery never waits for flash wake and waits at most 10 ms for an
+engine lock; an interrupted chord is cancelled in full. Exports release the
+engine lock while sending each buffered chunk. The main and system workqueue
+stacks return to 4 KiB now that neither carries the full Practice record.
+
+Base images receive an opportunistic CRC scrub in small slices while flash is
+already powered. A trusted quick boot schedules the first scrub after a minute;
+a full check/scrub delays the next pass for 24 hours of uptime. An idle flash is
+not powered or held awake for this work. A mismatch clears trust and marks the
+base unavailable for repair. The proven 2 MHz clock and 50 ms settle time remain
+the defaults; use the probe's `-DQSPI_SCK_DIVIDER=N` only for measured bench tests.

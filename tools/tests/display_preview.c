@@ -172,7 +172,7 @@ int main(void) {
         for(unsigned x=0;x<48;x++) if(sprite_px(idle_pixels,x,y)) {
             if(left==48) left=x; right=x;
         }
-        for(unsigned x=left;x<=right && x<48;x++) assert(sprite_px(sleep_pixels,x,y));
+        for(unsigned x=left;x<=right && x<48;x++) assert(sprite_px(blink_pixels,x,y));
     }
     lv_init();lv_display_t *d=lv_display_create(68,160);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_L8);
@@ -499,7 +499,7 @@ int main(void) {
             assert(lv_obj_get_style_text_decor(outline_second,0)==LV_TEXT_DECOR_UNDERLINE);
             assert(strchr(lv_label_get_text(outline_label),':')==NULL && strchr(lv_label_get_text(outline_second),':')==NULL);
             if(i==0)save("multi-stroke-two");
-            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|STENO_SQUID_PRACTICE_SECOND_ERROR|
+            steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,multi|0|
                 (STENO_SQUID_PRACTICE_INCORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
             assert(!strcmp(lv_label_get_text(feedback_label),"RETRY 1"));
             assert(lv_obj_get_style_text_decor(outline_label,0)==LV_TEXT_DECOR_UNDERLINE);
@@ -526,8 +526,18 @@ int main(void) {
         steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,build|
             (2<<STENO_SQUID_PRACTICE_BUILD_SHIFT)|(STENO_SQUID_PRACTICE_CORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
-        assert(lv_bar_get_value(progress_bar)==1);
+        assert(lv_bar_get_value(progress_bar)==0);
         save("build-reveal");
+        const uint32_t repeat=build|(STENO_SQUID_BUILD_REPEAT_STAGE<<STENO_SQUID_PRACTICE_BUILD_SHIFT);
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,repeat,85,false);
+        assert(!strcmp(lv_label_get_text(feedback_label),"REPEAT"));
+        assert(!strcmp(lv_label_get_text(prompt_label),"CAT"));
+        assert(!strcmp(lv_label_get_text(outline_label),"KA-T"));
+        assert(lv_bar_get_value(progress_bar)==0);
+        save("build-repeat");
+        steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,repeat|
+            (STENO_SQUID_PRACTICE_CORRECT<<STENO_SQUID_PRACTICE_FEEDBACK_SHIFT),85,false);
+        assert(lv_bar_get_value(progress_bar)==1);
         strcpy(view.prompt,"FR");strcpy(view.outline,"Chord keys");
         steno_squid_practice_widget_set_view(&view);
         steno_squid_screen_update(STENO_SQUID_MODE_JAVELIN,NULL,STENO_SQUID_PRACTICE_ACTIVE|

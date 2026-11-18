@@ -51,14 +51,17 @@ bool active;
 
 void Publish(const steno_squid_tape_event &event) {
   static uint8_t sequence;
-  sequence ^= 1;
+  sequence = (sequence + 1) & 3u;
 
   steno_squid_tape tape = {};
   tape.valid = true;
   tape.seq = sequence;
   tape.mask = event.mask;
   if (event.has_text) {
-    steno_squid_tape_clean_text(event.raw, tape.text, sizeof(tape.text));
+    char text[STENO_SQUID_TAPE_RAW_MAX + 1];
+    steno_squid_tape_clean_text(event.raw, text, sizeof(text));
+    tape.truncated = strlen(text) > STENO_SQUID_TAPE_TEXT_MAX;
+    memcpy(tape.text, text, MIN(strlen(text), STENO_SQUID_TAPE_TEXT_MAX));
   } else if (event.undo) {
     strcpy(tape.text, "undo");
   }

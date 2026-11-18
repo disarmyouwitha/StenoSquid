@@ -49,7 +49,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 | LEFT | 30 | Random left-hand keys. |
 | RIGHT | 30 | Random right-hand keys. |
 | COLUMNS | 30 | Paired keys: TK, PW, HR, FR, PB, LG, TS, DZ, AO, and EU. |
-| Build-Up | 10 | Three growing chords per ladder, then a word reveal: K → KA → KA-T → CAT. |
+| Build-Up | 10 | Build K → KA → KA-T, reveal CAT, then repeat KA-T with CAT visible. |
 | Multi- | 10 | Ten distinct two-stroke words from 20 verified common Lapwing outlines. |
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
@@ -109,6 +109,8 @@ Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-s
 
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](assets/keymap/javelin-68ed47c7832b.svg)
 
+![Plover layer](assets/keymap/plover-hid-fe80dff10661.svg)
+
 ## ZMK Studio
 ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
 
@@ -148,4 +150,5 @@ Wire the Adafruit #5634's exposed IO2 and IO3 pads directly.
 
 ## License
 
+StenoSquid’s own code is available under the [0BSD license](LICENSE).
 The Javelin steno engine is licensed under PolyForm Noncommercial 1.0.0. Dependencies and dictionary sources retain their respective licenses. [Javelin license](https://github.com/jthlim/javelin-steno/blob/22726675b2dcf3b8b6ba1e20898f25e324b2260a/LICENSE.txt)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the actual settings reader, including rejection of obsolete shapes."""
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import re
 import subprocess
@@ -9,9 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def main():
-    source = (ROOT / 'src/engine_init.cc').read_text()
-    start = source.index('static int javelin_settings_set(')
-    end = source.index('\n}', start) + 2
+    source = (ROOT / 'src/engine_init.cc').read_text(encoding="utf-8")
     version = re.search(r'DICTIONARY_SELECTION_VERSION = (\d+)', source)[1]
     harness = r'''
 #include <cassert>
@@ -43,12 +42,12 @@ int main() {
     assert(javelin_settings_set("unknown", 2, read, bad) == -ENOENT);
     assert(dictionary_selection == 3);
 }
-'''.replace('@VERSION@', version).replace('READER', source[start:end])
+'''.replace('@VERSION@', version).replace('READER', '#include "'+str(ROOT / 'src/steno_squid/engine_settings.h')+'"')
     harness = '#include <initializer_list>\n' + harness
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder)
-        (path / 'test.cc').write_text(harness)
-        subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+        (path / 'test.cc').write_text(harness, encoding="utf-8")
+        subprocess.run([*host_compiler('c++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
                         str(path / 'test.cc'), '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)
     print('PASS: current selection round trips; obsolete/corrupt records rejected')

@@ -1,0 +1,41 @@
+#pragma once
+
+// Shared with engine compile-time assertions; no HID keycode macros here.
+#define STENO_ID_S1 0
+#define STENO_ID_S2 1
+#define STENO_ID_TL 2
+#define STENO_ID_KL 3
+#define STENO_ID_PL 4
+#define STENO_ID_WL 5
+#define STENO_ID_HL 6
+#define STENO_ID_RL 7
+#define STENO_ID_A 8
+#define STENO_ID_O 9
+#define STENO_ID_STAR1 10
+#define STENO_ID_STAR2 11
+#define STENO_ID_STAR3 12
+#define STENO_ID_STAR4 13
+#define STENO_ID_E 14
+#define STENO_ID_U 15
+#define STENO_ID_FR 16
+#define STENO_ID_RR 17
+#define STENO_ID_PR 18
+#define STENO_ID_BR 19
+#define STENO_ID_LR 20
+#define STENO_ID_GR 21
+#define STENO_ID_TR 22
+#define STENO_ID_SR 23
+#define STENO_ID_DR 24
+#define STENO_ID_ZR 25
+#define STENO_ID_NUM1 26
+#define STENO_ID_NUM2 27
+#define STENO_ID_NUM3 28
+#define STENO_ID_NUM4 29
+#define STENO_ID_NUM5 30
+#define STENO_ID_NUM6 31
+#define STENO_ID_NUM7 32
+#define STENO_ID_NUM8 33
+#define STENO_ID_NUM9 34
+#define STENO_ID_NUM10 35
+#define STENO_ID_NUM11 36
+#define STENO_ID_NUM12 37

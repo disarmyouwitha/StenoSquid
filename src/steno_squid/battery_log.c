@@ -1,5 +1,5 @@
 #include "battery_log.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/drivers/hwinfo.h>
@@ -128,8 +128,8 @@ static void record_sample(enum sample_reason reason) {
         .output = zmk_endpoint_get_selected().transport,
         .layer = zmk_keymap_highest_layer_active(),
         .flags = (zmk_ble_active_profile_is_connected() ? HOST_BLE : 0) |
-                 (lapwing_flash_is_powered() ? FLASH_POWERED : 0) |
-                 (lapwing_mapped_address() ? QSPI_MAPPED : 0) |
+                 (dictionary_flash_is_powered() ? FLASH_POWERED : 0) |
+                 (dictionary_flash_mapped_address() ? QSPI_MAPPED : 0) |
                  (split_connected ? SPLIT_BLE : 0),
     };
     struct sensor_value voltage, charge;

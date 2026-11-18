@@ -1,0 +1,8 @@
+/ {
+    behaviors {
+        zrst: zrst {
+            compatible = "zmk,behavior-steno-squid-status";
+            #binding-cells = <2>;
+        };
+    };
+};

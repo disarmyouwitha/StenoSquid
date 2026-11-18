@@ -15,6 +15,13 @@
 
 namespace host_layout {
 
+template <typename Entry, size_t N>
+constexpr bool strictly_sorted(const Entry (&entries)[N]) {
+  for (size_t i = 1; i < N; ++i)
+    if (entries[i - 1].unicode >= entries[i].unicode) return false;
+  return true;
+}
+
 constexpr uint32_t SHIFT = MODIFIER_L_SHIFT_FLAG;
 
 // Key code, with SHIFT, for each ASCII character: HostLayout::ansi.

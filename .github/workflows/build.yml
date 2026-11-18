@@ -7,87 +7,65 @@ on:
     paths-ignore:
       - "**.md"
       - "docs/**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
-  upload-tests:
-    name: stenosquid.py tests
+  dictionaries:
+    name: Prepare pinned dictionaries
     runs-on: ubuntu-latest
     steps:
-      - name: Check out this repository
-        uses: actions/checkout@v4
-      - name: Run the stenosquid.py tests against a fake keyboard
-        run: |
-          python3 tools/dictionaries/test_stenosquid.py
-          python3 tools/tests/test_base_provision.py
-          python3 tools/tests/test_serial_trust.py
-          python3 tools/tests/test_dictionary_selection.py
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Prepare and verify every image
+        run: python3 tools/dictionaries/prepare.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dictionary-images
+          path: |
+            build/lapwing/
+            build/plover/
+            build/extras/
 
-  stroke-feed-tests:
-    name: stroke tape tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out this repository
-        uses: actions/checkout@v4
-      - name: Build and run the stroke tape tests as C and as C++
-        run: |
-          gcc -std=c11 -Wall -Wextra -Werror -O2 -o stroke-feed-c tools/tests/test_stroke_feed.c
-          ./stroke-feed-c
-          g++ -std=c++17 -x c++ -Wall -Wextra -Werror -O2 -o stroke-feed-cpp tools/tests/test_stroke_feed.c
-          ./stroke-feed-cpp
-
-  # Everything that runs natively: the art, dictionary compiler, Practice logic,
-  # HID transport and personal-dictionary store. The pinned Javelin
-  # engine and ZMK are fetched alone (no west) for the tests that extract
-  # functions from them.
   host-tests:
     name: host tests
+    needs: dictionaries
     runs-on: ubuntu-latest
-    env:
-      PYTHONUTF8: "1"
     steps:
-      - name: Check out this repository
-        uses: actions/checkout@v4
-      - name: Squid art, tiny dictionary and personal dictionary
-        run: |
-          python3 tools/tests/test_sprite_bits.py
-          python3 tools/dict_compiler/test_tiny_dict.py
-          g++ -std=c++17 -O2 -Wall -Wextra -Werror -I src/steno_squid -o user-dictionary-log tools/tests/test_user_dictionary_log.cc
-          ./user-dictionary-log --quick
-          g++ -std=c++17 -O2 -Wall -Wextra -Werror -I src/steno_squid -o user-dictionary-import tools/tests/test_user_dictionary_import.cc
-          python3 tools/dictionaries/test_import_personal.py
-      - name: Practice logic and HID transport
-        run: |
-          python3 tools/tests/test_practice_progress.py
-          python3 tools/tests/test_practice_lookup.py
-          python3 tools/tests/test_javelin_hid_transport.py
-          python3 tools/tests/test_javelin_ble_tx.py
-      - name: Fetch the pinned Javelin engine and ZMK
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dictionary-images
+          path: build
+      - name: Fetch native test dependencies at pinned revisions
         run: |
           python3 tools/ci/fetch_pinned.py javelin-steno javelin-steno
           python3 tools/ci/fetch_pinned.py zmk zmk
-      - name: Practice input, layer entry and repeat translation against the pinned sources
+          python3 tools/ci/fetch_pinned.py zephyr zephyr
+          python3 tools/ci/fetch_pinned.py lvgl lvgl zephyr/west.yml
+      - name: Check Python and generated keymaps
         run: |
-          python3 tools/tests/test_practice_menu.py javelin-steno
-          python3 tools/tests/test_practice_entry.py zmk/app
-          python3 tools/tests/run_repeat_translation.py javelin-steno
-      - name: Compile the dictionaries
-        run: |
-          mkdir -p build/lapwing
-          python3 -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])" https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-base.json build/lapwing/lapwing-base.json
-          python3 tools/dict_compiler/compile_dict.py build/lapwing/lapwing-base.json --name lapwing-base --base-addr 0x12000000 -o build/lapwing/lapwing-base.bin
-          python3 tools/dictionaries/prepare_plover.py
-          python3 tools/dictionaries/prepare_extras.py
-      - name: Practice words and hint index against the compiled dictionaries
-        run: |
-          python3 tools/tests/test_practice_words.py
-          python3 tools/tests/test_hint_index.py
+          python3 -m pip install -r requirements-dev.txt
+          python3 -m ruff check
+          python3 tools/render_keymap.py --check
+      - name: Run every native regression and display renderer
+        run: python3 tools/tests/run_all.py
 
   build:
+    needs: dictionaries
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     container:
-      image: zmkfirmware/zmk-build-arm:stable
+      image: zmkfirmware/zmk-build-arm@sha256:edb1c953438c6f720ddb79c3762f3972013b7fbbaf4fff3592fc869983e7afc5
     strategy:
       fail-fast: false
       matrix:
@@ -141,9 +119,22 @@ jobs:
             quad: true
     steps:
       - name: Check out this repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: repo
+
+      - name: Restore pinned west dependencies
+        id: west-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ws/.west
+            ws/zmk
+            ws/zephyr
+            ws/modules
+            ws/javelin-steno
+            ws/zmk-hid-io-plover-hid
+          key: west-${{ runner.os }}-${{ hashFiles('repo/config/west.yml') }}
 
       # This repository has its own zephyr/ folder, so the west workspace
       # lives beside it and only borrows the pinned manifest.
@@ -153,44 +144,35 @@ jobs:
           mkdir -p ws/config
           cp repo/config/west.yml ws/config/west.yml
           cd ws
-          west init -l config
+          if [ ! -d .west ]; then west init -l config; fi
           west update --fetch-opt=--filter=tree:0
           west zephyr-export
+
+      - name: Cache pinned west dependencies
+        if: matrix.name == 'NiceNano-Left-Default' && steps.west-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ws/.west
+            ws/zmk
+            ws/zephyr
+            ws/modules
+            ws/javelin-steno
+            ws/zmk-hid-io-plover-hid
+          key: west-${{ runner.os }}-${{ hashFiles('repo/config/west.yml') }}
 
       - name: Fetch the pinned Boardsource board definition
         if: matrix.boardsource
         run: |
-          git clone https://github.com/boardsource/wireless-corne_zmk_config vendor
-          git -C vendor checkout --detach 2158104902e164c317e35f53dfa0ca1e36e1a751
-      # Renders the real display widgets with the pinned LVGL on the build host.
-      - name: Display preview test
-        if: matrix.nice_view
-        working-directory: repo
-        shell: bash
-        run: |
-          # LVGL's CMake build enables C++, which this image lacks by default.
-          if ! command -v g++ > /dev/null; then
-            (apt-get update -qq && apt-get install -y -qq g++) > /dev/null 2>&1 || true
-          fi
-          for tool in cmake ninja gcc g++; do
-            if ! command -v "$tool" > /dev/null; then
-              echo "::warning::$tool not found in the build image; skipping the display preview test"
-              exit 0
-            fi
-          done
-          python3 tools/tests/run_display_preview.py "$GITHUB_WORKSPACE/ws/modules/lib/gui/lvgl"
-
-      - name: Compile the base dictionaries
+          git init vendor
+          git -C vendor fetch --depth 1 https://github.com/boardsource/wireless-corne_zmk_config 2158104902e164c317e35f53dfa0ca1e36e1a751
+          git -C vendor checkout --detach FETCH_HEAD
+      - name: Download verified dictionary images
         if: matrix.dictionaries
-        working-directory: repo
-        env:
-          PYTHONUTF8: "1"
-        run: |
-          mkdir -p build/lapwing
-          python3 -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])" https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-base.json build/lapwing/lapwing-base.json
-          python3 tools/dict_compiler/compile_dict.py build/lapwing/lapwing-base.json --name lapwing-base --base-addr 0x12000000 -o build/lapwing/lapwing-base.bin
-          python3 tools/dictionaries/prepare_plover.py
-          python3 tools/dictionaries/prepare_extras.py
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dictionary-images
+          path: repo/build
 
       - name: Build
         working-directory: ws
@@ -296,7 +278,7 @@ jobs:
           grep -E "error|undefined reference|fatal|FAILED" "$GITHUB_WORKSPACE/build.log"             | head -12 | cut -c1-600 | sed 's/%/%25/g'             | while IFS= read -r line; do echo "::error::$line"; done || true
 
       - name: Upload firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.name }}
           path: out/zephyr/${{ matrix.boardsource == 'probe' && 'zephyr' || 'zmk' }}.uf2
@@ -306,7 +288,7 @@ jobs:
   release:
     name: Publish firmware release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [upload-tests, stroke-feed-tests, host-tests, build]
+    needs: [host-tests, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -315,13 +297,13 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Download everyday firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: "*-*-Default"
           path: artifacts
 
       - name: Download firmware without display
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: "*-*-No-Display"
           path: artifacts

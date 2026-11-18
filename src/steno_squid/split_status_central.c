@@ -16,6 +16,7 @@
 #include <dt-bindings/zmk/javelin_steno_layers.h>
 
 #include "layer_control.h"
+#include "zmk_javelin_steno/zmk_platform_shim.h"
 #include "split_status.h"
 #include "practice_types.h"
 #include "stroke_feed.h"
@@ -23,8 +24,8 @@
 #include "practice_progress.h"
 #include "practice_view.h"
 #endif
-#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-#include "lapwing_flash.h"
+#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
+#include "dictionary_flash.h"
 #endif
 
 BUILD_ASSERT(ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT == 1);
@@ -49,6 +50,7 @@ BUILD_ASSERT(sizeof(STENO_SQUID_STATUS_BEHAVIOR) <= ZMK_SPLIT_RUN_BEHAVIOR_DEV_L
 
 static atomic_t connected;
 static atomic_t sync_attempts;
+static bool force_full_status;
 
 static atomic_t upload_mode;
 static uint32_t upload_deadline;
@@ -85,17 +87,17 @@ void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms) 
 
 /* A layer that needs the dictionaries says so while they are not usable. */
 static enum steno_squid_mode dictionary_mode(enum steno_squid_mode ready) {
-#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-    switch (lapwing_flash_status()) {
-    case LAPWING_FLASH_LOADING:
+#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
+    switch (dictionary_flash_status()) {
+    case DICTIONARY_FLASH_LOADING:
         return STENO_SQUID_MODE_LOADING;
-    case LAPWING_FLASH_UNAVAILABLE:
+    case DICTIONARY_FLASH_UNAVAILABLE:
         return STENO_SQUID_MODE_NO_DICTIONARY;
     default:
         break;
     }
 #endif
-    return ready;
+    return zmk_javelin_steno_ready() ? ready : STENO_SQUID_MODE_LOADING;
 }
 
 static enum steno_squid_mode current_mode(void) {
@@ -129,14 +131,7 @@ static const char *custom_layer_name(void) {
 }
 
 static void pack_layer_name(const char *name, struct zmk_behavior_binding *binding) {
-    uint64_t packed = 0;
-    for (int i = 0; i < STENO_SQUID_LAYER_NAME_CHARS && name[i]; i++) {
-        const uint8_t c = name[i];
-        /* The display font has ASCII only. */
-        packed |= (uint64_t)(c >= ' ' && c < 0x7f ? c : '?') << (7 * i);
-    }
-    binding->param1 = (uint32_t)packed;
-    binding->param2 = (uint32_t)(packed >> 32) | STENO_SQUID_LAYER_NAME_PROTOCOL;
+    steno_squid_layer_name_encode(name, &binding->param1, &binding->param2);
 }
 
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
@@ -165,21 +160,28 @@ static void send_status(struct k_work *work) {
     struct steno_squid_practice_view view;
     steno_squid_practice_view_snapshot(&view);
     if (!upload && (view.state & STENO_SQUID_PRACTICE_ACTIVE)) {
-        static uint8_t sequence;
+        static uint8_t sequence, text_sequence, retry_count;
+        static bool have_text;
+        static struct steno_squid_practice_view last_text;
         uint8_t bytes[STENO_SQUID_PRACTICE_FRAME_MAX];
-        const unsigned length = steno_squid_practice_encode(&view, bytes);
+        const bool text_changed = !have_text || force_full_status ||
+            strcmp(view.prompt, last_text.prompt) || strcmp(view.outline, last_text.outline) || strcmp(view.review, last_text.review);
         ++sequence;
+        unsigned length;
+        if (text_changed) {
+            length = steno_squid_practice_encode(&view, bytes);
+            last_text = view;
+            text_sequence = sequence;
+        } else length = steno_squid_practice_encode_state(&view, bytes, text_sequence);
         struct zmk_behavior_binding_event event = {.timestamp = k_uptime_get()};
-        for (unsigned part=0; part<(length+4)/5; part++) {
+        bool failed = false;
+        for (unsigned part = 0; part < (length + STENO_SQUID_PRACTICE_FRAGMENT_BYTES - 1) / STENO_SQUID_PRACTICE_FRAGMENT_BYTES; ++part) {
             steno_squid_practice_fragment(bytes, length, sequence, part, &binding.param1, &binding.param2);
-            zmk_split_central_invoke_behavior(0, &binding, event, true);
+            if (zmk_split_central_invoke_behavior(0, &binding, event, true) != 0) failed = true;
         }
-        /* One prompt/results repeat repairs a dropped fragment promptly.
-         * Correct feedback already advances in 250 ms and needs no repeat. */
-        if (work != &practice_retry_work.work &&
-            steno_squid_practice_feedback_value(view.state) != STENO_SQUID_PRACTICE_CORRECT) {
-            k_work_reschedule(&practice_retry_work, K_MSEC(150));
-        }
+        have_text = !failed;
+        if (failed && retry_count++ < 3) k_work_reschedule(&practice_retry_work, K_MSEC(150));
+        else { retry_count = 0; k_work_cancel_delayable(&practice_retry_work); }
         return;
     }
     k_work_cancel_delayable(&practice_retry_work);
@@ -282,11 +284,13 @@ ZMK_SUBSCRIPTION(steno_squid_host_status, zmk_usb_conn_state_changed);
 #endif
 
 static void sync_after_connect(struct k_work *work) {
+    force_full_status = true;
     send_status(work);
+    force_full_status = false;
     send_host_status(work);
     // ZMK discovers the remote behavior characteristic after the link comes up.
     // Send snapshots through discovery, which can outlast the first few seconds
-    // on a fresh pairing. After that, only send on layer changes.
+    // on a fresh pairing. Afterwards the full heartbeat repairs missed state/text.
     if (!atomic_get(&connected)) {
         return;
     }

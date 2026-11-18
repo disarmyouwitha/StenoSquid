@@ -1,72 +1,59 @@
-#include "lapwing_flash_internal.h"
-#include "diag.h"
+#include "dictionary_flash_internal.h"
+#include "flash_diagnostics.h"
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"
 #endif
 
-#ifdef CONFIG_ZMK_SLEEP
 #include <zephyr/pm/device.h>
 
+BUILD_ASSERT(IS_ENABLED(CONFIG_ZMK_SLEEP), "External flash requires sleep support");
 BUILD_ASSERT(!IS_ENABLED(CONFIG_ZMK_EXT_POWER), "The QSPI driver owns the flash power pin");
 K_MUTEX_DEFINE(flash_lock);
+atomic_t lf_read_sessions;
 bool lf_suspended = true;
 atomic_t lf_restart_requested = ATOMIC_INIT(1);
 K_SEM_DEFINE(lf_restart_wake, 0, 1);
+K_CONDVAR_DEFINE(lf_restart_done);
+int64_t lf_last_restart = -5000;
 
 void lf_request_restart(void) {
+    if (lf_suspended && atomic_get(&lf_checked) && !lf_trusted && k_uptime_get() - lf_last_restart < 5000) {
+        return;
+    }
     if (lf_suspended) {
 #if IDLE_OFF
-        diag_wake_requested(atomic_get(&lf_idle_off) != 0);
+        squid_flash_diag_wake_requested(atomic_get(&lf_idle_off) != 0);
 #else
-        diag_wake_requested(false);
+        squid_flash_diag_wake_requested(false);
 #endif
     }
+    atomic_clear(&lf_checked);
     atomic_set(&lf_restart_requested, 1);
+    dictionary_flash_ready_changed();
     k_sem_give(&lf_restart_wake);
 }
 
-/* Ask the worker to power an idle flash back up, and wait for the result. */
-static bool wake_idle_flash(void) {
+#include "flash_access.h"
+
+bool dictionary_flash_resume_read(void) {
+    k_mutex_lock(&flash_lock, K_FOREVER);
 #if IDLE_OFF
-    if (!atomic_get(&lf_idle_off)) {
-        return false;
-    }
-    lf_request_restart();
-    for (int waited = 0; atomic_get(&lf_idle_off) && waited < 1000; waited += 2) {
-        k_msleep(2);
-    }
+    lf_note_use();
+#endif
     return atomic_get(&lf_mapped_ready) != 0;
-#else
-    return false;
-#endif
 }
-
-bool lapwing_flash_acquire(void) {
-    /* The second pass covers an idle power-down that won the lock first. */
-    for (int attempt = 0; attempt < 2; attempt++) {
-#if IDLE_OFF
-        lf_note_use();
-#endif
-        if (!atomic_get(&lf_mapped_ready) && !wake_idle_flash()) {
-            return false;
-        }
-        k_mutex_lock(&flash_lock, K_FOREVER);
-        if (atomic_get(&lf_mapped_ready)) {
-            return true;
-        }
-        k_mutex_unlock(&flash_lock);
+void dictionary_flash_read_session(bool active) {
+    if (active) atomic_inc(&lf_read_sessions);
+    else {
+        atomic_dec(&lf_read_sessions);
+        k_sem_give(&lf_restart_wake);
     }
-    return false;
-}
-
-void lapwing_flash_release(void) {
-    k_mutex_unlock(&flash_lock);
 }
 
 /* Hold flash_lock. False while a flash operation is still in progress. */
 bool lf_flash_is_idle(bool initialized) {
     return !initialized ||
-           (reactivate_after_xip() && nrfx_qspi_mem_busy_check() == NRFX_SUCCESS);
+           (squid_qspi_reactivate() && nrfx_qspi_mem_busy_check() == NRFX_SUCCESS);
 }
 
 static int flash_pm_action(const struct device *dev, enum pm_device_action action) {
@@ -74,7 +61,7 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
     if (action == PM_DEVICE_ACTION_RESUME) {
         // ZMK aborted power-off and rolled back device suspension. Let the
         // worker restore the same mapping before allowing new flash access.
-        NRF_POWER->GPREGRET2 = 0;
+        lf_forget_wake_trust();
         lf_request_restart();
         return 0;
     }
@@ -92,6 +79,10 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
         return -EBUSY;
     }
 #endif
+    if (atomic_get(&lf_read_sessions)) {
+        k_mutex_unlock(&flash_lock);
+        return -EBUSY;
+    }
     int rc = 0;
     if (lf_suspended) {
 #if IDLE_OFF
@@ -117,7 +108,7 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
         // A failing suspend is not on ZMK's resume list.
         lf_request_restart();
     } else if (lf_trusted) {
-        NRF_POWER->GPREGRET2 = lf_trust_marker();
+        lf_leave_wake_trust();
     }
     k_mutex_unlock(&flash_lock);
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
@@ -131,4 +122,3 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
 PM_DEVICE_DEFINE(steno_squid_flash, flash_pm_action);
 DEVICE_DEFINE(steno_squid_flash, "STENO_SQUID_QSPI", NULL, PM_DEVICE_GET(steno_squid_flash), NULL, NULL,
               POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE, NULL);
-#endif /* CONFIG_ZMK_SLEEP */

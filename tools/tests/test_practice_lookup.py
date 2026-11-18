@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
 """Exercise the actual word-answer lookup with active/disabled dictionaries."""
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-source = (ROOT / 'src/steno_squid/practice_engine.cc').read_text()
-start = source.index('static bool practice_correct(')
-brace = source.index('{', start)
-depth, end = 1, brace + 1
-while depth:
-    depth += (source[end] == '{') - (source[end] == '}')
-    end += 1
-function = source[start:end]
-first_start=source.index('static bool practice_first_stroke_correct(')
-first_end=source.index('\n}\n',first_start)+2
-function=source[first_start:first_end]+'\n'+function
 prefix = r'''
 #include <cassert>
 #include <cstdio>
@@ -81,6 +71,9 @@ int main() {
   stroke.Set("KA");assert(practice_correct(stroke));
   practice.build_stage=2;
   stroke.Set("KAT");assert(practice_correct(stroke));
+  practice.build_stage=STENO_SQUID_BUILD_REPEAT_STAGE;
+  stroke.Set("KA");assert(!practice_correct(stroke));
+  stroke.Set("KAT");assert(practice_correct(stroke));
   practice.drill=STENO_SQUID_PRACTICE_MULTI;
   stroke.Set("K");assert(!practice_first_stroke_correct(stroke));
   stroke.Set("HE");assert(practice_first_stroke_correct(stroke));
@@ -127,8 +120,8 @@ int main() {
 with tempfile.TemporaryDirectory(prefix='steno-squid-lookup-') as directory:
     output=Path(directory)
     (output/'zephyr').mkdir()
-    (output/'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x,...) static_assert(x)\n')
-    (output/'test.cc').write_text(prefix+function+cases)
-    subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Werror','-I'+str(output),
+    (output/'zephyr/toolchain.h').write_text('#define BUILD_ASSERT(x,...) static_assert(x)\n', encoding="utf-8")
+    (output/'test.cc').write_text(prefix+'\n#include "practice_scoring.h"\n'+cases, encoding="utf-8")
+    subprocess.run([*host_compiler('c++'),'-std=c++17','-Wall','-Wextra','-Werror','-I'+str(output),
                     '-I'+str(ROOT/'src/steno_squid'),str(output/'test.cc'),'-o',str(output/'test')],check=True)
     subprocess.run([str(output/'test')],check=True)

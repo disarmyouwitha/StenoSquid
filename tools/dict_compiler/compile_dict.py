@@ -10,10 +10,8 @@ Usage:
     python compile_dict.py main.json extra.json -o steno_dict.bin
 
 For raw flash binaries, --base-addr must be the actual load address.
-For embedded firmware use --asm-output: it emits linker relocations for each
-native pointer. Plain .incbin does not relocate zero-based pointer values.
-This compiler targets the pinned June 2026 engine's 32-bit JSC4 structure ABI.
 """
+
 
 import argparse
 import json
@@ -21,17 +19,12 @@ import struct
 import sys
 import zlib
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 # --- Stroke parsing ---
 
-STENO_KEYS = {'#': 1, 'S-': 2, 'T-': 4, 'K-': 8, 'P-': 16, 'W-': 32, 'H-': 64, 'R-': 128, 'A-': 256, 'O-': 512, '*': 1024, '-E': 2048, '-U': 4096, '-F': 8192, '-R': 16384, '-P': 32768, '-B': 65536, '-L': 131072, '-G': 262144, '-T': 524288, '-S': 1048576, '-D': 2097152, '-Z': 4194304}
 
-IMPLICIT_HYPHEN = set('AOEU*')
-LEFT_BANK = 'STKPWHR'
-RIGHT_BANK = 'FRPBLGTSDZ'
-VOWELS = 'AOEU'
 
 
 # Match the pinned engine's EXTENDED_ENGLISH_STROKE_PARSER order, including
@@ -82,9 +75,6 @@ def uint24(v: int) -> bytes:
 def round_up(v: int, align: int) -> int:
     return (v + align - 1) & ~(align - 1)
 
-
-def popcount32(v: int) -> int:
-    return bin(v & 0xFFFFFFFF).count('1')
 
 
 class CompactMapBuilder:
@@ -368,9 +358,7 @@ class DictionaryCollectionBuilder:
             write_u32(off, count)
             write_ptr(off + 4, data_off)
 
-        def write_sized_list_ptr(off, data_off, count):
-            write_u32(off, count)
-            write_ptr(off + 4, data_off)
+
 
         # Header
         p = 0
@@ -471,18 +459,12 @@ def main():
                         help='Dictionary name (one per input, defaults to filename)')
     parser.add_argument('--base-addr', type=lambda x: int(x, 0), default=0,
                         help='XIP base address for pointer resolution (default: 0)')
-    parser.add_argument('--asm-output', help='Optional relocatable ARM assembly output')
-    parser.add_argument('--max-entries', type=int, default=0,
-                        help='Limit entries per dict (0 = no limit, for testing)')
     args = parser.parse_args()
 
     dict_entries = []
     for i, input_path in enumerate(args.inputs):
-        with open(input_path, 'r') as f:
+        with open(input_path, 'r', encoding='utf-8') as f:
             raw = json.load(f)
-        if args.max_entries > 0:
-            items = list(raw.items())[:args.max_entries]
-            raw = dict(items)
         name = args.name[i] if args.name and i < len(args.name) else input_path.rsplit('/', 1)[-1].rsplit('.', 1)[0]
         dict_entries.append((name, raw))
         print(f"Loaded {input_path}: {len(raw)} entries as '{name}'", file=sys.stderr)
@@ -492,25 +474,6 @@ def main():
 
     with open(args.output, 'wb') as f:
         f.write(result)
-
-    if args.asm_output:
-        if args.base_addr != 0:
-            parser.error('--asm-output requires --base-addr 0')
-        lines = ['.section .rodata.steno_dict,"a",%progbits', '.global _javelin_dict_start', '.global _javelin_dict_end', '.balign 4', '_javelin_dict_start:']
-        cursor = 0
-        for off in sorted(builder.pointer_offsets):
-            chunk = result[cursor:off]
-            for i in range(0, len(chunk), 16):
-                lines.append('.byte ' + ','.join(str(v) for v in chunk[i:i+16]))
-            target = struct.unpack_from('<I', result, off)[0]
-            lines.append(f'.long _javelin_dict_start + {target}')
-            cursor = off + 4
-        chunk = result[cursor:]
-        for i in range(0, len(chunk), 16):
-            lines.append('.byte ' + ','.join(str(v) for v in chunk[i:i+16]))
-        lines.append('_javelin_dict_end:')
-        with open(args.asm_output, 'w') as f:
-            f.write('\n'.join(lines) + '\n')
 
     print(f"Wrote {len(result)} bytes ({len(result)/1024:.1f} KB) to {args.output}", file=sys.stderr)
 

@@ -94,21 +94,22 @@ int main(void) {
   }
   for (unsigned id = 0; id < STENO_SQUID_BUILD_COUNT; id++) {
     uint32_t previous = 0;
-    for (unsigned stage = 0; stage < STENO_SQUID_BUILD_STEPS; stage++) {
+    for (unsigned stage = 0; stage <= STENO_SQUID_BUILD_REPEAT_STAGE; stage++) {
       uint32_t mask;
-      assert(steno_squid_stroke_from_text(steno_squid_build[id].strokes[stage],
+      assert(steno_squid_stroke_from_text(steno_squid_build[id].strokes[steno_squid_build_outline_stage(stage)],
                                           &mask));
-      assert(mask != previous && (mask & previous) == previous);
+      if (stage == STENO_SQUID_BUILD_REPEAT_STAGE) assert(mask == previous);
+      else assert(mask != previous && (mask & previous) == previous);
       char shown[16];
       uint32_t formatted_mask;
       steno_squid_build_format(shown, sizeof(shown),
-                               steno_squid_build[id].strokes[stage]);
+                               steno_squid_build[id].strokes[steno_squid_build_outline_stage(stage)]);
       /* The extra dash is a visual hand boundary, not dictionary syntax.
        * Removing it must reproduce the exact canonical scoring outline. */
       char canonical[16]; unsigned ncanonical=0;
       for(unsigned k=0;shown[k];k++)if(shown[k]!='-')canonical[ncanonical++]=shown[k];
       canonical[ncanonical]=0;
-      assert(!strcmp(canonical,steno_squid_build[id].strokes[stage]));
+      assert(!strcmp(canonical,steno_squid_build[id].strokes[steno_squid_build_outline_stage(stage)]));
       assert(steno_squid_stroke_from_text(canonical, &formatted_mask) && formatted_mask == mask);
       previous = mask;
       in.state =
@@ -144,7 +145,7 @@ int main(void) {
         in.state |= STENO_SQUID_PRACTICE_MENU;
       if (scenario == 4)
         in.state =
-            STENO_SQUID_PRACTICE_ACTIVE | STENO_SQUID_PRACTICE_SECOND_ERROR |
+            STENO_SQUID_PRACTICE_ACTIVE | 0 |
             (STENO_SQUID_PRACTICE_MULTI << STENO_SQUID_PRACTICE_DRILL_SHIFT) |
             (STENO_SQUID_PRACTICE_INCORRECT
              << STENO_SQUID_PRACTICE_FEEDBACK_SHIFT);
@@ -166,6 +167,26 @@ int main(void) {
   for (unsigned i = 0; i < (n + 4) / 5; i++)
     assert(deliver(&rx, bytes, n, 1, i, &out) ==
            (i + 1 == (n + 4) / 5 ? -1 : 0));
+  // State-only frames are smaller and cannot attach to missing/different text.
+  in.state = STENO_SQUID_PRACTICE_ACTIVE;
+  in.progress = 100;
+  strcpy(in.prompt, "CAT");strcpy(in.outline, "KAT");in.review[0] = 0;
+  memset(&rx, 0, sizeof(rx));memset(&out, 0, sizeof(out));
+  n = steno_squid_practice_encode_state(&in, bytes, 20);
+  assert(n == 19);
+  for (unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,21,i,&out)==0);
+  assert(!out.state);
+  n = steno_squid_practice_encode(&in, bytes);
+  for (unsigned i=0;i<(n+4)/5;i++) assert(deliver(&rx,bytes,n,22,i,&out)==(i+1==(n+4)/5));
+  in.progress = 101;
+  n = steno_squid_practice_encode_state(&in,bytes,22);
+  for(unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,23,i,&out)==(i==3));
+  assert(out.progress==101 && !strcmp(out.prompt,"CAT") && !strcmp(out.outline,"KAT"));
+  n = steno_squid_practice_encode_state(&in,bytes,21);
+  for(unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,24,i,&out)==0);
+  strcpy(in.prompt,"DOG");n=steno_squid_practice_encode_state(&in,bytes,22);
+  for(unsigned i=0;i<4;i++) assert(deliver(&rx,bytes,n,25,i,&out)==0);
+  assert(!strcmp(out.prompt,"CAT"));
   puts("Practice text frames: atomic commit, loss/reorder/stale protection, "
        "wrap, corruption and all drills passed");
 }

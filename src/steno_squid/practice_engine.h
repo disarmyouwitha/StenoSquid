@@ -18,3 +18,6 @@ void steno_squid_practice_dictionary_changed();
 // practice boundary and returns, in held, the steno keys that were down.
 // False when the engine is not running.
 bool steno_squid_engine_cancel_strokes(StenoKeyState &held);
+
+// Drop an interrupted chord without scoring it or emitting partial text.
+void steno_squid_practice_discard_chord();

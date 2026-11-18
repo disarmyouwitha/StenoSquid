@@ -6,22 +6,13 @@
  * right half and the host tests in tools/tests/test_stroke_feed.c all use the
  * same code. It is valid C and C++.
  *
- * Messages use the status behavior's two 32-bit parameters. Bit 30 of param2
- * tags a tape message (bit 31 stays clear, so it is never a layer name) and
- * bits 28 and 29 of param2 give the kind. A stroke is 23 key bits, in the
- * engine's own bit order, without its '^' and '+' extension keys.
- *
- *   STROKE  param1: stroke bits 0-22, seq bit 23, WPM bits 24-31
- *           param2: tag, kind 0, first four translation characters
- *   MORE    param1: characters 5-8, seq bit 28
- *           param2: tag, kind 1, characters 9-12
- *   HINT    param1: shorter outline's first stroke bits 0-22, seq bit 23,
- *                   its stroke count bits 24-26
- *           param2: tag, kind 2
- *
- * Characters are seven-bit ASCII, first in the lowest bits, zero at the end.
- * The sequence bit flips on every stroke, so a MORE or HINT that arrives after
- * a newer STROKE is recognised as stale and dropped.
+ * Messages use the status behavior's two 32-bit parameters. Tag/kind stay in
+ * param2's high nibble. STROKE carries the 23 keys, full 8-bit WPM, a two-bit
+ * sequence, a truncation flag and the first three characters. Character 4's
+ * low five bits travel in STROKE; its high two bits travel in MORE alongside
+ * characters 5..12 and the same sequence. HINT carries its keys/count/sequence.
+ * This keeps the full 12-character capacity and WPM range in two text packets,
+ * while detecting continuations that are stale by two strokes as well as one.
  */
 #include <stdbool.h>
 #include <stddef.h>
@@ -51,6 +42,8 @@ struct steno_squid_tape {
     bool valid;
     uint8_t seq;
     uint8_t wpm;
+    bool truncated;
+    uint8_t fourth_low; /* low five bits of character 4, completed by MORE */
     uint8_t hint_count; /* strokes in a shorter outline, 0 for none */
     uint32_t mask;
     uint32_t hint_mask; /* the shorter outline's first stroke */
@@ -253,27 +246,29 @@ static inline void steno_squid_tape_encode_stroke(const struct steno_squid_tape 
                                              uint32_t *param2) {
     *param1 = (tape->mask & STENO_SQUID_TAPE_KEYS_MASK) | ((uint32_t)(tape->seq & 1u) << 23) |
               ((uint32_t)tape->wpm << 24);
-    *param2 = STENO_SQUID_TAPE_TAG | ((uint32_t)STENO_SQUID_TAPE_KIND_STROKE << STENO_SQUID_TAPE_KIND_SHIFT) |
-              (uint32_t)steno_squid_tape_pack(tape->text, 0, 4);
+    *param2 = STENO_SQUID_TAPE_TAG |
+              ((uint32_t)steno_squid_tape_pack(tape->text, 0, 4) & 0x03ffffffu) |
+              ((uint32_t)((tape->seq >> 1) & 1u) << 26) | ((uint32_t)tape->truncated << 27);
 }
 
-/* True when the text is longer than a STROKE message holds. */
+/* Three characters fit completely in STROKE; MORE completes the remainder. */
 static inline bool steno_squid_tape_needs_more(const struct steno_squid_tape *tape) {
-    return steno_squid_tape_text_length(tape) > 4;
+    return steno_squid_tape_text_length(tape) > 3;
 }
 
 static inline void steno_squid_tape_encode_more(const struct steno_squid_tape *tape, uint32_t *param1,
                                            uint32_t *param2) {
     const uint64_t rest = steno_squid_tape_pack(tape->text, 4, 8);
-    *param1 = (uint32_t)(rest & 0xfffffffu) | ((uint32_t)(tape->seq & 1u) << 28);
+    *param1 = (uint32_t)(rest & 0xfffffffu) | ((uint32_t)(tape->seq & 3u) << 28) |
+              ((uint32_t)(((uint8_t)tape->text[3] >> 5) & 3u) << 30);
     *param2 = STENO_SQUID_TAPE_TAG | ((uint32_t)STENO_SQUID_TAPE_KIND_MORE << STENO_SQUID_TAPE_KIND_SHIFT) |
               (uint32_t)(rest >> 28);
 }
 
 static inline void steno_squid_tape_encode_hint(const struct steno_squid_tape *tape, uint32_t *param1,
                                            uint32_t *param2) {
-    *param1 = (tape->hint_mask & STENO_SQUID_TAPE_KEYS_MASK) | ((uint32_t)(tape->seq & 1u) << 23) |
-              ((uint32_t)(tape->hint_count & 7u) << 24);
+    *param1 = (tape->hint_mask & STENO_SQUID_TAPE_KEYS_MASK) | ((uint32_t)(tape->seq & 3u) << 23) |
+              ((uint32_t)(tape->hint_count & 7u) << 25);
     *param2 = STENO_SQUID_TAPE_TAG | ((uint32_t)STENO_SQUID_TAPE_KIND_HINT << STENO_SQUID_TAPE_KIND_SHIFT);
 }
 
@@ -290,14 +285,16 @@ static inline int steno_squid_tape_decode(uint32_t param1, uint32_t param2, stru
     const uint32_t payload = param2 & STENO_SQUID_TAPE_PAYLOAD_MASK;
     switch (kind) {
     case STENO_SQUID_TAPE_KIND_STROKE: {
-        char text[4];
+        char text[3];
         const uint32_t mask = param1 & STENO_SQUID_TAPE_KEYS_MASK;
-        if (!mask || !steno_squid_tape_unpack(payload, 4, text)) {
+        if (!mask || !steno_squid_tape_unpack(payload & 0x1fffffu, 3, text)) {
             return STENO_SQUID_TAPE_INVALID;
         }
         memset(tape, 0, sizeof(*tape));
         tape->valid = true;
-        tape->seq = (uint8_t)((param1 >> 23) & 1u);
+        tape->seq = (uint8_t)(((param1 >> 23) & 1u) | (((payload >> 26) & 1u) << 1));
+        tape->truncated = (payload >> 27) & 1u;
+        tape->fourth_low = (payload >> 21) & 31u;
         tape->wpm = (uint8_t)(param1 >> 24);
         tape->mask = mask;
         memcpy(tape->text, text, sizeof(text));
@@ -306,24 +303,27 @@ static inline int steno_squid_tape_decode(uint32_t param1, uint32_t param2, stru
     case STENO_SQUID_TAPE_KIND_MORE: {
         char text[8];
         const uint64_t bits = (uint64_t)(param1 & 0xfffffffu) | ((uint64_t)payload << 28);
-        if ((param1 >> 29) || !steno_squid_tape_unpack(bits, 8, text)) {
+        if (!steno_squid_tape_unpack(bits, 8, text)) {
             return STENO_SQUID_TAPE_INVALID;
         }
-        if (!tape->valid || ((param1 >> 28) & 1u) != tape->seq ||
-            steno_squid_tape_text_length(tape) != 4) {
+        if (!tape->valid || ((param1 >> 28) & 3u) != tape->seq ||
+            steno_squid_tape_text_length(tape) != 3) {
             return STENO_SQUID_TAPE_STALE;
         }
+        const uint8_t fourth = tape->fourth_low | ((param1 >> 30) << 5);
+        if (fourth < 0x20 || fourth > 0x7e) return STENO_SQUID_TAPE_INVALID;
+        tape->text[3] = fourth;
         memcpy(tape->text + 4, text, sizeof(text));
         tape->text[STENO_SQUID_TAPE_TEXT_MAX] = '\0';
         return STENO_SQUID_TAPE_KIND_MORE;
     }
     case STENO_SQUID_TAPE_KIND_HINT: {
         const uint32_t mask = param1 & STENO_SQUID_TAPE_KEYS_MASK;
-        const unsigned count = (param1 >> 24) & 7u;
-        if (!mask || !count || (param1 >> 27) || payload) {
+        const unsigned count = (param1 >> 25) & 7u;
+        if (!mask || !count || (param1 >> 28) || payload) {
             return STENO_SQUID_TAPE_INVALID;
         }
-        if (!tape->valid || ((param1 >> 23) & 1u) != tape->seq) {
+        if (!tape->valid || ((param1 >> 23) & 3u) != tape->seq) {
             return STENO_SQUID_TAPE_STALE;
         }
         tape->hint_mask = mask;

@@ -1,6 +1,7 @@
 #define DT_DRV_COMPAT zmk_behavior_tap_first
 
 #include <drivers/behavior.h>
+#include <errno.h>
 #include <zephyr/device.h>
 
 struct tap_first_config {
@@ -10,6 +11,7 @@ struct tap_first_config {
 static int forward(struct zmk_behavior_binding *binding,
                    struct zmk_behavior_binding_event event, bool pressed) {
     const struct device *device = zmk_behavior_get_binding(binding->behavior_dev);
+    if (!device) return -ENODEV;
     const struct tap_first_config *config = device->config;
     struct zmk_behavior_binding target = {
         .behavior_dev = config->hold_tap,

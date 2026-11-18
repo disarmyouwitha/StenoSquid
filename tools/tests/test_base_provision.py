@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Exercise the wired provisioning state machine against an in-memory NOR chip."""
+from hostlib import compiler as host_compiler
 from pathlib import Path
+import argparse
+import os
 import shutil
 import subprocess
 import tempfile
@@ -29,7 +32,7 @@ STUB = """
 #define NRFX_SUCCESS 0
 #define NRFX_ERROR_BUSY 1
 typedef int nrfx_err_t;
-enum lapwing_flash_state { LAPWING_FLASH_LOADING, LAPWING_FLASH_READY, LAPWING_FLASH_UNAVAILABLE };
+enum dictionary_flash_state { DICTIONARY_FLASH_LOADING, DICTIONARY_FLASH_READY, DICTIONARY_FLASH_UNAVAILABLE };
 struct base_image { const char *name; uint32_t offset, bytes, crc; bool verified; };
 static struct base_image lf_images[] = {{"LAPWING", 0, 12, 0, false},
                                         {"PLOVER", 16, 4, 0, false}};
@@ -56,18 +59,20 @@ static inline bool atomic_clear(bool *value) {
     return previous;
 }
 static inline void atomic_set(bool *value, bool next) { *value = next; }
-static inline bool lapwing_flash_acquire(void) {
+static inline bool dictionary_flash_acquire(void) {
     if (!lf_mapped_ready) return false;
     k_mutex_lock(&flash_lock, K_FOREVER);
     return true;
 }
-static inline bool reactivate_after_xip(void) { return true; }
+static inline void dictionary_flash_ready_changed(void) {}
+static inline bool squid_qspi_reactivate(void) { return true; }
 static inline void lf_request_restart(void) { assert(flash_lock); restarts++; }
-static inline bool lf_clear_trust(void) { return trust_can_clear; }
-static inline enum lapwing_flash_state lapwing_flash_status(void) {
-    return lf_mapped_ready ? LAPWING_FLASH_READY
-                           : lf_checked ? LAPWING_FLASH_UNAVAILABLE : LAPWING_FLASH_LOADING;
+static inline bool lf_clear_trust(void) { lf_trusted = false; power.GPREGRET2 = 0; return trust_can_clear; }
+static inline enum dictionary_flash_state dictionary_flash_status(void) {
+    return lf_mapped_ready ? DICTIONARY_FLASH_READY
+                           : lf_checked ? DICTIONARY_FLASH_UNAVAILABLE : DICTIONARY_FLASH_LOADING;
 }
+static inline nrfx_err_t squid_qspi_wait_ready(uint32_t timeout) { (void)timeout; return NRFX_SUCCESS; }
 static inline int nrfx_qspi_read(void *out, size_t size, uint32_t offset) {
     assert(flash_lock && offset + size <= sizeof(nor));
     memcpy(out, nor + offset, size);
@@ -91,8 +96,13 @@ static inline int nrfx_qspi_erase(int kind, uint32_t offset) {
 static inline int nrfx_qspi_mem_busy_check(void) { return NRFX_SUCCESS; }
 /* The stub needs only an incremental checksum for transfer-state tests. */
 static inline uint32_t crc32_ieee_update(uint32_t crc, const uint8_t *data, size_t size) {
-    for (size_t i = 0; i < size; i++) crc = crc * 31 + data[i];
-    return crc;
+    crc = ~crc;
+    for (size_t i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (int bit = 0; bit < 8; bit++)
+            crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320U : 0);
+    }
+    return ~crc;
 }
 static inline bool lf_image_crc(const struct base_image *img, bool mapped,
                                 uint32_t *crc, uint32_t *failed_at) {
@@ -118,121 +128,63 @@ static inline size_t hex2bin(const char *hex, size_t len, uint8_t *out, size_t m
 """
 
 HARNESS = r'''
-#include "lapwing_flash_provision.c"
-
-static void expect(const char *command, const char *prefix) {
-    char reply[160];
-    lf_provision_command(command, reply, sizeof(reply));
-    if (strncmp(reply, prefix, strlen(prefix)) != 0) {
-        fprintf(stderr, "%s returned %s, expected %s\n", command, reply, prefix);
-        assert(false);
-    }
+#include "dictionary_flash_provision.c"
+static void expect(const char *command,const char *prefix) {
+    char reply[160];lf_provision_command(command,reply,sizeof(reply));
+    if(strncmp(reply,prefix,strlen(prefix))) { fprintf(stderr,"%s => %s; wanted %s\n",command,reply,prefix);assert(false); }
 }
-
 int main(void) {
-    const uint8_t lapwing[] = {1,2,3,4,5,6,7,8,9,10,11,12};
-    const uint8_t plover[] = {13,14,15,16};
-    const char *first = "data 0 0102030405060708\n";
-    const char *last = "data 8 090a0b0c\n";
-    lf_images[0].crc = crc32_ieee_update(0, lapwing, sizeof(lapwing));
-    lf_images[1].crc = crc32_ieee_update(0, plover, sizeof(plover));
-    memset(nor, 0xff, sizeof(nor));
-
-    expect("status\n", "1 INSTALL\nLAPWING 12 ");
-    expect("verify LAPWING\n", "MISMATCH ");
-    assert(upload_mode == 0 && writes == 0 && erases == 0);
-    expect("begin PERSONAL\n", "ERR");
-    expect("begin LAPWING\n", "OK");
-    assert(upload_mode == STENO_SQUID_MODE_INSTALL);
-    expect("data 4294967296 0102030405060708\n", "ERR");
-    expect(first, "OK");
-    nor[11] = 0;
-    expect(last, "ERR Base region holds different data");
-    assert(writes == 0);
-    nor[11] = 0xff;
-    expect("begin LAPWING\n", "OK");
-    expect(first, "OK");
-    expect("data 8 ffffffff\n", "ERR Image checksum mismatch");
-    assert(writes == 0);
-
-    expect("begin LAPWING\n", "OK");
-    expect(first, "OK");
-    trust_can_clear = false;
-    expect(last, "ERR Could not clear");
-    assert(writes == 0);
-    trust_can_clear = true;
-    lf_trusted = true;
-    power.GPREGRET2 = 42;
-
-    expect("begin LAPWING\n", "OK");
-    expect(first, "OK");
-    expect(last, "OK");
-    assert(writes == 0);
-    expect(first, "OK");
-    assert(writes == 2);
-    now += TRANSFER_TIMEOUT_MS;
-    expect(last, "ERR No active transfer");
-    expect("begin LAPWING\n", "OK");
-    expect(first, "OK");
-    expect(last, "OK");
-    expect(first, "OK");
-    assert(writes == 2); // Matching pages are not reprogrammed.
-    expect(last, "OK");
-    expect("commit\n", "OK");
-    assert(writes == 3 && restarts == 0 && lf_images[0].verified);
-    expect("begin LAPWING\n", "ERR");
-
-    nor[16] = 0;
-    nor[24] = 0x55;
-    expect("repair LAPWING\n", "ERR");
-    expect("repair PERSONAL\n", "ERR");
-    expect("repair PLOVER\n", "OK");
-    assert(upload_mode == STENO_SQUID_MODE_REPAIR);
-    expect("data 0 ffffffff\n", "ERR Image checksum mismatch");
-    assert(erases == 0 && nor[16] == 0);
-    expect("repair PLOVER\n", "OK");
-    expect("data 0 0d0e0f10\n", "OK");
-    assert(erases == 1 && nor[16] == 0xff && nor[24] == 0x55);
-    assert(memcmp(nor, lapwing, sizeof(lapwing)) == 0);
-    expect("data 0 0d0e0f10\n", "OK");
-    expect("commit\n", "OK");
-    assert(restarts == 1 && lf_provisioning_recheck && !lf_checked);
-    expect("status\n", "1 LOADING");
-    lf_mapped_ready = true;
-    expect("verify LAPWING\n", "OK ");
-    assert(lf_mapped_ready && upload_mode == 0 && writes == 4 && erases == 1);
-    for (size_t i = 12; i < sizeof(nor); i++)
-        if ((i < 16 || i >= 20) && i != 24) assert(nor[i] == 0xff);
-
-    /* A boot-time verification flag can be stale. Never erase a healthy image
-     * or take it offline when a direct repair request is made against it. */
-    lf_checked = true;
-    lf_provisioning_recheck = false;
-    expect("repair LAPWING\n", "ERR Base repair requires");
-    assert(lf_mapped_ready && erases == 1);
-    nor[0] = 0;
-    expect("verify LAPWING\n", "MISMATCH ");
-    assert(lf_mapped_ready && lf_images[0].verified && erases == 1);
-    expect("repair LAPWING\n", "OK");
-    assert(!lf_mapped_ready && !lf_images[0].verified && erases == 1);
-    expect(first, "OK");
-    expect(last, "OK");
-    assert(erases == 3 && !memcmp(nor + 16, plover, sizeof(plover)) && nor[24] == 0x55);
-    expect(first, "OK");
-    expect(last, "OK");
-    expect("commit\n", "OK");
-    assert(lf_images[0].verified && restarts == 2);
-
+    const uint8_t lapwing[]={1,2,3,4,5,6,7,8,9,10,11,12},plover[]={13,14,15,16};
+    const char *first="data 0 AQIDBAUGBwg=\n", *last="data 8 CQoLDA==\n";
+    assert(crc32_ieee_update(0,(const uint8_t *)"123456789",9)==0xcbf43926U);
+    lf_images[0].crc=crc32_ieee_update(0,lapwing,sizeof(lapwing));
+    lf_images[1].crc=crc32_ieee_update(0,plover,sizeof(plover));
+    memset(nor,0xff,sizeof(nor));nor[24]=0x55;
+    expect("status\n","2 INSTALL");expect("verify LAPWING\n","MISMATCH ");
+    expect("begin PERSONAL\n","ERR");
+    trust_can_clear=false;expect("begin LAPWING\n","ERR Could not clear");assert(!writes && !erases);
+    trust_can_clear=true;expect("begin LAPWING\n","OK 0");
+    expect("data 4294967296 AQIDBAUGBwg=\n","ERR");assert(!writes);
+    expect("begin LAPWING\n","OK 0");expect(first,"OK 8");assert(writes==2);
+    expect(first,"OK 8");assert(writes==2); // Lost ACK: no duplicate write or CRC update.
+    expect("begin LAPWING\n","OK 8"); // Resume the active transfer.
+    now+=TRANSFER_TIMEOUT_MS;expect(last,"ERR No active transfer");
+    expect("begin LAPWING\n","OK 0");expect(first,"OK 8");assert(writes==2);
+    expect("data 8 /////w==\n","ERR Image checksum mismatch");assert(writes==2);
+    expect("begin LAPWING\n","OK 0");expect(first,"OK 8");expect(last,"OK 12");
+    assert(writes==3);expect("commit\n","OK");assert(lf_images[0].verified && !restarts);
+    expect("begin LAPWING\n","ERR");
+    nor[16]=0;expect("begin PLOVER\n","OK 0");expect("data 0 DQ4PEA==\n","ERR Base region holds different data");
+    assert(!erases && !memcmp(nor,lapwing,sizeof(lapwing)));
+    expect("repair PLOVER\n","OK 0");assert(erases==1 && nor[16]==0xff && nor[24]==0x55);
+    expect("data 0 DQ4PEA==\n","OK 4");expect("commit\n","OK");
+    assert(restarts==1 && lf_provisioning_recheck && !lf_checked);
+    expect("status\n","2 LOADING");
+    lf_mapped_ready=true;lf_provisioning_recheck=false;lf_checked=true;
+    expect("verify LAPWING\n","OK ");expect("repair LAPWING\n","ERR Base repair requires");
+    assert(lf_mapped_ready && erases==1); // Healthy repair is refused.
+    nor[0]=0;expect("repair LAPWING\n","OK 0");
+    assert(!lf_mapped_ready && !lf_images[0].verified && erases==3 && nor[24]==0x55);
+    expect(first,"OK 8");expect(last,"OK 12");expect("commit\n","OK");
+    assert(!memcmp(nor,lapwing,sizeof(lapwing)) && !memcmp(nor+16,plover,sizeof(plover)));
+    lf_provisioning_recheck=false;lf_mapped_ready=false;lf_images[0].verified=false;
+    expect("begin LAPWING\n","OK 0");expect("data 0 !!!!!!!!\n","ERR Invalid chunk");
+    puts("PASS: single-pass base64 provisioning, duplicate ACK/restart, bounds, CRC, repair and healthy-base protection");
 }
 '''
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--zephyr', type=Path, default=Path(os.environ.get('STENO_SQUID_TEST_ZEPHYR', str(ROOT / 'zephyr'))))
+    args = parser.parse_args()
+    if not (args.zephyr / 'lib/utils/base64.c').is_file():
+        parser.error('Pass --zephyr with the pinned Zephyr checkout (or use run_all.py)')
     with tempfile.TemporaryDirectory(prefix="base-provision-test-") as temp:
         root = Path(temp)
-        for name in ("lapwing_flash_provision.c", "lapwing_flash_provision.h"):
+        for name in ("dictionary_flash_provision.c", "dictionary_flash_provision.h"):
             shutil.copy(SOURCE / name, root)
-        (root / "lapwing_flash_internal.h").write_text(STUB)
+        (root / "dictionary_flash_internal.h").write_text(STUB, encoding="utf-8")
         (root / "split_status.h").write_text("""
 enum steno_squid_mode {
     STENO_SQUID_MODE_INSTALL = 1, STENO_SQUID_MODE_REPAIR, STENO_SQUID_MODE_VERIFY
@@ -241,16 +193,19 @@ static enum steno_squid_mode upload_mode;
 static inline void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout) {
     upload_mode = timeout ? mode : 0;
 }
-""")
+""", encoding="utf-8")
         for name in ("w25q_quad.h", "zephyr/sys/crc.h", "zephyr/sys/printk.h"):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
-        (root / "test.c").write_text(HARNESS)
-        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", temp,
-                        str(root / "test.c"), "-o", str(root / "test")], check=True)
+        base64_header = root / 'zephyr/sys/base64.h'
+        shutil.copy(args.zephyr / 'include/zephyr/sys/base64.h', base64_header)
+        (root / 'zephyr/types.h').write_text('#include <stdint.h>\n', encoding='utf-8')
+        (root / "test.c").write_text(HARNESS, encoding="utf-8")
+        subprocess.run([*host_compiler('c'), "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", temp,
+                        str(root / "test.c"), str(args.zephyr / "lib/utils/base64.c"), "-o", str(root / "test")], check=True)
         subprocess.run([str(root / "test")], check=True)
-    print("PASS: base provisioning preflight, interrupted retry, image bounds, checksum-gated repair, and final recheck")
+
 
 
 if __name__ == "__main__":

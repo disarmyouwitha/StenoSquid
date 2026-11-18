@@ -13,14 +13,13 @@
 #include "platform/windows_us_layout.h"
 #endif
 #include "processor/all_up.h"
-#include "processor/first_up.h"
 #include "processor/jeff_modifiers.h"
 #include "processor/processor.h"
 #include "processor/repeat.h"
 #include "steno_key_state.h"
 #include "static_allocate.h"
 #include "stroke.h"
-#if defined(CONFIG_ZMK_STENO_SQUID_PRACTICE) || defined(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
+#if defined(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS) || defined(CONFIG_ZMK_STENO_SQUID_PRACTICE) || defined(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
 #include "steno_squid/split_status.h"
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
@@ -29,8 +28,11 @@
 #include <new>
 
 #include "javelin_engine_lock.h"
+#include "engine_work.h"
+#include "chord_delivery.h"
+#include "javelin_hid_transport.h"
 #include "lapwing_dictionary.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
 #include "user_dictionary_store.h"
 #endif
@@ -52,12 +54,58 @@ static JavelinStaticAllocate<StenoRepeat> stenoRepeat;
 static JavelinStaticAllocate<StenoAllUp> allUp;
 static StenoProcessor *processor = nullptr;
 
-static bool initialized = false;
+#include <dt-bindings/zmk/javelin_steno_ids.h>
+
+// Studio/keymap IDs and the engine must describe the same physical keys.
+static_assert(STENO_ID_S1 == int(StenoKey::S1));
+static_assert(STENO_ID_S2 == int(StenoKey::S2));
+static_assert(STENO_ID_TL == int(StenoKey::TL));
+static_assert(STENO_ID_KL == int(StenoKey::KL));
+static_assert(STENO_ID_PL == int(StenoKey::PL));
+static_assert(STENO_ID_WL == int(StenoKey::WL));
+static_assert(STENO_ID_HL == int(StenoKey::HL));
+static_assert(STENO_ID_RL == int(StenoKey::RL));
+static_assert(STENO_ID_A == int(StenoKey::A));
+static_assert(STENO_ID_O == int(StenoKey::O));
+static_assert(STENO_ID_STAR1 == int(StenoKey::STAR1));
+static_assert(STENO_ID_STAR2 == int(StenoKey::STAR2));
+static_assert(STENO_ID_STAR3 == int(StenoKey::STAR3));
+static_assert(STENO_ID_STAR4 == int(StenoKey::STAR4));
+static_assert(STENO_ID_E == int(StenoKey::E));
+static_assert(STENO_ID_U == int(StenoKey::U));
+static_assert(STENO_ID_FR == int(StenoKey::FR));
+static_assert(STENO_ID_RR == int(StenoKey::RR));
+static_assert(STENO_ID_PR == int(StenoKey::PR));
+static_assert(STENO_ID_BR == int(StenoKey::BR));
+static_assert(STENO_ID_LR == int(StenoKey::LR));
+static_assert(STENO_ID_GR == int(StenoKey::GR));
+static_assert(STENO_ID_TR == int(StenoKey::TR));
+static_assert(STENO_ID_SR == int(StenoKey::SR));
+static_assert(STENO_ID_DR == int(StenoKey::DR));
+static_assert(STENO_ID_ZR == int(StenoKey::ZR));
+static_assert(STENO_ID_NUM1 == int(StenoKey::NUM1));
+static_assert(STENO_ID_NUM2 == int(StenoKey::NUM2));
+static_assert(STENO_ID_NUM3 == int(StenoKey::NUM3));
+static_assert(STENO_ID_NUM4 == int(StenoKey::NUM4));
+static_assert(STENO_ID_NUM5 == int(StenoKey::NUM5));
+static_assert(STENO_ID_NUM6 == int(StenoKey::NUM6));
+static_assert(STENO_ID_NUM7 == int(StenoKey::NUM7));
+static_assert(STENO_ID_NUM8 == int(StenoKey::NUM8));
+static_assert(STENO_ID_NUM9 == int(StenoKey::NUM9));
+static_assert(STENO_ID_NUM10 == int(StenoKey::NUM10));
+static_assert(STENO_ID_NUM11 == int(StenoKey::NUM11));
+static_assert(STENO_ID_NUM12 == int(StenoKey::NUM12));
+
+static atomic_t initialized;
 
 // Dictionary selections are stored separately from base images and personal
 // snapshots. A fresh keyboard starts with Lapwing. Personal=1, Lapwing=2,
 // Plover=4, then the Lapwing extras from bit 3 up.
 #define EXTRAS_SELECTION_SHIFT 3
+static constexpr uint8_t PERSONAL_SELECTION = 1;
+static constexpr uint8_t LAPWING_SELECTION = 2;
+static constexpr uint8_t PLOVER_SELECTION = 4;
+static_assert(EXTRAS_SELECTION_SHIFT + EXTRAS_DICTIONARY_COUNT <= 7);
 #define EXTRAS_SELECTION_BIT(index) (uint8_t(1) << (EXTRAS_SELECTION_SHIFT + (index)))
 // Commands, numbers and proper nouns start on. UK additions start off.
 #define EXTRAS_SELECTION_DEFAULT                                                                   \
@@ -129,31 +177,7 @@ static void set_host_profile(void *, const char *line) {
 #endif
 
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-static int javelin_settings_set(const char *name, size_t length,
-                                settings_read_cb read, void *argument) {
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
-  if (strcmp(name, "host_profile") == 0) {
-    uint8_t profile;
-    if (length != sizeof(profile) || read(argument, &profile, sizeof(profile)) != sizeof(profile) ||
-        profile >= ARRAY_SIZE(host_profiles)) {
-      return -EINVAL;
-    }
-    host_profile = profile;
-    return 0;
-  }
-#endif
-  if (strcmp(name, "dictionaries") != 0) {
-    return -ENOENT;
-  }
-  uint8_t record[2];
-  if (length != sizeof(record) ||
-      read(argument, record, sizeof(record)) != static_cast<ssize_t>(sizeof(record)) ||
-      record[0] != DICTIONARY_SELECTION_VERSION || (record[1] & 0x80)) {
-    return -EINVAL;
-  }
-  dictionary_selection = record[1];
-  return 0;
-}
+#include "steno_squid/engine_settings.h"
 
 SETTINGS_STATIC_HANDLER_DEFINE(javelin, "javelin", nullptr, javelin_settings_set,
                                nullptr, nullptr);
@@ -167,11 +191,11 @@ static void select_dictionary(void *, const char *line) {
   ++name;
   uint8_t bit = 0;
   if (strcmp(name, "user_dictionary") == 0) {
-    bit = 1;
+    bit = PERSONAL_SELECTION;
   } else if (strcmp(name, "Lapwing Base") == 0) {
-    bit = 2;
+    bit = LAPWING_SELECTION;
   } else if (strcmp(name, "Plover Base") == 0 && plover_dictionary()) {
-    bit = 4;
+    bit = PLOVER_SELECTION;
   }
   for (size_t i = 0; !bit && i < EXTRAS_DICTIONARY_COUNT; i++) {
     if (extras_dictionary(i) && strcmp(name, extras_dictionary_name(i)) == 0) {
@@ -220,7 +244,7 @@ static bool load_dictionary_collection() {
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
   auto *personal = steno_squid_user_dictionary_open();
   if (personal) {
-    entries.Add(StenoDictionaryListEntry(personal, dictionary_selection & 1));
+    entries.Add(StenoDictionaryListEntry(personal, dictionary_selection & PERSONAL_SELECTION));
   }
 #endif
   // The Lapwing extras rank above the bases, in the order Plover gives them.
@@ -230,27 +254,20 @@ static bool load_dictionary_collection() {
           extra, dictionary_enabled(EXTRAS_SELECTION_BIT(i), i != EXTRAS_UK_ADDITIONS)));
     }
   }
-  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), dictionary_enabled(2, true)));
+  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), dictionary_enabled(LAPWING_SELECTION, true)));
   if (auto *plover = plover_dictionary()) {
     // Personal overrides remain first. Fresh settings default to Lapwing.
-    entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(4, false)));
-  }
-
-  if (entries.IsEmpty()) {
-    LOG_ERR("Steno dict collection empty");
-    return false;
+    entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(PLOVER_SELECTION, false)));
   }
 
   new (dictionaryList)
       StenoDictionaryList(static_cast<List<StenoDictionaryListEntry> &&>(entries));
 
-  printk("[JAV] initializing orthography\n");
   new (compiledOrthography) StenoCompiledOrthography(english_orthography);
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
   apply_host_profile();
 #endif
 
-  printk("[JAV] constructing engine\n");
   new (StenoEngine::container) StenoEngine(
       dictionaryList.value,
       nullptr,
@@ -258,23 +275,15 @@ static bool load_dictionary_collection() {
       StenoStroke(StrokeMask::STAR),  // undo stroke = *
       nullptr);
 
-  // Register console commands
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
-  Console::instance.RegisterCommand("get_parameter", "Read host layout parameters",
-                                    get_host_parameter, nullptr);
-  Console::instance.RegisterCommand("set_host_layout", "Set and save the host layout",
-                                    set_host_profile, nullptr);
-#endif
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-  Console::instance.RegisterCommand("enable_dictionary", "Enable and save selection",
-                                    select_dictionary, nullptr);
-  Console::instance.RegisterCommand("disable_dictionary", "Disable and save selection",
-                                    select_dictionary, nullptr);
-  Console::instance.RegisterCommand("toggle_dictionary", "Toggle and save selection",
-                                    select_dictionary, nullptr);
-  if (personal) {
-    steno_squid_user_dictionary_register(Console::instance, dictionaryList.value);
-  }
+#define UPSTREAM_COMMAND(name)
+#define ENGINE_COMMAND(name, help, handler) Console::instance.RegisterCommand(name, help, handler, nullptr);
+#define USER_COMMAND(name, help, handler, usb_only)
+#include "steno_squid/console_commands.def"
+#undef UPSTREAM_COMMAND
+#undef ENGINE_COMMAND
+#undef USER_COMMAND
+  steno_squid_user_dictionary_register(Console::instance, dictionaryList.value);
 #endif
   StenoEngine::container.value.AddConsoleCommands(Console::instance);
 
@@ -286,15 +295,13 @@ extern "C" {
 
 void zmk_javelin_steno_init(void) {
   const JavelinEngineLock lock;
-  if (!lock || initialized) {
+  if (!lock || atomic_get(&initialized)) {
     return;
   }
   if (!lapwing_dictionary()) {
     LOG_WRN("External Lapwing dictionary is unavailable");
     return;
   }
-  initialized = true;
-  printk("[JAV] lazy init start; thread=%s\n", k_thread_name_get(k_current_get()));
 
   // Construct the manager queried by the emitter even though ZMK handles keys.
   alignas(4) static const uint8_t empty_button_script[64] = {0x4a, 0x53, 0x53, 0x34};
@@ -312,32 +319,34 @@ void zmk_javelin_steno_init(void) {
 
   static StenoProcessor processorInstance(stenoRepeat.value);
   processor = &processorInstance;
+  atomic_set(&initialized, 1);
+  dictionary_flash_ready_changed();
 
-  printk("[JAV] processor pipeline ready\n");
   LOG_INF("Steno processor pipeline ready");
 }
 
 void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
-  // Steno keys whose press reached the engine. A key held while the flash
-  // becomes ready must not deliver a release without its press. Key events
-  // all arrive on the system work queue, so this needs no lock.
-  static uint64_t delivered_presses;
-  const uint64_t bit =
-      steno_key_index >= 0 && steno_key_index < 64 ? uint64_t(1) << steno_key_index : 0;
-
+  // On contention discard the whole held chord, including its eventual releases.
+  // A partial chord must never become a different word after the lock is freed.
+  static StenoSquidChordDelivery delivery;
+  delivery.Event(steno_key_index, is_press);
   const JavelinEngineLock lock;
-  const bool ready = lock && processor;
-  if (is_press) {
-    if (!ready) {
-      return;
-    }
-    delivered_presses |= bit;
-  } else {
-    const bool was_delivered = !bit || (delivered_presses & bit);
-    delivered_presses &= ~bit;
-    if (!ready || !was_delivered) {
-      return;
-    }
+  if (!lock || !processor) {
+    delivery.Drop();
+    zmk_javelin_steno_prepare();
+#ifdef CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS
+    if (atomic_get(&initialized) && dictionary_flash_status() == DICTIONARY_FLASH_READY)
+      steno_squid_upload_status(STENO_SQUID_MODE_BUSY, 500);
+#endif
+    return;
+  }
+  if (delivery.interrupted) {
+    stenoRepeat.value.Process(StenoKeyState(), StenoAction::CANCEL_ALL);
+    new (processor) StenoProcessor(stenoRepeat.value);
+#ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
+    steno_squid_practice_discard_chord();
+#endif
+    if (!delivery.Recover()) return;
   }
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
   if (steno_squid_practice_process_key(steno_key_index, is_press)) {
@@ -362,6 +371,7 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
 // large personal export as soon as its transport reports a terminal failure.
 static bool (*response_cancelled)(void *);
 static void *response_context;
+bool steno_squid_javelin_response_active() { return response_context != nullptr; }
 bool steno_squid_javelin_response_cancelled() {
   return response_cancelled && response_cancelled(response_context);
 }
@@ -373,7 +383,10 @@ bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &wr
     // The flash is asleep, unprovisioned or still verifying.
     return false;
   }
-  zmk_javelin_steno_init();
+  if (!atomic_get(&initialized)) {
+    zmk_javelin_steno_prepare();
+    return false;
+  }
   response_cancelled = cancelled;
   response_context = context;
   ConsoleWriter::Push(&writer);
@@ -384,3 +397,11 @@ bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &wr
   return true;
 }
 #endif
+
+static void prepare_engine(struct k_work *) { zmk_javelin_steno_init(); }
+K_WORK_DEFINE(prepare_engine_work, prepare_engine);
+extern "C" void zmk_javelin_steno_prepare(void) {
+  if (!atomic_get(&initialized))
+    k_work_submit_to_queue(&steno_squid_engine_queue, &prepare_engine_work);
+}
+extern "C" bool zmk_javelin_steno_ready(void) { return atomic_get(&initialized) != 0; }

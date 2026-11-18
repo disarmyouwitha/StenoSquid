@@ -1,4 +1,6 @@
 #include "screen.h"
+#include <zmk/activity.h>
+#include "label_fit.h"
 
 #include <stdio.h>
 
@@ -41,16 +43,10 @@ static void fit_text(lv_obj_t *label, const char *text, bool large) {
     const lv_font_t *const *fonts = large ? large_fonts : small_fonts;
     const unsigned count = large ? sizeof(large_fonts) / sizeof(large_fonts[0])
                                  : sizeof(small_fonts) / sizeof(small_fonts[0]);
-    const lv_font_t *font = fonts[count - 1];
-    for (unsigned i = 0; i < count; i++) {
-        if (lv_text_get_width(text, strlen(text), fonts[i], 0) <= 66) {
-            font = fonts[i];
-            break;
-        }
-    }
-    lv_obj_set_style_text_font(label, font, 0);
+    const lv_font_t *font = steno_squid_fit_font(text, strlen(text), fonts, count, STENO_SQUID_TEXT_WIDTH);
+    if (!font) font = fonts[count - 1];
+    steno_squid_set_label(label, text, font);
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
-    lv_label_set_text(label, text);
 }
 
 /* The footer sits just above the battery, leaving a taller outline area. */
@@ -58,12 +54,9 @@ static void fit_outline(lv_obj_t *label, const char *text) {
     static const lv_font_t *const fonts[] = {
         &lv_font_montserrat_20, &lv_font_montserrat_16, &lv_font_montserrat_14};
     fit_text(label, text, false);
-    for (unsigned i=0; i<sizeof(fonts)/sizeof(fonts[0]); i++) {
-        if (lv_text_get_width(text, strlen(text), fonts[i], 0) <= 66) {
-            lv_obj_set_style_text_font(label, fonts[i], 0);
-            break;
-        }
-    }
+    const lv_font_t *font = steno_squid_fit_font(text, strlen(text), fonts,
+        sizeof(fonts) / sizeof(fonts[0]), STENO_SQUID_TEXT_WIDTH);
+    if (font) steno_squid_set_label(label, text, font);
 }
 
 /* Left thumb vowels A/O stay above the right hand's E/U and consonants.
@@ -83,12 +76,10 @@ static const char *outline_hand_break(const char *outline) {
 static void fit_multi_text(lv_obj_t *label, const char *text, bool stroke) {
     static const lv_font_t *const fonts[] = {&lv_font_montserrat_20, &lv_font_montserrat_16, &lv_font_montserrat_14};
     fit_text(label, text, false);
-    for (unsigned i=stroke ? 0 : 1; i<sizeof(fonts)/sizeof(fonts[0]); i++) {
-        if (lv_text_get_width(text, strlen(text), fonts[i], 0) <= 66) {
-            lv_obj_set_style_text_font(label, fonts[i], 0);
-            break;
-        }
-    }
+    const unsigned first = stroke ? 0 : 1;
+    const lv_font_t *font = steno_squid_fit_font(text, strlen(text), fonts + first,
+        sizeof(fonts) / sizeof(fonts[0]) - first, STENO_SQUID_TEXT_WIDTH);
+    if (font) steno_squid_set_label(label, text, font);
 }
 
 static void progress_labels(void) {
@@ -181,7 +172,17 @@ void steno_squid_practice_widget_hide(void) {
     last_practice = 0;
 }
 
+void steno_squid_practice_widget_activity(bool active) {
+    if (!results_timer) return;
+    if (active && (last_practice & STENO_SQUID_PRACTICE_ACTIVE) &&
+        !(last_practice & STENO_SQUID_PRACTICE_MENU) &&
+        steno_squid_practice_feedback_value(last_practice) == STENO_SQUID_PRACTICE_DONE)
+        lv_timer_resume(results_timer);
+    else lv_timer_pause(results_timer);
+}
+
 static void result_tick(lv_timer_t *timer) {
+    if (zmk_activity_get_state() != ZMK_ACTIVITY_ACTIVE) return;
     if ((last_practice & STENO_SQUID_PRACTICE_ACTIVE) &&
         !(last_practice & STENO_SQUID_PRACTICE_MENU) &&
         steno_squid_practice_feedback_value(last_practice) == STENO_SQUID_PRACTICE_DONE) {
@@ -260,7 +261,7 @@ lv_obj_t *steno_squid_practice_widget_create(lv_obj_t *parent) {
 
 void steno_squid_practice_widget_update(uint32_t practice) {
     static const char *const drill_names[] = {"WORDS", "LEFT", "RIGHT", "COLUMNS", "Build-Up", "Multi-", "SPEED", "TROUBLE"};
-    static const char *const feedback_names[] = {"READY", "CORRECT", "RETRY", "DONE"};
+    static const char *const feedback_names[] = {"READY", "CORRECT", "RETRY"};
     if (last_practice == practice && !view_dirty) {
         return;
     }
@@ -310,7 +311,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
     const bool no_dictionary = (practice & STENO_SQUID_PRACTICE_NO_DICTIONARY) != 0;
     const unsigned build_stage = (practice & STENO_SQUID_PRACTICE_BUILD_MASK) >> STENO_SQUID_PRACTICE_BUILD_SHIFT;
     const unsigned completed = round + (feedback == STENO_SQUID_PRACTICE_CORRECT &&
-        (drill != STENO_SQUID_PRACTICE_BUILD || build_stage == 2));
+        (drill != STENO_SQUID_PRACTICE_BUILD || build_stage == STENO_SQUID_BUILD_REPEAT_STAGE));
     const char *outline = last_view.outline[0] ? last_view.outline : "...";
     const char *prompt = last_view.prompt[0] ? last_view.prompt : "...";
     char progress[32];
@@ -342,7 +343,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
                (drill == STENO_SQUID_PRACTICE_WORDS ||
                 drill == STENO_SQUID_PRACTICE_TROUBLE ||
                 drill == STENO_SQUID_PRACTICE_SPEED) &&
-               lv_text_get_width(outline, strlen(outline), &lv_font_montserrat_16, 0) > 66 &&
+               lv_text_get_width(outline, strlen(outline), &lv_font_montserrat_16, 0) > STENO_SQUID_TEXT_WIDTH &&
                outline_hand_break(outline)) {
         const char *right = outline_hand_break(outline);
         size_t left_size = (size_t)(right - outline);
@@ -370,8 +371,7 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         lv_obj_add_flag(feedback_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(best_label, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text_fmt(best_label, "Best %u", best);
-        snprintf(progress, sizeof(progress), "%u/%u", total, total);
+        progress[0] = 0;
     } else {
         lv_obj_remove_flag(drill_separator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(outline_label, LV_OBJ_FLAG_HIDDEN);
@@ -379,6 +379,10 @@ void steno_squid_practice_widget_update(uint32_t practice) {
         lv_obj_remove_flag(progress_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(best_label, LV_OBJ_FLAG_HIDDEN);
         const char *feedback_text = feedback_names[feedback];
+        if (drill == STENO_SQUID_PRACTICE_BUILD && build_stage == STENO_SQUID_BUILD_REPEAT_STAGE &&
+            feedback == STENO_SQUID_PRACTICE_PROMPT) {
+            feedback_text = "REPEAT";
+        }
         if (drill == STENO_SQUID_PRACTICE_MULTI) {
             if (feedback == STENO_SQUID_PRACTICE_PROMPT) {
                 feedback_text = (practice & STENO_SQUID_PRACTICE_PARTIAL) ? "STROKE 2" : "STROKE 1";

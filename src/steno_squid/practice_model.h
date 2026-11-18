@@ -25,7 +25,6 @@ struct steno_squid_progress_record {
     uint32_t pool;
     uint32_t session;
     uint32_t xp;
-    uint32_t rounds;
     struct steno_squid_word_stats words[STENO_SQUID_WORD_COUNT];
     uint32_t crc;
 };
@@ -278,7 +277,6 @@ static inline bool steno_squid_model_finish(struct steno_squid_practice_model *m
     run->earned += 20;
     model->record.xp = model->record.xp > STENO_SQUID_XP_MAX - 20
                            ? STENO_SQUID_XP_MAX : model->record.xp + 20;
-    if (model->record.rounds < UINT32_MAX) model->record.rounds++;
     return true;
 }
 
@@ -287,6 +285,5 @@ static inline bool steno_squid_model_timeout(struct steno_squid_practice_model *
     if (!model->run.active || model->run.finished || model->run.hand ||
         model->run.position >= model->run.limit) return false;
     model->run.finished = true;
-    if (model->record.rounds < UINT32_MAX) model->record.rounds++;
     return true;
 }

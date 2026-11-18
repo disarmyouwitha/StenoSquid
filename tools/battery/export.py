@@ -11,7 +11,9 @@ import time
 import zlib
 
 from serial import Serial
-from serial.tools import list_ports
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dictionaries"))
+from serial_tools import find_port, LineReader
 
 
 FIELDS = (
@@ -28,7 +30,7 @@ OUTPUT = ("none", "usb", "ble")
 def read_export(port):
     rows = []
     header = None
-    pending = bytearray()
+    reader = LineReader()
     attempts = 0
     next_request = 0
     deadline = time.monotonic() + 60
@@ -37,11 +39,9 @@ def read_export(port):
             port.write(b"B")
             attempts += 1
             next_request = time.monotonic() + 3
-        pending.extend(port.readline())
-        if not pending.endswith(b"\n"):
+        line = reader.read(port)
+        if line is None:
             continue
-        line = bytes(pending).rstrip(b"\r\n")
-        pending.clear()
         if match := re.search(rb"ZBL BEGIN (\d+) (\d+) (\d+) (\d+)$", line):
             version, boot, uptime_ms, interval = map(int, match.groups())
             if version != 1:
@@ -97,13 +97,6 @@ def decode_rows(header, rows):
         yield result
 
 
-def find_port():
-    matches = [port.device for port in list_ports.comports() if port.description == "Steno Squid"]
-    if len(matches) != 1:
-        raise RuntimeError("Connect one Steno Squid over USB or specify --port.")
-    return matches[0]
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv_path", type=Path, help="New output CSV file")
@@ -133,7 +126,7 @@ def main():
         "host_ble_connected", "flash_powered", "qspi_mapped", "split_ble_connected",
         "estimated_utc",
     ]
-    with args.csv_path.open("x", newline="") as output:
+    with args.csv_path.open("x", newline="", encoding="utf-8") as output:
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
@@ -151,7 +144,7 @@ def main():
         "rows": len(rows),
         "clock": "Uptime resets in deep sleep. Only the current boot has an estimated UTC anchor.",
     }
-    with metadata_path.open("x") as output:
+    with metadata_path.open("x", encoding="utf-8") as output:
         json.dump(metadata, output, indent=2)
         output.write("\n")
     print(f"Saved {len(rows)} samples to {args.csv_path} and metadata to {metadata_path}")

@@ -1,8 +1,10 @@
 #include "user_dictionary_store.h"
+#include "engine_work.h"
+#include "engine_stream.h"
 #include "console.h"
 #include "dictionary/dictionary.h"
 #include "javelin_engine_lock.h"
-#include "lapwing_flash.h"
+#include "dictionary_flash.h"
 #include "split_status.h"
 #include "stroke_list_parser.h"
 #include "user_dictionary_log.h"
@@ -13,7 +15,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 // Stop an export promptly if its browser transport has failed.
-bool steno_squid_javelin_response_cancelled();
+#include "javelin_hid_transport.h"
 namespace {
 using namespace squid_user;
 constexpr uint32_t REGION_END = REGION_START + SEG_COUNT * SEG_BYTES;
@@ -22,16 +24,7 @@ static_assert(REGION_START % SEG_BYTES == 0);
 static_assert(REGION_END == 0xff0000);
 static_assert(sizeof(StenoStroke) == 4);
 constexpr uintptr_t XIP_BASE = DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi), qspi_mm);
-bool wait_ready(int32_t timeout_ms = 2000) {
-  int64_t deadline = k_uptime_get() + timeout_ms;
-  do {
-    nrfx_err_t rc = nrfx_qspi_mem_busy_check();
-    if (rc != NRFX_ERROR_BUSY)
-      return rc == NRFX_SUCCESS;
-    k_msleep(1);
-  } while (k_uptime_get() < deadline);
-  return false;
-}
+
 class QspiDevice final : public Device {
 public:
   bool mapped = false;
@@ -63,13 +56,13 @@ public:
         size > REGION_END - address || (address & 3) || (size & 3) ||
         (reinterpret_cast<uintptr_t>(data) & 3))
       return false;
-    return nrfx_qspi_write(data, size, address) == NRFX_SUCCESS && wait_ready();
+    return nrfx_qspi_write(data, size, address) == NRFX_SUCCESS && squid_qspi_wait_ready(2000) == NRFX_SUCCESS;
   }
   bool Erase(uint32_t address) override {
     return address >= REGION_START && address < REGION_END &&
            !(address % 4096) &&
            nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_4KB, address) == NRFX_SUCCESS &&
-           wait_ready();
+           squid_qspi_wait_ready(2000) == NRFX_SUCCESS;
   }
   // One segment. A 64 KiB erase is typically 150 ms on this chip family and
   // can take 2 s, so it gets a longer wait than a sector erase.
@@ -77,17 +70,18 @@ public:
     return address >= REGION_START && address < REGION_END &&
            !(address % SEG_BYTES) &&
            nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_64KB, address) == NRFX_SUCCESS &&
-           wait_ready(4000);
+           squid_qspi_wait_ready(4000) == NRFX_SUCCESS;
   }
 } qspi_device;
 Store store(qspi_device);
 bool store_available = false;
+bool exporting;
 // Flash writes go through the QSPI peripheral instead of the memory-mapped
 // window. Hold one of these, under the engine lock, around every store call
 // that can program or erase.
 class WriteMode {
 public:
-  WriteMode() : ok(reactivate_after_xip()) {
+  WriteMode() : ok(squid_qspi_reactivate()) {
     if (ok)
       qspi_device.mapped = false;
   }
@@ -104,14 +98,12 @@ private:
 // low-priority queue, never on the system work queue that delivers keys. Each
 // slice takes the engine lock for one Step() and then lets keys in.
 constexpr int BACKGROUND_DELAY_MS = 8;
-K_THREAD_STACK_DEFINE(background_stack, 4096);
-k_work_q background_queue;
-bool background_started = false;
+
 void background_step(k_work *);
 K_WORK_DELAYABLE_DEFINE(background_work, background_step);
 void kick_background() {
-  if (background_started)
-    k_work_schedule_for_queue(&background_queue, &background_work,
+  if (store_available)
+    k_work_schedule_for_queue(&steno_squid_engine_queue, &background_work,
                               K_MSEC(BACKGROUND_DELAY_MS));
 }
 void background_step(k_work *) {
@@ -120,7 +112,7 @@ void background_step(k_work *) {
     // False while the flash is asleep. The next edit or status request kicks
     // the work again.
     const JavelinEngineLock lock;
-    if (lock && store_available) {
+    if (lock && store_available && !exporting) {
       WriteMode write;
       more = write && store.Step();
     }
@@ -228,11 +220,15 @@ public:
   void PrintDictionary(PrintDictionaryContext &context) const override {
     if (context.HasName() && strcmp(context.GetName(), GetName()))
       return;
+    struct ExportSession {
+      ExportSession() { exporting = true; dictionary_flash_read_session(true); }
+      ~ExportSession() { exporting = false; dictionary_flash_read_session(false); kick_background(); }
+    } session;
+    StenoSquidExportWriter writer(steno_squid_javelin_response_active());
     TextBuffer buffer;
     Store::Iterator it;
     Entry e{};
-    while (store_available && store.Next(it, e)) {
-      if (steno_squid_javelin_response_cancelled()) return;
+    while (store_available && !writer.Failed() && !steno_squid_javelin_response_cancelled() && store.Next(it, e)) {
       const char *text = buffer.Read(e);
       if (!text)
         return;
@@ -316,6 +312,8 @@ bool parse_outline(const char *line, StrokeListParser &parser) {
   return true;
 }
 bool can_edit() {
+  if (!store_available)
+    steno_squid_user_dictionary_open();
   if (!store_available)
     Console::Printf("ERR Personal dictionary unavailable\n\n");
   return store_available;
@@ -584,40 +582,20 @@ StenoDictionary *steno_squid_user_dictionary_open() {
   }
   dictionary.Refresh();
   if (store_available) {
-    if (!background_started) {
-      k_work_queue_start(&background_queue, background_stack,
-                         K_THREAD_STACK_SIZEOF(background_stack),
-                         K_LOWEST_APPLICATION_THREAD_PRIO, nullptr);
-      background_started = true;
-    }
     kick_background();
   }
-  return store_available ? &dictionary : nullptr;
+  // Keep the wrapper in the collection so a later successful open needs no rebind.
+  return &dictionary;
 }
 void steno_squid_user_dictionary_register(Console &console,
                                           StenoDictionary &root) {
   parent = &root;
-  console.RegisterCommand("user_dictionary_import",
-                          "Import personal dictionary segments", bulk_import,
-                          nullptr);
-  console.RegisterCommand("user_dictionary_status",
-                          "Read personal dictionary usage", store_status,
-                          nullptr);
-  console.RegisterCommand("user_dictionary_verify",
-                          "Check every personal dictionary record",
-                          store_verify, nullptr);
-  console.RegisterCommand("user_dictionary_rebuild",
-                          "Rebuild the personal dictionary lookup tables",
-                          store_rebuild, nullptr);
   dictionary.SetParentRecursively(parent);
-  console.RegisterCommand("lookup_stroke",
-                          "Look up an outline in the dictionaries",
-                          lookup_outline, nullptr);
-  console.RegisterCommand("add_user_entry", "Save a personal translation",
-                          add_entry, nullptr);
-  console.RegisterCommand("remove_user_entry", "Remove a personal translation",
-                          remove_entry, nullptr);
-  console.RegisterCommand("reset_user_dictionary",
-                          "Clear personal translations", reset_entries,
-                          nullptr);
+#define UPSTREAM_COMMAND(name)
+#define ENGINE_COMMAND(name, help, handler)
+#define USER_COMMAND(name, help, handler, usb_only) console.RegisterCommand(name, help, handler, nullptr);
+#include "console_commands.def"
+#undef UPSTREAM_COMMAND
+#undef ENGINE_COMMAND
+#undef USER_COMMAND
 }

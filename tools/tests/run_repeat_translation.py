@@ -5,6 +5,8 @@ is the javelin-steno fork named in config/west.yml.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from hostlib import compiler as host_compiler
+import shlex
 from pathlib import Path
 import shutil
 import subprocess
@@ -15,8 +17,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("engine", type=Path)
     parser.add_argument("--build-dir", type=Path, default=Path("build/repeat-native"))
-    parser.add_argument("--cxx", default="clang++")
+    parser.add_argument("--cxx", default=None)
     args = parser.parse_args()
+    cxx = shlex.split(args.cxx) if args.cxx else host_compiler()
     repo = Path(__file__).resolve().parents[2]
     output = args.build_dir.resolve()
     engine = output / "engine"
@@ -35,7 +38,7 @@ def main():
     def compile_source(source):
         name = "_".join(source.relative_to(engine).parts) if source.is_relative_to(engine) else source.name
         obj = objects_dir / (name + ".o")
-        command = [args.cxx, "-std=c++20", "-O0", "-w", "-DRUN_TESTS=1",
+        command = [*cxx, "-std=c++20", "-O0", "-w", "-DRUN_TESTS=1",
                    "-DJAVELIN_USE_EMBEDDED_STENO=1", "-DJAVELIN_BOARD_CONFIG=<stddef.h>",
                    "-I" + str(stubs), "-I" + str(engine), "-c", str(source), "-o", str(obj)]
         result = subprocess.run(command, text=True, capture_output=True)
@@ -46,7 +49,7 @@ def main():
     with ThreadPoolExecutor(max_workers=8) as pool:
         objects = list(pool.map(compile_source, sources))
     binary = output / "repeat_translation"
-    subprocess.run([args.cxx, *objects, "-o", str(binary)], check=True)
+    subprocess.run([*cxx, *objects, "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 
 

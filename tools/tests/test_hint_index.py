@@ -5,6 +5,7 @@ Run after preparing the three dictionary images. Requires a C++17 compiler.
 """
 import importlib.util
 import json
+from hostlib import compiler as host_compiler
 from pathlib import Path
 import subprocess
 
@@ -16,7 +17,7 @@ spec.loader.exec_module(compiler)
 
 def main():
     executable = ROOT / 'build/test-hint-index'
-    subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+    subprocess.run([*host_compiler('c++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
                     str(Path(__file__).with_suffix('.cc')), '-o', str(executable)], check=True)
     groups = [
         ('lapwing/lapwing-base', 0x12000000, ['lapwing/lapwing-base']),
@@ -28,7 +29,7 @@ def main():
         queries = []
         for source in sources:
             best = {}
-            for outline, text in json.loads((ROOT / f'build/{source}.json').read_text()).items():
+            for outline, text in json.loads((ROOT / f'build/{source}.json').read_text(encoding="utf-8")).items():
                 strokes = compiler.parse_outline(outline)
                 if len(strokes) != 1 or not strokes[0]:
                     continue

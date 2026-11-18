@@ -1,4 +1,5 @@
 #pragma once
+#include <zephyr/toolchain.h>
 
 /* Two-stroke learning outlines verified against the pinned Lapwing base.
  * These drills earn XP without adding per-word records to the saved pool. */
@@ -18,3 +19,4 @@ static const struct {
     {"ANIMAL", "APB/PHAL"},    {"REMEMBER", "RE/PHEPL"},
     {"PROBLEM", "PROB/HREPL"}, {"MUSIC", "PHAOU/SEUBG"},
 };
+BUILD_ASSERT(sizeof(steno_squid_multi) / sizeof(steno_squid_multi[0]) == STENO_SQUID_MULTI_COUNT);

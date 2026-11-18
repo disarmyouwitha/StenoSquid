@@ -1,6 +1,7 @@
-#include "lapwing_flash_internal.h"
-#include "diag.h"
+#include "dictionary_flash_internal.h"
+#include "flash_diagnostics.h"
 #include "w25q_quad.h"
+#include "xip_load.h"
 
 #include <string.h>
 #include <zephyr/drivers/pinctrl.h>
@@ -11,7 +12,7 @@
 uint8_t lf_readback[CHUNK_BYTES] __aligned(4);
 /* The last chip ID read, for the status command. */
 uint8_t lf_last_jedec[3];
-#if SERIAL_PROVISIONING
+#if SERIAL_CONSOLE
 bool lf_last_check_quick;
 uint32_t lf_last_check_ms;
 #endif
@@ -27,17 +28,17 @@ bool lf_all_verified(void) {
 
 static bool start_qspi(nrfx_qspi_config_t *config) {
     if (!gpio_is_ready_dt(&lf_power) || gpio_pin_configure_dt(&lf_power, GPIO_OUTPUT_ACTIVE) != 0) {
-        diag_log("QSPI start failed: flash power pin\n");
+        squid_flash_diag_log("QSPI start failed: flash power pin\n");
         return false;
     }
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
     atomic_set(&lf_powered, 1);
 #endif
-    k_msleep(50);
+    k_msleep(CONFIG_ZMK_JAVELIN_STENO_FLASH_SETTLE_MS);
     if (lf_pins(PINCTRL_STATE_DEFAULT) != 0 ||
         nrfx_qspi_init(config, NULL, NULL) != NRFX_SUCCESS ||
         nrfx_qspi_activate(true) != NRFX_SUCCESS) {
-        diag_log("QSPI start failed: pins, init or activate\n");
+        squid_flash_diag_log("QSPI start failed: pins, init or activate\n");
         return false;
     }
 
@@ -46,11 +47,11 @@ static bool start_qspi(nrfx_qspi_config_t *config) {
     };
     uint8_t id[3];
     if (nrfx_qspi_cinstr_xfer(&read_id, NULL, id) != NRFX_SUCCESS) {
-        diag_log("QSPI start failed: JEDEC read\n");
+        squid_flash_diag_log("QSPI start failed: JEDEC read\n");
         return false;
     }
     memcpy(lf_last_jedec, id, sizeof(lf_last_jedec));
-    diag_log("Lapwing JEDEC ID: %02x %02x %02x\n", id[0], id[1], id[2]);
+    squid_flash_diag_log("Lapwing JEDEC ID: %02x %02x %02x\n", id[0], id[1], id[2]);
     return id[0] == 0xef && id[1] == 0x40 && id[2] == 0x18;
 }
 
@@ -68,11 +69,7 @@ bool lf_image_crc(const struct base_image *image, bool mapped, uint32_t *crc_out
         const size_t size = MIN(CHUNK_BYTES, image->bytes - offset);
 
         if (mapped) {
-            for (size_t index = 0; index < size; index += sizeof(uint32_t)) {
-                const uint32_t word = window[(offset + index) / sizeof(uint32_t)];
-                __DSB();
-                memcpy(lf_readback + index, &word, sizeof(word));
-            }
+            copy_xip_bytes(lf_readback, (const void *)(window + offset / sizeof(uint32_t)), size);
         } else if (nrfx_qspi_read(lf_readback, size, image->offset + offset) != NRFX_SUCCESS) {
             if (failed_at) {
                 *failed_at = offset;
@@ -102,24 +99,10 @@ static bool enable_quad_reads(nrfx_qspi_config_t *config) {
            nrfx_qspi_activate(true) == NRFX_SUCCESS;
 }
 
-bool lf_enable_verified_mapping(nrfx_qspi_config_t *config, bool quick) {
-    /* Already done on the start-up path. Repeated here because the serial
-     * provisioning path maps without it, and it costs one status write.
-     */
-    if (!enable_quad_reads(config)) {
-        return false;
-    }
-
-    for (size_t i = 0; !quick && i < ARRAY_SIZE(lf_images); i++) {
-        const struct base_image *image = &lf_images[i];
-        uint32_t crc = 0;
-
-        (void)lf_image_crc(image, true, &crc, NULL);
-        if (crc != image->crc) {
-            diag_log("%s mapped CRC mismatch: %08x\n", image->name, crc);
-            return false;
-        }
-    }
+bool lf_enable_verified_mapping(nrfx_qspi_config_t *config) {
+    // Startup and provisioning have already checked each image once through DMA.
+    // Native lookups exercise mapped reads without another full-image CRC pass.
+    if (config->prot_if.readoc != NRF_QSPI_READOC_READ4O && !enable_quad_reads(config)) return false;
     if (!lapwing_verify_native_dictionary(XIP_BASE)) {
         return false;
     }
@@ -174,12 +157,11 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed, bool
             magic == JSC4_MAGIC && (quick || lf_read_image_crc(image));
     }
     if (lf_all_verified()) {
-        *mapping_failed = !lf_enable_verified_mapping(config, quick);
+        *mapping_failed = !lf_enable_verified_mapping(config);
     }
     return true;
 }
 
-#ifdef CONFIG_ZMK_SLEEP
 #define BRING_UP_ATTEMPTS 3
 
 /* Takes the rail down for half a second, so the next attempt starts from a
@@ -191,18 +173,12 @@ static void power_cycle_flash(void) {
     const bool initialized = nrfx_qspi_init_check();
 
     if (initialized) {
-        (void)reactivate_after_xip();
+        (void)squid_qspi_reactivate();
     }
     (void)lf_power_down_flash(initialized);
-    diag_note(DIAG_POWER_CYCLE);
+    squid_flash_diag_note(DIAG_POWER_CYCLE);
     k_msleep(500);
 }
-#else
-#define BRING_UP_ATTEMPTS 1
-
-static void power_cycle_flash(void) {
-}
-#endif
 
 /* A start-up that fails before it reads the images is tried again, a few
  * times, with a power cycle between. Otherwise one glitch, such as a rail
@@ -218,17 +194,17 @@ static bool prepare_flash_with_retry(nrfx_qspi_config_t *config, bool *mapping_f
         if (atomic_get(&lf_mapped_ready) || !transient_fault || attempt == BRING_UP_ATTEMPTS) {
             break;
         }
-        diag_note(DIAG_RETRY);
-        diag_log("External flash did not start (attempt %d of %d); trying again\n", attempt,
+        squid_flash_diag_note(DIAG_RETRY);
+        squid_flash_diag_log("External flash did not start (attempt %d of %d); trying again\n", attempt,
                  BRING_UP_ATTEMPTS);
         power_cycle_flash();
     }
     return qspi_ok;
 }
 
-/* Start-up checks the chip ID, image headers and native lookups. Both CRC
- * passes run when no full check is on record for these images, such as the
- * first boot after provisioning, and when the quick check fails.
+/* Start-up checks the chip ID, image headers and native lookups. A full CRC
+ * pass runs when no check is on record for these images, such as the first
+ * boot after provisioning, and when the quick check fails.
  */
 bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     const int64_t started = k_uptime_get();
@@ -238,12 +214,12 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     bool qspi_ok = prepare_flash_with_retry(config, mapping_failed, quick);
 
     if (quick && (!qspi_ok || *mapping_failed || !atomic_get(&lf_mapped_ready))) {
-        diag_note(DIAG_QUICK_FALLBACK);
-        diag_log("Quick flash check failed; verifying in full\n");
+        squid_flash_diag_note(DIAG_QUICK_FALLBACK);
+        squid_flash_diag_log("Quick flash check failed; verifying in full\n");
         quick = false;
         lf_trusted = false;
         if (nrfx_qspi_init_check()) {
-            (void)reactivate_after_xip();
+            (void)squid_qspi_reactivate();
             nrfx_qspi_uninit();
         }
         qspi_ok = prepare_flash_with_retry(config, mapping_failed, false);
@@ -255,16 +231,25 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
             lf_clear_trust();
         }
     }
-    diag_note(quick ? DIAG_QUICK_CHECK : DIAG_FULL_CHECK);
+    squid_flash_diag_note(quick ? DIAG_QUICK_CHECK : DIAG_FULL_CHECK);
     if (!atomic_get(&lf_mapped_ready)) {
-        diag_note(DIAG_UNAVAILABLE);
+        squid_flash_diag_note(DIAG_UNAVAILABLE);
     }
-    diag_log("External flash %s after %s check in %d ms\n",
+    squid_flash_diag_log("External flash %s after %s check in %d ms\n",
              atomic_get(&lf_mapped_ready) ? "mapped" : "unavailable", quick ? "quick" : "full",
              (int)(k_uptime_get() - started));
+    lf_suspended = false;
+#if IDLE_OFF
+    lf_note_use();
+    atomic_clear(&lf_idle_off);
+#endif
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
+    lf_provisioning_ready = qspi_ok;
+#endif
     atomic_set(&lf_checked, 1);
-    lapwing_flash_ready_changed();
-#if SERIAL_PROVISIONING
+    k_condvar_broadcast(&lf_restart_done);
+    dictionary_flash_ready_changed();
+#if SERIAL_CONSOLE
     lf_last_check_quick = quick;
     lf_last_check_ms = (uint32_t)(k_uptime_get() - started);
 #endif

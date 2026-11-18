@@ -63,7 +63,7 @@ static void run_probe(struct probe_result *result)
 	/* Zephyr pinctrl supplies both the pin assignments and GPIO configuration. */
 	config.skip_gpio_cfg = true;
 	config.skip_psel_cfg = true;
-	config.phy_if.sck_freq = NRF_QSPI_FREQ_DIV16;
+	config.phy_if.sck_freq = (nrf_qspi_frequency_t)(QSPI_SCK_DIVIDER - 1);
 
 	printk("Enabling switched flash VCC\n");
 	if (!gpio_is_ready_dt(&flash_power)) {
@@ -85,7 +85,7 @@ static void run_probe(struct probe_result *result)
 		return;
 	}
 
-	printk("Initializing Nordic QSPI (2 MHz, FASTREAD, 24-bit address)\n");
+	printk("Initializing Nordic QSPI (32 MHz / %u, FASTREAD, 24-bit address)\n", QSPI_SCK_DIVIDER);
 	result->nrfx_error = nrfx_qspi_init(&config, NULL, NULL);
 	if (result->nrfx_error != NRFX_SUCCESS) {
 		result->failure = "nrfx_qspi_init";

@@ -1,6 +1,37 @@
 # StenoSquid cleanup and engineering spec
 
-Status: **draft for review — no code has been changed.**
+Status: **implemented and merged into main; CI and initial nice!nano hardware checks passed; extended acceptance pending.**
+The personal-dictionary redesign is complete and its separate spec was retired.
+P7, P8 and X1 are superseded. No migration code was added. The owner explicitly
+approved resetting Practice XP/stats for P17's smaller block-based saves.
+First-party code uses 0BSD; upstream dependencies retain their own licenses.
+
+Current verification and intentional exceptions:
+
+- Phases 0–4 and the test foundation passed every CI firmware/probe build and native test.
+- The final code passes local left/right/diagnostic builds, native power-loss/storage
+  tests, protocol tests and the real LVGL renderer. The final CI matrix is green.
+- Both nice!nano halves are flashed. Typing, Javelin, all Practice drills and
+  XP persistence after reboot passed on hardware; extended checks remain listed
+  in cleanup-acceptance.md.
+- P12 retains full heartbeat snapshots: without a return acknowledgement path, a
+  hash-only heartbeat cannot repair a lost text frame. Unchanged snapshots no
+  longer redraw the screen; ordinary Practice updates carry state without text.
+- P5/P10 expose probe clock and rail-settle controls, but production timing stays
+  at the measured defaults until PCB testing. No unmeasured speedup is claimed.
+- D2/T8 bench tools remain available for first PCB bring-up as requested.
+- T7's first-party tests now include private implementation headers. Only the
+  pinned upstream ZMK layer test extracts functions, using a shared literal-aware
+  parser rather than naïve brace counting.
+- X2 (new fonts), X3 (pruning upstream compilation), X4's generated Windows table
+  and X8 (cropped effect assets) remain optional follow-ups. Approved artwork and
+  text output stay unchanged. X4's sortedness checks and X5 are implemented.
+- The final generic-flash rename is a separate, behaviour-preserving commit.
+- Cleanup is merged into main after CI and initial hardware checks. The published
+  v0.1.1 release remains unchanged.
+
+See [development checks](development.md) and [cleanup acceptance](cleanup-acceptance.md).
+
 Reviewed at commit `7908a68` (main), 2026-11-16.
 
 ## 1. Scope
@@ -31,11 +62,10 @@ to gain, better engineering, and cruft to remove.
 - Any item that changes a wire format (host ↔ left half, or left ↔ right half) is called out as **protocol change** and needs both ends flashed together.
 - Settings keys already on users' keyboards (`lapwing/verified`, `lapwing/diag`, `steno_squid/practice/progress`, the Javelin selection keys) keep their names.
 
-**What could not be checked**
+**Original review limitations (resolved during implementation)**
 
-The Javelin fork and Zephyr are not checked out in this working copy, and this
-machine has no C compiler, so nothing here was built or run except the
-pure-Python tests. Items that depend on engine internals are marked
+The original review had no engine/Zephyr checkout or C compiler. Implementation
+uses both pinned dependencies, native C/C++ tests and real firmware builds. Items that depend on engine internals are marked
 *(verify against fork)*. CI is the gate for every phase.
 
 ## 2. Decisions needed before work starts
@@ -52,7 +82,7 @@ pure-Python tests. Items that depend on engine internals are marked
 | D6 | **Local `claude/*` branches deleted** (done 2026-11-16, all 14). | Nothing left to do. |
 
 **Personal dictionary writes** are covered by a separate spec,
-[personal-dictionary-spec.md](personal-dictionary-spec.md), which replaces the
+the completed personal-dictionary redesign, which replaces the
 storage format (one 10.9375 MiB region of 64 KiB segments instead of two 4 MiB
 snapshot slots) and the import protocol. Where the two specs touch:
 
@@ -71,9 +101,9 @@ Original options, for the record:
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | **Serial provisioning** (`lapwing_flash_serial.c`) is called "legacy" in `logging.conf` and duplicates the HID installer. Keep it, or retire it and keep only the serial *diagnostics*? | Retire serial provisioning; keep diagnostics and battery log on a small serial command dispatcher. Removes ~200 lines and one of two copies of the erase/program/verify code. |
-| D2 | **Bench tools**: the rail test (`R`), power-cycle bench (`T`) and `tools/matrix` were bring-up aids. `Kconfig` and `diag.h` themselves say to delete `diag.c` "once debugging is done". | Keep `S`/`D`/`Z` status and counters. Move `R`/`T` behind a bench-only option (default off). Delete `tools/matrix` unless it is still used for new builds. |
-| D3 | **Rename `lapwing_*`** to something generic. The files handle Lapwing, Plover and extras; `lapwing_mapped_address()` is used only as a boolean. Touches ~20 files, every test that slices source by name, and the user-visible Kconfig symbol `ZMK_JAVELIN_STENO_EXTERNAL_LAPWING`. | Do it, but last (phase 5), as a pure rename commit. Keep the old Kconfig symbol as a deprecated alias for one release. |
+| D1 | **Serial provisioning** (`dictionary_flash_serial.c`) is called "legacy" in `logging.conf` and duplicates the HID installer. Keep it, or retire it and keep only the serial *diagnostics*? | Retire serial provisioning; keep diagnostics and battery log on a small serial command dispatcher. Removes ~200 lines and one of two copies of the erase/program/verify code. |
+| D2 | **Bench tools**: the rail test (`R`), power-cycle bench (`T`) and `tools/matrix` were bring-up aids. `Kconfig` and `flash_diagnostics.h` themselves say to delete `flash_diagnostics.c` "once debugging is done". | Keep `S`/`D`/`Z` status and counters. Move `R`/`T` behind a bench-only option (default off). Delete `tools/matrix` unless it is still used for new builds. |
+| D3 | **Rename `lapwing_*`** to something generic. The files handle Lapwing, Plover and extras; `dictionary_flash_mapped_address()` is used only as a boolean. Touches ~20 files, every test that slices source by name, and the user-visible Kconfig symbol `ZMK_JAVELIN_STENO_EXTERNAL_FLASH`. | Do it, but last (phase 5), as a pure rename commit. Keep the old Kconfig symbol as a deprecated alias for one release. |
 | D4 | **Non-split (one-piece) boards**: `CMakeLists.txt` builds the engine for non-split, but `layer_control.c` builds only for a split central, so a one-piece build would never power the flash for the steno layer. No CI job builds it. | Drop the non-split branch from CMake and say so in the README, unless a one-piece board is planned. |
 | D5 | **Protocol changes** (items marked so in phase 3) mean a left-half update must be paired with a new `stenosquid.py`, or with a right-half update. | Accept, and add a protocol version to the `status` reply and the split status message so a mismatch is reported instead of misread. |
 | D6 | **Local branches**: 13 `claude/*` branches are fully merged into main; `claude/audit-instrumentation` is 4 "Temporary:" commits ahead (CI memory reports, since superseded by `tools/ci/memory_by_owner.py`). | Delete all 14. Not done without your say-so. |
@@ -84,20 +114,20 @@ Each is a few lines. None changes behaviour on a healthy keyboard.
 
 | ID | Where | Problem | Fix |
 |---|---|---|---|
-| B1 | `lapwing_flash_pm.c:69`, `lapwing_flash_serial.c:68,95,124` | `reactivate_after_xip()` and `crc32_ieee_update()` are called with no declaration in scope (no in-repo header these files include declares them). Builds only because the pinned GCC warns instead of erroring. | Include `w25q_quad.h` from `lapwing_flash_internal.h`; include `<zephyr/sys/crc.h>` in the serial file. |
+| B1 | `dictionary_flash_pm.c:69`, `dictionary_flash_serial.c:68,95,124` | `squid_qspi_reactivate()` and `crc32_ieee_update()` are called with no declaration in scope (no in-repo header these files include declares them). Builds only because the pinned GCC warns instead of erroring. | Include `w25q_quad.h` from `dictionary_flash_internal.h`; include `<zephyr/sys/crc.h>` in the serial file. |
 | B2 | `engine_init.cc:296`, `:221-224`, `:275-277` | `initialized` is set before init succeeds. If the personal dictionary fails to open once (for example a QSPI hiccup), its console commands stay unregistered until reboot. | Register the commands always; open the store lazily on use. Delete the unreachable `entries.IsEmpty()` branch (`:239-242`). |
-| B3 | `lapwing_flash_qspi.c:266` vs `lapwing_flash.c:150-153` | The "ready changed" hook fires before the caller clears `lf_idle_off`, so after a *failed* wake the display can be told READY and never corrected. | Move the hook call to after the state update (falls out of S4 below). |
-| B4 | `lapwing_flash_provision.c:164-175` | A failed HID repair leaves the dictionaries unmapped but never fires the "ready changed" hook; the serial path does. | Fire the hook wherever `lf_mapped_ready` changes for good. |
-| B5 | `lapwing_flash.c:132-133,148`, `lapwing_flash_provision.c:150` | If the post-install check fails, `lf_provisioning_ready` goes false and HID then refuses everything but `status`/`abort` — so the repair command is locked out on every boot. | Gate provisioning on "QSPI works", not "images verified". |
-| B6 | `lapwing_flash_qspi.c:28-55`, `lapwing_flash.c:150,163` | A flash that fails bring-up (missing, blank, glitched) keeps its rail and QSPI powered until ZMK sleeps, and is never retried. | Power an unmapped flash down after a timeout; let hold/acquire request a rate-limited retry. |
-| B7 | `lapwing_flash_power.c:23` vs `lapwing_flash.c:172` | Narrow race: a layer hold arriving between "unmapped" and "idle-off" requests nothing, so the first stroke pays the wake delay. | Set `lf_idle_off` first, or re-check `lf_held` after power-down. |
-| B8 | `lapwing_flash_qspi.c:255` (also `:194,246`, `lapwing_flash_diag.c:55`) | Return value of `lf_clear_trust()` ignored after a failed full check; a stale "verified" record could let the next boot skip the check. | On failure, set a RAM flag that distrusts the stored record. |
+| B3 | `dictionary_flash_qspi.c:266` vs `dictionary_flash.c:150-153` | The "ready changed" hook fires before the caller clears `lf_idle_off`, so after a *failed* wake the display can be told READY and never corrected. | Move the hook call to after the state update (falls out of S4 below). |
+| B4 | `dictionary_flash_provision.c:164-175` | A failed HID repair leaves the dictionaries unmapped but never fires the "ready changed" hook; the serial path does. | Fire the hook wherever `lf_mapped_ready` changes for good. |
+| B5 | `dictionary_flash.c:132-133,148`, `dictionary_flash_provision.c:150` | If the post-install check fails, `lf_provisioning_ready` goes false and HID then refuses everything but `status`/`abort` — so the repair command is locked out on every boot. | Gate provisioning on "QSPI works", not "images verified". |
+| B6 | `dictionary_flash_qspi.c:28-55`, `dictionary_flash.c:150,163` | A flash that fails bring-up (missing, blank, glitched) keeps its rail and QSPI powered until ZMK sleeps, and is never retried. | Power an unmapped flash down after a timeout; let hold/acquire request a rate-limited retry. |
+| B7 | `dictionary_flash_power.c:23` vs `dictionary_flash.c:172` | Narrow race: a layer hold arriving between "unmapped" and "idle-off" requests nothing, so the first stroke pays the wake delay. | Set `lf_idle_off` first, or re-check `lf_held` after power-down. |
+| B8 | `dictionary_flash_qspi.c:255` (also `:194,246`, `dictionary_flash_diag.c:55`) | Return value of `lf_clear_trust()` ignored after a failed full check; a stale "verified" record could let the next boot skip the check. | On failure, set a RAM flag that distrusts the stored record. |
 | B9 | `Kconfig:75-77`, `javelin_web_hid.cc:15,17,58,343` | `ZMK_JAVELIN_STENO_BROWSER_DICTIONARY` uses USB HID unconditionally and binds the literal device `"HID_2"`, but does not depend on USB or on `USB_HID_DEVICE_COUNT >= 3`. A wrong config fails silently. | Add the Kconfig dependencies and a `BUILD_ASSERT` on the device count. |
 | B10 | module `Kconfig:142-145`, `corne_left.conf:6` | Practice needs `ZMK_SPLIT_BLE_CENTRAL_SPLIT_RUN_QUEUE_SIZE=40` (ZMK default 5). Only the board conf sets it; with the default, frames drop and the key thread stalls 100 ms per overflow. | Set the default from the module Kconfig, or `BUILD_ASSERT` it. |
 | B11 | `zmk_clock_shim.cc:6-8` | `GetMicroseconds()` converts a 32-bit cycle counter, so it jumps (rather than wraps cleanly) about every 36 hours of uptime. *(Engine's use of it: verify against fork.)* | `(uint32_t)k_ticks_to_us_floor64(k_uptime_ticks())`. |
 | B12 | `compile_dict.py:481`; also `render_keymap.py:177,296`, `test_hint_index.py:31`, `test_practice_words.py:10` | Text files opened without `encoding="utf-8"`. On Windows `stenosquid.py --install` crashes compiling the dictionaries (reproduced here: `UnicodeDecodeError … cp1252`). CI hides it with `PYTHONUTF8=1`. | Pass the encoding everywhere; drop the env var from CI. |
 | B13 | `render_keymap.py:15,295` | Still writes to `docs/keymap/` and rewrites README links matching that path; the images moved to `assets/keymap/`, so it silently updates nothing. | Point both at `assets/keymap`. |
-| B14 | `lapwing_flash_diag.c:92-140`, `Kconfig:36-45` | Rail test prints "P0.31" and defaults the sense pin to 7 — both Boardsource values. On the nice!nano build the rail is P0.13 and chip select P0.17, so the test reads the wrong pin and gives wrong advice. | Print the pin from devicetree; derive the sense pin from the QSPI chip-select pin. (Skip if D2 removes the test.) |
+| B14 | `dictionary_flash_diag.c:92-140`, `Kconfig:36-45` | Rail test prints "P0.31" and defaults the sense pin to 7 — both Boardsource values. On the nice!nano build the rail is P0.13 and chip select P0.17, so the test reads the wrong pin and gives wrong advice. | Print the pin from devicetree; derive the sense pin from the QSPI chip-select pin. (Skip if D2 removes the test.) |
 | B15 | `practice_engine.cc:173-174`, `:235-237` | `practice_advance` does nothing (and does not reschedule) if it runs early; `practice_first_stroke_correct` subtracts pointers with no NULL check. Both are unreachable today but fragile. | Reschedule when early; guard the NULL. |
 | B16 | `split_status_display.c:70` | Received layer-name bytes are masked to 7 bits but not checked printable, unlike tape and practice text. | Reject bytes outside 0x20–0x7e. |
 | B17 | `import_personal.py:142-147`, `stenosquid.py:609` | A status reply missing a key raises an uncaught `KeyError` (traceback instead of a message). | Catch it at the top level. |
@@ -108,7 +138,7 @@ Doc fixes that ride along with phase 0:
 - `config/nicenano-wireless-corne/README.md:292` says running the uploader with only a port "checks for MAPPED"; it actually writes missing images. The read-only command is `--status`.
 - `config/nicenano-wireless-corne/README.md:330` says the build "patches a private copy" of the segment builder; nothing in CMake patches anything.
 - README mentions only `hidapi`; serial paths need `pyserial`, artwork needs Pillow.
-- Stale code comments: `screen.h:38-40` (tape is above the pet, not below), `split_status_central.c:249` (there is a 60 s heartbeat), `practice_progress.c:21-23`, `Kconfig:126-129,143`, `lapwing_flash_internal.h:5-11,67`, `lapwing_flash_qspi.c:57-59,158`, `lapwing_flash.c:207`, `javelin_ble_tx.c:1`, and the two CMake comments at `CMakeLists.txt:280,290` that describe a two-library split that no longer exists.
+- Stale code comments: `screen.h:38-40` (tape is above the pet, not below), `split_status_central.c:249` (there is a 60 s heartbeat), `practice_progress.c:21-23`, `Kconfig:126-129,143`, `dictionary_flash_internal.h:5-11,67`, `dictionary_flash_qspi.c:57-59,158`, `dictionary_flash.c:207`, `javelin_ble_tx.c:1`, and the two CMake comments at `CMakeLists.txt:280,290` that describe a two-library split that no longer exists.
 
 ## 4. Phase 1 — remove cruft (behaviour-preserving)
 
@@ -122,7 +152,7 @@ Doc fixes that ride along with phase 0:
 | C4 | `steno_squid_practice_snapshot()` (`practice_engine.cc:270`, `split_status.h:24`) | No callers anywhere. |
 | C5 | Dead writes on the Practice results screen (`practice_widget.c:321,373-374,397`) and unreachable `feedback_names[3]` | Overwritten by `progress_labels()` one line later. |
 | C6 | `#include "processor/first_up.h"`; forward declarations in `zmk_platform_shim.h:15-16`; `STENO_S1` macro; no-op `behavior_javelin_steno_init` and `subscription_changed`; unread `bluetooth`/`session` fields of `transmit_report`; four `printk("[JAV] …")` lines | Repo-wide grep finds no use (the last `printk` duplicates a `LOG_INF`). |
-| C7 | `#else return false` stubs for `plover_/extras_verify_native_dictionary`; double file-level `#if` gating in `diag.c`, `lapwing_flash_diag.c`, `lapwing_flash_serial.c`; `__has_include` fallback in `diag.c:21-26` | Callers are already inside the same `#if`; CMake already gates the files and always writes the header. |
+| C7 | `#else return false` stubs for `plover_/extras_verify_native_dictionary`; double file-level `#if` gating in `flash_diagnostics.c`, `dictionary_flash_diag.c`, `dictionary_flash_serial.c`; `__has_include` fallback in `flash_diagnostics.c:21-26` | Callers are already inside the same `#if`; CMake already gates the files and always writes the header. |
 | C8 | Pet art: `sleep` sprite is byte-identical to `blink`; `typing`, `jump`, `land`, `spark` are 1-pixel shifts of `idle`/`blink` (the generator builds them that way); `rising_7` is an all-zero frame; pass-through `ROW()` macro; duplicate size assert | Keep `idle` + `blink`, express the rest as y-offsets (the widget already offsets with `lv_obj_set_y`), allow a NULL "hide" frame. Saves ~1.6 KB and five descriptors. |
 | C9 | `STENO_SQUID_PRACTICE_SECOND_ERROR` — sent and validated, never drawn. `record.rounds` — saved, never read. | **Choose**: draw "RETRY 2" and show rounds, or remove both. Removing `rounds` changes the stored record, so defer that half to P6. |
 
@@ -147,11 +177,11 @@ can only be pruned by trial link; see X3.
 
 | ID | Duplication | Target shape |
 |---|---|---|
-| S1 | Erase loop, NOR preflight + page program + readback, verify-with-unmap, and the "invalidate trust" triple exist in both `lapwing_flash_serial.c` and `lapwing_flash_provision.c` | `lf_erase_image`, `lf_program_chunk`, `lf_verify_image_raw`, `lf_invalidate_trust` in one file; transports only parse. If D1 retires serial provisioning, this collapses to deleting one copy. |
-| S2 | `wait_until_ready` ×4 (serial, provision, `user_dictionary_store.cc`, `tools/qspi/scratch.c`); `XIP_BASE` ×4; QSPI start-up sequence duplicated in `tools/qspi/src/main.c:56-113` | One `squid_qspi_wait_ready()` and one start-up routine in `w25q_quad.c`, which the probe already compiles. Make `xip_load.h` valid C so `lapwing_flash_qspi.c:71-75` stops hand-copying its erratum workaround. |
+| S1 | Erase loop, NOR preflight + page program + readback, verify-with-unmap, and the "invalidate trust" triple exist in both `dictionary_flash_serial.c` and `dictionary_flash_provision.c` | `lf_erase_image`, `lf_program_chunk`, `lf_verify_image_raw`, `lf_invalidate_trust` in one file; transports only parse. If D1 retires serial provisioning, this collapses to deleting one copy. |
+| S2 | `wait_until_ready` ×4 (serial, provision, `user_dictionary_store.cc`, `tools/qspi/scratch.c`); `XIP_BASE` ×4; QSPI start-up sequence duplicated in `tools/qspi/src/main.c:56-113` | One `squid_qspi_wait_ready()` and one start-up routine in `w25q_quad.c`, which the probe already compiles. Make `xip_load.h` valid C so `dictionary_flash_qspi.c:71-75` stops hand-copying its erratum workaround. |
 | S3 | Raw writes to GPREGRET2 in six places | Behind `lf_trust_*` helpers. |
-| S4 | Post-bring-up bookkeeping ×3 and take-down ×2 (`lapwing_flash.c`, `_serial.c`, `_diag.c`, `_qspi.c`) | One `lf_bring_up()` / `lf_take_down()` pair. Fixes B3 as a side effect. |
-| S5 | Diagnostics and battery log can only exist in a serial-provisioning build because the one command dispatcher lives in `lapwing_flash_serial.c` | Split out `serial_console.c`; each feature registers its commands. Lets a diagnostic build use the HID installer. |
+| S4 | Post-bring-up bookkeeping ×3 and take-down ×2 (`dictionary_flash.c`, `_serial.c`, `_diag.c`, `_qspi.c`) | One `lf_bring_up()` / `lf_take_down()` pair. Fixes B3 as a side effect. |
+| S5 | Diagnostics and battery log can only exist in a serial-provisioning build because the one command dispatcher lives in `dictionary_flash_serial.c` | Split out `serial_console.c`; each feature registers its commands. Lets a diagnostic build use the HID installer. |
 | S6 | Console command whitelist kept in three places (`javelin_web_hid.cc:157-173`, `engine_init.cc:263-274`, `user_dictionary_store.cc:460-475`) | One table of `{name, handler}` used for both registration and the whitelist. |
 | S7 | Hand-written `extern` declarations in five `.c`/`.cc` files | Move to `zmk_platform_shim.h` / `javelin_hid_transport.h` so the compiler checks signatures. |
 | S8 | HID transport: channel-prefix parse ×2, error reply ×4, USB and BLE packetise loops near-identical | `parse_channel()`, `reply_error()`, one chunker with a send callback. |
@@ -172,8 +202,8 @@ Ordered by benefit. P1–P3 are the ones a user can feel.
 
 | ID | Problem | Change |
 |---|---|---|
-| P1 | The steno key path takes the engine/flash mutex with `K_FOREVER` on ZMK's system work queue (`lapwing_flash_pm.c:53`). The HID console thread holds that mutex for a whole personal-dictionary save, an import commit (budgeted up to 600 s) or a full export. A key pressed meanwhile freezes **all** ZMK work — Bluetooth, split, display — not just steno. | Bounded lock on the key path; on timeout drop the stroke and show "busy" on the display. Release the lock between export chunks and around save validation. |
-| P2 | First stroke after the flash idles off polls for up to 1 s on the key thread (`lapwing_flash_pm.c:29-42`); a slower wake silently drops the stroke while status still says READY. | Worker signals a semaphore; report LOADING while waking; rely on the layer hold to pre-wake. |
+| P1 | The steno key path takes the engine/flash mutex with `K_FOREVER` on ZMK's system work queue (`dictionary_flash_pm.c:53`). The HID console thread holds that mutex for a whole personal-dictionary save, an import commit (budgeted up to 600 s) or a full export. A key pressed meanwhile freezes **all** ZMK work — Bluetooth, split, display — not just steno. | Bounded lock on the key path; on timeout drop the stroke and show "busy" on the display. Release the lock between export chunks and around save validation. |
+| P2 | First stroke after the flash idles off polls for up to 1 s on the key thread (`dictionary_flash_pm.c:29-42`); a slower wake silently drops the stroke while status still says READY. | Worker signals a semaphore; report LOADING while waking; rely on the layer hold to pre-wake. |
 | P3 | Engine init is lazy and runs on whichever thread needs it first — normally the first steno key. It includes a full validation of the personal dictionary over unmapped QSPI reads and orthography compilation. | Run init from a work item when the flash becomes ready. Also fixes init running on the 4 KB HID stack instead of the 8 KB one. |
 
 ### Flash checks and installs
@@ -203,7 +233,7 @@ Ordered by benefit. P1–P3 are the ones a user can feel.
 
 | ID | Problem | Change |
 |---|---|---|
-| P17 | Each progress save rewrites one 3,624-byte settings value — nearly a whole 4 KB NVS sector — though at most 10 words changed. Entering and leaving a drill without answering still costs a write. The record is copied onto the stack on save and load, which is why both stacks are raised to 8 KB on the RAM-tight left half. The format is at its size ceiling (~315 words). | Split into a small header key plus per-block word keys; save only dirty blocks; don't mark dirty until the first answer; static scratch buffer under the mutex. Needs a one-time migration from the old key. Then re-measure and lower the stack sizes. |
+| P17 | Each progress save rewrites one 3,624-byte settings value — nearly a whole 4 KB NVS sector — though at most 10 words changed. Entering and leaving a drill without answering still costs a write. The record is copied onto the stack on save and load, which is why both stacks are raised to 8 KB on the RAM-tight left half. The format is at its size ceiling (~315 words). | Split into a small header key plus per-block word keys; save only dirty blocks; don't mark dirty until the first answer; static scratch buffer under the mutex. Owner approved a fresh progress record instead of migration code. Then re-measure and lower the stack sizes. |
 
 ### Smaller
 
@@ -250,7 +280,7 @@ Do only if wanted; each is independent.
 | X4 | Generate the Windows host-layout table | 548 hand-kept lines that are mechanically "strip the accent" (Unicode NFD base letter). Add compile-time sortedness asserts to both tables either way. |
 | X5 | Compile-time ties to the engine | `static_assert` that the keymap's steno key IDs match the engine's `StenoKey` enum; designated initialisers in `font_stub.cc`; look up the GATT attribute instead of the literal index 6 in `javelin_ble_hid.c`. |
 | X6 | Framed serial commands | In diagnostic builds a single stray byte (`E`, `e`, `K`) on the shared logging port erases a dictionary. Require a framed line for anything that writes. Moot if D1 retires serial provisioning. |
-| X7 | Renames (D3) | `lapwing_flash*` → generic, `reactivate_after_xip` gets a prefix, `diag.[ch]` → flash-specific name. Pure rename commit, last. |
+| X7 | Renames (D3) | `dictionary_flash*` → generic, `squid_qspi_reactivate` gets a prefix, `diag.[ch]` → flash-specific name. Pure rename commit, last. |
 | X8 | Generate `pet_effects.h` | ~1,270 hand-maintained lines of hex with no generator, unlike `pet_sprites.h`. Cropping frames to their bounding boxes would save ~3.4 KB. |
 
 ## 9. Verification

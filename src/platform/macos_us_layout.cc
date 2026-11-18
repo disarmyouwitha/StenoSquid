@@ -139,6 +139,8 @@ constexpr HostLayoutEntry characters[] = {
     {0xfb02, 1, {0x0623}},
 };
 
+static_assert(host_layout::strictly_sorted(characters), "Host layout must be sorted and unique");
+
 constexpr size_t character_count = sizeof(characters) / sizeof(characters[0]);
 
 // Constant data in flash: the entries are copied at compile time.

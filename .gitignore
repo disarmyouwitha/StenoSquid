@@ -1,8 +1,9 @@
 __pycache__/
-dicts_src/
-dicts/*.bin
 
-javelin/
+/javelin-steno/
+/zmk/
+/zephyr/
+/lvgl/
 /build/
 
 .DS_Store

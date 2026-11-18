@@ -15,7 +15,7 @@ endfunction()
 # Layer handling on the left half: dictionary hold and Practice. It does not
 # depend on the right half having a display.
 if(CONFIG_ZMK_JAVELIN_STENO AND CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-  target_sources(app PRIVATE src/steno_squid/layer_control.c)
+  target_sources(app PRIVATE src/steno_squid/layer_control.c src/steno_squid/engine_work.c)
 endif()
 
 if(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
@@ -44,8 +44,8 @@ if(CONFIG_ZMK_JAVELIN_STENO)
   zephyr_include_directories(include)
   target_sources(app PRIVATE src/behaviors/behavior_javelin_steno.c)
 
-  # Only compile on central side of split keyboards (or non-split)
-  if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+  # The engine runs only on a supported split central.
+  if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 
     # The engine is the javelin-steno fork named in config/west.yml. It carries
     # the firmware's changes as commits, so it is built as it is.
@@ -59,33 +59,25 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       message(FATAL_ERROR "Javelin engine not found; see config/west.yml")
     endif()
     zephyr_include_directories(${JAVELIN_SRC_DIR})
-    set(JAVELIN_SEGMENT_BUILDER_SRC "${JAVELIN_SRC_DIR}/segment_builder.cc")
-    set(JAVELIN_NORMAL_MODE_SRC "${JAVELIN_SRC_DIR}/engine_normal_mode.cc")
 
-    if(NOT CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-      message(FATAL_ERROR
-        "Onboard Javelin reads its dictionaries from the external QSPI flash: "
-        "enable ZMK_JAVELIN_STENO_EXTERNAL_LAPWING (which needs ZMK_SLEEP)")
-    endif()
-
-    set(JAVELIN_COMPACT_MAP_SRC "${JAVELIN_SRC_DIR}/dictionary/compact_map_dictionary.cc")
-    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
+    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
       if(NOT EXISTS "${ZMK_JAVELIN_LAPWING_IMAGE}")
         message(FATAL_ERROR "Set ZMK_JAVELIN_LAPWING_IMAGE to the mapped Lapwing JSC4 image")
       endif()
-      set(LAPWING_SRC "${CMAKE_CURRENT_LIST_DIR}/src/steno_squid")
+      set(SQUID_SRC "${CMAKE_CURRENT_LIST_DIR}/src/steno_squid")
       javelin_image_size_crc(LAPWING "${ZMK_JAVELIN_LAPWING_IMAGE}")
       target_sources(app PRIVATE
-        "${LAPWING_SRC}/lapwing_flash.c"
-        "${LAPWING_SRC}/lapwing_flash_power.c"
-        "${LAPWING_SRC}/lapwing_flash_pm.c"
-        "${LAPWING_SRC}/lapwing_flash_qspi.c"
-        "${LAPWING_SRC}/lapwing_flash_trust.c"
-        "${LAPWING_SRC}/w25q_quad.c")
-      target_sources_ifdef(CONFIG_ZMK_JAVELIN_STENO_SERIAL_PROVISIONING app PRIVATE
-        "${LAPWING_SRC}/lapwing_flash_serial.c")
+        "${SQUID_SRC}/dictionary_flash.c"
+        "${SQUID_SRC}/dictionary_flash_power.c"
+        "${SQUID_SRC}/dictionary_flash_pm.c"
+        "${SQUID_SRC}/dictionary_flash_qspi.c"
+        "${SQUID_SRC}/dictionary_flash_trust.c"
+        "${SQUID_SRC}/dictionary_flash_scrub.c"
+        "${SQUID_SRC}/w25q_quad.c")
+      target_sources_ifdef(CONFIG_ZMK_JAVELIN_SERIAL_CONSOLE app PRIVATE
+        "${SQUID_SRC}/serial_console.c")
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING app PRIVATE
-        "${LAPWING_SRC}/lapwing_flash_provision.c")
+        "${SQUID_SRC}/dictionary_flash_provision.c")
       if(CONFIG_ZMK_JAVELIN_DIAG)
         # Build id shown by the S command: the CI commit, else git describe.
         set(JAVELIN_BUILD_ID "unknown")
@@ -100,13 +92,13 @@ if(CONFIG_ZMK_JAVELIN_STENO)
             set(JAVELIN_BUILD_ID "${JAVELIN_GIT_ID}")
           endif()
         endif()
-        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/diag_build_id.h"
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/flash_diagnostics_build_id.h"
           "#define JAVELIN_BUILD_ID \"${JAVELIN_BUILD_ID}\"\n")
         target_include_directories(app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-        target_sources(app PRIVATE "${LAPWING_SRC}/diag.c" "${LAPWING_SRC}/lapwing_flash_diag.c")
+        target_sources(app PRIVATE "${SQUID_SRC}/flash_diagnostics.c" "${SQUID_SRC}/dictionary_flash_diag.c")
       endif()
-      target_sources_ifdef(CONFIG_ZMK_JAVELIN_BATTERY_LOG app PRIVATE "${LAPWING_SRC}/battery_log.c")
-      target_include_directories(app PRIVATE "${LAPWING_SRC}")
+      target_sources_ifdef(CONFIG_ZMK_JAVELIN_BATTERY_LOG app PRIVATE "${SQUID_SRC}/battery_log.c")
+      target_include_directories(app PRIVATE "${SQUID_SRC}")
       target_compile_definitions(app PRIVATE LAPWING_BYTES=${LAPWING_BYTES} LAPWING_CRC=${LAPWING_CRC})
       # Optional second base, provisioned separately without rewriting Lapwing.
       set(PLOVER_BYTES 0)
@@ -142,7 +134,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/engine_add_translation_mode.cc
       ${JAVELIN_SRC_DIR}/engine_binding.cc
       ${JAVELIN_SRC_DIR}/engine_console_mode.cc
-      ${JAVELIN_NORMAL_MODE_SRC}
+      ${JAVELIN_SRC_DIR}/engine_normal_mode.cc
       ${JAVELIN_SRC_DIR}/engine.cc
       ${JAVELIN_SRC_DIR}/flash.cc
       ${JAVELIN_SRC_DIR}/hash.cc
@@ -158,7 +150,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/script_byte_code.cc
       ${JAVELIN_SRC_DIR}/script_storage.cc
       ${JAVELIN_SRC_DIR}/script.cc
-      ${JAVELIN_SEGMENT_BUILDER_SRC}
+      ${JAVELIN_SRC_DIR}/segment_builder.cc
       ${JAVELIN_SRC_DIR}/segment.cc
       ${JAVELIN_SRC_DIR}/start_console_command_detector.cc
       ${JAVELIN_SRC_DIR}/state.cc
@@ -184,7 +176,7 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     # Dictionary sources
     set(JAVELIN_DICT_SRC
       ${JAVELIN_SRC_DIR}/dictionary/cache_dictionary.cc
-      ${JAVELIN_COMPACT_MAP_SRC}
+      ${JAVELIN_SRC_DIR}/dictionary/compact_map_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/debug_dictionary.cc
       ${JAVELIN_SRC_DIR}/dictionary/dictionary_list.cc
       ${JAVELIN_SRC_DIR}/dictionary/dictionary.cc
@@ -205,7 +197,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     # Processor sources
     set(JAVELIN_PROC_SRC
       ${JAVELIN_SRC_DIR}/processor/all_up.cc
-      # javelin/processor/fake_processor.cc  # test-only, uses RUN_TESTS APIs
       ${JAVELIN_SRC_DIR}/processor/first_up.cc
       ${JAVELIN_SRC_DIR}/processor/gemini.cc
       ${JAVELIN_SRC_DIR}/processor/jeff_modifiers.cc
@@ -241,7 +232,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     # stands in for the glyph tables, which this build never draws.
     set(JAVELIN_FONT_SRC
       ${JAVELIN_SRC_DIR}/font/monochrome/font.cc
-      src/platform/font_stub.cc
     )
 
     # Split sources (ZMK handles split transport, but Javelin split types
@@ -257,75 +247,62 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       ${JAVELIN_SRC_DIR}/split/split.cc
     )
 
-    # Platform shims (our ZMK implementations)
-    set(ZMK_SHIM_SRC
+    # Upstream sources use the fork's permissive flags; first-party adapters
+    # compile strictly in a separate C++23 library.
+    zephyr_library_named(javelin_steno)
+    zephyr_library_sources(${JAVELIN_CORE_SRC} ${JAVELIN_DICT_SRC} ${JAVELIN_PROC_SRC}
+      ${JAVELIN_HAL_SRC} ${JAVELIN_FONT_SRC} ${JAVELIN_SPLIT_SRC})
+    zephyr_library_compile_options(-fpermissive)
+
+    zephyr_library_named(steno_squid_engine)
+    zephyr_library_sources(
       src/platform/zmk_key_shim.cc
       src/platform/zmk_clock_shim.cc
       src/platform/zmk_flash_shim.cc
       src/platform/zmk_console_shim.cc
       src/platform/zmk_stubs.cc
-    )
-
-    # Engine initialization
-    set(ZMK_INIT_SRC
-      src/engine_init.cc
-    )
+      src/platform/font_stub.cc
+      src/engine_init.cc)
     if(CONFIG_ZMK_STENO_SQUID_STROKE_TAPE)
-      list(APPEND ZMK_INIT_SRC src/steno_squid/stroke_feed.cc)
+      zephyr_library_sources(src/steno_squid/stroke_feed.cc)
     endif()
     if(CONFIG_ZMK_STENO_SQUID_PRACTICE)
-      list(APPEND ZMK_INIT_SRC src/steno_squid/practice_engine.cc)
+      zephyr_library_sources(src/steno_squid/practice_engine.cc)
     endif()
-
-    # Pure Javelin sources (no ZMK deps) → separate library for C++23
-    set(JAVELIN_LIB_SRC
-      ${JAVELIN_CORE_SRC}
-      ${JAVELIN_DICT_SRC}
-      ${JAVELIN_PROC_SRC}
-      ${JAVELIN_HAL_SRC}
-      ${JAVELIN_FONT_SRC}
-      ${JAVELIN_SPLIT_SRC}
-    )
-
-    # Shims + init (need ZMK headers) → compiled into app target
-    set(ZMK_BRIDGE_SRC
-      ${ZMK_SHIM_SRC}
-      ${ZMK_INIT_SRC}
-    )
-
-    # Build everything as a Zephyr library for C++23.
-    zephyr_library_named(javelin_steno)
-    zephyr_library_sources(${JAVELIN_LIB_SRC} ${ZMK_BRIDGE_SRC})
     if(CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS)
       zephyr_library_sources(src/platform/macos_us_layout.cc src/platform/windows_us_layout.cc)
     endif()
+    foreach(bridge_target IN ITEMS javelin_steno steno_squid_engine)
     # ZMK app headers aren't inherited by libraries — add manually
-    zephyr_library_include_directories(${APPLICATION_SOURCE_DIR}/include)
+    target_include_directories(${bridge_target} PRIVATE ${APPLICATION_SOURCE_DIR}/include)
+    set(ZEPHYR_CURRENT_LIBRARY ${bridge_target})
     zephyr_library_compile_options(
       -std=gnu++23
       -fno-exceptions
       -fno-rtti
       -fno-threadsafe-statics
-      -Wno-invalid-constexpr
-      -fpermissive
     )
-    zephyr_library_compile_definitions(
+    target_compile_definitions(${bridge_target} PRIVATE
       JAVELIN_USE_EMBEDDED_STENO=1
       JAVELIN_PLATFORM_ZEPHYR=1
       JAVELIN_BOARD_CONFIG=<stddef.h>
       M_PI=3.14159265358979323846
     )
-    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_LAPWING)
-      zephyr_library_sources("${LAPWING_SRC}/lapwing_dictionary.cc")
+    endforeach()
+    set(ZEPHYR_CURRENT_LIBRARY steno_squid_engine)
+    target_include_directories(javelin_steno PRIVATE "${SQUID_SRC}")
+    if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
+      zephyr_library_sources("${SQUID_SRC}/lapwing_dictionary.cc")
       zephyr_library_include_directories(
-        "${JAVELIN_SRC_DIR}/dictionary" "${LAPWING_SRC}")
+        "${JAVELIN_SRC_DIR}/dictionary" "${SQUID_SRC}")
       zephyr_library_compile_definitions(LAPWING_BYTES=${LAPWING_BYTES} PLOVER_BYTES=${PLOVER_BYTES}
         EXTRAS_BYTES=${EXTRAS_BYTES})
       if(CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY)
-        zephyr_library_sources("${LAPWING_SRC}/user_dictionary_store.cc" "${LAPWING_SRC}/javelin_web_hid.cc")
+        target_sources(app PRIVATE "${SQUID_SRC}/javelin_usb.c")
+        zephyr_library_sources("${SQUID_SRC}/user_dictionary_store.cc" "${SQUID_SRC}/javelin_web_hid.cc")
         if(CONFIG_ZMK_JAVELIN_STENO_BLE_HID)
-          target_sources(app PRIVATE "${LAPWING_SRC}/javelin_ble_hid.c"
-            "${LAPWING_SRC}/javelin_ble_tx.c")
+          target_sources(app PRIVATE "${SQUID_SRC}/javelin_ble_hid.c"
+            "${SQUID_SRC}/javelin_ble_tx.c")
         endif()
       endif()
     endif()
