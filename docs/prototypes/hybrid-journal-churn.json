@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "model_sha256": "3a1101615728ead5a7863a2a95f1569c5574c1aa861fbe004b40fb4b86e690cc",
+  "journal": true,
+  "journal_sha256": "b56d4eefc3acc601172db2d3f40b7b015076b8cf5574ccf99aa884cea7806856",
+  "operations": 10000,
+  "seed": 20261117,
+  "physical_bytes": 16711680,
+  "final_generation": 353,
+  "maximum_occupied_segments": 7,
+  "retained_catalog_generations": 2,
+  "final_occupied_segments": 5,
+  "programmed_bytes": 1186308,
+  "sector_erase_steps": 6944,
+  "elapsed_host_seconds": 278.17188845100463,
+  "passed": true,
+  "limits": [
+    "Tiny dictionaries; not full pinned corpus or capacity proof",
+    "Journal compacts every 256 input edits",
+    "Catalog still erases one slot on metadata change; no production wear claim",
+    "Unreferenced extents are erased lazily on reuse; no live-segment GC or automatic defragmenter"
+  ]
+}

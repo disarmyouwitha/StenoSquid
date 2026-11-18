@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "journal_sha256": "b56d4eefc3acc601172db2d3f40b7b015076b8cf5574ccf99aa884cea7806856",
+  "cut_points_by_operation": {
+    "append": 12,
+    "new-segment": 164,
+    "reset": 12,
+    "tombstone": 12,
+    "compact": 164,
+    "multi-page-append": 44,
+    "reorder-with-journal": 84,
+    "delete-with-journal": 80
+  },
+  "total": 572,
+  "torn_prefix_bytes": [
+    0,
+    1,
+    127,
+    4095
+  ],
+  "scope": "Small fixtures; every modeled program/erase step, not full physical fault coverage"
+}

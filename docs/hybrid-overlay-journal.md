@@ -66,6 +66,32 @@ measured battery, device wear or execution time. Host runtime is dominated by
 replaying JSON records without a firmware index and must not be compared as a
 keyboard latency result.
 
+## Reference results
+
+The journal passed **572** torn-operation cut points plus the semantic, reader,
+corruption and safe-refusal checks. The 10,000-edit experiment also passed its
+independent expected-lookup checks, including periodic reboots and priority
+changes. Compaction ran every 256 input edits.
+
+| Same 10,000-edit workload | Snapshot reference | Shared journal |
+| --- | ---: | ---: |
+| Programmed bytes | 11,752,040 | 1,186,308 |
+| Modeled 4 KiB erase steps | 324,416 | 6,944 |
+| Catalog generation after run | 10,274 | 353 |
+| Maximum observed occupied segments | 7 | 7 |
+
+This is **89.9% less programmed data** and **97.9% fewer erase steps** in this
+small-corpus host experiment. Most remaining catalog writes came from metadata
+changes, segment publication and compaction. It is not a lifetime/current estimate
+or a guarantee for a large overlay. The host replay implementation is deliberately
+unindexed and much slower than the snapshot oracle; it is not a firmware lookup
+implementation and must not be shipped as one.
+
+Reports include the model source hashes:
+[journal churn](prototypes/hybrid-journal-churn.json),
+[fault cases](prototypes/hybrid-journal-faults.json), and the
+[snapshot baseline](prototypes/hybrid-churn.json).
+
 ## Before reflash
 
 No reflash is required yet. Firmware integration still needs:
