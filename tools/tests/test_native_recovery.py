@@ -13,7 +13,7 @@ from unittest.mock import patch
 import zlib
 
 from hostlib import compiler
-from test_native_stage import fixture, ROOT
+from test_native_stage import fixture, write_plan, ROOT
 
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from build_native_image import SEGMENT, catalog_header
@@ -21,8 +21,8 @@ from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import FORMAT, digest, pack, reconstruct, save_atomic, unpack
 from native_restore import restore_all
-from native_snapshot import compile_snapshot, plan_named_snapshot
-from native_update import backup_all, encode_record, Edit, export_dictionary, overlay_usage, row_name
+from native_snapshot import compile_snapshot, plan_change, plan_named_snapshot
+from native_update import backup_all, effective_entries, encode_record, Edit, export_dictionary, overlay_usage, plan, row_name
 
 
 def reject(call, *args):
@@ -101,13 +101,55 @@ def main():
         assert overlay_usage(console)[snapshot.next_id]["count"] == 3
         assert export_dictionary(Console(decoded, update.payload), "Smoke") == exported
 
+        protected = {0, 1, 255}
+        for segment, count, *_ in restored.extents:
+            protected.update(range(segment, segment + count))
+        identity = snapshot.next_id
+        newer = compile_snapshot("Smoke", {kat: b"new baseline", bob: b"new Bob", parse_outline("TEFT"): b"new outline"})
+        effective = compile_snapshot("Smoke", {parse_outline(outline): text.encode() for outline, text in exported.items()})
+        rename = plan(restored, protected, rename=("Smoke", "Renamed"))
+        deletion = plan_change(restored, protected, identity)
+        replacement = plan_change(restored, protected, identity, newer)
+        consolidated = plan_change(restored, protected, identity, effective, consolidate=True)
+        missing = deepcopy(restored)
+        del missing.entries[2, (6,)]
+        unsafe = plan_change(missing, protected, identity, effective, consolidate=True)
+
+        def cold(update):
+            changed = bytearray(decoded)
+            for segment, block in update.segments.items():
+                assert segment not in protected
+                start = segment * SEGMENT
+                changed[start:start + len(block)] = block
+            current = Console(changed, update.payload)
+            root = SEGMENT + 32
+            changed[root:root + len(update.payload)] = update.payload
+            return current
+
+        assert export_dictionary(cold(rename), "Renamed") == exported
+        reject(export_dictionary, cold(deletion), "Smoke")
+        switched = export_dictionary(cold(replacement), "Smoke")
+        assert switched["KAT"] == "new cat" and "PWOB" not in switched and switched["TEFT"] == "new outline"
+        merged = cold(consolidated)
+        assert export_dictionary(merged, "Smoke") == exported
+        assert overlay_usage(merged)[identity]["count"] == 0
+        with patch("native_update.read_flash") as no_device:
+            assert effective_entries(restored, "Smoke", lambda at, size: decoded[at:at + size]) == exported
+            no_device.assert_not_called()
+
         binary_image = path / "offline.bin"
         binary_image.write_bytes(decoded)
+        files = []
+        for name, candidate in (("rename", rename), ("delete", deletion), ("replace", replacement),
+                                ("consolidate", consolidated), ("unsafe", unsafe)):
+            file = path / f"{name}.stage"
+            write_plan(file, candidate)
+            files.append(file)
         binary = path / "validate"
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-DSTENO_SQUID_TEST_USER_SNAPSHOTS=1", "-I", str(ROOT / "tools/storage"),
                         str(ROOT / "tools/tests/test_native_recovery.cc"), "-o", str(binary)], check=True)
-        subprocess.run([str(binary), str(binary_image)], check=True)
+        subprocess.run([str(binary), str(binary_image), *map(str, files)], check=True)
 
         corrupted = deepcopy(backup)
         corrupted["extents"].pop()

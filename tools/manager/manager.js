@@ -22,7 +22,7 @@ function controls() {
   const editable = !busy && !state.read_only;
   node("up").disabled = !editable || rank <= 0;
   node("down").disabled = !editable || rank < 0 || rank >= state.catalog.length - 1;
-  for (const id of ["rename", "delete"]) node(id).disabled = !editable || row?.kind !== "named";
+  for (const id of ["rename", "delete"]) node(id).disabled = !editable || !["named", "snapshot"].includes(row?.kind);
   node("export").disabled = busy || !row;
   node("target").textContent = row ? `Editing ${row.name}` : "Select a dictionary first.";
   for (const el of node("edit").querySelectorAll("button")) {

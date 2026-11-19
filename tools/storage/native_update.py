@@ -193,7 +193,7 @@ def metadata_payload(snapshot, *, move=None, rename=None, delete=None):
             return None
         rows.insert(position, rows.pop(index))
     else:
-        if target == "user_dictionary" or rows[index][8:10] != b"\xff\xff":
+        if target == "user_dictionary" or (rows[index][8:10] != b"\xff\xff" and not (rename and rows[index][11] == 1)):
             raise ValueError("Only independent named dictionaries can be renamed or deleted")
         if rename:
             label = validate_name(rename[1])
@@ -416,36 +416,40 @@ def overlay_usage(console):
 
 def export_dictionary(console, name):
     """Read one logical dictionary, including overrides on a packed base."""
-    from build_native_image import XIP
-    from hybrid import compact_entries, format_stroke
-
     answer = update_command(console, "begin backup")
     try:
         snapshot, _ = read_snapshot(console, answer)
-        row = next((row for row in snapshot.rows if row_name(row) == name), None)
-        if row is None:
-            raise ValueError(f"No installed dictionary named {name!r}")
-        identity, _, base, member = struct.unpack_from("<IIHB", row)
-        entries = {}
-        if base != 65535:
-            segment, _, size, checksum, _, _ = snapshot.extents[base]
-            address = segment * SEGMENT
-            blob = read_flash(console, address, size)
-            if zlib.crc32(blob) != checksum:
-                raise ValueError("Compiled dictionary checksum failed during export.")
-            count = struct.unpack_from("<H", blob, 4)[0]
-            entries.update(compact_entries(blob, XIP + address, member, count))
-        for entry in snapshot.entries.values():
-            if entry.identity != identity:
-                continue
-            outline = "/".join(map(format_stroke, entry.strokes))
-            if entry.operation:
-                entries.pop(outline, None)
-            else:
-                entries[outline] = entry.text.decode("utf-8")
-        return entries
+        return effective_entries(snapshot, name, lambda at, n: read_flash(console, at, n))
     finally:
         update_command(console, "abort", timeout=5)
+
+
+def effective_entries(snapshot, name, read):
+    from build_native_image import XIP
+    from hybrid import compact_entries, format_stroke
+
+    row = next((row for row in snapshot.rows if row_name(row) == name), None)
+    if row is None:
+        raise ValueError(f"No installed dictionary named {name!r}")
+    identity, _, base, member = struct.unpack_from("<IIHB", row)
+    entries = {}
+    if base != 65535:
+        segment, _, size, checksum, _, _ = snapshot.extents[base]
+        address = segment * SEGMENT
+        blob = read(address, size)
+        if zlib.crc32(blob) != checksum:
+            raise ValueError("Compiled dictionary checksum failed during export.")
+        count = struct.unpack_from("<H", blob, 4)[0]
+        entries.update(compact_entries(blob, XIP + address, member, count))
+    for entry in snapshot.entries.values():
+        if entry.identity != identity:
+            continue
+        outline = "/".join(map(format_stroke, entry.strokes))
+        if entry.operation:
+            entries.pop(outline, None)
+        else:
+            entries[outline] = entry.text.decode("utf-8")
+    return entries
 
 
 def publish(console, update, progress):

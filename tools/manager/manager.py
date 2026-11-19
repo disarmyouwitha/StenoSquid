@@ -18,6 +18,7 @@ from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
 from native_restore import restore_all
+from native_snapshot import change_snapshot
 
 MAX_REQUEST = 48 * 1024 * 1024
 
@@ -130,7 +131,10 @@ def run_job(serial, request, progress):
                     if len(reply) != 3 or reply[:2] != ["OK", "NAMED1"]:
                         raise RuntimeError("This firmware cannot create a named dictionary.")
                     options["limit"] = int(reply[2])
-            published = transfer(console, entries, progress, **options)
+            if action == "delete" and selected["kind"] == "snapshot":
+                published = change_snapshot(console, "delete", name, stage=True, progress=progress)
+            else:
+                published = transfer(console, entries, progress, **options)
         else:
             raise ValueError("Unknown Manager operation")
 

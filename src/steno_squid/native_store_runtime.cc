@@ -826,24 +826,40 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     }
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-capabilities\n"))
-        return "OK SNAPSHOT1";
+        return "OK SNAPSHOT2";
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
+    uint32_t snapshot_id = 0;
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
     else if (kUserSnapshotsEnabled && !std::strcmp(command, "begin snapshot-named\n"))
         kind = NativeUpdateKind::SnapshotNamed;
+    else if (kUserSnapshotsEnabled && !std::strncmp(command, "begin snapshot-", 15)) {
+        const char *p = command + 15;
+        if (!std::strncmp(p, "replace ", 8)) {
+            p += 8;
+            kind = NativeUpdateKind::SnapshotReplace;
+        } else if (!std::strncmp(p, "consolidate ", 12)) {
+            p += 12;
+            kind = NativeUpdateKind::SnapshotConsolidate;
+        } else if (!std::strncmp(p, "delete ", 7)) {
+            p += 7;
+            kind = NativeUpdateKind::SnapshotDelete;
+        } else return "ERR Invalid snapshot action";
+        if (!Number(p, snapshot_id) || !snapshot_id || !End(p))
+            return "ERR Invalid snapshot dictionary ID";
+    }
     else if (!std::strcmp(command, "begin reorder\n")) kind = NativeUpdateKind::Reorder;
     else if (!std::strcmp(command, "begin rename\n")) kind = NativeUpdateKind::Rename;
     else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
     else if (!std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
     else if (!std::strcmp(command, "begin base\n")) kind = NativeUpdateKind::Base;
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
-        if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries))
+        if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id))
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();
-        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed)
+        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed || kind == NativeUpdateKind::SnapshotReplace)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();

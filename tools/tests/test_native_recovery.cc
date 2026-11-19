@@ -1,20 +1,81 @@
-#include "native_store_fixture.h"
-#include <fstream>
+#include "native_stage_fixture.h"
+#include <iostream>
+
+void CheckState(NativeStore<NativeDevice> &store, NativeUpdateKind action, bool changed) {
+    uint8_t row[96];
+    assert(store.Row(1, row));
+    const bool deleted = changed && action == NativeUpdateKind::SnapshotDelete;
+    const bool consolidated = changed && action == NativeUpdateKind::SnapshotConsolidate;
+    const bool renamed = changed && action == NativeUpdateKind::Rename;
+    if (deleted) {
+        assert(Word(row) == 2 && !row[11]);
+    } else {
+        assert(Word(row) == 8 && row[11] == kUserSnapshot && Word(row + 4) == 1);
+        assert(row[12] == (renamed ? 7 : 5));
+        assert(!std::memcmp(row + 16, renamed ? "Renamed" : "Smoke", row[12]));
+    }
+    RecordView record;
+    const uint32_t kat = 524552, bob = 66096, pinned = 6;
+    if (!deleted) {
+        const auto expected = consolidated ? LiveResult::Missing : LiveResult::Ok;
+        assert(store.live.FindLive(8, &kat, 1, record) == expected);
+        if (expected == LiveResult::Ok) assert(record.operation == Operation::Set && record.text_bytes == 7);
+        assert(store.live.FindLive(8, &bob, 1, record) == expected);
+        if (expected == LiveResult::Ok) assert(record.operation == Operation::Remove);
+    }
+    assert(store.live.FindLive(2, &pinned, 1, record) == LiveResult::Ok);
+    assert(record.operation == Operation::Set && record.text_bytes == 13);
+}
+
+void CheckCuts(const std::vector<uint8_t> &contents, const Plan &plan, NativeUpdateKind action, bool unsafe) {
+    unsigned operations = 0;
+    for (unsigned cut = 0; cut <= operations; ++cut) {
+        for (const unsigned tear : {1u, 4095u}) {
+            Nor nor;
+            nor.data = contents;
+            nor.cut = cut;
+            nor.tear = tear;
+            NativeDevice device{{nor}};
+            NativeStore<NativeDevice> store(device);
+            NativeValidator<NativeDevice> validator(device, store.catalog);
+            auto open = [&] { return store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }); };
+            assert(open() == CatalogResult::Ok);
+            CheckState(store, action, false);
+            NativeStage<NativeDevice> stage(store, validator);
+            assert(stage.Begin(action, 16, action == NativeUpdateKind::Rename ? 0 : 8));
+            try {
+                Upload(stage, plan);
+                bool reopen = false;
+                auto probe = [](const uint8_t *extent, const uint8_t *row) {
+                    return Word(extent + 12) == 1 && Word(row) == 8 && row[11] == kUserSnapshot;
+                };
+                const auto status = stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen, probe);
+                assert(!cut && reopen == !unsafe && status == (unsafe ? CatalogResult::Corrupt : CatalogResult::Ok));
+                if (!unsafe) operations = std::max(operations, nor.operations);
+            } catch (const Cut &) {
+                assert(cut);
+            }
+            nor.cut = 0;
+            stage.Abort();
+            const auto result = open();
+            assert(result == CatalogResult::Ok || result == CatalogResult::Quarantined);
+            const bool switched = store.selected.root.generation > 2;
+            if (!cut) assert(switched == !unsafe);
+            CheckState(store, action, switched);
+        }
+    }
+    std::cout << "Snapshot action " << int(action) << ": " << operations << " torn boundaries with two cuts each"
+              << (unsafe ? " (refused to drop an unrelated live record)" : "") << std::endl;
+}
 
 int main(int argc, char **argv) {
-    assert(argc == 2);
+    assert(argc == 7);
     std::ifstream input(argv[1], std::ios::binary);
-    NativeFixture fixture;
-    fixture.nor.data.assign(std::istreambuf_iterator<char>(input), {});
-    fixture.nor.data.resize(256 * kSegmentBytes, 255);
-    fixture.Open();
-    uint8_t row[96];
-    assert(fixture.store.Row(1, row));
-    assert(Word(row) == 8 && row[11] == kUserSnapshot && !std::memcmp(row + 16, "Smoke", 5));
-    RecordView record;
-    const uint32_t kat = 524552, bob = 66096;
-    assert(fixture.store.live.FindLive(8, &kat, 1, record) == LiveResult::Ok);
-    assert(record.operation == Operation::Set && record.text_bytes == 7);
-    assert(fixture.store.live.FindLive(8, &bob, 1, record) == LiveResult::Ok);
-    assert(record.operation == Operation::Remove);
+    std::vector<uint8_t> contents(std::istreambuf_iterator<char>(input), {});
+    contents.resize(256 * kSegmentBytes, 255);
+    CheckCuts(contents, ReadPlan(argv[2]), NativeUpdateKind::Rename, false);
+    CheckCuts(contents, ReadPlan(argv[3]), NativeUpdateKind::SnapshotDelete, false);
+    CheckCuts(contents, ReadPlan(argv[4]), NativeUpdateKind::SnapshotReplace, false);
+    CheckCuts(contents, ReadPlan(argv[5]), NativeUpdateKind::SnapshotConsolidate, false);
+    CheckCuts(contents, ReadPlan(argv[6]), NativeUpdateKind::SnapshotConsolidate, true);
 }

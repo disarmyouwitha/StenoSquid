@@ -1,21 +1,23 @@
 """Preflight an experimental named snapshot. Pass --stage to publish it."""
 import argparse
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import struct
 import sys
 import zlib
 
 from build_native_image import SEGMENT, XIP
-from compile_dict import DictionaryCollectionBuilder
+from compile_dict import DictionaryCollectionBuilder, parse_outline
 from hybrid import format_stroke
 from native_update import (
-    EXTENT, NoSpace, Update, abort, publish, read_snapshot, row_name,
+    EXTENT, NoSpace, Update, abort, effective_entries, publish, read_flash, read_snapshot, row_name,
     update_command, validate_name,
 )
 from verify_mapped_dict import verify
 
 SNAPSHOT_MARKER = 1
+SNAPSHOT_CAPABILITIES = ("OK SNAPSHOT1", "OK SNAPSHOT2")
 
 
 @dataclass
@@ -49,23 +51,42 @@ def compile_snapshot(name, entries):
     return CompactImage(image, builder.pointer_offsets)
 
 
+def stage_allocation(protected):
+    free = set(range(2, 255)) - set(protected)
+    blocks = {}
+    extents = []
+
+    def write(contents, kind):
+        size = len(contents.data) if isinstance(contents, CompactImage) else len(contents)
+        count = (size + SEGMENT - 1) // SEGMENT
+        if len(free) < count + 3:
+            raise NoSpace("Too little free space after protecting the three-segment reserve")
+        for segment in sorted(free):
+            run = set(range(segment, segment + count))
+            if run <= free:
+                break
+        else:
+            raise NoSpace("Not enough contiguous staging space")
+        data = contents.at(XIP + segment * SEGMENT) if isinstance(contents, CompactImage) else contents
+        blocks.update({segment + i: data[i * SEGMENT:(i + 1) * SEGMENT] for i in range(count)})
+        free.difference_update(run)
+        if kind:
+            extents.append(EXTENT.pack(segment, count, size, zlib.crc32(data), kind, 0))
+        return segment
+
+    return blocks, extents, write
+
+
 def plan_named_snapshot(snapshot, protected, name, compiled, limit=16):
     validate_name(name)
     if len(snapshot.rows) >= limit or snapshot.next_id == 0xffffffff:
         raise ValueError("The keyboard has reached its dictionary limit")
     if name in {row_name(row) for row in snapshot.rows}:
         raise ValueError("Dictionary name already exists")
-    count = (len(compiled.data) + SEGMENT - 1) // SEGMENT
-    free = set(range(2, 255)) - set(protected)
-    if len(free) < count + 4 or len(snapshot.extents) == 253:
-        raise NoSpace("No staging headroom for the snapshot and metadata")
-    for segment in sorted(free):
-        run = set(range(segment, segment + count))
-        if run <= free:
-            break
-    else:
-        raise NoSpace("No contiguous staging run for the snapshot")
-    data = compiled.at(XIP + segment * SEGMENT)
+    if len(snapshot.extents) == 253:
+        raise NoSpace("Catalog extent limit")
+    blocks, extents, write = stage_allocation(protected)
+    write(compiled, 1)
     row = bytearray(96)
     struct.pack_into("<IIHBB", row, 0, snapshot.next_id, 1, len(snapshot.extents), 0, SNAPSHOT_MARKER)
     label = name.encode("ascii")
@@ -76,13 +97,89 @@ def plan_named_snapshot(snapshot, protected, name, compiled, limit=16):
     rows = snapshot.rows.copy()
     personal = next(i for i, old in enumerate(rows) if row_name(old) == "user_dictionary")
     rows.insert(personal + 1, row)
-    extents = snapshot.payload[32 + 96 * len(snapshot.rows):]
-    extent = EXTENT.pack(segment, count, len(data), zlib.crc32(data), 1, 0)
-    payload = bytes(prefix) + b"".join(rows) + extents + extent
-    blocks = {segment + i: data[i * SEGMENT:(i + 1) * SEGMENT] for i in range(count)}
-    metadata = min(free - run)
-    blocks[metadata] = payload
+    original_extents = snapshot.payload[32 + 96 * len(snapshot.rows):]
+    payload = bytes(prefix) + b"".join(rows) + original_extents + b"".join(extents)
+    metadata = write(payload, 0)
     return Update(blocks, metadata, payload, 0, 0)
+
+
+def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=False):
+    deleting = compiled is None
+    target = next((row for row in snapshot.rows if struct.unpack_from("<I", row)[0] == identity), None)
+    if target is None or target[11] != SNAPSHOT_MARKER or (deleting and row_name(target) == "user_dictionary"):
+        raise ValueError("Select an eligible compact user dictionary")
+    old_base = struct.unpack_from("<H", target, 8)[0]
+    kept, remap = [], {}
+    for i, extent in enumerate(snapshot.extents):
+        if i != old_base and (not consolidate or extent[4] < 3):
+            remap[i] = len(kept)
+            kept.append(EXTENT.pack(*extent))
+    blocks, added, write = stage_allocation(protected)
+    if not deleting:
+        remap[old_base] = len(kept)
+        write(compiled, 1)
+    if consolidate:
+        retained = [entry for entry in snapshot.entries.values() if entry.identity != identity]
+        for kind, entries in ((3, sorted(retained, key=lambda entry: entry.key)),
+                              (4, sorted((entry for entry in retained if not entry.operation),
+                                         key=lambda entry: (entry.text, entry.key)))):
+            if entries:
+                write(b"".join(struct.pack("<I", entry.address) for entry in entries), kind)
+    extents = kept + added
+    if len(extents) > 253:
+        raise NoSpace("Catalog extent limit")
+    rows = []
+    for original in snapshot.rows:
+        if deleting and original is target:
+            continue
+        row = bytearray(original)
+        base = struct.unpack_from("<H", row, 8)[0]
+        if base != 65535:
+            if base == old_base and original is not target:
+                raise ValueError("Snapshot unexpectedly shares its compact extent")
+            struct.pack_into("<H", row, 8, remap[base])
+        rows.append(row)
+    prefix = bytearray(snapshot.payload[:32])
+    struct.pack_into("<HH", prefix, 4, len(rows), len(extents))
+    if consolidate:
+        struct.pack_into("<Q", prefix, 8, snapshot.highwater)
+    payload = bytes(prefix) + b"".join(rows) + b"".join(extents)
+    metadata = write(payload, 0)
+    return Update(blocks, metadata, payload, 0, 0)
+
+
+def change_snapshot(console, operation, name, *, source=None, stage=False, progress=print):
+    if update_command(console, "snapshot-capabilities") != "OK SNAPSHOT2":
+        raise RuntimeError("Flash the matching experimental lifecycle firmware")
+    validate_name(name)
+    row = next((row for row in json.loads(console.command("native_catalog"))
+                if row["kind"] == "snapshot" and row["name"] == name), None)
+    if row is None:
+        raise ValueError(f"No user snapshot named {name!r}")
+    identity = row["id"]
+    answer = update_command(console, f"begin snapshot-{operation} {identity}")
+    published = False
+    try:
+        consolidating = operation == "consolidate"
+        snapshot, protected = read_snapshot(console, answer, metadata_only=not consolidating)
+        if not any(row_name(row) == name and struct.unpack_from("<I", row)[0] == identity for row in snapshot.rows):
+            raise RuntimeError("Catalog changed before staging. Refresh and retry.")
+        compiled = None
+        if consolidating:
+            entries = effective_entries(snapshot, name, lambda at, n: read_flash(console, at, n))
+            compiled = compile_snapshot(name, {parse_outline(outline): text.encode("utf-8")
+                                               for outline, text in entries.items()})
+        elif operation == "replace":
+            compiled = source
+        update = plan_change(snapshot, protected, identity, compiled, consolidate=consolidating)
+        progress(f"{operation.capitalize()} {name}: {len(update.segments)} staging segments")
+        if stage:
+            publish(console, update, progress)
+            published = True
+        return published
+    finally:
+        if not published:
+            abort(console)
 
 
 def inspect_free(protected):
@@ -100,18 +197,36 @@ def main():
     from native_install import wait_ready
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dictionary", type=Path, metavar="PLOVER.JSON")
+    parser.add_argument("dictionary", type=Path, metavar="PLOVER.JSON", nargs="?")
     parser.add_argument("--name", required=True)
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--replace", action="store_true", help="Replace the baseline and keep current overlays")
+    action.add_argument("--consolidate", action="store_true", help="Fold current overlays into a new baseline")
+    action.add_argument("--delete", action="store_true", help="Retire the named snapshot")
     parser.add_argument("--serial", required=True, help="USB serial of the experimental left half")
     parser.add_argument("--stage", action="store_true", help="Write free segments and publish a new catalog")
     args = parser.parse_args()
     validate_name(args.name)
-    entries, _ = parse_named(args.dictionary.read_bytes())
-    compiled = compile_snapshot(args.name, entries)
+    if bool(args.dictionary) == bool(args.consolidate or args.delete):
+        parser.error("Supply a Plover JSON file for a new baseline only")
+    if args.dictionary:
+        entries, _ = parse_named(args.dictionary.read_bytes())
+        compiled = compile_snapshot(args.name, entries)
+    if args.replace or args.consolidate or args.delete:
+        operation = "replace" if args.replace else "consolidate" if args.consolidate else "delete"
+        with open_console(args.serial) as console:
+            if change_snapshot(console, operation, args.name,
+                               source=compiled if args.replace else None, stage=args.stage):
+                published = True
+            else:
+                published = False
+        if published:
+            wait_ready(args.serial)
+        return
     required = (len(compiled.data) + SEGMENT - 1) // SEGMENT
     print(f"{len(entries):,} entries, {len(compiled.data):,} bytes, {required} contiguous segments")
     with open_console(args.serial) as console:
-        if update_command(console, "snapshot-capabilities") != "OK SNAPSHOT1":
+        if update_command(console, "snapshot-capabilities") not in SNAPSHOT_CAPABILITIES:
             raise RuntimeError("Flash the matching experimental firmware before testing snapshots")
         limit = int(update_command(console, "named-capabilities").split()[-1])
         # Backup mode exposes the selected root only. Staging ownership must

@@ -1,6 +1,6 @@
 # Adaptive dictionary snapshots experiment
 
-This branch adds an opt-in, USB-only experiment for one new named compact dictionary at a time. The user dictionary and existing named dictionaries keep their journal representation. Automatic format selection, in-place optimization, snapshot deletion and same-ID replacement are pending. Keep using the known-good Native release on your everyday board.
+This branch adds an opt-in, USB-only experiment for independent named compact dictionaries. The personal dictionary and existing journal dictionaries keep their representation. Keep using the known-good Native release on your everyday board.
 
 ## Gate A results
 
@@ -56,6 +56,18 @@ The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengt
 Version 2 records the selected binary catalog, the checked host layout, and the exact referenced extents with a SHA-256 checksum. This preserves compact snapshot and pinned image contents, pinned source digests, logical IDs, priority, checkboxes, and every live override and tombstone. It includes raw journal bytes, which can contain old translations that no longer appear in a dictionary export. Treat it as private. The CLI publishes the file only after validation and flush.
 
 Offline reconstruction verifies catalog ownership, compact lookup parity, journal records and both indexes, then produces two valid roots in memory. It needs no downloads. The version 1 backup and restore format remains available for ordinary journal-backed stores. USB installation of a version 2 bundle or a reconstructed image is disabled pending physical recovery qualification.
+
+## Snapshot lifecycle
+
+Rename and export work through Manager and the standard dictionary commands. Manager can also delete a snapshot after confirmation. The experimental CLI provides read-only planning for the following operations. Append `--stage` only after checking the proposed operation and retaining a backup.
+
+```sh
+python3 tools/storage/native_snapshot.py new-baseline.json --name 'Snapshot Smoke' --serial YOUR_USB_SERIAL --replace
+python3 tools/storage/native_snapshot.py --name 'Snapshot Smoke' --serial YOUR_USB_SERIAL --consolidate
+python3 tools/storage/native_snapshot.py --name 'Snapshot Smoke' --serial YOUR_USB_SERIAL --delete
+```
+
+Replacement changes the compact baseline and keeps the existing override and tombstone records. Consolidation takes the current effective dictionary as the new baseline, then removes only that dictionary's live overlay references. Both keep its ID, position and enabled state. An empty effective dictionary cannot be consolidated into JSC4. Delete retires the dictionary and its compact extent without reusing the ID. Ordinary journal maintenance can later reclaim its stale edits. The allocator protects both roots, retained readers and the three-segment reserve. A capacity refusal leaves the previous catalog in place.
 
 The on-flash catalog magic remains `SQBCAT02`. Byte 11 of a user-owned row is the version-one snapshot marker. It references a single-member JSC4 extent and shares the existing ID-qualified overlay. Factory rows and existing records retain their original format. Stable firmware rejects a marked root and may see the preceding root or enter recovery. Before staging a snapshot, rollback is simply reflashing the stable left. After staging, return to an untouched spare pool or restore the pre-test backup using the existing standard Native provisioning path on your disposable fixture. That explicit operation rewrites the pool. Preserve the backup separately and keep the experimental firmware installed until you are ready for that restore.
 
