@@ -15,7 +15,7 @@ function selection() {
 }
 function controls() {
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
-  for (const id of ["refresh", "backup", "updates", "export"]) node(id).disabled = busy;
+  for (const id of ["refresh", "backup", "updates", "export", "restore-submit"]) node(id).disabled = busy;
   if (!state) return;
   const row = selection();
   const rank = state.catalog.indexOf(row);
@@ -105,6 +105,8 @@ async function watch(id) {
       } else {
         notify(summary);
       }
+    } else if (result.restored) {
+      notify("Backup restored. The keyboard is ready.");
     } else {
       notify(state.read_only ? "Connected. The keyboard is in read-only recovery." : "Keyboard ready.");
     }
@@ -163,15 +165,22 @@ node("edit").onsubmit = (event) => {
   const fields = new FormData(event.currentTarget);
   run({action: event.submitter.value, id: selectedId, outline: fields.get("outline").trim(), translation: fields.get("translation")});
 };
-node("import").onsubmit = async (event) => {
-  event.preventDefault();
-  const fields = new FormData(event.currentTarget);
-  try {
-    await run({action: "import", source: await fields.get("file").text(), name: fields.get("name").trim()});
-  } catch (error) {
-    notify(error.message, true);
-  }
-};
+for (const action of ["import", "restore"]) {
+  node(action).onsubmit = async (event) => {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    try {
+      const source = await fields.get("file").text();
+      const options = action === "import"
+        ? {name: fields.get("name").trim()}
+        : {confirm: fields.get("confirm")};
+      await run({action, source, ...options});
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+}
+
 controls();
 request("/api/job").then(async (job) => {
   if (job.status !== "running") return;

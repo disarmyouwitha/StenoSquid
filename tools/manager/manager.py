@@ -1,6 +1,6 @@
 """Serve the local Steno Squid Manager and reuse the CLI's USB HID transport."""
 
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import secrets
@@ -17,6 +17,7 @@ from native_update import backup_all, transfer
 from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
+from native_restore import restore_all
 
 MAX_REQUEST = 48 * 1024 * 1024
 
@@ -51,6 +52,12 @@ def safe_name(value):
 
 def run_job(serial, request, progress):
     action = request["action"]
+    if action == "restore":
+        if request.get("confirm") != "RESTORE":
+            raise ValueError("Type RESTORE to confirm replacing this keyboard’s dictionaries.")
+        restore_all(serial, json.loads(request["source"]), progress)
+        with open_console(serial) as console:
+            return {"state": read_state(console), "restored": True}
     published = False
     report = {}
     with open_console(serial) as console:
@@ -93,7 +100,7 @@ def run_job(serial, request, progress):
         elif action == "check_updates":
             return {"updates": changed_pins(catalog)}
         elif action == "apply_updates":
-            if not request.get("approved") is True:
+            if request.get("approved") is not True:
                 raise ValueError("Confirm the pinned dictionary update.")
             changed, conflicts = replace_pinned(console, catalog, progress)
             published = bool(changed)
@@ -161,7 +168,7 @@ class Jobs:
     def run(self, request):
         try:
             result = run_job(self.serial, request, lambda message: self.update(message=message))
-        except (OSError, RuntimeError, ValueError, KeyError, TypeError, SystemExit) as error:
+        except (Exception, SystemExit) as error:
             self.update(status="error", message=str(error))
         else:
             self.update(status="done", result=result)
@@ -242,7 +249,7 @@ def serve(serial=None):
                 return
             self.json(202, {"id": identity})
 
-    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
         host = f"127.0.0.1:{server.server_port}"
         url = "http://" + host
         print(f"Steno Squid Manager is running at {url}", flush=True)

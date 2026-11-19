@@ -70,6 +70,17 @@
         <p id="maintenance"></p>
       </section>
     </div>
+    <section>
+      <details>
+        <summary>Restore a full backup</summary>
+        <p>This replaces the external dictionary pool and restores saved priority, local edits and host layout.</p>
+        <form id="restore">
+          <label>Steno Squid backup <input name="file" type="file" accept=".json,application/json" required></label>
+          <label>Type RESTORE to confirm <input name="confirm" pattern="RESTORE" required></label>
+          <button id="restore-submit">Restore backup</button>
+        </form>
+      </details>
+    </section>
   </main>
 </body>
 </html>

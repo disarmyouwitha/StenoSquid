@@ -47,21 +47,21 @@ def write_journal_header(image, segment, epoch, *, extent_segment=None):
                        1, SEGMENT, 0, 2, epoch)
 
 
-def seed_personal(image, extents, next_segment, entries):
-    """Stage a restored dictionary and build each index once, before USB writes."""
+def seed_entries(image, extents, next_segment, entries):
+    """Build both indexes for a validated overlay collection before USB writes."""
     if not entries:
         return next_segment
     epoch, segment = 1, 2
     address = segment * SEGMENT + 256
     records = {}
-    for sequence, (strokes, text) in enumerate(entries.items(), 1):
-        payload = struct.pack("<IBBH", 1, 0, len(strokes), len(text))
+    for sequence, ((identity, strokes), (operation, text)) in enumerate(entries.items(), 1):
+        payload = struct.pack("<IBBH", identity, operation, len(strokes), len(text))
         payload += struct.pack(f"<{len(strokes)}I", *strokes) + text
         span = (32 + len(payload) + 3) & ~3
         if address + span > (segment + 1) * SEGMENT:
             segment, next_segment = next_segment, next_segment + 1
             if next_segment > 252:
-                raise ValueError("Personal dictionary exhausts the three-segment reserve")
+                raise ValueError("Saved dictionary entries exhaust the three-segment reserve")
             epoch += 1
             extents.append(write_journal_header(image, segment, epoch))
             address = segment * SEGMENT + 256
@@ -69,13 +69,17 @@ def seed_personal(image, extents, next_segment, entries):
         header = struct.pack("<4sIQII", b"SQJR", span, sequence, len(payload), crc)
         record = header + struct.pack("<II", zlib.crc32(header), 0x434F4D54) + payload
         image[address : address + len(record)] = record
-        records[strokes] = address
+        records[identity, strokes] = address
         address += span
-    for kind, order in ((3, sorted(entries)), (4, sorted(entries, key=lambda key: (entries[key], key)))):
+    reverse = sorted((key for key, (operation, _) in entries.items() if not operation),
+                     key=lambda key: (entries[key][1], key))
+    for kind, order in ((3, sorted(entries)), (4, reverse)):
+        if not order:
+            continue
         index = b"".join(struct.pack("<I", records[key]) for key in order)
         count = (len(index) + SEGMENT - 1) // SEGMENT
         if next_segment + count > 252:
-            raise ValueError("Personal indexes exhaust the three-segment reserve")
+            raise ValueError("Saved dictionary indexes exhaust the three-segment reserve")
         start = next_segment * SEGMENT
         image[start : start + len(index)] = index
         extents.append(struct.pack("<HHIIIQ", next_segment, count, len(index),
@@ -91,7 +95,7 @@ def read_personal(path):
     return parse_named(path.read_text(encoding="utf-8"))[0]
 
 
-def build(source_root, personal=None):
+def build(source_root, personal=None, *, collection=None):
     image = bytearray(b"\xff" * LIMIT)
     extents = [write_journal_header(image, 2, 1)]
     dictionaries = []
@@ -105,7 +109,7 @@ def build(source_root, personal=None):
             raw = (source_root / source).read_bytes()
             digest = hashlib.sha256(raw).digest()
             definitions.append((name, json.loads(raw)))
-            location[identity] = len(extents), index, digest
+            location[name] = len(extents), index, digest
             members.append(dict(id=identity, index=index, name=name, source_sha256=digest.hex()))
         address = next_segment * SEGMENT
         binary = DictionaryCollectionBuilder(XIP + address).build(definitions)
@@ -118,8 +122,15 @@ def build(source_root, personal=None):
         manifest.append(dict(name=region_name, address=address, bytes=len(binary),
                              segments=count, crc32=crc, dictionaries=members))
         next_segment += count
-    for identity, name, enabled, _ in SOURCES:
-        base, index, digest = location.get(identity, (65535, 0, bytes(32)))
+    if collection is None:
+        rows = [(identity, name, enabled) for identity, name, enabled, _ in SOURCES]
+        entries = {(1, strokes): (0, text) for strokes, text in (personal or {}).items()}
+        next_id = 8
+    else:
+        rows, entries, next_id = collection
+    personal_id = next(identity for identity, name, _ in rows if name == "user_dictionary")
+    for identity, name, enabled in rows:
+        base, index, digest = location.get(name, (65535, 0, bytes(32)))
         encoded = name.encode()
         row = bytearray(96)
         struct.pack_into("<IIHB", row, 0, identity, int(enabled), base, index)
@@ -127,10 +138,9 @@ def build(source_root, personal=None):
         row[16 : 16 + len(encoded)] = encoded
         row[64:96] = digest
         dictionaries.append(row)
-    personal = personal or {}
-    next_segment = seed_personal(image, extents, next_segment, personal)
+    next_segment = seed_entries(image, extents, next_segment, entries)
     prefix = bytearray(32)
-    struct.pack_into("<IHHQ", prefix, 0, 8, len(dictionaries), len(extents), len(personal))
+    struct.pack_into("<IHHQ", prefix, 0, next_id, len(dictionaries), len(extents), len(entries))
     payload = bytes(prefix) + b"".join(dictionaries) + b"".join(extents)
     for slot in range(2):
         blob = catalog_header(slot + 1, payload) + payload
@@ -145,8 +155,9 @@ def build(source_root, personal=None):
         base_images=manifest,
         free_segments=255 - next_segment,
         provision="explicit clean erase; no migration",
-        personal_id=1,
-        personal_entries=len(personal),
+        personal_id=personal_id,
+        personal_entries=sum(identity == personal_id and op == 0
+                             for (identity, _), (op, _) in entries.items()),
     )
     return bytes(image), report
 

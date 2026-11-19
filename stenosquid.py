@@ -329,6 +329,7 @@ def main():
     parser.add_argument("--dictionary", metavar="NAME", help="Select a dictionary for --backup")
     parser.add_argument("--backup", type=Path, metavar="FILE.JSON", help="Export the personal dictionary over USB HID")
     parser.add_argument("--confirm-erase", action="store_true", help="Explicitly replace the Native dictionary pool")
+    parser.add_argument("--restore-all", type=Path, metavar="FILE.JSON", help="Restore a full backup; replaces the dictionary pool")
     parser.add_argument("--restore", type=Path, metavar="BACKUP.JSON", help="Seed personal entries when provisioning Native")
     parser.add_argument("--serial", help="USB keyboard serial number (not a serial-port path)")
     parser.add_argument("--base", choices=("lapwing", "plover", "extras", "all"))
@@ -337,7 +338,7 @@ def main():
     parser.add_argument("--status", action="store_true", help="Read dictionary status")
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
-    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update)
+    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update, args.restore_all)
     if sum(map(bool, actions)) != 1:
         parser.error("Choose exactly one action (see --help)")
     if args.dictionary is not None and not args.backup:
@@ -348,8 +349,10 @@ def main():
         parser.error("--move requires --position with a positive position")
     if args.port and not args.diag:
         parser.error("Serial provisioning is retired. Omit the port to use USB HID; ports are only for --diag")
-    if (args.confirm_erase or args.restore) and not args.install:
-        parser.error("--confirm-erase and --restore go with --install")
+    if args.confirm_erase and not (args.install or args.restore_all):
+        parser.error("--confirm-erase goes with --install or --restore-all")
+    if args.restore and not args.install:
+        parser.error("--restore goes with --install")
     if args.diag:
         if args.base or args.serial:
             parser.error("--diag stands alone")
@@ -364,9 +367,15 @@ def main():
         parser.error("--base goes with --repair, --verify or --status")
     if args.restore and not args.confirm_erase:
         parser.error("--restore requires --confirm-erase")
+    if args.restore_all:
+        if not args.confirm_erase:
+            parser.error("--restore-all requires --confirm-erase")
+        sys.path.insert(0, str(REPO / "tools/storage"))
+        from native_restore import restore_all
+
+        restore_all(args.serial, json.loads(args.restore_all.read_text(encoding="utf-8")))
+        return
     if args.manager:
-        if args.base:
-            parser.error("--base is unavailable with --manager")
         sys.path.insert(0, str(REPO / "tools/manager"))
         from manager import serve
 

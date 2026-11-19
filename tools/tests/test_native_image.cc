@@ -3,7 +3,7 @@
 #include <fstream>
 #include <iostream>
 int main(int argc,char **argv) {
-    assert(argc==2);std::ifstream input(argv[1],std::ios::binary);
+    assert(argc==3);std::ifstream input(argv[1],std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(input)),{});assert(image.size()==255*65536);
     Nor nor;nor.data.assign(256*65536,0x42);NativeDevice device{{nor}};
     NativeProvisioner<NativeDevice> installer(device);
@@ -64,5 +64,16 @@ int main(int argc,char **argv) {
     uint8_t extent[24];assert(device.Read(store.selected.root.address+32+7*96+base_index*24,extent,24));
     nor.data[uint16_t(extent[0])*65536]^=1;const auto damaged=nor.data;
     assert(open()!=CatalogResult::Ok && nor.data==damaged);
+    std::ifstream restored(argv[2], std::ios::binary);
+    std::vector<uint8_t> backup((std::istreambuf_iterator<char>(restored)), {});
+    nor.data.assign(backup.begin(), backup.end());nor.data.resize(256*kSegmentBytes,0x42);
+    assert(open()==CatalogResult::Ok);
+    assert(store.Row(0,row) && Word(row)==8 && Word(row+4)==1);
+    assert(store.Row(1,row) && Word(row)==10);
+    assert(store.Row(2,row) && Word(row)==2 && !Word(row+4));
+    const uint32_t one=1,two=2;
+    assert(store.live.FindLive(8,&one,1,record)==LiveResult::Ok && record.text_bytes==5);
+    assert(store.live.FindLive(10,&one,1,record)==LiveResult::Ok && record.text_bytes==3);
+    assert(store.live.FindLive(2,&two,1,record)==LiveResult::Ok && record.operation==Operation::Remove);
     std::cout<<"Native factory image: sparse USB provision contract, both catalog copies, relocated bases, persistent edit and corrupt-base refusal passed\n";
 }

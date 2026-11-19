@@ -92,7 +92,9 @@ Connect the left half over USB and close any Javelin Steno Tools connection. Run
 `python3 stenosquid.py --manager` from the repository. The local Manager opens in
 your browser. Select **Connect over USB** to view priority and checkboxes, edit
 a specific dictionary, import Plover JSON, export an individual dictionary or
-download a backup of all overlays and catalog settings. The Manager can rename
+download a backup of all overlays and catalog settings. Use **Restore a full
+backup** to restore it to a board running matching firmware and pinned sources.
+The Manager can rename
 or delete independent dictionaries and switch the keyboard’s host layout.
 **Check pinned updates** compares the installed revisions against this checkout.
 Updates keep local edits and report any outlines where upstream also changed.

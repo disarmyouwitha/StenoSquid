@@ -2,6 +2,11 @@
 
 from contextlib import nullcontext
 import json
+from queue import Queue
+import re
+from threading import Thread
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 import unittest
 from unittest.mock import patch
 
@@ -72,6 +77,41 @@ class ManagerTest(unittest.TestCase):
             self.run_job("delete", id=8, confirm="Medical")
             self.assertEqual(transfer.call_args.kwargs, {"delete": "Medical"})
             wait.assert_called_once()
+
+
+    def test_local_http_routes_require_session_and_origin(self):
+        started = Queue()
+        server_type = manager.ThreadingHTTPServer
+        make_server = patch.object(manager, "ThreadingHTTPServer",
+                                   side_effect=lambda *args: _publish(server_type(*args), started))
+        with make_server, patch.object(manager.webbrowser, "open", side_effect=started.put):
+            server_thread = Thread(target=manager.serve, daemon=True)
+            server_thread.start()
+            server, url = started.get(timeout=2), started.get(timeout=2)
+            try:
+                with urlopen(url, timeout=2) as response:
+                    html = response.read()
+                token = re.search(rb'name="manager-token" content="([^"]+)"', html).group(1).decode()
+                with self.assertRaises(HTTPError) as unauthorized:
+                    urlopen(url + "/api/job", timeout=2)
+                self.assertEqual(unauthorized.exception.code, 403)
+                headers = {"X-StenoSquid-Token": token, "Content-Type": "application/json"}
+                task = b'{"action":"refresh"}'
+                with self.assertRaises(HTTPError) as wrong_origin:
+                    urlopen(Request(url + "/api/job", data=task, headers={**headers, "Origin": "https://example.org"}),
+                            timeout=2)
+                self.assertEqual(wrong_origin.exception.code, 403)
+                with urlopen(Request(url + "/api/job", data=task, headers={**headers, "Origin": url}), timeout=2) as response:
+                    self.assertEqual(response.status, 202)
+                    self.assertIn("id", json.load(response))
+            finally:
+                server.shutdown()
+                server_thread.join(timeout=2)
+
+
+def _publish(server, started):
+    started.put(server)
+    return server
 
 
 if __name__ == "__main__":

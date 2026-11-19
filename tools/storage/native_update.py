@@ -364,7 +364,8 @@ def backup_all(console):
             if not entry.operation:
                 item["text"] = entry.text.decode("utf-8")
             by_id[entry.identity]["entries"].append(item)
-        return dict(format="stenosquid-backup-1", host_layout=layout, dictionaries=dictionaries)
+        return dict(format="stenosquid-backup-1", host_layout=layout, next_id=snapshot.next_id,
+                    dictionaries=dictionaries)
     finally:
         update_command(console, "abort", timeout=5)
 
