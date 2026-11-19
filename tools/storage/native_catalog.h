@@ -7,6 +7,14 @@ namespace candidate_b {
 constexpr uint32_t kCatalogHeader = 32, kCatalogPrefix = 32;
 constexpr uint32_t kDictionaryBytes = 96, kExtentBytes = 24;
 constexpr uint16_t kNoExtent = 65535;
+// Version 1 of the optional user-snapshot row extension. Stable builds
+// reject the reserved-byte marker during catalog validation.
+constexpr uint8_t kUserSnapshot = 1;
+#if defined(CONFIG_ZMK_STENO_SQUID_USER_SNAPSHOTS) || defined(STENO_SQUID_TEST_USER_SNAPSHOTS)
+constexpr bool kUserSnapshotsEnabled = true;
+#else
+constexpr bool kUserSnapshotsEnabled = false;
+#endif
 enum class CatalogResult { Ok, Empty, Corrupt, IoError, Invalid, Quarantined, Busy };
 enum class ExtentKind : uint32_t { Base=1, Journal=2, Forward=3, Reverse=4 };
 struct CatalogRoot {
@@ -185,11 +193,19 @@ public:
             uint32_t id=Word(dictionary),flags=Word(dictionary+4);
             uint16_t base=uint16_t(dictionary[8]) | uint16_t(dictionary[9])<<8;
             uint8_t name= dictionary[12];
+            const uint8_t format = dictionary[11];
+            if (format && (!kUserSnapshotsEnabled || format != kUserSnapshot ||
+                           base == kNoExtent || dictionary[10] || (id >= 2 && id <= 7)))
+                return CatalogResult::Corrupt;
             if(!id || id>=header.next_id || flags>1 || Word(dictionary+60) ||
-               dictionary[10]>=64 || dictionary[11] || !name || name>44 ||
+               dictionary[10]>=64 || !name || name>44 ||
                dictionary[13] || dictionary[14] || dictionary[15])return CatalogResult::Corrupt;
             for(uint32_t j=0;j<i;++j)if(ids[j]==id)return CatalogResult::Corrupt;
             ids[i]=id;
+            if (format) {
+                for (unsigned j = 64; j < sizeof(dictionary); ++j)
+                    if (dictionary[j]) return CatalogResult::Corrupt;
+            }
             Utf8 utf;
             for(uint32_t j=0;j<name;++j)if(!utf.Push(dictionary[16+j]))return CatalogResult::Corrupt;
             if(utf.remaining)return CatalogResult::Corrupt;

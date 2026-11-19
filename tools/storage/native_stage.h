@@ -4,7 +4,7 @@
 
 namespace candidate_b {
 
-enum class NativeUpdateKind { Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base };
+enum class NativeUpdateKind { Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base, SnapshotNamed };
 
 // Exclusive USB staging session. The active catalog and both retained roots
 // remain readable. Writes are restricted to previously unowned segments.
@@ -43,8 +43,9 @@ class NativeStage {
                kind == NativeUpdateKind::Delete;
     }
 
-    static bool EditableRow(const uint8_t *row) {
-        return row[8] == 255 && row[9] == 255 &&
+    static bool EditableRow(const uint8_t *row, bool rename) {
+        const bool journal = row[8] == 255 && row[9] == 255;
+        return (journal || (rename && kUserSnapshotsEnabled && row[11] == kUserSnapshot)) &&
                !(row[12] == 15 && !std::memcmp(row + 16, "user_dictionary", 15));
     }
 
@@ -120,7 +121,7 @@ class NativeStage {
             previous = old_index + 1;
             if (metadata) {
                 if (!std::memcmp(old_row, new_row, sizeof(old_row))) continue;
-                if (!rename || renamed || !EditableRow(old_row) || !ValidName(new_row) ||
+                if (!rename || renamed || !EditableRow(old_row, true) || !ValidName(new_row) ||
                     !NameAvailable(original.root, dictionaries, new_row) ||
                     std::memcmp(old_row, new_row, 12) ||
                     std::memcmp(old_row + 13, new_row + 13, 3) ||
@@ -130,11 +131,11 @@ class NativeStage {
             }
             if (std::memcmp(old_row, new_row, 8) || std::memcmp(old_row + 10, new_row + 10, 86))
                 return false;
+            if (old_row[12] == 15 && !std::memcmp(old_row + 16, "user_dictionary", 15))
+                personal_id = identity;
             const uint16_t old_base = old_row[8] | old_row[9] << 8;
             if (old_base == kNoExtent) {
                 if (new_base != kNoExtent) return false;
-                if (old_row[12] == 15 && !std::memcmp(old_row + 16, "user_dictionary", 15))
-                    personal_id = identity;
             } else {
                 uint8_t old_extent[24], new_extent[24];
                 if (old_base >= old_count || new_base >= new_count ||
@@ -151,7 +152,7 @@ class NativeStage {
                     if (seen & (uint64_t(1) << i)) continue;
                     uint8_t row[96];
                     if (!store.device.Read(original.root.address + 32 + i * sizeof(row), row, sizeof(row)) ||
-                        !EditableRow(row)) return false;
+                        !EditableRow(row, false)) return false;
                 }
             }
             for (unsigned i = 0; i < new_count; ++i) {
@@ -185,6 +186,57 @@ class NativeStage {
     }
 
     using BaseProbe = bool (*)(const uint8_t *extent, const uint8_t *row);
+    bool CheckNewSnapshot(const CatalogRoot &candidate, uint32_t metadata, BaseProbe probe) {
+        if (!kUserSnapshotsEnabled || !probe || candidate.bytes != original.root.bytes + 96 + 24)
+            return false;
+        uint8_t before[32], after[32];
+        if (!store.device.Read(original.root.address, before, 32) ||
+            !store.device.Read(candidate.address, after, 32) || std::memcmp(before + 8, after + 8, 24))
+            return false;
+        const uint32_t id = Word(before);
+        const unsigned rows = before[4] | before[5] << 8;
+        const unsigned extents = before[6] | before[7] << 8;
+        if (id == UINT32_MAX || Word(after) != id + 1 || rows >= dictionary_limit || extents >= 253 ||
+            (after[4] | unsigned(after[5]) << 8) != rows + 1 ||
+            (after[6] | unsigned(after[7]) << 8) != extents + 1)
+            return false;
+        for (unsigned i = 0; i < extents; ++i) {
+            uint8_t old_extent[24], new_extent[24];
+            if (!ReadExtent(original.root, rows, i, old_extent) ||
+                !ReadExtent(candidate, rows + 1, i, new_extent) || std::memcmp(old_extent, new_extent, 24))
+                return false;
+        }
+        uint8_t found[96]{};
+        for (unsigned i = 0, old_index = 0; i <= rows; ++i) {
+            uint8_t row[96];
+            if (!store.device.Read(candidate.address + 32 + i * 96, row, 96)) return false;
+            if (Word(row) == id) {
+                if (Word(found) || Word(row + 4) != 1 || row[10] || row[11] != kUserSnapshot ||
+                    (row[8] | unsigned(row[9]) << 8) != extents || !ValidName(row) ||
+                    !NameAvailable(original.root, rows, row))
+                    return false;
+                std::memcpy(found, row, sizeof(found));
+            } else {
+                uint8_t old_row[96];
+                if (old_index >= rows ||
+                    !store.device.Read(original.root.address + 32 + old_index++ * 96, old_row, 96) ||
+                    std::memcmp(old_row, row, sizeof(row)))
+                    return false;
+            }
+        }
+        uint8_t extent[24];
+        if (!Word(found) || !ReadExtent(candidate, rows + 1, extents, extent) || Word(extent + 12) != 1)
+            return false;
+        const unsigned start = extent[0] | extent[1] << 8, count = extent[2] | extent[3] << 8;
+        const uint32_t bytes = Word(extent + 4);
+        if (start < 2 || start >= 255 || !count || count > 255 - start || bytes < 40 ||
+            bytes % 4 || bytes > count * kSegmentBytes)
+            return false;
+        for (unsigned i = start; i < start + count; ++i)
+            if (i == metadata || !erased.Contains(i)) return false;
+        return validator.Extent(extents, extent) && probe(extent, found);
+    }
+
     bool CheckBaseLayout(const CatalogRoot &candidate, uint32_t metadata_segment, BaseProbe probe) {
         uint8_t old_prefix[32], prefix[32];
         if (!probe || candidate.bytes != original.root.bytes ||
@@ -299,7 +351,7 @@ public:
     const CatalogRoot &Root() const { return original.root; }
 
     bool Begin(NativeUpdateKind operation, uint16_t limit = 64) {
-        if (limit > 64) return false;
+        if (limit > 64 || (operation == NativeUpdateKind::SnapshotNamed && !kUserSnapshotsEnabled)) return false;
         if (active || !store.opened || store.work != NativeStore<Device>::Work::None)
             return false;
         const auto &root = store.selected.root;
@@ -383,9 +435,12 @@ public:
         uint32_t checksum = 0;
         if (!store.device.Checksum(candidate.address, bytes, checksum)) return CatalogResult::IoError;
         const bool replacing_base = kind == NativeUpdateKind::Base;
-        if (checksum != crc || !(replacing_base ? CheckBaseLayout(candidate, segment, probe)
-                                                : CheckLayout(candidate, segment))) return CatalogResult::Corrupt;
-        if (!MetadataOnly() && !replacing_base) {
+        const bool adding_snapshot = kind == NativeUpdateKind::SnapshotNamed;
+        if (checksum != crc) return CatalogResult::Corrupt;
+        const bool layout_ok = adding_snapshot ? CheckNewSnapshot(candidate, segment, probe) :
+            replacing_base ? CheckBaseLayout(candidate, segment, probe) : CheckLayout(candidate, segment);
+        if (!layout_ok) return CatalogResult::Corrupt;
+        if (!MetadataOnly() && !replacing_base && !adding_snapshot) {
             const auto validation = validator.Validate(candidate);
             if (validation != CatalogResult::Ok) return validation;
             if (!PreservesEntries()) return CatalogResult::Corrupt;

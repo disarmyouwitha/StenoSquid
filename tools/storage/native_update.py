@@ -351,6 +351,8 @@ def backup_all(console):
     answer = update_command(console, "begin backup")
     try:
         snapshot, _ = read_snapshot(console, answer)
+        if any(row[11] for row in snapshot.rows):
+            raise ValueError("Whole-store backup cannot restore experimental compact snapshots. Export the dictionaries individually.")
         dictionaries = []
         for row in snapshot.rows:
             identity, enabled, base, member = struct.unpack_from("<IIHB", row)

@@ -20,6 +20,7 @@ from build_native_image import build, catalog_header, SEGMENT, SOURCES, write_jo
 from native_update import Edit, Snapshot, NoSpace, encode_record, export_dictionary, plan, EXTENT
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from native_base_update import GROUPS, Image, plan_replacements
+from native_snapshot import compile_snapshot, plan_named_snapshot
 from compile_dict import DictionaryCollectionBuilder, parse_outline
 from verify_mapped_dict import verify
 
@@ -197,12 +198,30 @@ def main():
             raise AssertionError("Base update ignored the staging reserve")
         replace = path / "replace.bin"
         write_plan(replace, revised)
+        compact = compile_snapshot("Experimental", {strokes: b"snapshot-cat", parse_outline("KAT/TA"): "ça".encode()})
+        experimental = path / "snapshot.bin"
+        snapshot_plan = plan_named_snapshot(snapshot, protected, "Experimental", compact)
+        write_plan(experimental, snapshot_plan)
+        assert protected.isdisjoint(snapshot_plan.segments)
+        try:
+            plan_named_snapshot(snapshot, set(range(251)), "Experimental", compact)
+        except NoSpace:
+            pass
+        else:
+            raise AssertionError("Snapshot ignored the staging reserve")
+        try:
+            compile_snapshot("Experimental", {(1 << 24,): b"unrepresentable"})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Snapshot truncated a Native stroke")
         binary = path / "test"
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+                        "-DSTENO_SQUID_TEST_USER_SNAPSHOTS=1",
                         "-I", str(ROOT / "tools/storage"), str(ROOT / "tools/tests/test_native_stage.cc"),
                         "-o", str(binary)], check=True)
         subprocess.run([str(binary), str(before), str(add), str(clean), str(invalid), str(named), str(reorder),
-                        str(named_before), str(rename), str(delete), str(replace)], check=True)
+                        str(named_before), str(rename), str(delete), str(replace), str(experimental)], check=True)
 
 
 if __name__ == "__main__":

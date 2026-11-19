@@ -138,7 +138,7 @@ NativeEngineBackend<FlashDevice> backend(store,base_provider);
 class Cell final : public StenoDictionary {
 public:
     uint32_t identity=0,base_offset=0,base_bytes=0,base_crc=0;
-    bool enabled=false;
+    bool enabled=false, user_snapshot=false;
     uint8_t base_member = 0;
     char name[45]{};
     StenoCompactMapDictionaryDefinition definition{};
@@ -345,7 +345,8 @@ void StepWork(k_work *) {
     FinishMaintenance();
 }
 LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t count,const char *text,size_t bytes) {
-    if(!healthy || !count || count>16 || bytes>2047)return LiveResult::Invalid;
+    if(!healthy || !count || count>16 || bytes>2047 ||
+       (cell.user_snapshot && operation==uint8_t(Operation::Reset)))return LiveResult::Invalid;
     if(steno_squid_native_input_pending())return LiveResult::Busy;
     const NativeInputPause input_pause;
     uint32_t strokes[16];for(size_t i=0;i<count;++i)strokes[i]=outline[i].GetKeyState();
@@ -701,7 +702,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         uint8_t row[96];if(!store.Row(i,row))return false;
         auto &cell=cells[i];const uint32_t id=Word(row);
         if(loaded && id!=cell.identity)return false;
-        cell.identity=id;cell.enabled=Word(row+4);std::memcpy(cell.name,row+16,row[12]);cell.name[row[12]]=0;
+        cell.identity=id;cell.user_snapshot=row[11]==kUserSnapshot;cell.enabled=Word(row+4);std::memcpy(cell.name,row+16,row[12]);cell.name[row[12]]=0;
         const uint16_t base=uint16_t(row[8]) | uint16_t(row[9])<<8;
         if(base!=kNoExtent) {
             uint8_t extent[24];
@@ -818,10 +819,14 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return nullptr;
     }
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-capabilities\n"))
+        return "OK SNAPSHOT1";
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
+    else if (kUserSnapshotsEnabled && !std::strcmp(command, "begin snapshot-named\n"))
+        kind = NativeUpdateKind::SnapshotNamed;
     else if (!std::strcmp(command, "begin reorder\n")) kind = NativeUpdateKind::Reorder;
     else if (!std::strcmp(command, "begin rename\n")) kind = NativeUpdateKind::Rename;
     else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
@@ -832,7 +837,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();
-        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base)
+        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();

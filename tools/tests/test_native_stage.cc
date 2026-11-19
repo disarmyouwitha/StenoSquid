@@ -1,5 +1,6 @@
 #include "native_store_fixture.h"
 #include "native_stage.h"
+#include <array>
 #include <fstream>
 #include <iostream>
 
@@ -392,8 +393,63 @@ void CheckBaseReplacement(const std::vector<uint8_t> &image, const Plan &plan) {
     std::cout << "Pinned base replacement: " << operations << " interrupted writes recovered" << std::endl;
 }
 
+void CheckSnapshotPublication(const std::vector<uint8_t> &image, const Plan &plan) {
+    unsigned operations = 0;
+    for (unsigned cut = 0; cut <= operations; ++cut) {
+        for (unsigned tear : {1u, 4095u}) {
+            Nor nor;
+            nor.data = image;
+            nor.cut = cut;
+            nor.tear = tear;
+            NativeDevice device{{nor}};
+            NativeStore<NativeDevice> store(device);
+            NativeValidator<NativeDevice> validator(device, store.catalog);
+            auto open = [&] { return store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }); };
+            assert(open() == CatalogResult::Ok);
+            std::vector<std::array<uint8_t, 96>> original;
+            uint8_t row[96];
+            for (unsigned i = 0; store.Row(i, row); ++i) {
+                original.emplace_back();
+                std::copy_n(row, sizeof(row), original.back().begin());
+            }
+            NativeStage<NativeDevice> stage(store, validator);
+            assert(stage.Begin(NativeUpdateKind::SnapshotNamed));
+            try {
+                Upload(stage, plan);
+                bool reopen = false;
+                auto probe = [](const uint8_t *extent, const uint8_t *row) {
+                    return Word(extent + 12) == 1 && row[10] == 0 && row[11] == kUserSnapshot;
+                };
+                assert(stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen, probe) == CatalogResult::Ok);
+                assert(!cut && reopen);
+                operations = std::max(operations, nor.operations);
+            } catch (const Cut &) {
+                assert(cut);
+            }
+            nor.cut = 0;
+            stage.Abort();
+            const auto result = open();
+            assert(result == CatalogResult::Ok || result == CatalogResult::Quarantined);
+            Check(store, false, false);
+            const bool published = store.selected.root.generation > 2;
+            assert(!store.Row(original.size() + published, row));
+            for (unsigned i = 0; i < original.size(); ++i) {
+                uint8_t row[96];
+                assert(store.Row(i + (published && i != 0), row));
+                assert(!std::memcmp(row, original[i].data(), sizeof(row)));
+            }
+            if (published) {
+                uint8_t row[96];
+                assert(store.Row(1, row) && row[11] == kUserSnapshot && Word(row + 4) == 1);
+                assert(row[12] == 12 && !std::memcmp(row + 16, "Experimental", 12));
+            }
+        }
+    }
+    std::cout << "Snapshot publication: " << operations << " flash boundaries, two cuts each" << std::endl;
+}
+
 int main(int argc, char **argv) {
-    assert(argc == 11);
+    assert(argc == 12);
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
     image.resize(256 * kSegmentBytes, 0x42);
@@ -411,4 +467,5 @@ int main(int argc, char **argv) {
     CheckMetadata(named_image, ReadPlan(argv[8]), false);
     CheckMetadata(named_image, ReadPlan(argv[9]), true);
     CheckBaseReplacement(image, ReadPlan(argv[10]));
+    CheckSnapshotPublication(image, ReadPlan(argv[11]));
 }

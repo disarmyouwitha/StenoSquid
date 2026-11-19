@@ -110,6 +110,11 @@ jobs:
             shield: corne_left
             snippet: studio-rpc-usb-uart
             dictionaries: true
+          - name: NiceNano-Left-Snapshot-Experimental
+            shield: corne_left
+            snippet: studio-rpc-usb-uart
+            dictionaries: true
+            snapshots: true
           - name: NiceNano-Left-No-Display
             shield: corne_left
             snippet: studio-rpc-usb-uart
@@ -130,6 +135,11 @@ jobs:
             boardsource: left
             snippet: studio-rpc-usb-uart
             dictionaries: true
+          - name: Boardsource-Left-Snapshot-Experimental
+            boardsource: left
+            snippet: studio-rpc-usb-uart
+            dictionaries: true
+            snapshots: true
           - name: Boardsource-Right-Default
             boardsource: right
           - name: Boardsource-Left-No-Display
@@ -271,6 +281,9 @@ jobs:
                    "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin"
                    "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin")
           fi
+          if [ "${{ matrix.snapshots }}" = "true" ]; then
+            args+=("-DCONFIG_ZMK_STENO_SQUID_USER_SNAPSHOTS=y")
+          fi
           snippet=()
           if [ -n "${{ matrix.snippet }}" ]; then
             snippet=(-S "${{ matrix.snippet }}")
@@ -279,6 +292,9 @@ jobs:
           west build -s "$source" -d "$GITHUB_WORKSPACE/out" -b "$board" "${snippet[@]}" -- "${args[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
 
           case "${{ matrix.name }}" in
+            *-Left-Snapshot-Experimental)
+              grep -qx 'CONFIG_ZMK_STENO_SQUID_USER_SNAPSHOTS=y' "$GITHUB_WORKSPACE/out/zephyr/.config"
+              ;;
             *-Left-Default|*-Left-No-Display)
               config="$GITHUB_WORKSPACE/out/zephyr/.config"
               expected='CONFIG_ZMK_STENO_SQUID_NATIVE_STORE=y'
