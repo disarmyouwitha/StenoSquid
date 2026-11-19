@@ -6,6 +6,7 @@
 
 namespace candidate_b {
 constexpr uint32_t kSegmentBytes = 65536, kPageBytes = 256;
+constexpr uint32_t kEraseSectorBytes = 4096;
 constexpr uint32_t kCommit = 0x434f4d54;
 enum class JournalResult { Ok, End, Sealed, Corrupt, IoError, Full, Invalid };
 inline uint32_t Word(const uint8_t *p) {

@@ -14,6 +14,22 @@ unsigned Finish(LiveFixture &fixture,Job &job) {
     }
     assert(false);return 0;
 }
+void SmallIndexErase() {
+    LiveFixture fixture;
+    // The unowned segments still contain stale bytes from previous indexes.
+    for (uint32_t segment = 3; segment < fixture.segments; ++segment)
+        std::memset(fixture.nor.data.data() + segment * kSegmentBytes, 0, kSegmentBytes);
+    assert(fixture.Edit(1, 1, "first") == LiveResult::Ok);
+    Job job(fixture.device, fixture.catalog, fixture.live);
+    assert(job.Begin(fixture.selection, Excluded(fixture)) == JobResult::More);
+    Finish(fixture, job);
+    assert(fixture.forward_bytes == 4 && fixture.reverse_bytes == 4);
+    assert(fixture.nor.data[fixture.forward * kSegmentBytes + kEraseSectorBytes - 1] == 255);
+    assert(fixture.nor.data[fixture.reverse * kSegmentBytes + kEraseSectorBytes - 1] == 255);
+    assert(fixture.nor.data[fixture.forward * kSegmentBytes + kEraseSectorBytes] == 0);
+    assert(fixture.nor.data[fixture.reverse * kSegmentBytes + kEraseSectorBytes] == 0);
+    assert(fixture.Text(1, 1) == "first");
+}
 void basic() {
     LiveFixture fixture;
     Job job(fixture.device,fixture.catalog,fixture.live);
@@ -252,4 +268,4 @@ void catalog_capacity_preflight() {
     assert(result==JobResult::NoSpace && nor.data==bytes && live.Ready());
     std::cout<<"Native maintenance jobs: catalog metadata capacity refuses before any erase or program passed\n";
 }
-int main(){basic();cancellation_and_refusal();power_cuts();metadata_and_multistroke();failures();multisegment_indexes();catalog_capacity_preflight();}
+int main(){SmallIndexErase();basic();cancellation_and_refusal();power_cuts();metadata_and_multistroke();failures();multisegment_indexes();catalog_capacity_preflight();}

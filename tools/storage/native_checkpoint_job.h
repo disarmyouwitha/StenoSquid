@@ -177,11 +177,22 @@ public:
         }
         if(phase==Phase::EraseForward || phase==Phase::EraseReverse) {
             const bool rev=phase==Phase::EraseReverse;
-            if(erase_position<segments[rev]) {
-                if(!device.Erase(starts[rev]+erase_position++))return Stop(JobResult::IoError);
+            const uint32_t maximum_rows = (rev ? old_reverse_count : frozen.forward_count) +
+                                          frozen.tail.count;
+            // Allocation stays segment-aligned. Only erase the first sector
+            // when it covers the entire worst-case index, and cap the sink at
+            // the erased bytes so a bad count cannot program the stale suffix.
+            const bool small = maximum_rows <= kEraseSectorBytes / 4;
+            const uint32_t erase_bytes = small ? kEraseSectorBytes : kSegmentBytes;
+            if (erase_position < segments[rev]) {
+                if (!device.EraseIndex(starts[rev] + erase_position, erase_bytes))
+                    return Stop(JobResult::IoError);
+                ++erase_position;
                 return JobResult::More;
             }
-            if(!(rev?reverse:forward).Begin(starts[rev]*kSegmentBytes,segments[rev]*kSegmentBytes))return Stop(JobResult::Invalid);
+            if (!(rev ? reverse : forward).Begin(starts[rev] * kSegmentBytes,
+                                                  segments[rev] * erase_bytes))
+                return Stop(JobResult::Invalid);
             erase_position=0;
             if(!rev){phase=Phase::EraseReverse;return JobResult::More;}
             if(builder.Begin(frozen.tail,frozen.forward_count,old_reverse_count)!=BuildResult::More)return Stop(JobResult::Invalid);

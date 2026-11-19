@@ -54,6 +54,9 @@ struct ProbeDevice {
     bool Erase(uint32_t segment) {
         return segment>=2 && segment<12 && EraseRegion(segment*kSegmentBytes);
     }
+    bool EraseIndex(uint32_t segment, uint32_t bytes) {
+        return bytes == kEraseSectorBytes && Erase(segment);
+    }
     bool EraseRegion(uint32_t address) {
         uint32_t physical;
         return !mapped && address%kSegmentBytes==0 && Translate(address,4096,physical) &&

@@ -18,6 +18,11 @@ struct LiveDevice {
     bool Read(uint32_t at,uint8_t *out,uint32_t n){return nor.Read(at,out,n);}
     bool Program(uint32_t at,const uint8_t *in,uint32_t n){return nor.Program(at,in,n);}
     bool Erase(uint32_t segment){return nor.EraseSegment(segment);}
+    bool EraseIndex(uint32_t segment, uint32_t bytes) {
+        assert(segment >= 2 && segment < nor.data.size() / kSegmentBytes);
+        assert(bytes == kEraseSectorBytes || bytes == kSegmentBytes);
+        return nor.EraseBytes(segment * kSegmentBytes, bytes);
+    }
     bool EraseCatalog(uint32_t at,uint32_t n){return nor.EraseCatalog(at,n);}
 };
 struct LiveFixture {

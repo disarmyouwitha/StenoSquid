@@ -38,12 +38,13 @@ struct Device {
         ++programs;
         return nor.Program(at, in, n);
     }
-    bool Erase(uint32_t segment) {
-        if (segment < 2 || segment >= 255)
+    bool Erase(uint32_t segment) { return EraseIndex(segment, 65536); }
+    bool EraseIndex(uint32_t segment, uint32_t bytes) {
+        if (segment < 2 || segment >= 255 || (bytes != 4096 && bytes != 65536))
             return false;
-        Invalidate(segment * 65536, 65536);
+        Invalidate(segment * 65536, bytes);
         ++erases;
-        return nor.EraseSegment(segment);
+        return nor.EraseBytes(segment * 65536, bytes);
     }
     bool EraseCatalog(uint32_t at, uint32_t n) {
         Invalidate(at, n);

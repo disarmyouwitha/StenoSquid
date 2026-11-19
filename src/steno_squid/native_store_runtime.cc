@@ -69,19 +69,20 @@ struct FlashDevice {
         Dirty(at,(n+3)&~3u);std::memset(dma,255,256);std::memcpy(dma,data,n);
         return nrfx_qspi_write(dma,(n+3)&~3u,at)==NRFX_SUCCESS && squid_qspi_wait_ready(2000)==NRFX_SUCCESS;
     }
-    bool Erase(uint32_t segment) {
-        if(mapped || segment<2 || segment>=255)return false;
-        Dirty(segment*kSegmentBytes,kSegmentBytes);
-        return nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_64KB,segment*kSegmentBytes)==NRFX_SUCCESS && squid_qspi_wait_ready(4000)==NRFX_SUCCESS;
-    }
-    bool EraseCatalog(uint32_t at,uint32_t bytes) {
-        if (mapped || (at && at != kSegmentBytes) ||
-            (bytes != kCatalogSectorBytes && bytes != kSegmentBytes)) return false;
+    bool EraseBlock(uint32_t at, uint32_t bytes) {
+        if (mapped || (bytes != kEraseSectorBytes && bytes != kSegmentBytes)) return false;
         Dirty(at, bytes);
-        const auto length = bytes == kCatalogSectorBytes ? NRF_QSPI_ERASE_LEN_4KB
-                                                       : NRF_QSPI_ERASE_LEN_64KB;
+        const auto length = bytes == kEraseSectorBytes ? NRF_QSPI_ERASE_LEN_4KB
+                                                      : NRF_QSPI_ERASE_LEN_64KB;
         return nrfx_qspi_erase(length, at) == NRFX_SUCCESS &&
                squid_qspi_wait_ready(4000) == NRFX_SUCCESS;
+    }
+    bool Erase(uint32_t segment) { return EraseIndex(segment, kSegmentBytes); }
+    bool EraseIndex(uint32_t segment, uint32_t bytes) {
+        return segment >= 2 && segment < 255 && EraseBlock(segment * kSegmentBytes, bytes);
+    }
+    bool EraseCatalog(uint32_t at, uint32_t bytes) {
+        return (at == 0 || at == kSegmentBytes) && EraseBlock(at, bytes);
     }
     bool CheckBase(uint32_t at,uint32_t bytes,uint32_t expected) {
         if(trust_bases){cached[cache_next++%32]={at,bytes,expected};return true;}
