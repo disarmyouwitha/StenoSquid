@@ -462,8 +462,11 @@ The owner saw typing pause and then release several queued words together.
 Small forward and reverse indexes now erase only the first 4 KiB sector when
 the complete worst-case output fits there. Larger indexes still erase full
 segments. The right display uses **Saving** while Native maintenance owns the
-flash, then restores its normal status. These follow-up changes need a hardware
-rerun before the measured typing pause can be considered resolved.
+flash, then restores its normal status. On the same Boardsource left half,
+a checkpoint without typing on build `2cbfa0b` completed in 90 worker steps
+and verified the original selections and all three personal entries. The
+longest worker slice was 74.585 ms. A typing rerun and a check of the right
+display are still needed.
 
 ## Hardware acceptance checklist
 
