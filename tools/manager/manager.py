@@ -20,6 +20,7 @@ from native_base_update import changed_pins, replace_pinned
 from native_restore import restore_all
 from native_snapshot import change_snapshot
 from native_import_plan import named_import
+from native_layout import read_layout
 
 MAX_REQUEST = 48 * 1024 * 1024
 
@@ -36,6 +37,7 @@ def read_state(console):
     if status.get("format") != "SQBCAT02" or not status.get("ready"):
         raise RuntimeError("The dictionary store is unavailable. Check USB and firmware.")
     layouts = json.loads(console.command("get_parameter available_host_layouts"))
+    adaptive = console.command("native_install update snapshot-capabilities") == "OK SNAPSHOT2"
     return {
         "catalog": read_catalog(console),
         "layouts": layouts,
@@ -44,7 +46,8 @@ def read_state(console):
         "auto_checkpoints": status.get("auto_checkpoints", 0),
         "auto_reclaimed": status.get("auto_reclaimed", 0),
         "tail": status["tail"],
-        "adaptive_imports": console.command("native_install update snapshot-capabilities") == "OK SNAPSHOT2",
+        "adaptive_imports": adaptive,
+        "layout_map": adaptive and console.command("native_install update layout-capabilities") == "OK MAP1",
     }
 
 
@@ -68,6 +71,8 @@ def run_job(serial, request, progress):
         serial = console.serial
         if action == "refresh":
             return {"state": read_state(console)}
+        if action == "layout_map":
+            return {"layout_map": read_layout(console)}
         catalog = read_catalog(console)
         by_id = {row["id"]: row for row in catalog}
         selected = by_id.get(request.get("id"))

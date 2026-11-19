@@ -67,6 +67,8 @@ public:
 
     uint32_t PayloadCapacity()const{return Bounds()?capacity-32:0;}
 
+    CatalogRoot TrustedRoot(uint8_t slot) const { return slot < 2 ? trusted[slot] : CatalogRoot{}; }
+
     bool IsTrusted(const CatalogRoot &root)const {
         for(const auto &known:trusted)
             if(root.generation && root.generation==known.generation && root.address==known.address &&

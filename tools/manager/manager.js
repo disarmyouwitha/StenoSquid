@@ -17,6 +17,7 @@ function selection() {
 function controls() {
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
   for (const id of ["refresh", "backup", "updates", "export", "restore-submit", "measure"]) node(id).disabled = busy;
+  node("flash-map-scan").disabled = busy;
   if (!state) return;
   const row = selection();
   const rank = state.catalog.indexOf(row);
@@ -33,6 +34,8 @@ function controls() {
 function render(newState, usage = {}) {
   state = newState;
   clearImportPlan();
+  node("flash-map-panel").hidden = !state.layout_map;
+  node("flash-map-result").hidden = true;
   node("import-advanced").hidden = !state.adaptive_imports;
   node("import-preview").textContent = state.adaptive_imports ? "Preview named import" : "Import";
   if (!selection()) selectedId = state.catalog[0]?.id;
@@ -126,7 +129,45 @@ async function watch(id) {
       : "All installed bases match this version’s pinned sources.");
   } else if (result.import_plan) {
     showImportPlan(result.import_plan);
+  } else if (result.layout_map) {
+    showFlashMap(result.layout_map);
   }
+}
+function showFlashMap(map) {
+  const summary = node("flash-map-summary");
+  summary.textContent = map.free_segments === null
+    ? "Free space is unknown. A catalog is unavailable or the store is in read-only recovery."
+    : `${map.free_segments} free segments, ${map.largest_free_run} contiguous, ${map.reserve} held in reserve.`;
+  if (map.staging_blocked && map.free_segments !== null) summary.textContent += " Publication is currently pinned.";
+  const grid = node("flash-map-grid");
+  const labels = {c: "Catalog roots", x: "Reserved", b: "Pinned images", s: "User snapshots", h: "Latest journal",
+    j: "Journals", f: "Forward index", r: "Reverse index", "retained-journal": "Retained-only journals",
+    retained: "Retained-only extents", ".": "Unreferenced", "?": "Unknown"};
+  grid.replaceChildren(...map.segments.map((segment) => {
+    const cell = document.createElement("span");
+    cell.dataset.kind = segment.kind;
+    cell.dataset.shared = segment.shared;
+    cell.title = `Segment ${segment.index} · ${segment.active} in current root · ${segment.alternate} in other root`;
+    return cell;
+  }));
+  const kinds = new Set(map.segments.map((segment) => segment.kind));
+  const legend = node("flash-map-legend");
+  legend.replaceChildren(...Object.entries(labels).filter(([kind]) => kinds.has(kind)).map(([kind, label]) => {
+    const item = document.createElement("li");
+    const marker = document.createElement("span");
+    marker.dataset.kind = kind;
+    item.append(marker, label);
+    return item;
+  }));
+  if (map.segments.some((segment) => segment.shared)) {
+    const item = document.createElement("li");
+    const marker = document.createElement("span");
+    marker.dataset.shared = true;
+    item.append(marker, "Referenced by both roots");
+    legend.append(item);
+  }
+  node("flash-map-result").hidden = false;
+  notify("Catalog layout loaded.");
 }
 function clearImportPlan() {
   importToApply = undefined;
@@ -168,6 +209,7 @@ async function run(payload) {
 for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"], ["updates", "check_updates"], ["compact", "compact"], ["measure", "measure"]]) {
   node(id).onclick = () => run({action});
 }
+node("flash-map-scan").onclick = () => run({action: "layout_map"});
 node("apply-updates").onclick = () => {
   if (window.confirm("Apply the pinned base revisions? The left half will reboot after saving.")) {
     run({action: "apply_updates", approved: true});

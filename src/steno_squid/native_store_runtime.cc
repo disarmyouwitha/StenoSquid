@@ -12,6 +12,7 @@
 #include "../../tools/storage/native_provisioner.h"
 #include "../../tools/storage/native_stage.h"
 #include "../../tools/storage/native_entry_stager.h"
+#include "../../tools/storage/native_layout_map.h"
 #include "../../tools/storage/reverse_cursor.h"
 #include "dictionary/compact_map_dictionary.h"
 #include "dictionary/dictionary_definition.h"
@@ -818,6 +819,36 @@ bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
     }
     return true;
 }
+const char *LayoutMap(char *reply, size_t bytes) {
+    if (lf_suspended || !healthy || !store.opened || exporting || transfer.Active() || staged.Active() ||
+        store.work != NativeStore<FlashDevice>::Work::None || steno_squid_native_input_pending())
+        return "ERR Layout scan deferred until the flash and input are idle";
+    const auto deadline = k_uptime_get() + 25;
+    const auto stop = [&] { return steno_squid_native_input_pending() || k_uptime_get() >= deadline; };
+    const bool writable = store.catalog.CanWrite(store.selected.root);
+    const char access = !writable ? 'r' : store.catalog.DestinationPinned(store.selected) ? 'p' : 'w';
+    const int prefix = snprintk(reply, bytes, "OK MAP1 %u %c -- ", unsigned(store.selected.slot), access);
+    if (prefix < 3 || size_t(prefix) + 514 > bytes) return "ERR Layout reply too small";
+    for (unsigned slot = 0; slot < 2; ++slot) {
+        char *map = reply + prefix + slot * 257;
+        const auto root = store.catalog.TrustedRoot(slot);
+        char state = 'e';
+        if (root.generation) {
+            state = ReadLayout(flash_device, root, map, stop) ? 'v' : '?';
+            if (stop()) return "ERR Layout scan deferred until the flash and input are idle";
+        } else if (!writable) {
+            state = '?';
+        }
+        if (state != 'v') {
+            std::memset(map, state == 'e' ? '.' : '?', 256);
+            map[0] = map[1] = 'c';
+            map[255] = 'x';
+        }
+        reply[prefix - 3 + slot] = state;
+        map[256] = slot == 0 ? ' ' : 0;
+    }
+    return nullptr;
+}
 const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "capabilities\n")) return "OK BULK1";
     if (!std::strcmp(command, "named-capabilities\n")) {
@@ -827,6 +858,8 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-capabilities\n"))
         return "OK SNAPSHOT2";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     uint32_t snapshot_id = 0;
@@ -978,7 +1011,14 @@ const char *Install(const char *command,char *reply,size_t bytes) {
 }
 }
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes) {
-    if(!dictionary_flash_acquire())k_mutex_lock(&flash_lock,K_FOREVER);
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "update layout-map\n")) {
+        if (k_mutex_lock(&flash_lock, K_NO_WAIT)) {
+            snprintk(reply, bytes, "ERR Layout scan deferred until the flash and input are idle");
+            return;
+        }
+    } else if (!dictionary_flash_acquire()) {
+        k_mutex_lock(&flash_lock, K_FOREVER);
+    }
     const char *result=Install(command,reply,bytes);if(result)snprintk(reply,bytes,"%s",result);
     k_mutex_unlock(&flash_lock);
 }

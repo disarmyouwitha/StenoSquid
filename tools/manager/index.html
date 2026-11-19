@@ -82,6 +82,18 @@
         <p id="maintenance"></p>
       </section>
     </div>
+    <section id="flash-map-panel" hidden aria-labelledby="flash-map-title">
+      <div class="section-heading">
+        <h2 id="flash-map-title">External flash map</h2>
+        <button id="flash-map-scan">Scan layout</button>
+      </div>
+      <p>Reads the two catalog layouts while idle. Flash contents and integrity are unchecked.</p>
+      <div id="flash-map-result" hidden>
+        <p id="flash-map-summary"></p>
+        <div id="flash-map-grid" role="img" aria-label="256 segment ownership map"></div>
+        <ul id="flash-map-legend"></ul>
+      </div>
+    </section>
     <section>
       <details>
         <summary>Restore a full backup</summary>

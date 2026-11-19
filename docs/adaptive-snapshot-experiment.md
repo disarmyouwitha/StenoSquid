@@ -71,7 +71,7 @@ Replacement changes the compact baseline and keeps the existing override and tom
 
 The on-flash catalog magic remains `SQBCAT02`. Byte 11 of a user-owned row is the version-one snapshot marker. It references a single-member JSC4 extent and shares the existing ID-qualified overlay. Factory rows and existing records retain their original format. Stable firmware rejects a marked root and may see the preceding root or enter recovery. Before staging a snapshot, rollback is simply reflashing the stable left. After staging, return to an untouched spare pool or restore the pre-test backup using the existing standard Native provisioning path on your disposable fixture. That explicit operation rewrites the pool. Preserve the backup separately and keep the experimental firmware installed until you are ready for that restore.
 
-The read-only memory map, Bluetooth editing and destructive USB snapshot rescue are follow-up work.
+Bluetooth editing and destructive USB snapshot rescue are follow-up work.
 
 ## Edit churn and import preflight
 
@@ -100,3 +100,21 @@ python3 tools/bench/snapshot_churn.py --baseline 50000 --output build/adaptive-s
 [10K fixture results](benchmarks/adaptive-snapshot-churn.csv) · [50K fixture results](benchmarks/adaptive-snapshot-churn-50k.csv)
 
 On the experimental firmware, Manager previews named imports using both host planners and shows the bytes, added segments, staging cost, current free run and any refusals. Automatic prefers a compact image if it saves steady-state segments and either at least 1 MiB or at least one segment of logical bytes and 25% of journal bytes. A compact plan also needs space for a same-size replacement under the current layout. The Advanced selector offers Journal or Compact snapshot when eligible. The approved plan is recomputed before publication. Source changes, appended edits, changed catalogs or different occupied segments invalidate the approval. Leave the name blank to keep the existing personal merge path.
+
+## Read-only flash map
+
+Choose **Scan layout** in Manager while the keyboard is idle and awake. The grid shows all 256 segments, highlights extents referenced by both roots, and distinguishes older-root-only journals and indexes from current ownership. Hover over a segment to see both roots' descriptors. Unreferenced space comes from the catalog geometry. The view does not verify flash contents or scan journal records for stale entries. The three reserve segments are deducted from total staging capacity and are not pinned to fixed addresses.
+
+The endpoint has no polling, input pause, staging lease or write path. It defers when flash is asleep, the lock is busy, input is pending, or its short metadata-read budget expires. A missing or unreadable root in recovery makes free space unknown. The physical timing and typing behavior of this button still need a board check.
+
+## Hardware acceptance checklist
+
+1. Complete the [initial smoke test](#hardware-smoke-test) on the matching spare left. Keep the existing right firmware. In normal typing and Javelin, check both halves and one multi-stroke translation.
+2. Save a version 2 backup after creating the compact dictionary and adding the three sample overlay edits. Verify it offline and export the named dictionary. Check that `KAT` is the replacement, `TAS` is present, `PWOB` is absent, and the untouched multi-stroke entry is present.
+3. Rename the snapshot in Manager, move it below an enabled factory dictionary, and toggle it off and back on. Check lookup priority, name and flags after a cold boot. Move it back above the factory dictionary for the remaining checks.
+4. Use `--replace` with a file that includes different `KAT` and `PWOB` baselines. Check that the original override still wins, the tombstone still hides `PWOB`, and a previously unused outline in the file appears. Run `--consolidate` and confirm export parity before and after. Click **Measure saved edits** and confirm the snapshot's overlay count is now zero. Replace, consolidate, and rename should leave the numeric ID unchanged.
+5. Scan the layout before and after staging or deleting the test snapshot. Inspect the snapshot extent and free-run count. Request another scan while typing and check whether the request defers or completes without delaying text. On the named import form, preview Automatic and both Advanced choices before staging. Upload a different same-size file and check that the old approval does not carry over.
+6. For a **test-only power cut on the spare**, use a larger throwaway named import or same-ID replacement to allow time to interrupt staging. With a verified host bundle and an exported copy of the test dictionary safely on disk, disconnect USB and switch off its battery during data staging, then reconnect. Record whether the old or complete new catalog appears and compare the effective export and priority. Repeat near the catalog publish message if the window is observable. For ambiguous acknowledgment, reconnect and inspect the ID and generation before retrying. Do not infer physical cut coverage from console progress alone.
+7. Delete the disposable snapshot through Manager. Confirm its row disappears and an unrelated dictionary and its edits survive reboot. Check that wired setup, normal Javelin WebHID, typing and Practice still work.
+
+Full Gate B still needs physical cutoff timing, dense-store and sustained high-speed typing measurements, and verified USB recovery from a blank or partly written pool. Compact-baseline reverse/prefix/partial search, compact conversion of existing personal/journal dictionaries, and Bluetooth editing are outside this build.
