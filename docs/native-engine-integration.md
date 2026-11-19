@@ -262,6 +262,12 @@ uncheckpointed edits. Both commands reboot the left so Javelin builds the list
 in catalog order. Names must be unique and are limited to 44 ASCII characters.
 The count limit comes from the running firmware.
 
+On Boardsource hardware, the CI image from run `44477035567` moved Plover
+Base above Lapwing. After reboot, `STKPWAO*EPBG` resolved to Plover's “zinc”
+instead of Lapwing's “zink”. Restoring the original order and enabled flags
+restored “zink”. All three personal entries matched the pre-test backup.
+Named creation was exercised by host and fault-injection tests.
+
 ## USB manager and existing website
 
 Javelin Tools continues to use its current HID/BT connector, dictionary list,
