@@ -542,7 +542,8 @@ void native_catalog(void *, const char *) {
         Console::Printf("%s{\"id\":%u,\"name\":\"%s\",\"enabled\":%s,\"kind\":\"%s\","
                         "\"base_entries\":%u,\"image_bytes\":%u,\"image_crc\":%u,\"source_sha256\":\"%s\"}",
                         i ? "," : "", cell.identity, cell.name, cell.enabled ? "true" : "false",
-                        cell.base ? "base" : !std::strcmp(cell.name, "user_dictionary") ? "personal" : "named",
+                        cell.user_snapshot ? "snapshot" : cell.base ? "base" :
+                            !std::strcmp(cell.name, "user_dictionary") ? "personal" : "named",
                         base_entries, cell.base_bytes, cell.base_crc, digest);
     }
     Console::Printf("]\n\n");
@@ -803,6 +804,11 @@ bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
     const uint32_t start = uint16_t(extent[0]) | uint16_t(extent[1]) << 8;
     if (!probe.LoadBase(start * kSegmentBytes, Word(extent + 4), Word(extent + 8), row[10]))
         return false;
+    if (row[11] == kUserSnapshot) {
+        const auto *collection = reinterpret_cast<const uint8_t *>(Xip + start * kSegmentBytes);
+        if (xip_load_word(collection + offsetof(StenoDictionaryCollection, dictionaryCount)) != 1)
+            return false;
+    }
     for (unsigned i = 0; i < probe.definition.maximumOutlineLength; ++i) {
         const auto &group = probe.strokes[i];
         if (!group.hashMapMask) continue;

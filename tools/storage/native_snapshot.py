@@ -114,7 +114,9 @@ def main():
         if update_command(console, "snapshot-capabilities") != "OK SNAPSHOT1":
             raise RuntimeError("Flash the matching experimental firmware before testing snapshots")
         limit = int(update_command(console, "named-capabilities").split()[-1])
-        answer = update_command(console, "begin snapshot-named" if args.stage else "begin backup")
+        # Backup mode exposes the selected root only. Staging ownership must
+        # protect both roots, even in a read-only preflight.
+        answer = update_command(console, "begin snapshot-named")
         published = False
         try:
             snapshot, protected = read_snapshot(console, answer, metadata_only=True)

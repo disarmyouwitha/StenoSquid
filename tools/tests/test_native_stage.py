@@ -198,7 +198,8 @@ def main():
             raise AssertionError("Base update ignored the staging reserve")
         replace = path / "replace.bin"
         write_plan(replace, revised)
-        compact = compile_snapshot("Experimental", {strokes: b"snapshot-cat", parse_outline("KAT/TA"): "ça".encode()})
+        compact = compile_snapshot("Experimental", {strokes: b"snapshot-cat",
+                                   parse_outline("KAT/TA"): "ça".encode(), parse_outline("PWOB"): b"snapshot Bob"})
         experimental = path / "snapshot.bin"
         snapshot_plan = plan_named_snapshot(snapshot, protected, "Experimental", compact)
         write_plan(experimental, snapshot_plan)

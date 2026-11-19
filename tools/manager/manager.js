@@ -55,7 +55,7 @@ function render(newState, usage = {}) {
       run({action: "enable", id: row.id, enabled});
     };
     tr.insertCell().append(checkbox);
-    tr.insertCell().textContent = row.kind === "base" ? number.format(row.base_entries) : "—";
+    tr.insertCell().textContent = ["base", "snapshot"].includes(row.kind) ? number.format(row.base_entries) : "—";
     tr.insertCell().textContent = row.image_bytes ? `${number.format(Math.ceil(row.image_bytes / 1024))} KiB` : "—";
     const saved = usage[row.id];
     tr.insertCell().textContent = saved ? `${number.format(saved.count)} · ${number.format(saved.bytes)} B` : "—";

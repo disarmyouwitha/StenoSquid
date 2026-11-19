@@ -443,6 +443,27 @@ void CheckSnapshotPublication(const std::vector<uint8_t> &image, const Plan &pla
                 assert(store.Row(1, row) && row[11] == kUserSnapshot && Word(row + 4) == 1);
                 assert(row[12] == 12 && !std::memcmp(row + 16, "Experimental", 12));
             }
+            if (!cut) {
+                assert(published && result == CatalogResult::Ok);
+                assert(store.Row(1, row));
+                const uint32_t id = Word(row);
+                const uint32_t added = 1048836, replaced = 524552, removed = 66096; // TAS, KAT, PWOB
+                const uint8_t text[] = "snapshot overlay";
+                for (const uint32_t *key : {&added, &replaced}) {
+                    assert(store.Edit(id, 0, key, 1, text, sizeof(text) - 1) == LiveResult::Ok);
+                }
+                assert(store.Edit(id, 1, &removed, 1, text, 0) == LiveResult::Ok);
+                assert(open() == CatalogResult::Ok);
+                RecordView record;
+                for (const uint32_t *key : {&added, &replaced}) {
+                    assert(store.live.FindLive(id, key, 1, record) == LiveResult::Ok);
+                    assert(record.operation == Operation::Set && record.text_bytes == sizeof(text) - 1);
+                    assert(!std::memcmp(nor.data.data() + record.text_address, text, sizeof(text) - 1));
+                }
+                assert(store.live.FindLive(id, &removed, 1, record) == LiveResult::Ok);
+                assert(record.operation == Operation::Remove);
+                Check(store, false, false);
+            }
         }
     }
     std::cout << "Snapshot publication: " << operations << " flash boundaries, two cuts each" << std::endl;
