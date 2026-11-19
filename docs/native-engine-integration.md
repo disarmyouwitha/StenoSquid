@@ -297,6 +297,30 @@ counts, not wire-alignment/cache measurements, MCU timing, power or typing laten
 Maintenance still rewrites/verifies indexes repeatedly during per-entry bulk imports;
 staged bulk import remains worth pursuing even after this reduction.
 
+## Full editable Plover host experiment
+
+The same strict-NOR runner completed all **147,424** canonical outlines from the
+pinned Plover JSON, merged into the personal dictionary while all six factory
+compact bases remained installed. A fresh device/store instance reconstructed the
+catalogs and verified every committed translation with no writes during checking.
+The protected final sector was unchanged. [Raw report](native-import-benchmark.json)
+includes source/dataset/image/storage SHA-256 and the exact counters.
+
+- Nine 64 KiB pool segments remained free: 589,824 bytes, including the allocator's
+  three-segment reserve (six segments / 393,216 bytes beyond that minimum).
+- 709 maintenance jobs, 758 catalog erases and 1,963,404 program calls.
+- 518,999,124,259 requested read bytes in total; 517,283,299,860 during import and
+  1,715,824,399 during fresh reconstruction plus the complete lookup oracle.
+- Approximately 19 minutes of host import time. This is not keyboard throughput.
+
+This validates one real 16 MiB allocation/fragmentation case; it is not a universal
+entry-capacity promise. It also exposes a bulk-performance blocker: repeated
+whole-index work during per-entry imports remains expensive even after the sorted
+recent-edit improvement. Do not infer that the full JSON is a practical HID import
+from a host-time result. A staged bulk/compact import should build and validate
+indexes once, preserve unrelated dictionaries, and atomically publish the result.
+It needs its own space/refusal, reader and power-cut tests before deployment.
+
 ## Guarded same-boot idle resume
 
 An already healthy native mapper now tries a same-boot resume after quad/DMA access
@@ -320,6 +344,20 @@ read-only behavior, saved flag/maintenance transitions, retained pins, damaged
 metadata, unknown generations and cold-instance refusal. Base probe/power behavior
 still needs the real-board idle/deep-sleep tests. The local ARM link uses 230,950
 RAM bytes, eight more than the sorted-tail build.
+
+The idle-resume build passed [CI 44438639149](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44438639149)
+at `e925abb95186660f60185b31122f012b7c8624fe`: all normal/native board variants,
+complete host tests, rendering and sanitizers. Exact downloaded UF2 family IDs,
+block numbers, bounds and checksums were verified under `build/native-engine/warm-ready/`.
+
+| Latest Actions profile | Flash bytes | RAM bytes | UF2 SHA-256 |
+| --- | ---: | ---: | --- |
+| Boardsource-Left-Native | 470,000 | 230,950 | `663f09847a04997c33e6aac3b4642c1ee91a39f64bfba0c4d7365dbabc8f6e17` |
+| NiceNano-Left-Native | 471,232 | 231,046 | `d50773823e9002900a55a89bda908e4f985a2ff9f24c2adf53d56de7c030a44c` |
+
+The matching Boardsource right UF2 remains byte-identical to the installed image
+(`6734baad5ae72e828a2cd472b7225caa79a4d9f8382a5907baae1bcf6b473598`).
+There is no new external-flash format change across these native checkpoints.
 
 The sorted-tail build itself passed [CI 44436284566](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44436284566)
 at `7fb9840`, including all normal/native variants, host tests and sanitizers.
@@ -382,10 +420,11 @@ This model packs `align4(40 + 4*stroke_count + utf8_text_bytes)` records into
 two catalog segments, the stated number of index pairs, and the three-segment
 allocator reserve.
 Sources and SHA-256 are pinned in the factory image manifest. These are allocation
-estimates, not a completed full-scale host or on-device import result. Contiguous
-allocation/fragmentation, edits, readers and retained history also affect capacity. The compact Plover base is already present; duplicating
+estimates. The Plover row now has a completed host import/reconstruction result
+above, but no full-scale on-device import. Other sources, edits, readers and retained
+history can change allocation/fragmentation and capacity. The compact Plover base is already present; duplicating
 it into an editable log is especially expensive. Compact replacement/import and
-full-scale qualification of the lower-overhead retained-index staging remain future work. The manager stops and
+on-device qualification of retained-index staging remain future work. The manager stops and
 reports its last saved entry on safe space refusal; it does not discard existing
 committed entries to make a large import fit.
 
@@ -401,7 +440,11 @@ committed entries to make a large import fit.
    versus reset-to-base, and import a long/accented/newline entry. Restore test keys.
 5. Reboot and unplug/reconnect; verify edits and flags persist. Then check idle
    flash off/wake and deep-sleep wake with no lost first stroke.
-6. Exercise maintenance under active typing and record latency/drops, plus runtime
+6. For the guarded idle path, record `warm_resumes` / `full_opens`, close editor
+   connections, wait for the flash LED to turn off, then type KAT. A same-boot idle
+   wake should increase `warm_resumes` without another `full_opens`. Normal reset
+   or deep sleep resets the RAM counters and should take full validation again.
+7. Exercise maintenance under active typing and record latency/drops, plus runtime
    stack/heap peaks. CI correctness does not establish the typing-contention gate.
 
 **Not yet complete:** relocating live records to compact partially stale journals,

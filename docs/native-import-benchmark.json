@@ -55,5 +55,32 @@
     "dataset_sha256": "22f47043c48bcb30e7f2f87adb42cb28d37af2035cdbfb134704be064a9d8c71",
     "storage_source_sha256": "ce00eb939fb05b61c138f276bb0f2cb3ad877fcb6fad41360a206f93355b9654",
     "model": "strict NOR, actual NativeStore, 32-range CRC cache; host timing only"
+  },
+  "full_plover": {
+    "outcome": "complete",
+    "requested": 147424,
+    "committed": 147424,
+    "verified_after_reopen": 147424,
+    "free_segments": 9,
+    "maintenance_steps": 359802551,
+    "maintenance_jobs": 709,
+    "read_calls": 43332865285,
+    "read_bytes": 518999124259,
+    "checksum_bytes": 542207248,
+    "import_read_bytes": 517283299860,
+    "verification_read_bytes": 1715824399,
+    "cold_reopen_verified": true,
+    "program_calls": 1963404,
+    "journal_index_erases": 5893,
+    "catalog_erases": 758,
+    "host_import_ms": 1157932,
+    "host_verify_ms": 3744,
+    "source_sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+    "image_sha256": "1c95cb7d6551f7791a94a61e378e2eded1b563041f65905147a6bfc66431e2e2",
+    "unique_source_outlines": 147424,
+    "selected": 147424,
+    "dataset_sha256": "47e928192959b2d94ab6745e816b9d723a5f8d78555ad06389ae7addca69b229",
+    "storage_source_sha256": "ce00eb939fb05b61c138f276bb0f2cb3ad877fcb6fad41360a206f93355b9654",
+    "model": "strict NOR, actual NativeStore, 32-range CRC cache; host timing only"
   }
 }
