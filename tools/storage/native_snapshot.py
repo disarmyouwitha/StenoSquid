@@ -8,6 +8,7 @@ import sys
 import zlib
 
 from build_native_image import SEGMENT, XIP
+from compact_search_index import add_search_index
 from compile_dict import DictionaryCollectionBuilder, parse_outline
 from hybrid import format_stroke
 from native_update import (
@@ -34,7 +35,7 @@ class CompactImage:
         return data
 
 
-def compile_snapshot(name, entries):
+def compile_snapshot(name, entries, *, search=True):
     if not entries:
         raise ValueError("Use a journal for an empty dictionary")
     if any(not 1 <= len(key) <= 16 or any(not 0 < stroke < 1 << 24 for stroke in key) for key in entries):
@@ -47,6 +48,8 @@ def compile_snapshot(name, entries):
     builder = DictionaryCollectionBuilder(0, max_translation_bytes=2047)
     image = builder.build([(name, source)])
     verify(source, image, 0)
+    if search:
+        image = add_search_index(image)
     return CompactImage(image, builder.pointer_offsets)
 
 

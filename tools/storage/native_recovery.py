@@ -15,6 +15,7 @@ import tempfile
 import zlib
 
 from build_native_image import LIMIT, SEGMENT, SOURCES, XIP, catalog_header
+from compact_search_index import validate_search_index
 from hybrid import compact_entries
 from native_update import EXTENT, Snapshot, row_name, validate_name
 
@@ -116,6 +117,8 @@ def validate_rows(snapshot, image):
         if not 1 <= count <= 64 or member >= count or (marker and count != 1):
             raise ValueError("Invalid compact image member count")
         counts[base] = count
+        if marker:
+            validate_search_index(blob, XIP + address)
         # Walk the compiled data using the same host reader as export.
         from jsc4 import reader
         lookup = reader(blob, XIP + address, member, count)

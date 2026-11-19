@@ -43,7 +43,7 @@ def main():
     empty, _ = build(ROOT / "build")
     report = {}
     for name, entries in corpora.items():
-        compact = compile_snapshot("user_dictionary", entries, **({"search": True} if args.search_index else {}))
+        compact = compile_snapshot("user_dictionary", entries, search=args.search_index)
         metrics = dict(entries=len(entries), compact_bytes=len(compact.data),
                        contiguous_required=(len(compact.data) + SEGMENT - 1)//SEGMENT)
         metrics["fill_existing_personal"] = measure(empty, entries, compact)

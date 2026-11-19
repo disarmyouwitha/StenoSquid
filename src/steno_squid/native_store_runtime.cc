@@ -23,6 +23,7 @@
 #include "engine_work.h"
 #include "engine_stream.h"
 #include "hint_index.h"
+#include "compact_search.h"
 #include "stroke_list_parser.h"
 #include "split_status.h"
 #include "w25q_quad.h"
@@ -166,6 +167,9 @@ public:
     void PrintDictionary(PrintDictionaryContext &context)const override;
     void PrintEntriesWithPrefix(PrintPrefixContext &context)const override;
     void PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)const override;
+    StenoSquidCompactSearch SearchIndex() const;
+    bool VisibleBaseline(const StenoSquidCompactSearch::Entry &, StenoStroke *) const;
+    void PrintSnapshotEntries(LookupDictionaryContext &, const char *, size_t, const StenoStroke *) const;
     bool LoadBase(uint32_t at, uint32_t bytes, uint32_t crc, uint8_t member) {
         if (base) return base_offset == at && base_bytes == bytes && base_crc == crc &&
                          base_member == member;
@@ -197,7 +201,8 @@ public:
         base=new (definition) StenoCompactMapDictionary(definition);
         if(!base)return false;
         const uint32_t text_bytes=xip_load_word(collection+offsetof(StenoDictionaryCollection,textBlock));
-        hint=new (hint_storage) StenoSquidHintIndex(address,bytes,member,count,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
+        const auto hint_bytes = user_snapshot && kUserSnapshotsEnabled ? SearchIndex().LegacyBytes() : bytes;
+        hint=new (hint_storage) StenoSquidHintIndex(address,hint_bytes,member,count,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
         return true;
     }
     uint32_t GroupEntries(const StenoCompactMapDictionaryStrokesDefinition &group) const {
@@ -372,20 +377,43 @@ struct ExportGuard {
 // Iteration scratch stays off the HID stack.
 IndexSink<FlashDevice> iter_f(flash_device),iter_r(flash_device);
 NativeMergeOps<FlashDevice> iter_ops(flash_device,export_view,iter_f,iter_r);
-bool Next(MergeRecord &record) {
+bool SeekOverlay(uint32_t identity) {
+    uint32_t first = 0, last = export_view.forward_count;
+    while (first < last) {
+        const uint32_t mid = first + (last - first) / 2;
+        MergeRecord record;
+        uint32_t address;
+        if (!iter_ops.ReadIndex(false, mid, address) || !iter_ops.Record(address, record)) {
+            base_provider.Fault(); return false;
+        }
+        if (record.identity < identity) first = mid + 1;
+        else last = mid;
+    }
+    export_cursor.indexed = first;
+    return true;
+}
+bool Next(MergeRecord &record, uint32_t identity = 0) {
     for(;;) {
         uint32_t address;
-        if(export_cursor.indexed<export_view.forward_count) {
+        const bool indexed = export_cursor.indexed < export_view.forward_count;
+        if(indexed) {
             uint8_t word[4];if(!flash_device.Read(export_view.forward_address+export_cursor.indexed++*4,word,4)){base_provider.Fault();return false;}
             address=Word(word);
         } else if(export_cursor.recent<export_view.tail.count)address=export_view.tail.addresses[export_cursor.recent++];
         else return false;
-        if(!iter_ops.Record(address,record,true)){base_provider.Fault();return false;}
+        if(!iter_ops.Record(address,record)){base_provider.Fault();return false;}
+        if (identity && record.identity != identity) {
+            if (indexed && record.identity > identity) export_cursor.indexed = export_view.forward_count;
+            continue;
+        }
         if(!iter_ops.Active(record.identity))continue;
         RecordView newest;
         const auto result=store.live.FindSnapshot(export_view,record.identity,record.strokes,record.count,newest);
         if(result!=LiveResult::Ok && result!=LiveResult::Missing){base_provider.Fault();return false;}
-        if(result==LiveResult::Ok && newest.operation==Operation::Set && newest.text_address==record.text_address)return true;
+        if(result==LiveResult::Ok && newest.operation==Operation::Set && newest.text_address==record.text_address) {
+            if (!iter_ops.Record(address, record, true)) { base_provider.Fault(); return false; }
+            return true;
+        }
     }
 }
 void Cell::PrintDictionary(PrintDictionaryContext &context)const {
@@ -431,28 +459,84 @@ void Cell::PrintDictionary(PrintDictionaryContext &context)const {
         }
     }
 }
+StenoSquidCompactSearch Cell::SearchIndex() const {
+    const auto image = Xip + base_offset;
+    const uint32_t text_bytes = xip_load_word(reinterpret_cast<const uint8_t *>(image) +
+                                             offsetof(StenoDictionaryCollection, textBlock));
+    return {image, base_bytes, reinterpret_cast<uintptr_t>(definition.textBlock),
+            text_bytes, xip_load_word, xip_load_byte};
+}
+bool Cell::VisibleBaseline(const StenoSquidCompactSearch::Entry &entry, StenoStroke *outline) const {
+    RecordView record;
+    const auto result = store.live.FindSnapshot(export_view, identity, entry.strokes, entry.length, record);
+    if (result != LiveResult::Ok && result != LiveResult::Missing) {
+        base_provider.Fault(); return false;
+    }
+    if (result == LiveResult::Ok && record.operation != Operation::Reset) return false;
+    for (unsigned i = 0; i < entry.length; ++i) outline[i] = StenoStroke(entry.strokes[i]);
+    return !parent || parent->GetDictionaryForOutline(outline, entry.length) == this;
+}
+void Cell::PrintSnapshotEntries(LookupDictionaryContext &context, const char *prefix,
+                                size_t length, const StenoStroke *partial) const {
+    if (!kUserSnapshotsEnabled || !user_snapshot || !base || context.IsDone() || !healthy) return;
+    const auto search = SearchIndex();
+    if (!search.Available() || length > (partial ? 15u : 2047u) || (partial && !length)) return;
+    StenoSquidCompactSearch::Range range;
+    const bool valid = partial ? search.OutlineRange(partial[0].GetKeyState(), range) :
+                                search.TextRange(prefix, length, true, range);
+    if (!valid) { base_provider.Fault(); return; }
+    StenoSquidExportWriter writer(steno_squid_javelin_response_active());
+    for (uint32_t i = range.begin; i < range.end && healthy && !context.IsDone() &&
+         !writer.Failed() && !steno_squid_javelin_response_cancelled(); ++i) {
+        StenoSquidCompactSearch::Entry entry;
+        if (!(partial ? search.ReadOutlineEntry(i, entry) : search.ReadTextEntry(i, entry))) {
+            base_provider.Fault(); return;
+        }
+        if (partial ? entry.length <= length : !search.IsStrictPrefix(entry, length)) continue;
+        StenoStroke outline[16];
+        if (partial) {
+            for (unsigned position = 0; position < entry.length; ++position)
+                outline[position] = StenoStroke(entry.strokes[position]);
+            if (!StenoStroke::HasPartialOutline(outline, partial, length, entry.length - length)) continue;
+        }
+        if (!VisibleBaseline(entry, outline)) continue;
+        auto text = lapwing_copy_lookup_text(entry.text);
+        if (!text.IsValid()) { base_provider.Fault(); return; }
+        context.Add(outline, entry.length, text.GetText(), this);
+        text.Destroy();
+    }
+}
 void Cell::PrintEntriesWithPrefix(PrintPrefixContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
-    while(!context.IsDone() && Next(record)) {
-        if(record.identity!=identity || record.text_bytes<=context.prefixLength)continue;
+    if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
+    if (!SeekOverlay(identity)) return;
+    while(!context.IsDone() && !steno_squid_javelin_response_cancelled() && Next(record,identity)) {
+        if(record.text_bytes<=context.prefixLength)continue;
         if(!flash_device.Read(record.text_address,reinterpret_cast<uint8_t *>(export_text),record.text_bytes)){base_provider.Fault();return;}
         export_text[record.text_bytes]=0;
         if(std::strncmp(export_text,context.prefix,context.prefixLength))continue;
         StenoStroke outline[16];for(unsigned i=0;i<record.count;++i)outline[i]=StenoStroke(record.strokes[i]);
+        if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         context.Add(outline,record.count,export_text,this);
     }
+    PrintSnapshotEntries(context, context.prefix, context.prefixLength, nullptr);
 }
 void Cell::PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
-    while(!context.IsDone() && Next(record)) {
-        if(record.identity!=identity || record.count<=context.length)continue;
+    if (!context.length || (kUserSnapshotsEnabled && user_snapshot && !enabled)) return;
+    if (!SeekOverlay(identity)) return;
+    while(!context.IsDone() && !steno_squid_javelin_response_cancelled() && Next(record,identity)) {
+        if(record.count<=context.length)continue;
         StenoStroke outline[16];for(unsigned i=0;i<record.count;++i)outline[i]=StenoStroke(record.strokes[i]);
         if(!StenoStroke::HasPartialOutline(outline,context.strokes,context.length,record.count-context.length))continue;
         if(!flash_device.Read(record.text_address,reinterpret_cast<uint8_t *>(export_text),record.text_bytes)){base_provider.Fault();return;}
+        if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         export_text[record.text_bytes]=0;context.Add(outline,record.count,export_text,this);
     }
+    PrintSnapshotEntries(context, nullptr, context.length, context.strokes);
 }
 void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
+    if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
     ExportGuard guard;if(!guard.ok || lookup.definitionLength>2047)return;
     auto matches=[&](uint32_t address) {
         MergeRecord record;if(!iter_ops.Record(address,record))return -1;
@@ -498,6 +582,25 @@ void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
         if(result==PageResult::Corrupt || result==PageResult::IoError){base_provider.Fault();return;}
         for(unsigned i=0;i<used;++i)emit(page[i]);
         if(result==PageResult::Done)break;
+    }
+    // Typing-time suggestions keep the existing bounded one-stroke hint path.
+    if (kUserSnapshotsEnabled && user_snapshot && base && healthy && steno_squid_javelin_response_active()) {
+        const auto search = SearchIndex();
+        if (search.Available()) {
+            StenoSquidCompactSearch::Range range;
+            if (!search.TextRange(lookup.definition, lookup.definitionLength, false, range)) {
+                base_provider.Fault(); return;
+            }
+            for (uint32_t i = range.begin; i < range.end && healthy && !lookup.results.IsFull() &&
+                 !lookup.strokes.IsFull() && !steno_squid_javelin_response_cancelled(); ++i) {
+                StenoSquidCompactSearch::Entry entry;
+                if (!search.ReadTextEntry(i, entry)) { base_provider.Fault(); return; }
+                if (entry.length >= lookup.ignoreStrokeThreshold) continue;
+                StenoStroke outline[16];
+                if (VisibleBaseline(entry, outline)) lookup.AddResult(outline, entry.length, this);
+            }
+            return;
+        }
     }
     uint32_t mask;
     if(healthy && hint && lookup.ignoreStrokeThreshold>1 && hint->Find(lookup.definition,mask)) {
