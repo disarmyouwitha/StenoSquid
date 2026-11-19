@@ -85,6 +85,16 @@ void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms) 
     }
 }
 
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE)
+static atomic_t native_maintenance;
+
+void steno_squid_split_maintenance(bool active) {
+    if (atomic_set(&native_maintenance, active) != active) {
+        steno_squid_split_status_refresh();
+    }
+}
+#endif
+
 /* A layer that needs the dictionaries says so while they are not usable. */
 static enum steno_squid_mode dictionary_mode(enum steno_squid_mode ready) {
 #if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
@@ -144,22 +154,27 @@ static void send_status(struct k_work *work) {
         return;
     }
 
-    const unsigned upload = atomic_get(&upload_mode);
+    unsigned status_override = atomic_get(&upload_mode);
+#if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE)
+    if (!status_override && atomic_get(&native_maintenance)) {
+        status_override = STENO_SQUID_MODE_SAVING;
+    }
+#endif
     struct zmk_behavior_binding binding = {
         .behavior_dev = STENO_SQUID_STATUS_BEHAVIOR,
-        .param1 = upload ? upload : current_mode(),
+        .param1 = status_override ? status_override : current_mode(),
         .param2 = STENO_SQUID_STATUS_PROTOCOL,
     };
     /* Loading and No dictionary take the place of a layer's name. */
     const char *name = custom_layer_name();
-    if (!upload && name && binding.param1 != STENO_SQUID_MODE_LOADING &&
+    if (!status_override && name && binding.param1 != STENO_SQUID_MODE_LOADING &&
         binding.param1 != STENO_SQUID_MODE_NO_DICTIONARY) {
         pack_layer_name(name, &binding);
     }
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_PRACTICE)
     struct steno_squid_practice_view view;
     steno_squid_practice_view_snapshot(&view);
-    if (!upload && (view.state & STENO_SQUID_PRACTICE_ACTIVE)) {
+    if (!status_override && (view.state & STENO_SQUID_PRACTICE_ACTIVE)) {
         static uint8_t sequence, text_sequence, retry_count;
         static bool have_text;
         static struct steno_squid_practice_view last_text;

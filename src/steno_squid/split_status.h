@@ -43,6 +43,7 @@ enum steno_squid_mode {
     STENO_SQUID_MODE_IMPORT,
     STENO_SQUID_MODE_VERIFY,
     STENO_SQUID_MODE_BUSY,
+    STENO_SQUID_MODE_SAVING,
     STENO_SQUID_MODE_COUNT,
 };
 
@@ -62,4 +63,13 @@ static inline void steno_squid_upload_status(enum steno_squid_mode mode, uint32_
     (void)mode;
     (void)timeout_ms;
 }
+#endif
+
+#if defined(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE) && defined(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
+#ifdef __cplusplus
+extern "C"
+#endif
+void steno_squid_split_maintenance(bool active);
+#else
+static inline void steno_squid_split_maintenance(bool active) { (void)active; }
 #endif

@@ -228,6 +228,11 @@ int main(void) {
     steno_squid_pet_set_state(PET_TYPING);
     assert(state == PET_UPLOAD);
     save("pop-upload");
+    steno_squid_screen_update(STENO_SQUID_MODE_SAVING, NULL,
+                             STENO_SQUID_PRACTICE_ACTIVE, 85, true);
+    assert(!strcmp(lv_label_get_text(mode_below), "Saving"));
+    assert(lv_obj_has_flag(mode_above, LV_OBJ_FLAG_HIDDEN));
+    assert(lv_obj_has_flag(practice_page, LV_OBJ_FLAG_HIDDEN));
     steno_squid_screen_update(STENO_SQUID_MODE_REPAIR,NULL,0,85,false);
     for (unsigned i = 0; i < ARRAY_SIZE(repair_frames); ++i) {
         char name[24];

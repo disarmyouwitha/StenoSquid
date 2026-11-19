@@ -273,6 +273,7 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
         [STENO_SQUID_MODE_IMPORT] = "Import",
         [STENO_SQUID_MODE_VERIFY] = "Verify",
         [STENO_SQUID_MODE_BUSY] = "Busy",
+        [STENO_SQUID_MODE_SAVING] = "Saving",
     };
     char battery[8];
     snprintf(battery, sizeof(battery), "%u%%", charge);
@@ -283,7 +284,8 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
 
     bool layer_changed = false;
     const bool uploading = steno_squid_upload_mode(mode);
-    const bool practicing = !uploading && (practice & STENO_SQUID_PRACTICE_ACTIVE) != 0;
+    const bool saving = mode == STENO_SQUID_MODE_SAVING;
+    const bool practicing = !uploading && !saving && (practice & STENO_SQUID_PRACTICE_ACTIVE) != 0;
     const bool done = practicing && steno_squid_practice_feedback_value(practice) == STENO_SQUID_PRACTICE_DONE;
     steno_squid_pet_set_visible(!practicing || done);
     steno_squid_pet_set_awake_hold(done);
@@ -297,7 +299,7 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
         lv_obj_add_flag(practice_page, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(status_page, LV_OBJ_FLAG_HIDDEN);
         const char *title = mode < STENO_SQUID_MODE_COUNT ? mode_names[mode] : layer_name;
-        show_mode(host_disconnected && !uploading && mode != STENO_SQUID_MODE_UNKNOWN ? "Discon-\n-nected"
+        show_mode(host_disconnected && !uploading && !saving && mode != STENO_SQUID_MODE_UNKNOWN ? "Discon-\n-nected"
                                                                     : title);
         const bool valid_layer = (mode >= STENO_SQUID_MODE_TYPING && mode <= STENO_SQUID_MODE_PLOVER) ||
                                  mode >= STENO_SQUID_MODE_COUNT;

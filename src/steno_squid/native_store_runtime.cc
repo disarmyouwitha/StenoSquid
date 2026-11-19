@@ -203,17 +203,29 @@ StenoDictionaryLookupResult BaseProvider::Lookup(uint32_t id,const StenoDictiona
 }
 void StepWork(k_work *);
 K_WORK_DELAYABLE_DEFINE(maintenance_work,StepWork);
+void FinishMaintenance() {
+    if (maintenance_hold) {
+        dictionary_flash_read_session(false);
+        maintenance_hold = false;
+        steno_squid_split_maintenance(false);
+    }
+}
 void Kick() {
-    if(store.work==NativeStore<FlashDevice>::Work::None)return;
-    if(!maintenance_hold){dictionary_flash_read_session(true);maintenance_hold=true;}
-    k_work_schedule_for_queue(&steno_squid_engine_queue,&maintenance_work,K_MSEC(2));
+    if (store.work == NativeStore<FlashDevice>::Work::None) return;
+    if (!maintenance_hold) {
+        dictionary_flash_read_session(true);
+        maintenance_hold = true;
+        steno_squid_split_maintenance(true);
+    }
+    k_work_schedule_for_queue(&steno_squid_engine_queue, &maintenance_work, K_MSEC(2));
 }
 void StepWork(k_work *) {
     if(steno_squid_native_input_pending()){Kick();return;}
     const JavelinEngineLock lock;
-    if(!lock){
-        if(!healthy){if(maintenance_hold){dictionary_flash_read_session(false);maintenance_hold=false;}return;}
-        Kick();return;
+    if (!lock) {
+        if (!healthy) FinishMaintenance();
+        else Kick();
+        return;
     }
     const NativeInputPause input_pause;
     flash_device.mapped=false;
@@ -233,7 +245,7 @@ void StepWork(k_work *) {
     if(result==JobResult::More){Kick();return;}
     if(!store.opened)base_provider.Fault();
     else if(result==JobResult::Done){for(size_t i=0;i<cell_count;++i)cells[i].Refresh();if(parent)parent->OnLookupDataChanged();}
-    if(maintenance_hold){dictionary_flash_read_session(false);maintenance_hold=false;}
+    FinishMaintenance();
 }
 LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t count,const char *text,size_t bytes) {
     if(!healthy || !count || count>16 || bytes>2047)return LiveResult::Invalid;

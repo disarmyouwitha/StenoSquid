@@ -450,6 +450,21 @@ selections after reboot, and typing after deep sleep with the right half
 reconnected. Raw automated logs and the artifact manifest are local under
 `build/native-engine/warm-ready/`.
 
+## Checkpoint contention on Boardsource
+
+The shorter catalog erase build (`1c4a7e9`) preserved all three personal entries
+and the enabled dictionary selection through 12 manual checkpoints. The catalog
+generation went from 9 to 21 and full integrity verification passed. The queue
+held up to six key events with zero recorded overflows. The maximum maintenance
+slice was 256 ms and the oldest recorded key event waited 250 ms before replay.
+The owner saw typing pause and then release several queued words together.
+
+Small forward and reverse indexes now erase only the first 4 KiB sector when
+the complete worst-case output fits there. Larger indexes still erase full
+segments. The right display uses **Saving** while Native maintenance owns the
+flash, then restores its normal status. These follow-up changes need a hardware
+rerun before the measured typing pause can be considered resolved.
+
 ## Hardware acceptance checklist
 
 1. Flash the exact Left-Native Actions UF2 and run the clean installer. Confirm
