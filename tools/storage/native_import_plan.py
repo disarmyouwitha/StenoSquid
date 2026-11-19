@@ -45,25 +45,31 @@ def compare(snapshot, protected, name, entries, limit, compiled, compile_problem
          lambda: plan_named_snapshot(snapshot, protected, name, compiled, limit=limit)),
     ):
         if key == "snapshot" and compiled is None:
-            options[key] = dict(eligible=False, reason=compile_problem, logical_bytes=None)
+            options[key] = dict(eligible=False, reason=compile_problem, logical_bytes=None, eligibility="cannot-stage")
             continue
         try:
             update = planner()
         except NoSpace as error:
-            options[key] = dict(eligible=False, reason=str(error), logical_bytes=logical)
+            options[key] = dict(eligible=False, reason=str(error), logical_bytes=logical, eligibility="cannot-stage")
             continue
         updates[key] = update
         options[key] = cost(update, protected, current, logical)
         if key == "snapshot":
             after = metadata(update.payload)
             options[key]["contiguous_segments"] = (logical + SEGMENT - 1) // SEGMENT
+            after_free, after_run = inspect_free(owned(after))
+            options[key]["replacement_free_segments"] = after_free
+            options[key]["replacement_largest_run"] = after_run
             try:
                 second = plan_change(after, owned(after), snapshot.next_id, compiled)
-            except NoSpace:
-                options[key].update(eligible=False, reason=(
-                    "The initial snapshot fits, but a same-size replacement cannot stage safely. "
-                    "A USB-backed rebuild may eventually be needed. Recovery is still being qualified."))
+            except NoSpace as error:
+                options[key].update(eligible=False, eligibility="usb-rebuild-unqualified",
+                                    replacement_refusal=str(error), reason=(
+                    "The initial snapshot fits. A same-size replacement cannot stage in the current layout. "
+                    "It may need an explicit USB-backed rebuild that erases and reinstalls the shared pool from a verified bundle. "
+                    "This choice stays gated until the rebuild path is qualified on hardware."))
             else:
+                options[key]["eligibility"] = "copy-on-write"
                 options[key]["replacement_staging_segments"] = len(second.segments)
     journal, compact = options["journal"], options["snapshot"]
     if compact["eligible"] and not journal["eligible"]:

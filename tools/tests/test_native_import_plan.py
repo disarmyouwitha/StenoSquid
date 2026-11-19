@@ -57,9 +57,11 @@ def main():
                 assert not set(update.segments) & protected
                 assert report["options"][mode]["staging_segments"] == len(update.segments)
                 assert report["options"][mode]["free_after_commit"] >= 3
+            assert report["options"]["snapshot"]["eligibility"] == "copy-on-write"
         report, _ = compare(view, protected, "Unrepresentable", {(1 << 24,): b"value"}, 16,
                             None, "24-bit JSC4 limitation")
         assert report["recommended"] == "journal" and not report["options"]["snapshot"]["eligible"]
+        assert report["options"]["snapshot"]["eligibility"] == "cannot-stage"
         dense = {key: str(i).ljust(1120, "x").encode() for i, key in enumerate(inputs(6900))}
         with redirect_stderr(io.StringIO()):
             dense_image = compile_snapshot("Dense", dense)
@@ -67,6 +69,7 @@ def main():
         report, _ = compare(view, restricted, "Dense", dense, 16, dense_image)
         assert report["recommended"] is None
         assert "rebuild" in report["options"]["snapshot"]["reason"]
+        assert report["options"]["snapshot"]["eligibility"] == "usb-rebuild-unqualified"
         assert report["options"]["snapshot"]["staging_segments"] > 100
 
         console = PlannerConsole(image, view.payload, protected)

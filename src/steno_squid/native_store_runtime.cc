@@ -467,14 +467,11 @@ StenoSquidCompactSearch Cell::SearchIndex() const {
             text_bytes, xip_load_word, xip_load_byte};
 }
 bool Cell::VisibleBaseline(const StenoSquidCompactSearch::Entry &entry, StenoStroke *outline) const {
-    RecordView record;
-    const auto result = store.live.FindSnapshot(export_view, identity, entry.strokes, entry.length, record);
-    if (result != LiveResult::Ok && result != LiveResult::Missing) {
-        base_provider.Fault(); return false;
-    }
-    if (result == LiveResult::Ok && record.operation != Operation::Reset) return false;
-    for (unsigned i = 0; i < entry.length; ++i) outline[i] = StenoStroke(entry.strokes[i]);
-    return !parent || parent->GetDictionaryForOutline(outline, entry.length) == this;
+    return NativeBaselineVisible(store.live, export_view, identity, entry.strokes, entry.length, enabled,
+        [&] {
+            for (unsigned i = 0; i < entry.length; ++i) outline[i] = StenoStroke(entry.strokes[i]);
+            return !parent || parent->GetDictionaryForOutline(outline, entry.length) == this;
+        }, [] { base_provider.Fault(); });
 }
 void Cell::PrintSnapshotEntries(LookupDictionaryContext &context, const char *prefix,
                                 size_t length, const StenoStroke *partial) const {

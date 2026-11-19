@@ -4,6 +4,22 @@
 #include "native_dictionary_adapter.h"
 #include "../../tools/storage/native_store.h"
 namespace candidate_b {
+// A baseline result remains visible only if no local edit shadows its
+// outline and the active dictionary stack still selects this dictionary.
+template<class Live, class Owner, class Fault>
+bool NativeBaselineVisible(Live &live, const LiveView &view, uint32_t id,
+                           const uint32_t *strokes, uint8_t length, bool enabled,
+                           Owner owns, Fault fault) {
+    if (!enabled) return false;
+    RecordView record;
+    const auto state = live.FindSnapshot(view, id, strokes, length, record);
+    if (state != LiveResult::Ok && state != LiveResult::Missing) {
+        fault();
+        return false;
+    }
+    return (state == LiveResult::Missing || record.operation == Operation::Reset) && owns();
+}
+
 class NativeBaseProvider {
 public:
     virtual bool Ready()const=0;

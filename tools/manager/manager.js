@@ -181,8 +181,10 @@ function showImportPlan(plan) {
     const row = document.createElement("li");
     const size = option.logical_bytes === null ? "" : ` ${number.format(option.logical_bytes)} B.`;
     const staging = option.staging_segments === undefined ? "" : ` ${option.added_segments} added and ${option.staging_segments} staging segments.`;
+    const replacement = option.replacement_staging_segments === undefined ? "" :
+      ` A same-size replacement fits with ${option.replacement_staging_segments} staging segments.`;
     const refusal = option.eligible ? "" : ` ${option.reason}`;
-    row.textContent = `${format}.${size}${staging}${refusal}`;
+    row.textContent = `${format}.${size}${staging}${replacement}${refusal}`;
     costs.append(row);
   }
   node("import-apply").hidden = !plan.selected || !importToApply;
