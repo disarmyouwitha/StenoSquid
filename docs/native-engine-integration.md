@@ -465,8 +465,13 @@ segments. The right display uses **Saving** while Native maintenance owns the
 flash, then restores its normal status. On the same Boardsource left half,
 a checkpoint without typing on build `2cbfa0b` completed in 90 worker steps
 and verified the original selections and all three personal entries. The
-longest worker slice was 74.585 ms. A typing rerun and a check of the right
-display are still needed.
+longest worker slice was 74.585 ms. After flashing the matching right image
+from Actions run `44456710580`, a second typing trial completed 12 checkpoints
+and advanced generation 22 to 34. The longest slice was 78.339 ms, and the
+longest queued key wait was 64 ms. The queue held at most three events and
+recorded zero overflows. All three personal entries, the current selection
+and sampled translations matched before and after, and the full integrity
+verification passed. This was a small dictionary and a short typing sample.
 
 ## Hardware acceptance checklist
 
