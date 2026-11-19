@@ -32,10 +32,21 @@ matched all 73 entries. The longest worker slice was 81.2 ms with the keyboard
 idle. After removal of the test dictionary, the original catalog, host layout,
 personal export and KAT lookup matched their pre-test state.
 
-Host and fault-injection tests also cover backup from a quarantined catalog
-and cancellation before publication. Typing during compaction, a physical power
-cut during compaction, and an on-board pinned update and full restore remain
-open hardware checks.
+The corrected release candidate resumed 71 pending edits after a firmware
+flash, freed three 64 KiB journal segments and exported all 73 test entries.
+The longest observed idle slice was 80.5 ms. A host regression exercises the
+runtime predicate with its input queue paused and with a new key queued.
+
+A second Boardsource test staged a temporary one-outline change in Lapwing UK
+Additions. The local override remained active, the conflict report contained
+both translations, and clearing the override exposed the upstream change.
+Reinstalling the original pinned image preserved the original dictionary order,
+checkboxes and personal entries.
+
+Host and fault-injection tests also cover backup from a quarantined catalog,
+cancellation before publication and interrupted compaction. Typing latency
+during compaction, physical power loss during compaction and an on-board full
+restore remain hardware qualification items.
 
 ## What runs on the keyboard
 
