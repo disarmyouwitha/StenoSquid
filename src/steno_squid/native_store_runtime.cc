@@ -1,6 +1,8 @@
 // Opt-in full-engine integration for Candidate B. Normal firmware is unchanged.
 #include "native_store_runtime.h"
 #include "native_input.h"
+#include "clock.h"
+#include "../../tools/storage/native_work_slice.h"
 #include "native_collection_sync.h"
 #include "native_dictionary_adapter.h"
 #include "native_engine_backend.h"
@@ -94,6 +96,7 @@ struct FlashDevice {
 NativeStore<FlashDevice> store(flash_device);
 NativeValidator<FlashDevice> validator(flash_device,store.catalog);
 bool healthy=false,loaded=false,exporting=false,maintenance_hold=false;
+uint32_t maintenance_steps=0;
 StenoDictionary *parent=nullptr;
 LiveView export_view;
 OverlayCursor export_cursor;
@@ -191,7 +194,7 @@ K_WORK_DELAYABLE_DEFINE(maintenance_work,StepWork);
 void Kick() {
     if(store.work==NativeStore<FlashDevice>::Work::None)return;
     if(!maintenance_hold){dictionary_flash_read_session(true);maintenance_hold=true;}
-    k_work_schedule_for_queue(&steno_squid_engine_queue,&maintenance_work,K_MSEC(8));
+    k_work_schedule_for_queue(&steno_squid_engine_queue,&maintenance_work,K_MSEC(2));
 }
 void StepWork(k_work *) {
     if(steno_squid_native_input_pending()){Kick();return;}
@@ -202,7 +205,12 @@ void StepWork(k_work *) {
     }
     const NativeInputPause input_pause;
     flash_device.mapped=false;
-    const auto result=store.Step([](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
+    uint32_t steps=0;
+    const auto result=NativeWorkSlice(
+        []{return store.Step([](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});},
+        []{return Clock::GetMicroseconds();},
+        []{return steno_squid_native_input_waiting();},steps);
+    maintenance_steps+=steps;
     flash_device.mapped=true;
     if(result==JobResult::More){Kick();return;}
     if(!store.opened)base_provider.Fault();
@@ -391,7 +399,7 @@ void lookup_outline(void *,const char *line) {
 }
 void store_status(void *,const char *) {
     const auto *personal=ByName("user_dictionary");
-    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"read_only\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",store.selected.quarantine?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
+    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"read_only\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"work_steps\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",store.selected.quarantine?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),maintenance_steps,steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
     for(size_t i=0;i<cell_count;++i)Console::Printf("%s%u",i?",":"",cells[i].identity);
     Console::Printf("]}\n\n");
 }

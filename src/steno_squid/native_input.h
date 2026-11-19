@@ -10,6 +10,7 @@ void steno_squid_native_input_pause(void);
 void steno_squid_native_input_resume(void);
 void steno_squid_native_input_cancel(void);
 bool steno_squid_native_input_pending(void);
+bool steno_squid_native_input_waiting(void);
 int64_t steno_squid_native_input_time(void);
 uint32_t steno_squid_native_input_overflows(void);
 uint32_t steno_squid_native_input_highwater(void);

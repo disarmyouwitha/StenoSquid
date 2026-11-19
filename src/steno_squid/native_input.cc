@@ -114,6 +114,12 @@ extern "C" bool steno_squid_native_input_pending(void) {
     k_spin_unlock(&input_lock, key);
     return result;
 }
+extern "C" bool steno_squid_native_input_waiting(void) {
+    const auto key = k_spin_lock(&input_lock);
+    const bool result = input.HasEvents();
+    k_spin_unlock(&input_lock, key);
+    return result;
+}
 extern "C" int64_t steno_squid_native_input_time(void) {
     if (k_current_get() == k_work_queue_thread_get(&steno_squid_engine_queue) && replaying)
         return replay_time;

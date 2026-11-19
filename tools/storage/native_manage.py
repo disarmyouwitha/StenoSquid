@@ -25,27 +25,56 @@ def checked(console, line):
         raise RuntimeError(result)
 
 
+def commit_with_progress(console, progress=print):
+    """Wait on live maintenance, with both a stall limit and a total limit."""
+    now = time.monotonic()
+    total_deadline, stall_deadline = now + 3600, now + 180
+    heartbeat, previous = now, None
+    announced = False
+    while True:
+        response = console.command("native_entry commit", timeout=60)
+        if response == "OK":
+            return
+        now = time.monotonic()
+        if not response.startswith("ERR Native store busy"):
+            raise RuntimeError(response)
+        if now >= total_deadline or now >= stall_deadline:
+            raise RuntimeError("Native maintenance timed out without a committed entry")
+        if now >= heartbeat:
+            status = json.loads(console.command("user_dictionary_status", timeout=60))
+            if (
+                status.get("format") != "SQBCAT02"
+                or not status.get("ready")
+                or status.get("read_only")
+            ):
+                raise RuntimeError("Native store became unavailable or read-only")
+            current = tuple(
+                status.get(key)
+                for key in ("generation", "maintenance", "work_steps", "tail")
+            )
+            if current != previous:
+                previous, stall_deadline = current, now + 180
+            heartbeat = now + 1
+            if not announced:
+                progress("Waiting for dictionary maintenance; checking progress…")
+                announced = True
+        time.sleep(0.05)
+
+
 def import_entries(console, identity, entries, names, progress=print):
     checked(console, "native_entry abort")
     for number, (strokes, text) in enumerate(entries.items(), 1):
         outline = names[strokes]
-        checked(console, f"native_entry begin {identity} {len(text)} {outline}")
-        for offset in range(0, len(text), 512):
-            encoded = base64.b64encode(text[offset : offset + 512]).decode()
-            checked(console, f"native_entry data {offset} {encoded}")
-        deadline = time.monotonic() + 180
-        while True:
-            response = console.command("native_entry commit", timeout=60)
-            if response == "OK":
-                break
-            if (
-                not response.startswith("ERR Native store busy")
-                or time.monotonic() >= deadline
-            ):
-                raise RuntimeError(
-                    f"Stopped at {outline} after {number - 1} saved entries: {response}"
-                )
-            time.sleep(0.05)
+        try:
+            checked(console, f"native_entry begin {identity} {len(text)} {outline}")
+            for offset in range(0, len(text), 512):
+                encoded = base64.b64encode(text[offset : offset + 512]).decode()
+                checked(console, f"native_entry data {offset} {encoded}")
+            commit_with_progress(console, progress)
+        except (OSError, TimeoutError, RuntimeError, ValueError) as error:
+            raise RuntimeError(
+                f"Stopped at {outline} after {number - 1} saved entries: {error}"
+            ) from error
         if number % 100 == 0:
             progress(f"Saved {number}/{len(entries)} entries")
     progress(f"Saved {len(entries)} entries in dictionary {identity}")

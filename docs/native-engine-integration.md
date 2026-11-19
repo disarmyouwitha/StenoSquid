@@ -27,6 +27,9 @@ store for this build; it does not read, convert or migrate their storage format.
 - Reverse overlays use the ordered reverse index and bounded recent tail. Existing
   single-stroke SHI1 base hints are filtered against overlays and winning priority.
 - Checkpoint and rollover jobs run in slices on the existing engine work queue.
+  Each slice ends at 2 ms, 128 steps, or the arrival of buffered input; blocking
+  flash operations finish before yielding. Work is rescheduled after 2 ms instead
+  of adding an 8 ms pause to every small metadata/index operation.
   Append pauses during a job; lookup pins its immutable input while recovery runs.
   Editors get Busy and retry rather than receiving a false success.
 - Native-only input buffering retains up to 512 physical press/release events
@@ -147,7 +150,9 @@ python3 tools/storage/native_manage.py --dictionary 6 --reset-outline KAT
 Imports merge entries one at a time. The complete input is validated before opening
 the keyboard. Each entry uses a retry-safe bounded transaction, supports empty
 text, newlines and up to 2,047 UTF-8 bytes, and is committed only when complete.
-Busy waits are bounded. On error the tool reports the last saved point and does
+Busy waits follow the reported maintenance step counter, refusing after three
+minutes without observed progress or one hour total for an entry. On error the
+tool reports the last saved point and does
 not clear another dictionary. `--remove` hides that dictionary's outline, allowing
 lower-priority dictionaries to win; `--reset-outline` exposes its compact base.
 These are overlays, not a replacement upload of the whole compiled theory.
@@ -180,7 +185,12 @@ this small merge command.
 - Dead-journal reclamation: 275 simulated torn-operation cases, retained-reader
   publication refusal, protected sequence/reset boundaries, empty-writer retention,
   actual reuse after both catalogs/readers release, and continued translation in
-  read-only fallback. No old journal is erased during pruning.
+  read-only fallback. No old journal is erased during pruning. The actual pinned
+  engine also translates/repeats from a read-only recovered catalog.
+- Maintenance scheduling: time and step caps, immediate input priority, clock
+  wrap, terminal result propagation and yielding after a slow erase. Import client
+  tests cover continued progress beyond three minutes, stalled work, and the
+  absolute one-hour limit with a simulated clock.
 - All earlier native catalog/checkpoint/rollover fault tests remain enabled.
 
 The full-engine integration passed CI for `d1667bb`, buffered input for `08d5eb6`,

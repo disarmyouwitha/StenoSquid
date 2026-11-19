@@ -135,6 +135,17 @@ void check_native_store_engine() {
   play({"KAT"},"KAT");
   flags[0].enabled=flags[2].enabled=true;
   assert(StenoSquidSyncNativeCollection(root,3,[&](unsigned i)->const Flag &{return flags[i];}));
+  // The actual engine remains useful when its partner catalog is torn. Writes
+  // stay refused while lookups, repeat and owned result strings continue.
+  edit(1,"#","=repeat_last_translation");
+  const auto before_quarantine=storage.nor;
+  storage.nor.data[(1-storage.store.selected.slot)*65536]^=1;
+  const auto readonly=storage.store.Open([&](const CatalogRoot &r){return storage.validator.Validate(r);});
+  assert(readonly==CatalogResult::Quarantined && storage.store.opened);
+  const auto damaged=storage.nor.data;
+  assert(storage.Edit(1,StenoStroke("KAT").GetKeyState(),"refused")==LiveResult::ReadOnly);
+  play({"KAT","#"},"lower lower");assert(storage.nor.data==damaged);
+  storage.nor=before_quarantine;storage.Open();root.OnLookupDataChanged();
   edit(1,"KAT","fault target");
   LiveView broken;assert(storage.store.Snapshot(broken));RecordView corrupt;const uint32_t kat=StenoStroke("KAT").GetKeyState();
   assert(storage.store.live.FindSnapshot(broken,1,&kat,1,corrupt)==LiveResult::Ok);

@@ -2,13 +2,14 @@
 """Verify the USB entry client preserves full UTF-8 and waits only on Busy."""
 
 import base64
+import json
 from pathlib import Path
 import sys
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
-from native_manage import import_entries
+from native_manage import import_entries, commit_with_progress
 from import_personal import parse_named
 
 
@@ -35,6 +36,10 @@ class Console:
             assert int(offset) == len(self.text)
             self.text.extend(base64.b64decode(encoded, validate=True))
             return "OK"
+        if command == "user_dictionary_status":
+            return json.dumps(
+                {"format": "SQBCAT02", "ready": True, "maintenance": 1, "work_steps": 1}
+            )
         assert command == "native_entry commit"
         if self.busy:
             self.busy = False
@@ -58,8 +63,52 @@ def main():
         pass
     else:
         raise AssertionError("Duplicate keys must fail before opening the device")
+
+    class Maintenance:
+        def __init__(self, attempts, moving):
+            self.attempts, self.moving, self.done = attempts, moving, 0
+
+        def command(self, command, timeout=60):
+            if command == "user_dictionary_status":
+                return json.dumps(
+                    {
+                        "format": "SQBCAT02",
+                        "ready": True,
+                        "maintenance": 1,
+                        "work_steps": self.done if self.moving else 0,
+                    }
+                )
+            assert command == "native_entry commit"
+            if self.done >= self.attempts:
+                return "OK"
+            self.done += 1
+            return "ERR Native store busy; retry shortly"
+
+    for attempts, moving, succeeds in (
+        (5, True, True),
+        (1000, False, False),
+        (1000, True, False),
+    ):
+        elapsed = [0]
+
+        def tick(_):
+            elapsed[0] += 60
+
+        with (
+            patch("native_manage.time.monotonic", side_effect=lambda: elapsed[0]),
+            patch("native_manage.time.sleep", side_effect=tick),
+        ):
+            try:
+                commit_with_progress(
+                    Maintenance(attempts, moving), progress=lambda message: None
+                )
+                assert succeeds
+            except RuntimeError as error:
+                assert not succeeds and "timed out" in str(error)
+        if not succeeds:
+            assert elapsed[0] == (3600 if moving else 180)
     print(
-        "Native USB tools: full-length UTF-8, newline/empty text, fresh personal ID and bounded Busy retries passed"
+        "Native USB tools: full-length UTF-8, newline/empty text, fresh personal ID, progress-aware Busy retries, stall and total timeout bounds passed"
     )
 
 
