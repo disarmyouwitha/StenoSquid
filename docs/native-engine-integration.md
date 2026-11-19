@@ -514,6 +514,14 @@ checkpoint work steps. The integrity scan holds the dictionary lock, so a test
 that types during that scan can see a much longer pause and subsequent replay
 than during a checkpoint. Measure the two operations separately.
 
+Automatic work and explicit USB commands are measured separately.
+Ordinary typing must remain responsive across idle flash wake, background
+integrity checks, and maintenance left pending after a dictionary edit.
+Time the first chord after wake and compare the full editor output during
+automatic work. Explicit install, import and Verify may take time. Check
+that their status is visible, interruption is recoverable and ending the
+operation does not release a burst of stale input.
+
 ## Hardware acceptance checklist
 
 1. Flash the exact Left-Native Actions UF2 and run the clean installer. Confirm
