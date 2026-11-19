@@ -231,8 +231,12 @@ publication or near-full operation.
 Before the trial, the board briefly reported unavailable after a failed
 export and two power cycles. A read-only diagnostic firmware boot then
 validated both original catalogs and recovered access without changing flash.
-The cause of the initial failure is unconfirmed. Continue checking cold boot
-and automatic wake behavior before promoting Native.
+The cause of the initial failure is unconfirmed. After the staging power-cut
+trial, the original CI firmware (run `44466950711`) was restored and opened
+generation 23 with all three personal entries and the saved selections. After
+35 seconds idle, KAT still resolved to cat and the warm-resume counter
+increased from zero to one while full opens stayed at one. Continue checking
+cold boot and automatic wake behavior before promoting Native.
 
 ## USB manager and existing website
 
