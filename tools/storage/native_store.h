@@ -17,6 +17,7 @@ public:
     enum class Work { None, Checkpoint, Rollover, PrepareCheckpoint, PrepareRollover } work=Work::None;
     bool opened=false;
     bool external_update=false;
+    bool clean_checkpoint=false;
     JobResult last=JobResult::Done;
     explicit NativeStore(Device &value):device(value),catalog(value),live(value,catalog),
         checkpoint(value,catalog,live),rollover(value,catalog,live){}
@@ -38,6 +39,8 @@ public:
         if(!opened || view.token)return false;
         if(work==Work::None || work==Work::PrepareCheckpoint || work==Work::PrepareRollover)
             return live.Snapshot(view)==LiveResult::Ok;
+        if(work==Work::Checkpoint && checkpoint.Published() && live.Ready())
+            return live.Snapshot(view)==LiveResult::Ok;
         const auto &input=work==Work::Checkpoint?checkpoint.Input():rollover.Input();
         uint32_t token=0;
         if(!catalog.AcquirePin(input.root,token))return false;
@@ -50,11 +53,12 @@ public:
         work=Work::None;last=JobResult::Cancelled;return true;
     }
     bool Release(LiveView &view){return live.Release(view);}
-    JobResult Start(Work kind) {
+    JobResult Start(Work kind,bool compact=false) {
         if(!opened)return JobResult::ReadOnly;
         if(work!=Work::None || external_update)return JobResult::Busy;
         if(!catalog.CanWrite(selected.root))return JobResult::ReadOnly;
         if(kind!=Work::Checkpoint && kind!=Work::Rollover)return JobResult::Invalid;
+        clean_checkpoint=compact;
         work=kind==Work::Checkpoint?Work::PrepareCheckpoint:Work::PrepareRollover;
         last=JobResult::More;return last;
     }
@@ -109,7 +113,7 @@ private:
         // The source root may have an older reader after mirroring. Do not
         // erase/program staged outputs only to discover this at publication.
         if(catalog.DestinationPinned(selected))return JobResult::Busy;
-        const auto started=checkpoint_next?checkpoint.Begin(selected):rollover.Begin(selected);
+        const auto started=checkpoint_next?checkpoint.Begin(selected,{},clean_checkpoint):rollover.Begin(selected);
         if(started==JobResult::More)work=checkpoint_next?Work::Checkpoint:Work::Rollover;
         return started;
     }

@@ -262,11 +262,69 @@ void CheckMetadata(const std::vector<uint8_t> &image, const Plan &plan, bool del
               << " interrupted writes recovered" << std::endl;
 }
 
+void CheckIdleCompaction(const std::vector<uint8_t> &image, bool cancel) {
+    unsigned operations = 0;
+    for (unsigned cut = 0; cut <= operations; ++cut) {
+        Nor nor;
+        nor.data = image;
+        nor.cut = cut;
+        nor.tear = 77;
+        NativeDevice device{{nor}};
+        NativeStore<NativeDevice> store(device);
+        NativeValidator<NativeDevice> validator(device, store.catalog);
+        auto check = [&](uint32_t i, const uint8_t *row) { return validator.Extent(i, row); };
+        auto open = [&] { return store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }); };
+        assert(open() == CatalogResult::Ok);
+        const auto original = store.selected.root;
+        SegmentMap before;
+        assert(CollectOwnership(device, store.catalog, original, before) == CatalogResult::Ok);
+        assert(store.Start(NativeStore<NativeDevice>::Work::Checkpoint, true) == JobResult::More);
+        bool cancelled = false;
+        try {
+            for (unsigned i = 0; i < 10000; ++i) {
+                const auto status = store.Step(check);
+                if (cancel && nor.operations && !store.checkpoint.Published()) {
+                    assert(store.CancelCheckpoint());
+                    assert(store.selected.root.generation == original.generation);
+                    cancelled = true;
+                    break;
+                }
+                if (status != JobResult::More) {
+                    assert(status == JobResult::Done && !cut);
+                    operations = nor.operations;
+                    break;
+                }
+            }
+            assert(cancel ? cancelled : operations && store.work == NativeStore<NativeDevice>::Work::None);
+        } catch (const Cut &) {
+            assert(cut);
+            assert(!cancel);
+        }
+        nor.cut = 0;
+        NativeStore<NativeDevice> recovered(device);
+        NativeValidator<NativeDevice> recovered_validator(device, recovered.catalog);
+        const auto result = recovered.Open([&](const CatalogRoot &root) { return recovered_validator.Validate(root); });
+        assert(result == CatalogResult::Ok || result == CatalogResult::Quarantined);
+        Check(recovered, false, false);
+        if (!cut && !cancel) {
+            SegmentMap after;
+            assert(CollectOwnership(device, recovered.catalog, recovered.selected.root, after) == CatalogResult::Ok);
+            assert(AllocationPlan(after).Free() > AllocationPlan(before).Free());
+            assert(!after.Contains(2) && recovered.live.TailCount() == 0);
+            assert(recovered.live.Highwater() == 12);
+        }
+    }
+    std::cout << (cancel ? "Idle compaction cancellation passed" : "Idle compaction: interrupted writes recovered")
+              << " (" << operations << " flash operations)" << std::endl;
+}
+
 int main(int argc, char **argv) {
     assert(argc == 10);
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
     image.resize(256 * kSegmentBytes, 0x42);
+    CheckIdleCompaction(image, true);
+    CheckIdleCompaction(image, false);
     Run(image, ReadPlan(argv[2]), true);
     Run(image, ReadPlan(argv[3]), false);
     RefuseLostEntry(image, ReadPlan(argv[4]));

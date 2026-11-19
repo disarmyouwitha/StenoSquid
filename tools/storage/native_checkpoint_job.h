@@ -9,9 +9,9 @@
 namespace candidate_b {
 template <class Device>
 class NativeCheckpointJob {
-    enum class Phase { Idle, Inspect, Plan, EraseForward, EraseReverse, Build,
+    enum class Phase { Idle, Inspect, SizeVictims, Plan, StageJournal, CopyJournal, EraseForward, EraseReverse, Build,
                        FinishForward, FinishReverse, Forward, Reverse, Coverage,
-                       Prune, Publish, Recover, Done, Failed };
+                       Prune, Publish, Recover, Mirror, Done, Failed };
     Device &device;
     NativeCatalog<Device> &catalog;
     LiveJournal<Device> &live;
@@ -25,7 +25,14 @@ class NativeCheckpointJob {
     uint16_t dictionaries=0,old_extents=0,kept=0;
     uint32_t inspected=0,old_reverse_address=0,old_reverse_count=0,last_journal=0,prune_count=0;
     uint32_t starts[2]{},segments[2]{},erase_position=0,position=0,previous=0;
-    bool did_publish=false;
+    bool did_publish=false, compact=false, reclaimed=false, mirror=true;
+    NativeRelocationMap relocate;
+    NativeJournal<Device> relocate_journal;
+    JournalScan scan{};
+    uint16_t live_bytes[255]{};
+    uint32_t victim_row=0;
+    uint64_t last_epoch=0;
+    uint8_t copy_text[2047];
     Phase phase=Phase::Idle;
 
     bool Active()const{return phase!=Phase::Idle && phase!=Phase::Done && phase!=Phase::Failed;}
@@ -59,11 +66,12 @@ class NativeCheckpointJob {
         needed=value.operation!=Operation::Reset;
         if(!needed)return true;
         // Address of the record which supplied the exact matching outline.
-        address=value.text_address-40u-record.count*4u;
+        address=relocate.Resolve(value.text_address-40u-record.count*4u);
         return true;
     }
     uint32_t SourceBytes()const {
-        return 32u+dictionaries*96u+(kept+unsigned(forward.Bytes()!=0)+unsigned(reverse.Bytes()!=0))*24u;
+        return 32u+dictionaries*96u+(kept+unsigned(relocate.count!=0)+
+            unsigned(forward.Bytes()!=0)+unsigned(reverse.Bytes()!=0))*24u;
     }
     bool Source(uint32_t offset,uint8_t *out,uint32_t bytes) {
         const uint32_t total=SourceBytes();
@@ -73,9 +81,9 @@ class NativeCheckpointJob {
             uint32_t start,size;
             if(offset<32) {
                 start=0;size=32;std::memcpy(row,prefix,32);
-                const uint16_t extents=kept+unsigned(forward.Bytes()!=0)+unsigned(reverse.Bytes()!=0);
+                const uint16_t extents=(SourceBytes()-32u-dictionaries*96u)/24u;
                 row[6]=uint8_t(extents);row[7]=uint8_t(extents>>8);
-                PutWord(row+8,uint32_t(frozen.highwater));PutWord(row+12,uint32_t(frozen.highwater>>32));
+                PutWord(row+8,uint32_t(relocate.through));PutWord(row+12,uint32_t(relocate.through>>32));
             } else if(offset<32u+dictionaries*96u) {
                 const uint32_t index=(offset-32)/96;start=32+index*96;size=96;
                 if(!device.Read(frozen.root.address+start,row,96))return false;
@@ -89,8 +97,12 @@ class NativeCheckpointJob {
                 start=extents_start+index*24;size=24;
                 if(index<kept) {
                     if(!device.Read(frozen.root.address+extents_start+retained[index]*24,row,24))return false;
+                } else if(relocate.count && index==kept) {
+                    std::memset(row,0,24);row[0]=uint8_t(relocate.destination);row[2]=1;
+                    PutWord(row+4,kSegmentBytes);PutWord(row+12,2);
+                    PutWord(row+16,uint32_t(relocate.epoch));PutWord(row+20,uint32_t(relocate.epoch>>32));
                 } else {
-                    const bool rev=forward.Bytes()?index!=kept:true;
+                    const bool rev=forward.Bytes()?index!=kept+unsigned(relocate.count!=0):true;
                     std::memset(row,0,24);row[0]=uint8_t(starts[rev]);row[1]=uint8_t(starts[rev]>>8);
                     row[2]=uint8_t(segments[rev]);row[3]=uint8_t(segments[rev]>>8);
                     PutWord(row+4,rev?reverse.Bytes():forward.Bytes());
@@ -102,21 +114,100 @@ class NativeCheckpointJob {
         }
         return true;
     }
+    bool InputAddress(uint32_t index,uint32_t &address) {
+        if(index<frozen.forward_count)return ops.ReadIndex(false,index,address);
+        address=frozen.tail.addresses[index-frozen.forward_count];
+        return true;
+    }
+    JobResult SizeVictims() {
+        if(position==frozen.forward_count+frozen.tail.count) {
+            phase=Phase::Plan;position=0;return JobResult::More;
+        }
+        uint32_t address,latest=0;
+        MergeRecord record;
+        if(!InputAddress(position++,address) || !ops.Record(address,record))return JobResult::Corrupt;
+        const uint32_t segment=address/kSegmentBytes;
+        if(segment==last_journal || needed_journals.Contains(segment) ||
+           live_bytes[segment]>NativeRelocationMap::CopyBudget || !ops.Active(record.identity))
+            return JobResult::More;
+        bool needed=false;
+        if(!Latest(record,latest,needed))return JobResult::Corrupt;
+        if(needed && latest==address) {
+            const unsigned bytes=live_bytes[segment]+record.record.span;
+            live_bytes[segment]=bytes>NativeRelocationMap::CopyBudget?NativeRelocationMap::CopyBudget+1:bytes;
+        }
+        return JobResult::More;
+    }
+    void ChooseVictims(AllocationPlan &plan) {
+        uint32_t budget=NativeRelocationMap::CopyBudget,count=0;
+        for(uint32_t segment=2;segment<255;++segment) {
+            const uint16_t bytes=live_bytes[segment];
+            if(segment!=last_journal && bytes && bytes<=budget && !needed_journals.Contains(segment)) {
+                relocate.victims.Add(segment,1);budget-=bytes;++count;
+            }
+        }
+        if(count<2 || last_epoch==UINT64_MAX || frozen.highwater>UINT64_MAX-NativeRelocationMap::CopyBudget/44 ||
+           !plan.Reserve(1,relocate.destination)) {
+            relocate.victims={};return;
+        }
+        relocate.epoch=last_epoch+1;
+    }
+    JobResult CopyVictim() {
+        if(!scan.ready) {
+            if(victim_row==kept) {
+                if(!relocate.count)return JobResult::Corrupt;
+                ops.Relocation(&relocate);phase=Phase::EraseForward;return JobResult::More;
+            }
+            uint8_t row[24];
+            if(!device.Read(frozen.root.address+32+dictionaries*96+retained[victim_row++]*24,row,24))
+                return JobResult::IoError;
+            const uint32_t segment=uint16_t(row[0]) | uint16_t(row[1])<<8;
+            if(Word(row+12)!=2 || !relocate.victims.Contains(segment))return JobResult::More;
+            const uint64_t epoch=uint64_t(Word(row+16)) | uint64_t(Word(row+20))<<32;
+            return relocate_journal.BeginScan(segment,epoch,0,scan)==JournalResult::Ok?
+                JobResult::More:JobResult::Corrupt;
+        }
+        JournalRecord row;
+        const auto result=relocate_journal.Step(scan,row);
+        if(result==JournalResult::End || result==JournalResult::Sealed) {
+            scan.ready=false;return JobResult::More;
+        }
+        if(result!=JournalResult::Ok)return JobResult::Corrupt;
+        MergeRecord record;
+        if(!ops.Record(row.address,record))return JobResult::Corrupt;
+        if(!ops.Active(record.identity))return JobResult::More;
+        // Already copied records map to their staged address. Later records
+        // with the same key must never resurrect an older translation.
+        uint32_t latest=0;bool needed=false;
+        if(!Latest(record,latest,needed))return JobResult::Corrupt;
+        if(!needed || latest!=row.address)return JobResult::More;
+        if(!relocate.Append(row.address,row.span))return JobResult::Corrupt;
+        if(record.text_bytes && !device.Read(record.text_address,copy_text,record.text_bytes))
+            return JobResult::IoError;
+        const uint32_t destination=relocate.moves[relocate.count-1].new_address;
+        return relocate_journal.Append(destination,++relocate.through,record.identity,record.operation,
+                   record.strokes,record.count,copy_text,record.text_bytes)==JournalResult::Ok?
+            JobResult::More:JobResult::IoError;
+    }
 public:
     NativeCheckpointJob(Device &value,NativeCatalog<Device> &roots,LiveJournal<Device> &state)
         :device(value),catalog(roots),live(state),forward(value),reverse(value),
-         ops(value,frozen,forward,reverse),builder(ops){}
+         ops(value,frozen,forward,reverse),builder(ops),relocate_journal(value){}
     NativeCheckpointJob(const NativeCheckpointJob &)=delete;
     NativeCheckpointJob &operator=(const NativeCheckpointJob &)=delete;
     bool Published()const{return did_publish;}
+    void SkipMirror(){mirror=false;}
     const CatalogSelection &Selection()const{return did_publish?published:current;}
     const LiveView &Input()const{return frozen;}
-    JobResult Begin(const CatalogSelection &selection,const SegmentMap &excluded=SegmentMap{}) {
+    JobResult Begin(const CatalogSelection &selection,const SegmentMap &excluded=SegmentMap{},bool clean=false) {
         if(Active())return JobResult::Busy;
         if(!Same(selection.root,live.Root()) || selection.quarantine)return JobResult::Invalid;
         const auto status=live.BeginMaintenance(frozen);
         if(status!=LiveResult::Ok)return status==LiveResult::Busy?JobResult::Busy:JobResult::ReadOnly;
         current=selection;published={};unavailable=excluded;did_publish=false;
+        compact=clean;reclaimed=false;mirror=true;victim_row=0;last_epoch=0;scan={};
+        relocate.Reset(frozen.highwater);ops.Relocation(nullptr);
+        if(compact)std::memset(live_bytes,0,sizeof(live_bytes));
         needed_journals={};last_journal=prune_count=0;
         if(frozen.highwater) {
             const uint32_t segment=frozen.highwater_address/kSegmentBytes;
@@ -154,7 +245,10 @@ public:
                     old_reverse_count=Word(row+4)/4;
                     if(Word(row+4)%4 || old_reverse_count>kMaxEntries)return Stop(JobResult::Corrupt);
                 }
-                if(kind==2)last_journal=uint16_t(row[0]) | uint16_t(row[1])<<8;
+                if(kind==2) {
+                    last_journal=uint16_t(row[0]) | uint16_t(row[1])<<8;
+                    last_epoch=uint64_t(Word(row+16)) | uint64_t(Word(row+20))<<32;
+                }
                 if(kind==1 || kind==2){remap[inspected]=uint8_t(kept);retained[kept++]=uint8_t(inspected);}
                 else if(kind!=3 && kind!=4)return Stop(JobResult::Corrupt);
                 ++inspected;return JobResult::More;
@@ -162,7 +256,12 @@ public:
             if(kept>251 || 32u+dictionaries*96u+(kept+2u)*24u>catalog.PayloadCapacity() || frozen.forward_count>kMaxEntries-frozen.tail.count ||
                old_reverse_count>kMaxEntries-frozen.tail.count)return Stop(JobResult::NoSpace);
             if(last_journal)needed_journals.Add(last_journal,1);
-            ops.ReverseInput(old_reverse_address,old_reverse_count);phase=Phase::Plan;return JobResult::More;
+            ops.ReverseInput(old_reverse_address,old_reverse_count);
+            phase=compact && inspected>3?Phase::SizeVictims:Phase::Plan;return JobResult::More;
+        }
+        if(phase==Phase::SizeVictims) {
+            const auto status=SizeVictims();
+            return status==JobResult::More?status:Stop(status);
         }
         if(phase==Phase::Plan) {
             SegmentMap protected_segments;
@@ -173,7 +272,17 @@ public:
                 segments[i]=(count*4+kSegmentBytes-1)/kSegmentBytes;if(!segments[i])segments[i]=1;
                 if(!plan.Reserve(segments[i],starts[i]))return Stop(JobResult::NoSpace);
             }
-            phase=Phase::EraseForward;return JobResult::More;
+            if(compact)ChooseVictims(plan);
+            phase=relocate.destination?Phase::StageJournal:Phase::EraseForward;return JobResult::More;
+        }
+        if(phase==Phase::StageJournal) {
+            if(relocate_journal.Initialize(relocate.destination,relocate.epoch)!=JournalResult::Ok)
+                return Stop(JobResult::IoError);
+            phase=Phase::CopyJournal;return JobResult::More;
+        }
+        if(phase==Phase::CopyJournal) {
+            const auto status=CopyVictim();
+            return status==JobResult::More?status:Stop(status);
         }
         if(phase==Phase::EraseForward || phase==Phase::EraseReverse) {
             const bool rev=phase==Phase::EraseReverse;
@@ -256,6 +365,7 @@ public:
             if(kind==1 || (kind==2 && needed_journals.Contains(segment))) {
                 remap[original]=uint8_t(kept);retained[kept++]=original;
             } else if(kind!=2)return Stop(JobResult::Corrupt);
+            else reclaimed=true;
             return JobResult::More;
         }
         if(phase==Phase::Publish) {
@@ -267,10 +377,24 @@ public:
             if(live.Begin(published)!=LiveResult::More)return Stop(JobResult::RecoveryRequired,true);
             phase=Phase::Recover;return JobResult::More;
         }
+        if(phase==Phase::Mirror) {
+            if(!mirror){phase=Phase::Done;return JobResult::Done;}
+            const auto original=published;
+            const auto status=catalog.Publish(original,original.root.bytes,
+                [&](uint32_t at,uint8_t *out,uint32_t n){return device.Read(original.root.address+at,out,n);},
+                check,published,&original.root.crc);
+            if(status==CatalogResult::Busy) {
+                published=original;phase=Phase::Done;return JobResult::Done;
+            }
+            if(status!=CatalogResult::Ok || !live.Retarget(published))
+                return Stop(JobResult::RecoveryRequired,true);
+            phase=Phase::Done;return JobResult::Done;
+        }
         const auto status=live.RecoverStep();
         if(status==LiveResult::More)return JobResult::More;
         if(status!=LiveResult::Ready)return Stop(JobResult::RecoveryRequired,true);
         if(!live.EndMaintenance(frozen))return Stop(JobResult::RecoveryRequired,true);
+        if(compact && reclaimed && mirror){phase=Phase::Mirror;return JobResult::More;}
         phase=Phase::Done;return JobResult::Done;
     }
 };

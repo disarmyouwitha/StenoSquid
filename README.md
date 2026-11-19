@@ -95,10 +95,10 @@ a specific dictionary, import Plover JSON, export an individual dictionary or
 download a backup of all overlays and catalog settings. The Manager can rename
 or delete independent dictionaries and switch the keyboard’s host layout.
 
-On USB power, the firmware can rebuild its indexes and reclaim fully stale
-journals after 64 pending edits when the keyboard and flash are idle and ready.
-It defers unpublished work when you resume typing. **Compact now** also packs
-live entries from partly stale journals when there is room to stage both copies.
+After 64 pending edits, the firmware can rebuild its indexes and reclaim
+stale journals while the keyboard is idle on USB power. It can copy up to
+4 KiB of live entries to free mostly stale journals and cancels unpublished
+work when you resume typing. **Compact now** runs a larger cleanup pass.
 
 
 ### Import a personal Plover dictionary

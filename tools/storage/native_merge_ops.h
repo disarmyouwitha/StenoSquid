@@ -4,6 +4,7 @@
 #pragma once
 #include "native_live_journal.h"
 #include "native_index_sink.h"
+#include "native_relocation.h"
 
 namespace candidate_b {
 struct MergeRecord : JournalKey {
@@ -17,20 +18,24 @@ class NativeMergeOps {
     const LiveView &view;
     IndexSink<Device> &forward,&reverse;
     uint32_t reverse_address=0,reverse_count=0;
+    const NativeRelocationMap *relocation=nullptr;
 public:
     NativeMergeOps(Device &value,const LiveView &input,IndexSink<Device> &f,IndexSink<Device> &r)
         :device(value),journal(value),view(input),forward(f),reverse(r){}
+    void Relocation(const NativeRelocationMap *value){relocation=value;}
     void ReverseInput(uint32_t at,uint32_t count){reverse_address=at;reverse_count=count;}
     bool Active(uint32_t identity)const {
         for(uint32_t i=0;i<view.dictionary_count;++i)if(view.identities[i]==identity)return true;
         return false;
     }
     bool Record(uint32_t address,MergeRecord &out,bool full=false) {
-        if(address/kSegmentBytes>=255 || address%kSegmentBytes<256 || address%4 ||
-           !view.journals.Contains(address/kSegmentBytes))return false;
+        const uint32_t segment = address / kSegmentBytes;
+        const bool staged = relocation && relocation->destination == segment;
+        if(segment>=255 || address%kSegmentBytes<256 || address%4 ||
+           (!staged && !view.journals.Contains(segment)))return false;
         const auto status = full ? journal.Read(address, out.record, &out)
                                  : journal.ReadKey(address, out.record, out);
-        if (status != JournalResult::Ok || out.record.sequence > view.highwater) return false;
+        if (status != JournalResult::Ok || out.record.sequence > (staged ? relocation->through : view.highwater)) return false;
         out.text_address = address + 40u + 4u * out.count;
         return true;
     }
@@ -74,6 +79,7 @@ public:
         // Deleted identities are never reused; their old overlays must not be
         // retained forever merely because an old checkpoint references them.
         if(!Active(record.identity))return true;
+        if(relocation)address=relocation->Resolve(address);
         return rev?reverse.Append(address):forward.Append(address);
     }
 };

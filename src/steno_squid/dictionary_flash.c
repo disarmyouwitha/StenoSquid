@@ -198,3 +198,16 @@ static void dictionary_flash_worker(void *a, void *b, void *c) {
 
 /* The stack leaves room for the settings read and write above. */
 K_THREAD_DEFINE(dictionary_flash, 3072, dictionary_flash_worker, NULL, NULL, NULL, 5, 0, 200);
+
+
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+#include <zmk/event_manager.h>
+#include <zmk/events/usb_conn_state_changed.h>
+static int native_power_changed(const zmk_event_t *event) {
+    ARG_UNUSED(event);
+    steno_squid_native_power_changed();
+    return ZMK_EV_EVENT_BUBBLE;
+}
+ZMK_LISTENER(steno_squid_native_power, native_power_changed);
+ZMK_SUBSCRIPTION(steno_squid_native_power, zmk_usb_conn_state_changed);
+#endif

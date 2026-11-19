@@ -114,6 +114,7 @@ uint32_t maintenance_max_slice_us=0;
 using Maintenance = NativeStore<FlashDevice>::Work;
 constexpr uint32_t IdleCheckpointTail = 64;
 bool automatic_maintenance = false;
+atomic_t idle_maintenance_pending;
 uint32_t automatic_checkpoints = 0;
 JobResult automatic_result = JobResult::Done;
 StenoDictionary *parent=nullptr;
@@ -231,7 +232,14 @@ void FinishMaintenance() {
 void IdleMaintenance(k_work *);
 K_WORK_DELAYABLE_DEFINE(idle_maintenance_work, IdleMaintenance);
 void QueueIdleMaintenance(k_timeout_t delay = K_SECONDS(10)) {
-    k_work_schedule_for_queue(&steno_squid_engine_queue, &idle_maintenance_work, delay);
+    if (atomic_get(&idle_maintenance_pending) && zmk_usb_is_powered())
+        k_work_schedule_for_queue(&steno_squid_engine_queue, &idle_maintenance_work, delay);
+}
+void NoteIdleMaintenance() {
+    if (store.live.TailCount() >= IdleCheckpointTail) {
+        atomic_set(&idle_maintenance_pending, 1);
+        QueueIdleMaintenance();
+    }
 }
 bool IdleMaintenanceAllowed() {
     return zmk_usb_is_powered() && zmk_activity_get_state() == ZMK_ACTIVITY_IDLE &&
@@ -251,15 +259,19 @@ void IdleMaintenance(k_work *) {
         if (zmk_usb_is_powered()) QueueIdleMaintenance();
         return;
     }
-    // Background maintenance never powers up an idle-gated dictionary chip.
-    if (!dictionary_flash_mapped_address()) return;
+    // Only a pending job on external power can wake an idle-gated flash.
+    if (dictionary_flash_status() != DICTIONARY_FLASH_READY) return;
     const JavelinEngineLock lock;
-    if (!lock || !healthy || store.live.TailCount() < IdleCheckpointTail) return;
+    if (!lock || !healthy) return;
+    if (store.live.TailCount() < IdleCheckpointTail) {
+        atomic_clear(&idle_maintenance_pending);
+        return;
+    }
     if (exporting || store.work != Maintenance::None || store.external_update) {
         QueueIdleMaintenance();
         return;
     }
-    automatic_result = store.Start(Maintenance::Checkpoint);
+    automatic_result = store.Start(Maintenance::Checkpoint,true);
     if (automatic_result == JobResult::More) {
         automatic_maintenance = true;
         Kick();
@@ -272,12 +284,15 @@ void StepWork(k_work *) {
         else Kick();
         return;
     }
-    if (automatic_maintenance && !IdleMaintenanceAllowed() && store.CancelCheckpoint()) {
-        automatic_maintenance = false;
-        automatic_result = JobResult::Cancelled;
-        FinishMaintenance();
-        QueueIdleMaintenance(K_SECONDS(60));
-        return;
+    if (automatic_maintenance && !IdleMaintenanceAllowed()) {
+        store.checkpoint.SkipMirror();
+        if (store.CancelCheckpoint()) {
+            automatic_maintenance = false;
+            automatic_result = JobResult::Cancelled;
+            FinishMaintenance();
+            QueueIdleMaintenance(K_SECONDS(60));
+            return;
+        }
     }
     if (steno_squid_native_input_pending()) { Kick(); return; }
     const NativeInputPause input_pause;
@@ -300,6 +315,8 @@ void StepWork(k_work *) {
         automatic_maintenance = false;
         automatic_result = result;
         if (result == JobResult::Done) ++automatic_checkpoints;
+        if (result == JobResult::Busy) QueueIdleMaintenance(K_SECONDS(60));
+        else atomic_clear(&idle_maintenance_pending);
     }
     if(!store.opened)base_provider.Fault();
     else if(result==JobResult::Done){for(size_t i=0;i<cell_count;++i)cells[i].Refresh();if(parent)parent->OnLookupDataChanged();}
@@ -315,7 +332,7 @@ LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t c
     flash_device.mapped=true;
     if(result==LiveResult::Ok){
         cell.Refresh();if(parent)parent->OnLookupDataChanged();
-        if (store.live.TailCount() >= IdleCheckpointTail) QueueIdleMaintenance();
+        NoteIdleMaintenance();
     }
     if(!store.opened)base_provider.Fault();
     Kick();return result;
@@ -633,6 +650,10 @@ uint32_t BaseFingerprint(const CatalogRoot &root) {
 }
 } // namespace
 
+extern "C" void steno_squid_native_power_changed(void) {
+    QueueIdleMaintenance();
+}
+
 extern "C" bool steno_squid_native_flash_open(void) {
     // Only a same-boot, previously healthy mapper can retain its validated
     // layout. Metadata must be read from DMA before trusting mapped pointers.
@@ -640,7 +661,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
     if(healthy && loaded && NativeWarmResumeEligible(store)) {
         flash_device.mapped=true;
         for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
-        if (store.live.TailCount() >= IdleCheckpointTail) QueueIdleMaintenance();
+        NoteIdleMaintenance();
         ++warm_resumes;return true;
     }
     healthy=false;++full_opens;
@@ -674,7 +695,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         base_provider.Fault();return false;
     }
     const uint32_t fingerprint=BaseFingerprint(store.selected.root);
-    if (store.live.TailCount() >= IdleCheckpointTail) QueueIdleMaintenance();
+    NoteIdleMaintenance();
     if(!scrub_due)scrub_due=k_uptime_get()+(fingerprint && fingerprint==verified_fingerprint?60000:24*60*60*1000LL);
     if(fingerprint && fingerprint!=verified_fingerprint) {
         verified_fingerprint=fingerprint;
