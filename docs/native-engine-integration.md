@@ -1,6 +1,6 @@
 # Candidate B: full engine/store integration test build
 
-Status: **opt-in native engine implemented; full engine checkpoint passed CI; journal reclamation follow-up in verification; hardware validation pending**.
+Status: **opt-in native engine passed CI and initial automated hardware checks; hands-on acceptance and remaining storage work pending**.
 Working branch: `prototype/native-warm-resume`, following the CI-passing
 `prototype/native-sorted-tail` and
 `prototype/native-index-retention` and
@@ -427,6 +427,31 @@ it into an editable log is especially expensive. Compact replacement/import and
 on-device qualification of retained-index staging remain future work. The manager stops and
 reports its last saved entry on safe space refusal; it does not discard existing
 committed entries to make a large import fit.
+
+## Initial hardware results — November 18, 2026
+
+The exact Actions images from run `44438639149` (firmware commit `e925abb`)
+were flashed to the Boardsource left and right halves, identified by USB serial
+before transfer. The right image is unchanged from its previous build. The clean
+native installer erased/provisioned the shared pool, verified its complete CRC,
+rebooted and reported READY with seven dictionaries. The reserved final 64 KiB
+and internal settings were outside the install range.
+
+Automated USB HID checks passed:
+
+- KAT → cat and HE/HROE → hello.
+- Personal add, replace, export and remove; the personal export is empty again.
+- A dictionary-qualified long UTF-8/multiline override, hide and reset-to-base.
+- Full native integrity verification after edits; KAT restored to cat.
+- After 35 seconds with editor connections closed, lookup woke the flash and
+  returned cat. Status reported `warm_resumes=1`, `full_opens=1`, `tail=6`,
+  `maintenance=0`, `ready=true`, `read_only=false`, and no input overflows.
+  This confirms the guarded same-boot idle path without another full open.
+
+Raw logs and the verified artifact manifest are local under
+`build/native-engine/warm-ready/`. These command checks do not establish physical
+stroke capture, wireless editor behavior, reset persistence, deep sleep, typing
+contention or display/Practice acceptance; those remain in the checklist below.
 
 ## Hardware acceptance when the owner returns
 
