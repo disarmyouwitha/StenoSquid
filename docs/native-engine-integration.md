@@ -3,6 +3,32 @@
 Status: **Native is the everyday dictionary store for both board targets.**
 The earlier opt-in checkpoints below record development builds and board results.
 
+## Manager and automatic compaction checkpoint
+
+The Manager runs locally with `python3 stenosquid.py --manager` and connects
+through the same USB HID console as the CLI. It lists each dictionary in lookup
+order and exposes enable, move, local edits, named import, rename, delete, JSON
+export and complete overlay backup. A full backup records stable IDs, order,
+checkboxes, pinned source digests, tombstones and host layout. Restore validates
+the catalog limit and source digests before explicitly replacing the flash pool.
+
+Pinned updates compile hash-verified sources, stage fresh images at the allocated
+mapped addresses, preserve all journal and index references, and atomically
+publish the catalog. Local conflicting edits win and appear in the update report.
+
+Automatic maintenance is scheduled after 64 pending journal edits. It runs
+during keyboard idle on USB power. An idle pass considers up to four older
+journals whose remaining records fit within a combined 4 KiB copy budget.
+It verifies copied records and both new indexes before publication. The active
+append journal and the sequence anchor stay protected. When a new key arrives,
+unpublished work can be abandoned. An already published generation completes
+recovery and can defer the second catalog copy. Explicit **Compact now** uses
+the larger host-assisted pass.
+
+Host and fault-injection tests cover these transactions. On-board latency,
+idle cancellation, pinned update and backup/restore still need hardware
+qualification before merging this checkpoint into main.
+
 ## What runs on the keyboard
 
 `CONFIG_ZMK_STENO_SQUID_NATIVE_STORE=y` installs the native store into the actual
@@ -646,7 +672,7 @@ operation does not release a burst of stale input.
    not include full keyboard-to-host latency. Capture runtime stack/heap peaks
    separately.
 
-**Not yet complete:** automatic compaction scheduling and an overlong-tail rebuild;
+**At this earlier checkpoint, still open:** automatic compaction scheduling and an overlong-tail rebuild;
 compact base replacement and named dictionary delete or rename; physical
 power-cut qualification; measured 200 WPM/burst contention and runtime peaks.
 Wholly dead journals can now be reclaimed after ownership is released. Partially
@@ -654,7 +680,7 @@ stale journals still retain their allocation, so sustained growth can safely
 refuse an edit when staging/reserve space is exhausted. Do not promote this build
 to the normal release until those remaining acceptance gates are resolved.
 
-## Live-record compaction: next design boundary
+## Earlier live-record compaction design notes
 
 The next compactor can replay only still-current records out of a selected old
 journal, using normal committed appends and bounded checkpoints. It must reserve
