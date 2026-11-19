@@ -369,13 +369,13 @@ def read_flash(console, start, size):
     return bytes(result)
 
 
-def backup_all(console):
+def backup_all(console, *, complete=False):
     """Export exact live overlay operations and the catalog from one frozen view."""
     layout = console.command("get_parameter host_layout")
     answer = update_command(console, "begin backup")
     try:
         snapshot, _ = read_snapshot(console, answer, metadata_only=True)
-        if any(row[11] for row in snapshot.rows):
+        if complete or any(row[11] for row in snapshot.rows):
             from native_recovery import capture
             result = capture(lambda start, size: read_flash(console, start, size), snapshot, layout)
             if console.command("get_parameter host_layout") != layout:

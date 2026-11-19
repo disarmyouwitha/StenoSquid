@@ -268,7 +268,7 @@ def handle_native(console, args, status):
         from native_update import backup_all
         from native_recovery import save_atomic
 
-        backup = backup_all(console)
+        backup = backup_all(console, complete=args.bundle)
         save_atomic(args.backup_all, backup)
         print(f"Saved full dictionary backup to {args.backup_all}.")
     elif args.backup:
@@ -327,6 +327,7 @@ def main():
     parser.add_argument("--update", action="store_true", help="Update installed bases to the pinned revisions")
     parser.add_argument("--list-dictionaries", action="store_true", help="Show the Native dictionary catalog")
     parser.add_argument("--backup-all", type=Path, metavar="FILE.JSON", help="Save the Native catalog settings and overlays")
+    parser.add_argument("--bundle", action="store_true", help="Include exact flash extents with --backup-all")
     parser.add_argument("--dictionary", metavar="NAME", help="Select a dictionary for --backup")
     parser.add_argument("--backup", type=Path, metavar="FILE.JSON", help="Export the personal dictionary over USB HID")
     parser.add_argument("--confirm-erase", action="store_true", help="Explicitly replace the Native dictionary pool")
@@ -344,6 +345,8 @@ def main():
         parser.error("Choose exactly one action (see --help)")
     if args.dictionary is not None and not args.backup:
         parser.error("--dictionary goes with --backup")
+    if args.bundle and not args.backup_all:
+        parser.error("--bundle goes with --backup-all")
     if args.name is not None and not args.personal:
         parser.error("--as requires --import")
     if bool(args.move) != (args.position is not None) or (args.position is not None and args.position < 1):

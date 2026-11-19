@@ -47,6 +47,10 @@ def write_journal_header(image, segment, epoch, *, extent_segment=None):
                        1, SEGMENT, 0, 2, epoch)
 
 
+def overlay_record_span(strokes, text):
+    return (43 + 4 * len(strokes) + len(text)) & ~3
+
+
 def seed_entries(image, extents, next_segment, entries):
     """Build both indexes for a validated overlay collection before USB writes."""
     if not entries:
@@ -57,7 +61,7 @@ def seed_entries(image, extents, next_segment, entries):
     for sequence, ((identity, strokes), (operation, text)) in enumerate(entries.items(), 1):
         payload = struct.pack("<IBBH", identity, operation, len(strokes), len(text))
         payload += struct.pack(f"<{len(strokes)}I", *strokes) + text
-        span = (32 + len(payload) + 3) & ~3
+        span = overlay_record_span(strokes, text)
         if address + span > (segment + 1) * SEGMENT:
             segment, next_segment = next_segment, next_segment + 1
             if next_segment > 252:

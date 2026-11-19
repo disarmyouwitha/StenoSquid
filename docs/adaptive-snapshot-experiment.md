@@ -171,3 +171,18 @@ Legacy pre-index alignment contributes three bytes for Plover and two for the sy
 A fixed-width 24-bit rank-token design merits follow-up after hardware testing. Using 20 rank bits, four stroke-length bits and six-byte bucket descriptors projects savings of 494,720 bytes and seven segments for Plover, and 601,852 bytes and nine segments for the 200,000-entry fixture. That estimate assumes tightly packed tables with only final padding. A reader would need group addressing information and unaligned field handling, so the current build keeps SQS1 until the new reader's latency, stack use and recovery compatibility are measured. The binary format of tonight's firmware is unchanged.
 
 Reproduce with `python3 tools/bench/compact_index_overhead.py --output build/compact-index-overhead.json` once the pinned dictionaries are prepared. [Detailed size audit](benchmarks/compact-index-overhead.json)
+
+### Offline repacking
+
+The repacker takes a verified version 2 bundle and plans a compact physical layout on the computer. Existing compact images keep their contents and relative search indexes. The planner relocates their absolute JSC4 pointers, regenerates the journal and both checkpoint indexes, and keeps three free segments in reserve. It considers journal-only user dictionaries in catalog order and converts each only if it saves packed segments. It leaves that dictionary's tombstones and all other dictionaries' live edits in the shared overlay. Unsupported outlines and candidates that would save no space are reported.
+
+A journal-only store can be captured as a complete bundle with `--backup-all --bundle`. This reads flash and writes a host file. It holds the existing backup lease, so run it while idle. The repack step itself stays offline.
+
+```sh
+python3 stenosquid.py --backup-all build/source-bundle.json --bundle --serial SPARE_USB_SERIAL
+python3 tools/storage/native_repack.py build/source-bundle.json --report build/repack-report.json
+```
+
+Add `--image build/repack-simulation.bin` for a raw image used by fake-NOR tests. The planner emits no USB deployment manifest or reinstallable bundle. Use new output paths. `--convert NAME` can narrow the candidates and `--keep-representations` packs the existing formats.
+
+For the full 147,424-entry Plover personal journal, the offline target shrank from **226 to 141 used segments**. The contiguous free run grew from **29 to 114 segments**. All 438,827 per-dictionary translations and 243,093 active priority winners matched. Repacking an already indexed 200,000-entry personal snapshot kept its 142 used segments and verified its contents without changing formats. The mixed fake-NOR fixture verifies preservation of a disabled personal row, a pinned override and tombstone, a relocated existing snapshot, reverse/prefix/partial lookup, and 16 selected cuts and retries. Physical USB recovery and deployment of rebuilt layouts still require qualification. [Repack capacity report](benchmarks/offline-repack-capacity.json)
