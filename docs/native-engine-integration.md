@@ -233,8 +233,20 @@ generation 23 with the original catalog header, all three personal entries
 and the saved checkbox states. The other slot held a CRC-valid header for
 generation 24 with an erased commit word. The temporary entry was absent,
 KAT resolved to cat and full store verification passed. This covers the
-pre-commit boundary on hardware. Near-full operation remains untested on
-the board.
+pre-commit boundary on hardware.
+
+A separate Boardsource capacity trial allocated 171 empty test journals in
+the real shared pool, leaving six free segments. The board reopened with
+the original entries, selections, and KAT lookup intact. The normal bulk
+transfer refused an update that could not fit beside the current catalog,
+with zero erase, write, or commit commands sent by that transfer. A direct
+staging probe erased three free blocks and the firmware refused a fourth,
+preserving its three-segment reserve. Republishing the original catalog
+payload restored all 177 free segments. Cold reopen, the personal export,
+checkbox selections, KAT, and full integrity verification passed. This
+tests allocation pressure with sparse test data. Dense near-full lookup
+latency was not measured. The host scan took several minutes because it
+read the full contents of allocated journals, including empty ones.
 
 Before the trial, the board briefly reported unavailable after a failed
 export and two power cycles. A read-only diagnostic firmware boot then
