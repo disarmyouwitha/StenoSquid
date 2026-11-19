@@ -10,6 +10,8 @@ enum class LiveResult { More, Ready, Ok, Missing, Invalid, IoError, Corrupt,
                         NeedCheckpoint, NeedJournal, NeedRebuild, ReadOnly, Stale, Busy };
 struct LiveView {
     CatalogRoot root{};
+    // RAM-only key order; equal outlines retain sequence order (newest last).
+    // Committed flash journals remain chronological and keep the same format.
     Tail tail{};
     SegmentMap journals{};
     uint32_t identities[64]{};
@@ -50,6 +52,25 @@ class LiveJournal {
     bool Owns(const LiveView &view,uint32_t at)const {
         return at/kSegmentBytes<255 && at%kSegmentBytes>=256 && !(at%4) && view.journals.Contains(at/kSegmentBytes);
     }
+    LiveResult AppendTail(uint32_t address,uint32_t id,const uint32_t *strokes,uint8_t count) {
+        if(live.tail.count==Tail::kCapacity)return LiveResult::NeedRebuild;
+        uint32_t low=0,high=live.tail.count;
+        while(low<high) {
+            const uint32_t mid=low+(high-low)/2;JournalRecord record;
+            if(!Owns(live,live.tail.addresses[mid]))return LiveResult::Corrupt;
+            const auto status=journal.ReadKey(live.tail.addresses[mid],record);
+            if(status==JournalResult::IoError)return LiveResult::IoError;
+            if(status!=JournalResult::Ok || record.sequence>live.highwater || record.sequence<=live.through)return LiveResult::Corrupt;
+            RecordView ignored;bool io=false;
+            const int order=CompareOutline(record.address+32,record.payload_bytes,id,strokes,count,
+                [&](uint32_t at,uint8_t *out,size_t n){if(!device.Read(at,out,n)){io=true;return false;}return true;},ignored);
+            if(io)return LiveResult::IoError;
+            if(order<-1 || order>1)return LiveResult::Corrupt;
+            if(order<=0)low=mid+1;else high=mid;
+        }
+        for(uint32_t i=live.tail.count;i>low;--i)live.tail.addresses[i]=live.tail.addresses[i-1];
+        live.tail.addresses[low]=address;++live.tail.count;return LiveResult::Ok;
+    }
     LiveResult FindIn(const LiveView &view,uint32_t id,const uint32_t *strokes,uint8_t count,
                       RecordView &result) {
         if(!id || !strokes || !count || count>16 || view.tail.count>256 || view.dictionary_count>64 ||
@@ -66,13 +87,7 @@ class LiveJournal {
                (indexed?record.sequence>view.through:record.sequence<=view.through)){corrupt=true;return 2;}
             const auto comparison=CompareOutline(address+32,record.payload_bytes,id,strokes,count,
                 [&](uint32_t at,uint8_t *out,size_t n){if(!device.Read(at,out,n)){io=true;return false;}return true;},result);
-            if(!comparison && !io) {
-                // Validate full payload only for an exact match. Full recovery
-                // already validated nonmatching immutable records.
-                const auto checked=journal.Read(address,record);
-                if(checked==JournalResult::IoError)io=true;
-                else if(checked!=JournalResult::Ok)corrupt=true;
-            }
+            if(comparison<-1 || comparison>1)corrupt=true;
             return comparison;
         };
         auto read=[&](uint32_t offset,uint8_t *out,size_t n) {
@@ -81,7 +96,28 @@ class LiveJournal {
             if(!device.Read(view.forward_address+offset,out,n)){io=true;return false;}return true;
         };
         uint32_t address=0;
-        const auto found=FindLatestOrdered(view.tail,view.forward_count,read,compare,address);
+        uint32_t low=0,high=view.tail.count;
+        while(low<high) {
+            const uint32_t mid=low+(high-low)/2;
+            const int order=compare(view.tail.addresses[mid]);
+            if(order<-1 || order>1)break;
+            if(order<=0)low=mid+1;else high=mid;
+        }
+        Result found=Result::Missing;
+        if(!io && !corrupt && low && compare(view.tail.addresses[low-1])==0) {
+            address=view.tail.addresses[low-1];found=Result::Found;
+        }
+        if(!io && !corrupt && found==Result::Missing)found=FindOrdered(view.forward_count,read,compare,address);
+        if(found==Result::Found && !io && !corrupt) {
+            // Re-read the selected key so result describes the newest matching
+            // row, then CRC-check its full payload once, not at every probe.
+            if(compare(address)!=0)corrupt=true;
+            else {
+                JournalRecord record;const auto checked=journal.Read(address,record);
+                if(checked==JournalResult::IoError)io=true;
+                else if(checked!=JournalResult::Ok)corrupt=true;
+            }
+        }
         if(io)return LiveResult::IoError;
         if(corrupt || found==Result::Corrupt || found==Result::IoError)return LiveResult::Corrupt;
         return found==Result::Found?LiveResult::Ok:LiveResult::Missing;
@@ -139,7 +175,13 @@ public:
                 Observe(Word(key),key[5]);
                 live.highwater=record.sequence;live.highwater_address=record.address;
                 if(record.sequence==live.through)boundary_seen=true;
-                if(record.sequence>live.through && !live.tail.Append(record.address))return Fail(LiveResult::NeedRebuild);
+                if(record.sequence>live.through) {
+                    uint8_t bytes[64];uint32_t strokes[16];
+                    if(!device.Read(record.address+40,bytes,key[5]*4))return Fail(LiveResult::IoError);
+                    for(unsigned i=0;i<key[5];++i)strokes[i]=Word(bytes+i*4);
+                    const auto added=AppendTail(record.address,Word(key),strokes,key[5]);
+                    if(added!=LiveResult::Ok)return Fail(added);
+                }
                 return LiveResult::More;
             }
             if(status!=JournalResult::End && status!=JournalResult::Sealed)return Fail(LiveResult::Corrupt);
@@ -203,7 +245,8 @@ public:
         // A write/readback failure has an ambiguous commit outcome. Stop writes
         // and queries until recovery reconstructs it; never retry at this cursor.
         if(status!=JournalResult::Ok)return Fail(status==JournalResult::IoError?LiveResult::IoError:LiveResult::Corrupt);
-        if(!live.tail.Append(append_address))return Fail(LiveResult::Corrupt);
+        const auto added=AppendTail(append_address,id,strokes,count);
+        if(added!=LiveResult::Ok)return Fail(added==LiveResult::NeedRebuild?LiveResult::Corrupt:added);
         Observe(id,count);
         ++live.highwater;live.highwater_address=append_address;
         append_address+=span;

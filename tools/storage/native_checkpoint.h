@@ -10,7 +10,8 @@ enum class BuildResult { More, Done, Corrupt, IoError, Invalid };
 // CompareKey(a,b), CompareReverse(a,b) -> -1/0/1; 2 on invalid/IO.
 // Operation(address) -> 0=set,1=remove,2=reset; -1 on invalid/IO.
 // ReadIndex(reverse,position,address), Emit(reverse,address) -> bool.
-// Input tail is chronological; stable sorting retains the newest equal key.
+// Equal keys in the input tail must retain sequence order, newest last. Both a
+// chronological tail and the native stable key-ordered tail satisfy this rule.
 template <class Ops>
 class CheckpointBuilder {
     enum class Phase { Idle, SortForward, Dedup, ReverseCopy, SortReverse,

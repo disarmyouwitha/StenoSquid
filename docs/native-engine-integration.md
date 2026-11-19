@@ -1,7 +1,8 @@
 # Candidate B: full engine/store integration test build
 
 Status: **opt-in native engine implemented; full engine checkpoint passed CI; journal reclamation follow-up in verification; hardware validation pending**.
-Working branch: `prototype/native-index-retention`, following the CI-passing
+Working branch: `prototype/native-sorted-tail`, following the CI-passing
+`prototype/native-index-retention` and
 `prototype/native-journal-reclamation` and `prototype/native-engine-integration`. The CI-passing full-engine build is preserved
 at `checkpoint/native-engine-integrated` (`ec4c007`); the following stack reduction
 passed CI at `18e21a9`. Both descend from `prototype/native-checkpoint-job`. Main and normal firmware remain on
@@ -241,7 +242,59 @@ Local strict-NOR tests cover 380 torn mirror/index/catalog operations; a constra
 pool where direct three-pair checkpointing refuses but the prepared two-pair path
 succeeds; 24 edit/checkpoint/reboot reuse rounds; source and destination reader
 pins; ambiguous mirror commit; changed-source CRC refusal; and unchanged catalog
-commit counts when staging already fits. Full CI/hardware acceptance follows.
+commit counts when staging already fits. Retention passed [CI 44432909976](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44432909976)
+at `df6349e`, as well as the complete local suite. Hardware acceptance follows.
+
+## Sorted recent edits and a reproducible import experiment
+
+The 256-entry recent-edit address buffer is now sorted in RAM by dictionary/outline,
+with equal keys in commit order. Its size and checkpoint limit are unchanged. Flash
+journals remain chronological in the same format. Recovery reconstructs the sorted
+RAM view; edits insert an address after existing equal keys. Binary search selects
+the newest equal row and fully CRC-checks that selected payload once. Snapshots
+retain their own address order. Invalid probes fail closed instead of becoming misses.
+
+This removes the linear tail scan from normal lookups and checkpoint validation,
+and avoids sorting forward keys through repeated flash reads. Existing 700-edit /
+22,400-lookup oracle, snapshot, power-cut and malformed-record regressions pass.
+The full-tail long-translation miss now requests 504 bytes instead of 14,336;
+a 256-duplicate lookup validates only the selected newest 2 KiB payload.
+
+A developer-only harness now runs the actual native store/allocator against strict
+simulated NOR and the real factory image. It caches 32 CRC ranges like the firmware,
+reconstructs a fresh store/device, then verifies every committed entry—including
+when an import is safely refused partway through. It never opens a keyboard.
+
+```sh
+python3 tools/storage/bench_native_import.py \
+  --input build/plover/plover-main.json --limit 5000 \
+  --report build/native-import-report.json
+```
+
+Use `--limit 0` for the full source. `--storage-headers PATH` can compare archived
+headers without changing the working tree. Reports include raw-input, encoded-input,
+factory-image and storage-source SHA-256; compilation uses the selected header tree.
+Sources changing mid-run invalidate the report. The small automatic regression also
+checks that an alternate header directory actually controls compilation.
+
+[Recorded 5,000-entry comparison](native-import-benchmark.json), with the same input
+and factory image in each run:
+
+| Metric | Retention baseline | Sorted recent edits |
+| --- | ---: | ---: |
+| Requested read bytes, including reopen/verification | 2,046,316,525 | 578,205,661 |
+| Read calls | 171,196,875 | 48,811,616 |
+| Maintenance steps | 1,064,796 | 770,480 |
+| Program calls | 22,776 | 22,776 |
+| Journal/index segment erases | 44 | 44 |
+| Catalog erases | 24 | 24 |
+| Entries verified after fresh reconstruction | 5,000 | 5,000 |
+
+The approximately 72% read reduction adds no RAM or flash writes. The local ARM
+link remains at 230,942 RAM bytes; flash is 469,528 bytes. These are requested IO
+counts, not wire-alignment/cache measurements, MCU timing, power or typing latency.
+Maintenance still rewrites/verifies indexes repeatedly during per-entry bulk imports;
+staged bulk import remains worth pursuing even after this reduction.
 
 ## Verified integration baseline artifacts
 
@@ -280,7 +333,7 @@ external-flash changes were applied to the connected board during this solo work
 
 ## Large editable-import capacity is still a gate
 
-The 200,000-entry model bound is **not** a capacity promise. Native records include
+The 200,000-entry synthetic test target is **not** a capacity promise. Native records include
 identity, sequence, commit/CRC, outline and text; checkpoints must also protect the
 index pair referenced by each catalog while staging a new pair. In the worst case
 that meant three forward/reverse pairs at once in the verified baseline. The
@@ -331,3 +384,15 @@ Wholly dead journals can now be reclaimed after ownership is released. Partially
 stale journals still retain their allocation, so sustained growth can safely
 refuse an edit when staging/reserve space is exhausted. Do not promote this build
 to the normal release until those remaining acceptance gates are resolved.
+
+## Live-record compaction: next design boundary
+
+The next compactor can replay only still-current records out of a selected old
+journal, using normal committed appends and bounded checkpoints. It must reserve
+the victim independently of catalog-slot pins across multiple publications, preserve
+dictionary identity and set/remove/reset semantics, and release that journal only
+when both catalogs and all readers no longer need it. It also needs destination
+and checkpoint headroom before starting; a victim with no reclaimable space should
+not be copied merely to move bytes around. This is not implemented or enabled yet.
+Full-scale import measurements and power-cut tests should guide that work rather
+than assuming compact-layout arithmetic proves a safe cleaning schedule.

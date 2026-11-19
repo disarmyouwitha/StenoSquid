@@ -126,7 +126,7 @@ void bounded_lookup_and_invalidation() {
     const auto before=fixture.nor.read_bytes;
     assert(fixture.live.FindLive(1,&key,1,result)==LiveResult::Missing);
     const auto miss_bytes=fixture.nor.read_bytes-before;
-    assert(miss_bytes<20000); // Not 256 complete 2 KiB translations.
+    assert(miss_bytes<1024); // Logarithmic key probes, not a scan of 256 records.
     LiveView snapshot;const auto calls=fixture.nor.reads;
     assert(fixture.live.Snapshot(snapshot)==LiveResult::Ok && fixture.nor.reads==calls);
     key=256;assert(fixture.live.FindSnapshot(snapshot,1,&key,1,result)==LiveResult::Ok);
@@ -137,6 +137,25 @@ void bounded_lookup_and_invalidation() {
     assert(fixture.live.FindSnapshot(snapshot,1,&key,1,result)==LiveResult::Invalid);
     assert(fixture.live.Release(snapshot));
     std::cout<<"Live journal: full-tail miss reads "<<miss_bytes<<" bytes; zero-read pins, matched-payload corruption and trust invalidation passed\n";
+}
+void sorted_tail_probes() {
+    LiveFixture duplicates;
+    const std::string long_text(2047,'x');
+    for(unsigned i=0;i<256;++i) {
+        auto status=duplicates.Edit(1,1,long_text);
+        if(status==LiveResult::NeedJournal){assert(duplicates.Rollover());status=duplicates.Edit(1,1,long_text);}
+        assert(status==LiveResult::Ok);
+    }
+    const auto bytes=duplicates.nor.read_bytes;RecordView record;uint32_t key=1;
+    assert(duplicates.live.FindLive(1,&key,1,record)==LiveResult::Ok);
+    assert(duplicates.nor.read_bytes-bytes<4096); // CRC only the selected newest payload.
+    LiveFixture malformed;
+    for(unsigned i=1;i<=3;++i)assert(malformed.Edit(1,i,"value")==LiveResult::Ok);
+    key=2;assert(malformed.live.FindLive(1,&key,1,record)==LiveResult::Ok);
+    malformed.nor.data[record.text_address-7]=0; // Invalid stroke count in a binary-search probe.
+    key=99;assert(malformed.live.FindLive(1,&key,1,record)==LiveResult::Corrupt);
+    assert(!malformed.live.Ready()); // Never reinterpret an invalid probe as a miss.
+    std::cout<<"Live sorted tail: newest duplicate CRC checked once and malformed nonmatching probes fail closed\n";
 }
 void maintenance_power_cuts() {
     LiveFixture source;
@@ -179,4 +198,4 @@ void maintenance_power_cuts() {
     }
     std::cout<<"Live journal: "<<tested[0]<<" integrated torn checkpoints and "<<tested[1]<<" torn journal rollovers preserve committed edits after cold reconstruction\n";
 }
-int main(){basic_and_snapshots();churn();bounds_and_rollover();recovery_failures();bounded_lookup_and_invalidation();maintenance_power_cuts();}
+int main(){basic_and_snapshots();churn();bounds_and_rollover();recovery_failures();bounded_lookup_and_invalidation();sorted_tail_probes();maintenance_power_cuts();}
