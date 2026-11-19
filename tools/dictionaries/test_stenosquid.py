@@ -29,6 +29,8 @@ class Keyboard:
 
     def command(self, text, timeout=30):
         self.commands.append(text)
+        if text == 'native_install status':
+            return 'ERR Command unavailable on this keyboard'
         _, operation, *args = text.split()
         if operation == 'status':
             state = 'READY' if len(self.verified) == len(self.images) else 'INSTALL'
@@ -164,9 +166,33 @@ class InstallerTest(unittest.TestCase):
     def test_backup_and_import_dispatch(self):
         for action, function in (('--backup', 'backup_file'), ('--import', 'import_file')):
             with mock.patch.object(import_personal, function) as call, \
+                 mock.patch.object(import_personal, 'open_console', return_value=nullcontext(Keyboard(self.images))), \
                  mock.patch.object(sys, 'argv', ['stenosquid.py', action, 'dict.json', '--serial', 'S1']):
                 stenosquid.main()
             call.assert_called_once_with(Path('dict.json'), 'S1')
+
+    def test_native_install_skips_ready_store_and_refuses_unconfirmed_erase(self):
+        for status in ('NATIVE2 READY 3', 'NATIVE2 UNPROVISIONED 0'):
+            with self.subTest(status=status):
+                console = mock.Mock()
+                console.command.return_value = status
+                with mock.patch.object(import_personal, 'open_console', return_value=nullcontext(console)), \
+                     mock.patch.object(sys, 'argv', ['stenosquid.py', '--install']), redirect_stdout(io.StringIO()):
+                    if 'UNPROVISIONED' in status:
+                        with self.assertRaisesRegex(RuntimeError, '--confirm-erase'):
+                            stenosquid.main()
+                    else:
+                        stenosquid.main()
+                console.command.assert_called_once_with('native_install status')
+
+    def test_packed_install_refuses_older_native_protocol(self):
+        console = mock.Mock()
+        console.command.return_value = 'NATIVE1 READY 3'
+        with mock.patch.object(import_personal, 'open_console', return_value=nullcontext(console)), \
+             mock.patch.object(sys, 'argv', ['stenosquid.py', '--install', '--confirm-erase']), \
+             self.assertRaisesRegex(RuntimeError, 'matching Native firmware'):
+            stenosquid.main()
+        console.command.assert_called_once_with('native_install status')
 
     def test_diag_auto_detects_one_port(self):
         port = object()
