@@ -225,8 +225,16 @@ a temporary import, before either catalog was published. After battery and USB
 power were restored, both catalog headers matched the pre-test copies, the
 selected generation was still 23, and the three personal entries and checkbox
 settings matched. KAT resolved to cat, and full store verification passed.
-The trial interrupted staging, so it does not qualify cuts at catalog
-publication or near-full operation.
+A separate catalog publication trial used a temporary firmware hook
+(`40c5dd3`) to pause after the inactive slot and its replacement payload
+were written and verified, just before writing the commit word. The owner
+disconnected USB and battery power during the pause. Cold boot selected
+generation 23 with the original catalog header, all three personal entries
+and the saved checkbox states. The other slot held a CRC-valid header for
+generation 24 with an erased commit word. The temporary entry was absent,
+KAT resolved to cat and full store verification passed. This covers the
+pre-commit boundary on hardware. Near-full operation remains untested on
+the board.
 
 Before the trial, the board briefly reported unavailable after a failed
 export and two power cycles. A read-only diagnostic firmware boot then
