@@ -1,7 +1,8 @@
 # Candidate B: full engine/store integration test build
 
 Status: **opt-in native engine implemented; full engine checkpoint passed CI; journal reclamation follow-up in verification; hardware validation pending**.
-Working branch: `prototype/native-sorted-tail`, following the CI-passing
+Working branch: `prototype/native-warm-resume`, following the CI-passing
+`prototype/native-sorted-tail` and
 `prototype/native-index-retention` and
 `prototype/native-journal-reclamation` and `prototype/native-engine-integration`. The CI-passing full-engine build is preserved
 at `checkpoint/native-engine-integrated` (`ec4c007`); the following stack reduction
@@ -296,6 +297,33 @@ counts, not wire-alignment/cache measurements, MCU timing, power or typing laten
 Maintenance still rewrites/verifies indexes repeatedly during per-entry bulk imports;
 staged bulk import remains worth pursuing even after this reduction.
 
+## Guarded same-boot idle resume
+
+An already healthy native mapper now tries a same-boot resume after quad/DMA access
+is restored. It requires an open, ready store, no maintenance, writable/non-quarantined
+catalog state, matching selected/live roots and no retained lookup/export leases.
+Both catalog slots are inspected through DMA: committed metadata must match a
+trusted RAM root; the selected root must match exactly. The six mapped base probes
+then run before READY is returned. Root changes, IO/corruption, pins, unfinished work
+or an uninitialized instance refuse the shortcut and take the existing full path.
+
+This is a retained-RAM/data-retention trust path; it does not claim to CRC every
+journal/index payload on each idle wake. Full reboot/deep sleep starts with no
+healthy mapper RAM and still performs full native catalog/journal/index validation.
+Explicit verify remains available. Installation and detected faults clear readiness,
+so they cannot reuse an old map. The shortcut adds no flash writes, replays no log,
+does not reconstruct the engine, and retains saved dictionary selection.
+
+`native_manage.py --status` now includes `warm_resumes` and `full_opens` (RAM counters
+that reset on reboot). Local portable tests check bounded metadata-only reads,
+read-only behavior, saved flag/maintenance transitions, retained pins, damaged
+metadata, unknown generations and cold-instance refusal. Base probe/power behavior
+still needs the real-board idle/deep-sleep tests. The local ARM link uses 230,950
+RAM bytes, eight more than the sorted-tail build.
+
+The sorted-tail build itself passed [CI 44436284566](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44436284566)
+at `7fb9840`, including all normal/native variants, host tests and sanitizers.
+
 ## Verified integration baseline artifacts
 
 Source [`634255b`](https://github.com/disarmyouwitha/StenoSquid/commit/634255b2091cd34d1af894e1a14fe8826dff5239)
@@ -396,3 +424,27 @@ and checkpoint headroom before starting; a victim with no reclaimable space shou
 not be copied merely to move bytes around. This is not implemented or enabled yet.
 Full-scale import measurements and power-cut tests should guide that work rather
 than assuming compact-layout arithmetic proves a safe cleaning schedule.
+
+Compaction should initially exclude the active append journal and the journal
+holding the current high-water sequence. Leaving an anchor until real edits move
+it is preferable to inserting hidden no-op user entries. A RAM segment-exclusion
+lease must protect the victim across maintenance jobs; pinning its old catalog for
+the entire run would prevent later catalog-slot publications. A reset discards the
+cursor and restarts from validated ownership rather than requiring a migration or
+persistent cleaner-resume format.
+
+Headroom needs a fresh destination journal plus the staged index pair and reserve.
+The current checkpoint planner conservatively allocates old-count plus tail-count,
+which can add a segment to each index at a boundary even when cloning existing
+keys. That bound must be budgeted or tightened before automatic cleaning is enabled.
+The allocator's three-segment minimum alone is not a qualified GC guarantee. A
+victim with at most one journal's surviving records should need at most one new
+journal, but each intermediate checkpoint must also fit without consuming its
+own future working space.
+
+Replaying current set/remove records with new sequence numbers leaves lookup
+semantics unchanged. Flush within the 256-edit bound, perform a final checkpoint,
+and release the victim only after catalog/read ownership allows it. Interrupted
+runs may leave duplicate equivalent records; they must never leave missing or
+resurrected translations. Test these properties with fault injection before
+adding the coordinator to firmware.

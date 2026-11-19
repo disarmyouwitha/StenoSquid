@@ -1,6 +1,7 @@
 // Opt-in full-engine integration for Candidate B. Normal firmware is unchanged.
 #include "native_store_runtime.h"
 #include "native_input.h"
+#include "native_warm_resume.h"
 #include "clock.h"
 #include "../../tools/storage/native_work_slice.h"
 #include "native_collection_sync.h"
@@ -96,7 +97,7 @@ struct FlashDevice {
 NativeStore<FlashDevice> store(flash_device);
 NativeValidator<FlashDevice> validator(flash_device,store.catalog);
 bool healthy=false,loaded=false,exporting=false,maintenance_hold=false;
-uint32_t maintenance_steps=0;
+uint32_t maintenance_steps=0,warm_resumes=0,full_opens=0;
 StenoDictionary *parent=nullptr;
 LiveView export_view;
 OverlayCursor export_cursor;
@@ -408,7 +409,7 @@ void lookup_outline(void *,const char *line) {
 }
 void store_status(void *,const char *) {
     const auto *personal=ByName("user_dictionary");
-    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"read_only\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"work_steps\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",store.selected.quarantine?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),maintenance_steps,steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
+    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"read_only\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"warm_resumes\":%u,\"full_opens\":%u,\"work_steps\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",store.selected.quarantine?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),warm_resumes,full_opens,maintenance_steps,steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
     for(size_t i=0;i<cell_count;++i)Console::Printf("%s%u",i?",":"",cells[i].identity);
     Console::Printf("]}\n\n");
 }
@@ -503,7 +504,15 @@ uint32_t BaseFingerprint(const CatalogRoot &root) {
 } // namespace
 
 extern "C" bool steno_squid_native_flash_open(void) {
-    healthy=false;flash_device.mapped=false;
+    // Only a same-boot, previously healthy mapper can retain its validated
+    // layout. Metadata must be read from DMA before trusting mapped pointers.
+    flash_device.mapped=false;
+    if(healthy && loaded && NativeWarmResumeEligible(store)) {
+        flash_device.mapped=true;
+        for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
+        ++warm_resumes;return true;
+    }
+    healthy=false;++full_opens;
     LoadNativeTrust();
     const auto result=store.Open([](const CatalogRoot &root){
         const uint32_t fingerprint=BaseFingerprint(root);
