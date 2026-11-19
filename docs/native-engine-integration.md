@@ -473,6 +473,14 @@ recorded zero overflows. All three personal entries, the current selection
 and sampled translations matched before and after, and the full integrity
 verification passed. This was a small dictionary and a short typing sample.
 
+In a separate eight-checkpoint trial, the owner saw Saving briefly before the
+display returned to Javelin. The typing trial's counters were sampled before
+its final integrity scan. The next status showed a 7.615 s queued key wait, and
+a timed standalone `user_dictionary_verify` took 7.966 s with no change in
+checkpoint work steps. The integrity scan holds the dictionary lock, so a test
+that types during that scan can see a much longer pause and subsequent replay
+than during a checkpoint. Measure the two operations separately.
+
 ## Hardware acceptance checklist
 
 1. Flash the exact Left-Native Actions UF2 and run the clean installer. Confirm
