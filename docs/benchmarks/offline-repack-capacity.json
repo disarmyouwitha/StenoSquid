@@ -3,7 +3,7 @@
   "full_147424_entry_personal_journal": {
     "format": "stenosquid-offline-repack-1",
     "source_bundle_sha256": "b7925cb2ab26ea90e7b60ba51104f6799637fcb188f32ac55ead7964c976d0aa",
-    "target_image_sha256": "03c3edaf38536619505bbaf1e1ec05228747947255d216d6e16f17df9ee46255",
+    "target_image_sha256": "03edf155867704d759e1fbc9e4f69f68c4cca3e38b3963a2c274483b02da16f6",
     "host_layout": "Mac U.S.",
     "maintenance_reserve": 3,
     "source_layout": {
@@ -13,12 +13,12 @@
       "free_after_reserve": 26
     },
     "target_layout": {
-      "used_segments": 141,
-      "free_segments": 114,
-      "largest_free_run": 114,
-      "free_after_reserve": 111
+      "used_segments": 111,
+      "free_segments": 144,
+      "largest_free_run": 144,
+      "free_after_reserve": 141
     },
-    "saved_segments": 85,
+    "saved_segments": 115,
     "converted": [
       "user_dictionary"
     ],
@@ -31,21 +31,21 @@
   },
   "existing_200000_entry_personal_snapshot": {
     "format": "stenosquid-offline-repack-1",
-    "source_bundle_sha256": "2d8c7dc59a40c754828185e54c9c1dfee94fbf559d6d69e513df9f6753ac4d71",
-    "target_image_sha256": "0dfc1bfb4c36a88e60a261cd590b2aefbd9e67de8562334626523c4199c8e732",
+    "source_bundle_sha256": "e0129a494326114d30d2fb51ed8c00fe1ca1c5800f476f9f38dcd7cea9df2b11",
+    "target_image_sha256": "54df7b15cc70761c6d4fb1f7c324dc89a92ee4cdcb7243ce50e104417f45fd67",
     "host_layout": "Mac U.S.",
     "maintenance_reserve": 3,
     "source_layout": {
-      "used_segments": 142,
-      "free_segments": 113,
-      "largest_free_run": 113,
-      "free_after_reserve": 110
+      "used_segments": 105,
+      "free_segments": 150,
+      "largest_free_run": 150,
+      "free_after_reserve": 147
     },
     "target_layout": {
-      "used_segments": 142,
-      "free_segments": 113,
-      "largest_free_run": 113,
-      "free_after_reserve": 110
+      "used_segments": 105,
+      "free_segments": 150,
+      "largest_free_run": 150,
+      "free_after_reserve": 147
     },
     "saved_segments": 0,
     "converted": [],

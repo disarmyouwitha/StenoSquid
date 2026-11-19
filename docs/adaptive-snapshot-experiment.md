@@ -2,7 +2,7 @@
 
 This branch adds opt-in named snapshots and explicit personal conversion over USB. Existing journal dictionaries continue to open in their original format. Keep using the known-good Native release on your everyday board.
 
-Start with the [hardware checkpoint and test sequence](#tonights-hardware-checkpoint-and-test-sequence) for the preserved `4e1f9a4` firmware, fixture commands, and rollback.
+Start with the [hardware checkpoint and test sequence](#tonights-hardware-checkpoint-and-test-sequence) for the corrected build, fixture commands, and the preserved `4e1f9a4` rollback.
 
 ## Gate A results
 
@@ -30,7 +30,7 @@ python3 tools/tests/test_native_stage.py
 
 [JSON measurements](benchmarks/adaptive-snapshot-gate-a.json) and [CSV measurements](benchmarks/adaptive-snapshot-gate-a.csv) record pinned hashes, compiled bytes, record and index estimates, and contiguous-run and total-space checks. All successful staged cases compared every translation after reconstructing the image. The original legacy `TestConstantCost(190000)` passed with 37 free segments, up to six program calls to add, one to remove, and 2,084 open reads. That fixture uses arbitrary 32-bit keys, so its result is a separate reference. The Native/JSC4 synthetic corpus round-trips through the real outline parser.
 
-The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengths and checks recovery, dictionary IDs/order/selections and unrelated entries. The firmware also checks staged extent CRCs and uses the normal Native dictionary adapter for forward lookup. Full compact-baseline reverse lookups, prefix/partial search, the post-churn benchmark matrix, and hardware latency and power-cut acceptance remain open. Gate A host timings do not predict typing latency.
+The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengths and checks recovery, dictionary IDs/order/selections and unrelated entries. The firmware also checks staged extent CRCs and uses the normal Native dictionary adapter for forward lookup. Hardware latency and power-cut acceptance remain open. Gate A host timings do not predict typing latency.
 
 ## Hardware smoke test
 
@@ -134,11 +134,61 @@ Append `--stage` after reviewing the contiguous extent requirement and the total
 
 The [personal capacity report](benchmarks/personal-snapshot-capacity.json) validates every translation for Plover and the legal 200,000-entry target. A nearly full journal may leave too little contiguous room to preserve the old root while staging. The full Plover journal fixture left 29 contiguous segments and was refused. Both large compact images fit on the pinned factory pool using fill-only conversion, with no clean install. A fixture with 158 free segments but a seven-segment largest run refused both images. A small real Native transaction recovered across 92 simulated flash boundaries with two tear lengths, preserving the disabled flag, priority, ID and tombstone.
 
-## Indexed compact lookup
+## Lean compact storage and search capabilities
 
-New user snapshots include a relocatable SQS1 trailer. Explicit Javelin editor searches use a sorted text index for exact and prefix lookups, and a posting table for partial outlines anywhere in a longer stroke sequence. Search filters out replaced and removed baseline entries, disabled snapshots, and outlines owned by a higher-priority enabled dictionary. Forward lookup and Practice use the same JSC4 tables as before. Typing-time suggestions retain the existing one-stroke hint path. Earlier snapshots remain readable and gain the search tables on explicit consolidation or replacement.
+Commit `48f6f97` made `compile_snapshot()` append SQS1 by default when it added
+exhaustive editor search. Named import preview and staging, personal conversion,
+same-ID replacement, and consolidation all call that compiler. The offline
+repacker subsequently inherited the same default when converting journals.
+Installing or restoring an existing image kept the exact captured bytes.
 
-For the 200,000-entry fixture, locating an exact-text result range took 86 simulated word reads and 485 byte reads. Locating a partial-outline bucket took 13 word reads before candidate checks. These are reader calls in a host harness, and physical timing remains a board test. The indexes are read directly from flash and add no persistent RAM allocation. They raise the Plover snapshot footprint from 36 to 66 contiguous segments, and the legal 200,000-entry fixture from 30 to 67. Both indexed fixtures passed full personal export parity. [Indexed capacity report](benchmarks/personal-snapshot-indexed-capacity.json)
+New snapshots use the original JSC4 plus SHI1 bytes. The existing SQS1 reader
+and version 2 validation still support indexed snapshots. They remain indexed
+until an explicit replacement or consolidation. Offline repacking copies
+existing compact images as-is apart from relocating absolute pointers. It
+compiles any newly converted dictionaries as lean JSC4.
+
+| Path | What it supports |
+| --- | --- |
+| Javelin compact map | Exact forward lookup with per-outline-length hash tables, occupancy bitmaps and 24-bit rows, plus entry enumeration for export. Upstream partial-outline search enumerates rows of eligible lengths. Upstream exact reverse and prefix methods consume candidate entry addresses supplied by a separate reverse-map layer. The plain forward tables cannot produce these candidates efficiently by text. |
+| StenoSquid SHI1 | An exact translation can suggest one preferred single chord. The compiler selects the candidate with the fewest keys, then the smallest mask. There is no multi-stroke candidate, prefix enumeration or list of all equivalent single chords. The Native adapter checks that the selected outline still resolves to this dictionary and is visible through overlays. |
+| Native journal and overlays | Forward and reverse checkpoint indexes with a bounded live tail preserve current sets, replacements and tombstones. The reverse index accelerates exact text for current journal sets. Prefix and partial-outline queries enumerate live journal entries, retaining their existing result limits. |
+| Lean StenoSquid compact baseline | Forward lookup, Practice, export, and SHI1 hints. The USB editor can return the one-stroke SHI1 candidate for exact text, plus existing journal matches. Multi-stroke exact reverse, prefix and partial-outline matches from the lean baseline are absent. A missing search result does not prove an outline is absent. |
+| Existing SQS1 compact baseline | The editor still searches indexed exact text, prefixes and partial outlines with overlay, enabled-state and priority filtering. Typing-time hints stay on SHI1. |
+| USB host | Export a dictionary to search all of its effective translations and outline sequences. Export merges that dictionary's baseline with its own overlays. Use the saved catalog order and enabled flags to reconstruct cross-dictionary winners. For any future on-device scan, a result cap alone cannot bound no-hit latency. A scan would need a fixed work budget, continuation and cancellation that yields to typing. No such scan is enabled. |
+
+The StenoSquid Native adapter reads compact data through QSPI-safe accessors.
+It does not call the generic Javelin compact-map partial scan against these
+snapshots. The upstream source audit used the pinned Javelin implementation.
+[Compact map](https://github.com/disarmyouwitha/javelin-steno/blob/de5a629bb383581882dfd6a5b2b5b9b44b71dc9c/dictionary/compact_map_dictionary.cc)
+· [Reverse-map layer](https://github.com/disarmyouwitha/javelin-steno/blob/de5a629bb383581882dfd6a5b2b5b9b44b71dc9c/dictionary/reverse_map_dictionary.cc)
+
+### Capacity gate
+
+| Same input | Original JSC4 + SHI1 | Regressed SQS1 | Corrected default | Conversion / consolidation staging |
+| --- | ---: | ---: | ---: | ---: |
+| Plover, 147,424 | 2,339,624 B / 36 segments | 4,318,524 B / 66 | 2,339,624 B / 36 | 37 / 37 segments |
+| Synthetic, 200,000 | 1,931,932 B / 30 segments | 4,339,360 B / 67 | 1,931,932 B / 30 | 31 / 31 segments |
+
+Each segment is 64 KiB. Neither corrected image adds any per-image metadata
+beyond JSC4 and the existing SHI1. The pinned-factory, empty-overlay fixture has
+one shared journal segment and zero forward or reverse checkpoint extents.
+The Native catalog uses two root segments and the measured 800-byte catalog
+payload needs one separate staging segment. Existing overlays and indexed
+journal records add their normal shared storage and may add staging segments.
+Each update still needs to leave the three-segment maintenance reserve free.
+
+CI compiles the same data through the original builder and the default
+snapshot compiler, requires byte-for-byte equality and the exact size
+budgets above, and checks every forward lookup and export after relocating and
+staging both corpora. Run it after preparing the pinned dictionaries.
+
+```sh
+python3 tools/tests/test_native_compact_capacity.py
+```
+
+[Capacity gate output](benchmarks/lean-snapshot-capacity.json)
+· [Historical SQS1 breakdown](benchmarks/compact-index-overhead.json)
 
 ## Experimental USB recovery on a spare
 
@@ -153,26 +203,13 @@ The host validates every extent before contacting the board. The firmware accept
 
 For physical qualification, test an initially blank spare and interruptions during **Erasing**, data transfer, and the **Verifying** message. Record the point reached, reboot with USB and battery restored, and repeat the command. Verify the exported test dictionary and overlays, dictionary ordering, checkboxes, and host layout against the bundle. Inspect the physical catalog after a near-publication cut if the timing is observable. Host fault injection covered 138 boundaries in two initial states and with two tear lengths. Neither Manager nor automatic import selection offers destructive recovery.
 
-### Search and eligibility checks for the hardware gate
+### Import eligibility
 
-Convert the spare's existing personal dictionary. For a search fixture, supply a fill-only JSON containing several related translations and a longer outline with the same stroke in more than one position. Verify the original personal entries and its checkbox before and after reboot. Add a personal replacement and a tombstone, repeat the searches, then consolidate and export again. The effective export should match across consolidation.
-
-In the Javelin console over USB, use `lookup TEXT` for reverse search, `lookup_prefix 20 PREFIX` for text prefixes, and `lookup_partial_outline OUTLINE 20` for a stroke sequence. Check a multi-stroke hit, a hidden baseline, and whether moving a higher-priority dictionary or disabling the snapshot changes the result. While editing, also try normal Javelin typing, an existing one-stroke hint, and a Practice round to check responsiveness.
-
-The import preview now distinguishes a same-size copy-on-write replacement, an initial image that fits but would need more space for a future replacement, and an initial image that cannot stage. The second case remains gated. Experimental USB recovery currently restores the verified bundle exactly. Using a rebuilt target to admit an otherwise ineligible import still needs physical recovery qualification and a validated target-layout workflow. Manager offers no destructive fallback.
-
-### SQS1 size audit
-
-| Corpus | Reverse/text | Partial buckets | Partial postings | SQS1 alignment | SQS1 footer | Added bytes |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Pinned Plover | 589,696 | 155,304 | 1,233,880 | 0 | 20 | 1,978,900 |
-| Legal 200,000-entry fixture | 800,000 | 8,192 | 1,599,216 | 0 | 20 | 2,407,428 |
-
-Legacy pre-index alignment contributes three bytes for Plover and two for the synthetic corpus. The usable segment rounding leaves 6,852 and 51,552 unused bytes respectively. Plover's 19,413 buckets include 19,373 distinct posting lists, and the synthetic lists have no duplicates. Adding explicit lengths to share identical lists would therefore grow both images. Signed delta encoding of the existing ordered posting lists would save one Plover segment and zero synthetic segments before any random-access metadata.
-
-A fixed-width 24-bit rank-token design merits follow-up after hardware testing. Using 20 rank bits, four stroke-length bits and six-byte bucket descriptors projects savings of 494,720 bytes and seven segments for Plover, and 601,852 bytes and nine segments for the 200,000-entry fixture. That estimate assumes tightly packed tables with only final padding. A reader would need group addressing information and unaligned field handling, so the current build keeps SQS1 until the new reader's latency, stack use and recovery compatibility are measured. The binary format of tonight's firmware is unchanged.
-
-Reproduce with `python3 tools/bench/compact_index_overhead.py --output build/compact-index-overhead.json` once the pinned dictionaries are prepared. [Detailed size audit](benchmarks/compact-index-overhead.json)
+The preview distinguishes a same-size copy-on-write replacement, an initial
+image that fits but would need more space for a future replacement, and an
+initial image that cannot stage. The second case remains gated. Experimental
+USB recovery restores a verified bundle exactly. Manager offers no destructive
+fallback. See the checklist below for the expected editor search differences.
 
 ### Offline repacking
 
@@ -187,11 +224,11 @@ python3 tools/storage/native_repack.py build/source-bundle.json --report build/r
 
 Add `--image build/repack-simulation.bin` for a raw image used by fake-NOR tests. The planner emits no USB deployment manifest or reinstallable bundle. Use new output paths. `--convert NAME` can narrow the candidates and `--keep-representations` packs the existing formats.
 
-For the full 147,424-entry Plover personal journal, the offline target shrank from **226 to 141 used segments**. The contiguous free run grew from **29 to 114 segments**. All 438,827 per-dictionary translations and 243,093 active priority winners matched. Repacking an already indexed 200,000-entry personal snapshot kept its 142 used segments and verified its contents without changing formats. The mixed fake-NOR fixture verifies preservation of a disabled personal row, a pinned override and tombstone, a relocated existing snapshot, reverse/prefix/partial lookup, and 16 selected cuts and retries. Physical USB recovery and deployment of rebuilt layouts still require qualification. [Repack capacity report](benchmarks/offline-repack-capacity.json)
+For the full 147,424-entry Plover personal journal, the offline target shrank from **226 to 111 used segments**. The contiguous free run grew from **29 to 144 segments**. All 438,827 per-dictionary translations and 243,093 active priority winners matched. Repacking an already lean 200,000-entry personal snapshot kept its 105 used segments and verified its contents without changing formats. The mixed fake-NOR fixture verifies preservation of a disabled personal row, a pinned override and tombstone, a relocated existing snapshot, reverse/prefix/partial lookup, and 16 selected cuts and retries. Physical USB recovery and deployment of rebuilt layouts still require qualification. [Repack capacity report](benchmarks/offline-repack-capacity.json)
 
 ## Tonight's hardware checkpoint and test sequence
 
-Use the UF2s built from `4e1f9a434e7b23ab5e61ebc9646ab7502f194895`. The repacker and the index study are host-only. Keep the matching right firmware in place. The kit's [JSON fixtures](fixtures/adaptive-snapshot/) assume a disposable, provisioned spare with an empty journal-only personal dictionary and Lapwing Base enabled. If a spare has other personal data, export it before the test and compare fixture entries as a subset of that export instead of wiping it.
+Use the two `Left-Snapshot-Experimental` artifacts from the corrective CI run and use the scripts from the same branch revision. The compiler runs on the host, so replacing a UF2 alone leaves existing snapshot bytes unchanged. Keep the matching right firmware in place. The following `4e1f9a4` artifacts are the rollback/reference UF2s. The kit's [JSON fixtures](fixtures/adaptive-snapshot/) assume a disposable, provisioned spare with an empty journal-only personal dictionary and Lapwing Base enabled. If a spare has other personal data, export it before the test and compare fixture entries as a subset of that export instead of wiping it.
 
 | Left half | Boot volume | SHA-256 |
 | --- | --- | --- |
@@ -228,7 +265,9 @@ Use the UF2s built from `4e1f9a434e7b23ab5e61ebc9646ab7502f194895`. The repacker
    python3 stenosquid.py --list-dictionaries --serial "$SERIAL"
    ```
 
-   In the Javelin USB console, `lookup sqcheck catalog` should return `KAT/TA`. `lookup_prefix 20 sqcheck ca` should include `KAT` and `KAT/TA`. `lookup_partial_outline KAT 20` should include `KAT/TA`, `TA/KAT`, and `KAT/KAT/TA`, with the repeated-stroke outline listed once. For priority, temporarily move personal below enabled Lapwing Base, check that the factory `KAT` wins and that `lookup sqcheck cat` no longer offers personal's `KAT`, then restore the original order. Disable personal and repeat, then re-enable it. Both adjustments write settings to the external catalog.
+   Forward lookup must resolve `KAT/TA` through the lean baseline. In the Javelin console, `lookup sqcheck cat` can offer the SHI1 candidate `KAT`. The baseline-only multi-stroke result for `lookup sqcheck catalog`, and the lean baseline results for `lookup_prefix 20 sqcheck ca` and `lookup_partial_outline KAT 20`, are absent by design. These entries must still appear in the full personal export. Temporarily put personal below enabled Lapwing Base and check that the factory `KAT` wins and the personal hint disappears. Reorder it back, disable personal, repeat, then re-enable it. Those priority and checkbox changes write the catalog.
+
+   If the spare already has a known indexed snapshot, record its baseline-only exact, prefix and partial results before changing it and repeat them on the corrected firmware. If you choose to consolidate that indexed snapshot, forward translations and export must match and the new baseline uses lean search behavior.
 4. **Edit and consolidate.** Set `PERSONAL_ID` to the current numeric ID. The edit file replaces `KAT/TA` and adds `KAT/KAT`; the explicit remove adds a tombstone for `PWOB`. The old exact reverse hit for “sqcheck catalog” and the personal “sqcheck removed” hit should disappear. Pinned fallback for that outline can still resolve. Export before and after consolidation, compare the JSON as dictionaries, and confirm that the personal ID is stable and its overlay count is zero in Manager's **Measure saved edits**.
 
    ```sh
@@ -270,3 +309,35 @@ Use the UF2s built from `4e1f9a434e7b23ab5e61ebc9646ab7502f194895`. The repacker
 7. **Qualify USB rescue separately.** Use a second expendable left with the checkpoint firmware, ideally with a blank or partially provisioned pool. Check its exact serial with the first spare disconnected. Use a verified bundle from the consolidated fixture, never a repack simulation image. Follow the [serial-confirmed recovery procedure](#experimental-usb-recovery-on-a-spare). Cut during erase, programming, and verification on separate attempts, then repeat explicitly with the same bundle. Check complete exports, IDs, order, enabled states, and the saved host layout after cold boot. No staged repack output is part of this test.
 
 **Rollback.** Before a staged write, aborting or disconnecting leaves the selected catalog intact. After a copy-on-write cut, reconnect on the same checkpoint firmware, inspect status and exports, and keep the original bundle intact. A catalog with snapshot rows needs compatible experimental firmware. Reflashing the preserved UF2 alone keeps the external pool as it is. If the expendable test pool must be replaced, use a verified pre-test bundle and the explicitly confirmed experimental recovery path. Return to stable firmware only with an ordinary, snapshot-free pool. Leave any ambiguous or read-only catalog available for inspection before choosing an erase.
+
+
+### Physical 200 WPM test
+
+Use a provisioned spare with Lapwing Base active, first before and then after
+adding the lean snapshot and representative overlays. Keep the right half
+connected and include chords using both hands. Repeat over USB and over BLE
+with the left USB cable unplugged.
+
+- Pace the five-word line “the cat is the cat” every **1.50 seconds** for
+  60 seconds using `-T/KAT/S/-T/KAT`. Count **40 lines**, or 200 intended words.
+  Then pace 20 lines every **1.00 second** for a 300 WPM burst. Add a separate
+  pass alternating those outlines with `A/ROUPBD`, overlay hits, and misses.
+  Record the actual achieved pace and compare the full editor output with
+  the expected text, allowing normal capitalization and implicit spaces.
+- Repeat during a read-only map scan and while an existing maintenance job is
+  active. Test deliberate import/Verify separately with a throwaway fixture
+  and record its blocking window and what happens to strokes entered during it.
+  Watch for lost, reordered or replayed chords, pauses and split disconnects.
+- For end-to-end latency, record chord releases and host output on one
+  timebase. Use a synchronized instrumented trace if available. Slow-motion
+  video can flag visible stalls but has limited resolution. Save the samples
+  for p50, p95, p99 and worst-case calculations. Report console round-trip
+  times separately from typing and separately from firmware-internal lookup
+  time. Capture first correct key/chord and split-ready latency after cold
+  power-up and 16 minutes asleep.
+- Capture the CI linker RAM/flash allocation and, if a separately qualified
+  diagnostic build is available, runtime stack/heap high-water marks. The
+  checkpoint firmware has no per-stroke lookup timing or runtime stack
+  telemetry for this test. Keep those measurements pending when there is no
+  suitable capture. Compare the same cadence and setup with the rollback
+  reference to separate board and transport effects from dictionary changes.
