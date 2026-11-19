@@ -19,6 +19,7 @@ from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
 from native_restore import restore_all
 from native_snapshot import change_snapshot
+from native_import_plan import named_import
 
 MAX_REQUEST = 48 * 1024 * 1024
 
@@ -43,6 +44,7 @@ def read_state(console):
         "auto_checkpoints": status.get("auto_checkpoints", 0),
         "auto_reclaimed": status.get("auto_reclaimed", 0),
         "tail": status["tail"],
+        "adaptive_imports": console.command("native_install update snapshot-capabilities") == "OK SNAPSHOT2",
     }
 
 
@@ -109,6 +111,18 @@ def run_job(serial, request, progress):
             changed, conflicts = replace_pinned(console, catalog, progress)
             published = bool(changed)
             report = {"updated": changed, "conflicts": conflicts}
+        elif action in {"preview_import", "apply_import"}:
+            entries, _ = parse_named(request["source"])
+            staging = action == "apply_import"
+            expected = request.get("token")
+            if staging and (not isinstance(expected, str) or len(expected) != 64):
+                raise ValueError("Preview the import before staging.")
+            import_report = named_import(console, safe_name(request["name"]), entries,
+                                         preference=request.get("preference", "auto"), stage=staging,
+                                         expected=expected, progress=progress)
+            if not staging:
+                return {"import_plan": import_report}
+            published = True
         elif action in {"move", "rename", "delete", "import", "compact"}:
             if console.command("native_install update manage-capabilities") != "OK MANAGE1":
                 raise RuntimeError("Flash the matching Manager firmware before writing.")

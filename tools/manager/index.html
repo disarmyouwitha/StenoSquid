@@ -55,8 +55,19 @@
           <form id="import">
             <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
             <label>New dictionary name <input name="name" maxlength="44" placeholder="Leave blank to merge into personal"></label>
-            <button data-write>Import</button>
+            <details id="import-advanced" hidden>
+              <summary>Advanced format</summary>
+              <label>Format <select name="preference" data-write>
+                <option value="auto">Automatic</option><option value="journal">Journal</option><option value="snapshot">Compact snapshot</option>
+              </select></label>
+            </details>
+            <button id="import-preview" data-write>Import</button>
           </form>
+          <div id="import-plan" hidden aria-live="polite">
+            <p id="import-plan-summary"></p>
+            <ul id="import-plan-costs"></ul>
+            <button id="import-apply" data-write>Stage approved import</button>
+          </div>
         </section>
       </div>
       <section aria-labelledby="settings-title">

@@ -17,7 +17,6 @@ from native_update import (
 from verify_mapped_dict import verify
 
 SNAPSHOT_MARKER = 1
-SNAPSHOT_CAPABILITIES = ("OK SNAPSHOT1", "OK SNAPSHOT2")
 
 
 @dataclass
@@ -45,7 +44,7 @@ def compile_snapshot(name, entries):
     source = {"/".join(map(format_stroke, strokes)): text.decode("utf-8") for strokes, text in entries.items()}
     if len(source) != len(entries):
         raise ValueError("Two outlines render to the same JSC4 key")
-    builder = DictionaryCollectionBuilder(0)
+    builder = DictionaryCollectionBuilder(0, max_translation_bytes=2047)
     image = builder.build([(name, source)])
     verify(source, image, 0)
     return CompactImage(image, builder.pointer_offsets)
@@ -204,6 +203,8 @@ def main():
     action.add_argument("--consolidate", action="store_true", help="Fold current overlays into a new baseline")
     action.add_argument("--delete", action="store_true", help="Retire the named snapshot")
     parser.add_argument("--serial", required=True, help="USB serial of the experimental left half")
+    parser.add_argument("--format", choices=("auto", "journal", "snapshot"), default="auto",
+                        help="Choose an eligible representation for a new named dictionary")
     parser.add_argument("--stage", action="store_true", help="Write free segments and publish a new catalog")
     args = parser.parse_args()
     validate_name(args.name)
@@ -211,40 +212,22 @@ def main():
         parser.error("Supply a Plover JSON file for a new baseline only")
     if args.dictionary:
         entries, _ = parse_named(args.dictionary.read_bytes())
-        compiled = compile_snapshot(args.name, entries)
     if args.replace or args.consolidate or args.delete:
+        if args.format != "auto":
+            parser.error("--format only applies to new named dictionaries")
         operation = "replace" if args.replace else "consolidate" if args.consolidate else "delete"
+        compiled = compile_snapshot(args.name, entries) if args.replace else None
         with open_console(args.serial) as console:
-            if change_snapshot(console, operation, args.name,
-                               source=compiled if args.replace else None, stage=args.stage):
-                published = True
-            else:
-                published = False
+            published = change_snapshot(console, operation, args.name, source=compiled, stage=args.stage)
         if published:
             wait_ready(args.serial)
         return
-    required = (len(compiled.data) + SEGMENT - 1) // SEGMENT
-    print(f"{len(entries):,} entries, {len(compiled.data):,} bytes, {required} contiguous segments")
+
+    from native_import_plan import named_import
+
     with open_console(args.serial) as console:
-        if update_command(console, "snapshot-capabilities") not in SNAPSHOT_CAPABILITIES:
-            raise RuntimeError("Flash the matching experimental firmware before testing snapshots")
-        limit = int(update_command(console, "named-capabilities").split()[-1])
-        # Backup mode exposes the selected root only. Staging ownership must
-        # protect both roots, even in a read-only preflight.
-        answer = update_command(console, "begin snapshot-named")
-        published = False
-        try:
-            snapshot, protected = read_snapshot(console, answer, metadata_only=True)
-            free, largest = inspect_free(protected)
-            print(f"{free} free segments, {largest} contiguous, 3 reserved for maintenance")
-            update = plan_named_snapshot(snapshot, protected, args.name, compiled, limit=limit)
-            print(f"Can stage safely: {len(update.segments)} segments including new catalog metadata")
-            if args.stage:
-                publish(console, update, print)
-                published = True
-        finally:
-            if not published:
-                abort(console)
+        report = named_import(console, args.name, entries, preference=args.format, stage=args.stage)
+        print(json.dumps(report, indent=2))
     if args.stage:
         wait_ready(args.serial)
 

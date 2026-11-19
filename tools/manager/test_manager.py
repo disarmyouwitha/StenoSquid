@@ -41,6 +41,8 @@ class Keyboard:
             return '{"KAT":"ça"}'
         if command == "native_install update manage-capabilities":
             return "OK MANAGE1"
+        if command == "native_install update snapshot-capabilities":
+            return "ERR Unsupported"
         if command.startswith("native_entry "):
             return "OK"
         raise AssertionError(command)

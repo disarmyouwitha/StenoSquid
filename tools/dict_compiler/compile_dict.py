@@ -158,8 +158,9 @@ class DictionaryCollectionBuilder:
       [Hint directory and SHI1 footer]
     """
 
-    def __init__(self, base_addr: int = 0):
+    def __init__(self, base_addr: int = 0, *, max_translation_bytes: int = 127):
         self.base_addr = base_addr
+        self.max_translation_bytes = max_translation_bytes
 
     def build(self, dict_entries: List[Tuple[str, Dict[str, str]]]) -> bytes:
         # Parse all entries, group by stroke count per dictionary
@@ -189,9 +190,7 @@ class DictionaryCollectionBuilder:
         for text in text_list:
             text_to_offset[text] = len(text_block)
             encoded = text.encode('utf-8')
-            if len(encoded) >= 128:
-                # The external-flash reader copies each translation through a
-                # 128-byte buffer and drops anything longer.
+            if len(encoded) > self.max_translation_bytes:
                 print(f"warning: {len(encoded)}-byte translation will not load from "
                       f"external flash: {text[:40]!r}...", file=sys.stderr)
             text_block.extend(encoded)

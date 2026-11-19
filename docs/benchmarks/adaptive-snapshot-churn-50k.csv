@@ -1,0 +1,13 @@
+scenario,mode,edits,generation,verified,active_journals,stale_journal_bytes,fully_stale_segments,reserve,free_after_reserve,index_bytes,index_segments,active,protected,largest_free_run,forward_records,reverse_records,checkpoint_or_rollover_jobs,peak_published_protected,programmed_bytes,erased_bytes,read_bytes,explicit_journal_reclaim,explicit_journal_staging_peak,consolidated_bytes,consolidation_staging_segments,consolidation_staging_peak
+named-churn,J,0,4,50000,51,0,0,3,119,400000,8,133,133,122,50000,50000,0,133,0,0,254318594,0,,,,
+named-churn,J,100,4,50000,51,5120,0,3,119,400000,8,133,133,122,50000,50000,0,133,7698,0,508733054,0,,,,
+named-churn,J,1000,8,50000,51,56840,0,3,119,400620,8,133,133,122,50154,50001,4,141,1287352,1654784,2138504682,0,,,,
+named-churn,J,10000,54,50196,61,575588,0,3,101,408768,8,143,151,95,51997,50195,50,151,16657624,21372928,15993156445,0,,,,
+named-churn,S,0,4,50000,1,0,0,3,169,0,0,83,83,172,0,0,0,83,0,0,10328064,0,,520484,9,92
+named-churn,S,100,4,50000,1,64,0,3,169,0,0,83,83,172,0,0,0,83,7698,0,20751994,0,,523044,9,92
+named-churn,S,1000,8,50000,2,27208,0,3,166,3580,2,86,86,166,524,371,4,87,89160,106496,113312972,0,,535756,10,96
+named-churn,S,10000,54,50196,12,328100,0,3,154,39664,2,96,98,155,5859,4057,50,98,1642144,5300224,1526807704,0,,656288,12,110
+active-journal-import,J,0,2,64,1,0,0,3,175,512,2,77,77,178,64,64,0,77,0,0,9430926,0,,,,
+active-journal-import,J,100,2,164,1,0,0,3,175,512,2,77,77,178,64,64,0,77,8320,0,18957148,0,,,,
+active-journal-import,J,500,3,564,1,0,0,3,173,2560,2,77,79,176,320,320,1,79,45352,12288,44414794,0,,,,
+active-journal-import,J,1000,6,1064,2,0,0,3,172,6656,2,78,80,174,832,832,4,80,101240,106496,105660426,0,,,,

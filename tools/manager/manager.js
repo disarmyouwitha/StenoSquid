@@ -4,6 +4,7 @@ const token = document.querySelector('[name="manager-token"]').content;
 let state;
 let selectedId;
 let busy = false;
+let importToApply;
 const number = new Intl.NumberFormat();
 
 function notify(text, error = false) {
@@ -31,6 +32,9 @@ function controls() {
 }
 function render(newState, usage = {}) {
   state = newState;
+  clearImportPlan();
+  node("import-advanced").hidden = !state.adaptive_imports;
+  node("import-preview").textContent = state.adaptive_imports ? "Preview named import" : "Import";
   if (!selection()) selectedId = state.catalog[0]?.id;
   node("catalog").replaceChildren();
   for (const [index, row] of state.catalog.entries()) {
@@ -120,7 +124,31 @@ async function watch(id) {
     notify(result.updates.length
       ? `Pinned updates available for ${result.updates.join(", ")}.`
       : "All installed bases match this version’s pinned sources.");
+  } else if (result.import_plan) {
+    showImportPlan(result.import_plan);
   }
+}
+function clearImportPlan() {
+  importToApply = undefined;
+  node("import-plan").hidden = true;
+}
+function showImportPlan(plan) {
+  node("import-plan-summary").textContent = `${plan.rationale} ${plan.free_segments} free segments, ${plan.largest_free_run} contiguous, ${plan.reserve} reserved.`;
+  const costs = node("import-plan-costs");
+  costs.replaceChildren();
+  for (const [format, option] of Object.entries(plan.options)) {
+    const row = document.createElement("li");
+    const size = option.logical_bytes === null ? "" : ` ${number.format(option.logical_bytes)} B.`;
+    const staging = option.staging_segments === undefined ? "" : ` ${option.added_segments} added and ${option.staging_segments} staging segments.`;
+    const refusal = option.eligible ? "" : ` ${option.reason}`;
+    row.textContent = `${format}.${size}${staging}${refusal}`;
+    costs.append(row);
+  }
+  node("import-apply").hidden = !plan.selected || !importToApply;
+  node("import-apply").textContent = `Stage ${plan.selected || ""} import`;
+  node("import-plan").hidden = false;
+  if (importToApply) importToApply.token = plan.token;
+  notify(plan.selected ? "Review the staging plan before importing." : "This format cannot stage safely.", !plan.selected);
 }
 async function run(payload) {
   if (busy) return;
@@ -167,6 +195,14 @@ node("edit").onsubmit = (event) => {
   const fields = new FormData(event.currentTarget);
   run({action: event.submitter.value, id: selectedId, outline: fields.get("outline").trim(), translation: fields.get("translation")});
 };
+node("import").onchange = clearImportPlan;
+node("import-apply").onclick = () => {
+  if (importToApply?.token) {
+    const approved = importToApply;
+    clearImportPlan();
+    run({action: "apply_import", ...approved});
+  }
+};
 for (const action of ["import", "restore"]) {
   node(action).onsubmit = async (event) => {
     event.preventDefault();
@@ -176,7 +212,13 @@ for (const action of ["import", "restore"]) {
       const options = action === "import"
         ? {name: fields.get("name").trim()}
         : {confirm: fields.get("confirm")};
-      await run({action, source, ...options});
+      if (action === "import" && state?.adaptive_imports && options.name) {
+        clearImportPlan();
+        importToApply = {source, ...options, preference: fields.get("preference")};
+        await run({action: "preview_import", ...importToApply});
+      } else {
+        await run({action, source, ...options});
+      }
     } catch (error) {
       notify(error.message, true);
     }
