@@ -214,6 +214,68 @@ to 760/720 bytes by reusing existing scratch, with no added RAM. Static frame si
 are not runtime stack peaks; contention and peak measurements remain hardware
 acceptance work.
 
+## Final checkpoint artifacts
+
+Source [`634255b`](https://github.com/disarmyouwitha/StenoSquid/commit/634255b2091cd34d1af894e1a14fe8826dff5239)
+passed [CI 44428306440](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44428306440):
+all 14 firmware/probe builds, the complete host suite, rendering and Linux
+ASan/UBSan gates. The complete local suite also passed. Downloaded UF2 block
+numbers, nRF52840 family, address ranges, image CRC and SHA-256 were verified.
+
+| Actions profile | Internal flash bytes | Linked RAM bytes |
+| --- | ---: | ---: |
+| Boardsource-Left-Default | 448,240 | 207,710 |
+| Boardsource-Left-Native | 465,932 | 230,942 |
+| NiceNano-Left-Native | 467,164 | 231,038 |
+| Boardsource-Right-Default | 442,748 | 88,928 |
+
+Native adds 23,232 bytes of linked RAM over Boardsource Default, including resident
+wrappers, maintained reader/job snapshots and the 4 KiB input queue. The 32 KiB
+configured heap is already included in those totals. Unlinked RAM is not a
+measurement of available runtime heap or stack headroom.
+
+Verified SHA-256:
+
+```text
+Boardsource-Left-Native  c096651d1b0687b62c3c50090cb5cc849b08f6dd6cf6324421e96ea33f8e796d
+NiceNano-Left-Native     7f101de77dc145bd90239a96d04c147419fc254a422a460c14e13d74e917a9d2
+Boardsource-Right       6734baad5ae72e828a2cd472b7225caa79a4d9f8382a5907baae1bcf6b473598
+Native pool image       1c95cb7d6551f7791a94a61e378e2eded1b563041f65905147a6bfc66431e2e2
+```
+
+The right image is byte-for-byte identical to the currently installed RHS image.
+Only the left needs flashing for this integration. Exact downloaded artifacts and
+a verification manifest are held locally under `build/native-engine/ready/`;
+the source/CI links above are the reproducible public reference. No firmware or
+external-flash changes were applied to the connected board during this solo work.
+
+## Large editable-import capacity is still a gate
+
+The 200,000-entry model bound is **not** a capacity promise. Native records include
+identity, sequence, commit/CRC, outline and text; checkpoints must also protect the
+index pair referenced by each catalog while staging a new pair. In the worst case
+that means three forward/reverse pairs at once. Journals containing live entries
+cannot yet be relocated away from stale neighbors.
+
+Allocation arithmetic for importing the complete pinned JSON again as editable
+personal entries, while keeping all six compact bases installed:
+
+| Input | Entries | Journal segments | Segments per index | Worst pool requirement, including staging/reserve |
+| --- | ---: | ---: | ---: | ---: |
+| Lapwing Base | 114,885 | 107 | 8 | 234 of 255 |
+| Plover Base | 147,424 | 134 | 9 | 267 of 255: exceeds the pool |
+
+This model packs `align4(40 + 4*stroke_count + utf8_text_bytes)` records into
+65,280 usable bytes per journal, reserves 74 segments for the six compact bases,
+two catalog segments, three index pairs, and the three-segment allocator reserve.
+Sources and SHA-256 are pinned in the factory image manifest. These are allocation
+estimates, not an on-device import result; packing, edits, readers and retained
+history also affect capacity. The compact Plover base is already present; duplicating
+it into an editable log is especially expensive. Compact replacement/import and
+lower-overhead retained-index staging remain future work. The manager stops and
+reports its last saved entry on safe space refusal; it does not discard existing
+committed entries to make a large import fit.
+
 ## Hardware acceptance when the owner returns
 
 1. Flash the exact Left-Native Actions UF2 and run the clean installer. Confirm
