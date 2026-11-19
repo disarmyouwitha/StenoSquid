@@ -119,7 +119,7 @@ using Maintenance = NativeStore<FlashDevice>::Work;
 constexpr uint32_t IdleCheckpointTail = 64;
 bool automatic_maintenance = false;
 atomic_t idle_maintenance_pending;
-uint32_t automatic_checkpoints = 0;
+uint32_t automatic_checkpoints = 0, automatic_reclaimed = 0;
 JobResult automatic_result = JobResult::Done;
 StenoDictionary *parent=nullptr;
 LiveView export_view;
@@ -318,7 +318,10 @@ void StepWork(k_work *) {
             return status;
         },
         []{return Clock::GetMicroseconds();},
-        []{return steno_squid_native_input_waiting();},steps);
+        [] {
+            return steno_squid_native_input_waiting() ||
+                   (automatic_maintenance && !store.checkpoint.Published() && !IdleMaintenanceAllowed());
+        },steps);
     flash_device.mapped=true;
     const uint32_t elapsed = Clock::GetMicroseconds() - slice_started;
     if (steps && elapsed > maintenance_max_slice_us) maintenance_max_slice_us = elapsed;
@@ -326,7 +329,10 @@ void StepWork(k_work *) {
     if (automatic_maintenance) {
         automatic_maintenance = false;
         automatic_result = result;
-        if (result == JobResult::Done) ++automatic_checkpoints;
+        if (result == JobResult::Done) {
+            ++automatic_checkpoints;
+            automatic_reclaimed += store.checkpoint.ReclaimedJournals();
+        }
         if (result == JobResult::Busy) QueueIdleMaintenance(K_SECONDS(60));
         else atomic_clear(&idle_maintenance_pending);
     }
@@ -550,14 +556,14 @@ void store_status(void *,const char *) {
         "\"tail\":%u,\"maintenance\":%u,\"warm_resumes\":%u,\"full_opens\":%u,"
         "\"work_steps\":%u,\"max_maintenance_slice_us\":%u,\"input_highwater\":%u,"
         "\"input_overflows\":%u,\"max_replay_delay_ms\":%u,\"personal_id\":%u,"
-        "\"auto_checkpoints\":%u,\"auto_checkpoint_result\":%u,"
+        "\"auto_checkpoints\":%u,\"auto_checkpoint_result\":%u,\"auto_reclaimed\":%u,"
         "\"dictionaries\":%u,\"ids\":[",
         healthy ? "true" : "false", store.selected.quarantine ? "true" : "false",
         unsigned(store.selected.root.generation), store.live.TailCount(), unsigned(store.work),
         warm_resumes, full_opens, maintenance_steps, maintenance_max_slice_us,
         steno_squid_native_input_highwater(), steno_squid_native_input_overflows(),
         steno_squid_native_input_max_delay_ms(), personal ? personal->identity : 0,
-        automatic_checkpoints, unsigned(automatic_result), unsigned(cell_count));
+        automatic_checkpoints, unsigned(automatic_result), automatic_reclaimed, unsigned(cell_count));
     for(size_t i=0;i<cell_count;++i)Console::Printf("%s%u",i?",":"",cells[i].identity);
     Console::Printf("]}\n\n");
 }

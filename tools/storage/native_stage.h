@@ -300,11 +300,18 @@ public:
 
     bool Begin(NativeUpdateKind operation, uint16_t limit = 64) {
         if (limit > 64) return false;
-        if (active || !store.opened || store.work != NativeStore<Device>::Work::None ||
-            !store.catalog.CanWrite(store.selected.root) || store.catalog.DestinationPinned(store.selected))
+        if (active || !store.opened || store.work != NativeStore<Device>::Work::None)
             return false;
-        if (CollectOwnership(store.device, store.catalog, store.selected.root, protected_segments) != CatalogResult::Ok)
+        const auto &root = store.selected.root;
+        if (operation == NativeUpdateKind::Backup) {
+            // The catalog may be trusted for reading even if its alternate
+            // copy was damaged. Export only extents owned by the selected root.
+            if (RootOwnership(store.device, store.catalog, root, protected_segments) != CatalogResult::Ok)
+                return false;
+        } else if (!store.catalog.CanWrite(root) || store.catalog.DestinationPinned(store.selected) ||
+                   CollectOwnership(store.device, store.catalog, root, protected_segments) != CatalogResult::Ok) {
             return false;
+        }
         original = store.selected;
         kind = operation;
         dictionary_limit = limit;
@@ -326,8 +333,11 @@ public:
         if (address >= original.root.address && address - original.root.address <= original.root.bytes &&
             bytes <= original.root.bytes - (address - original.root.address))
             return store.device.Read(address, out, bytes);
-        // Only permit reads of the held dictionary pool, excluding catalogs
-        // and the reserved scratch tail. All writes are checked separately.
+        if (kind == NativeUpdateKind::Backup) {
+            for (uint32_t at = address / kSegmentBytes; at <= (address + bytes - 1) / kSegmentBytes; ++at)
+                if (!protected_segments.Contains(at)) return false;
+        }
+        // Staging sessions also verify newly allocated extents.
         return address >= 2 * kSegmentBytes && store.device.Read(address, out, bytes);
     }
 

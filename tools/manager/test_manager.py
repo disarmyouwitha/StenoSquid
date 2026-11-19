@@ -14,6 +14,8 @@ import manager
 
 
 class Keyboard:
+    serial = "smoke-board"
+
     def __init__(self):
         self.commands = []
         self.enabled = True
@@ -78,7 +80,7 @@ class ManagerTest(unittest.TestCase):
             transfer.assert_not_called()
             self.run_job("delete", id=8, confirm="Medical")
             self.assertEqual(transfer.call_args.kwargs, {"delete": "Medical"})
-            wait.assert_called_once()
+            wait.assert_called_once_with("smoke-board")
 
 
     def test_measure_counts_saved_edits(self):

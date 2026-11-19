@@ -25,7 +25,8 @@ class NativeCheckpointJob {
     uint16_t dictionaries=0,old_extents=0,kept=0;
     uint32_t inspected=0,old_reverse_address=0,old_reverse_count=0,last_journal=0,prune_count=0;
     uint32_t starts[2]{},segments[2]{},erase_position=0,position=0,previous=0;
-    bool did_publish=false, compact=false, reclaimed=false, mirror=true;
+    bool did_publish=false, compact=false, mirror=true, mirrored=false;
+    unsigned retired_journals=0;
     NativeRelocationMap relocate;
     JournalScan scan{};
     uint8_t live_units[255]{};
@@ -194,6 +195,7 @@ public:
     NativeCheckpointJob &operator=(const NativeCheckpointJob &)=delete;
     bool Published()const{return did_publish;}
     void SkipMirror(){mirror=false;}
+    unsigned ReclaimedJournals()const{return mirrored?retired_journals-unsigned(relocate.count!=0):0;}
     const CatalogSelection &Selection()const{return did_publish?published:current;}
     const LiveView &Input()const{return frozen;}
     JobResult Begin(const CatalogSelection &selection,const SegmentMap &excluded=SegmentMap{},bool clean=false) {
@@ -202,7 +204,7 @@ public:
         const auto status=live.BeginMaintenance(frozen);
         if(status!=LiveResult::Ok)return status==LiveResult::Busy?JobResult::Busy:JobResult::ReadOnly;
         current=selection;published={};unavailable=excluded;did_publish=false;
-        compact=clean;reclaimed=false;mirror=true;victim_row=0;last_epoch=0;scan={};
+        compact=clean;retired_journals=0;mirror=true;mirrored=false;victim_row=0;last_epoch=0;scan={};
         relocate.Reset(frozen.highwater);ops.Relocation(nullptr);
         if(compact)std::memset(live_units,0,sizeof(live_units));
         needed_journals={};last_journal=prune_count=0;
@@ -372,7 +374,7 @@ public:
             if(kind==1 || (kind==2 && needed_journals.Contains(segment))) {
                 remap[original]=uint8_t(kept);retained[kept++]=original;
             } else if(kind!=2)return Stop(JobResult::Corrupt);
-            else reclaimed=true;
+            else ++retired_journals;
             return JobResult::More;
         }
         if(phase==Phase::Publish) {
@@ -395,13 +397,13 @@ public:
             }
             if(status!=CatalogResult::Ok || !live.Retarget(published))
                 return Stop(JobResult::RecoveryRequired,true);
-            phase=Phase::Done;return JobResult::Done;
+            mirrored=true;phase=Phase::Done;return JobResult::Done;
         }
         const auto status=live.RecoverStep();
         if(status==LiveResult::More)return JobResult::More;
         if(status!=LiveResult::Ready)return Stop(JobResult::RecoveryRequired,true);
         if(!live.EndMaintenance(frozen))return Stop(JobResult::RecoveryRequired,true);
-        if(compact && reclaimed && mirror){phase=Phase::Mirror;return JobResult::More;}
+        if(compact && retired_journals && mirror){phase=Phase::Mirror;return JobResult::More;}
         phase=Phase::Done;return JobResult::Done;
     }
 };

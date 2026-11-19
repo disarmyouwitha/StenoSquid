@@ -25,9 +25,17 @@ unpublished work can be abandoned. An already published generation completes
 recovery and can defer the second catalog copy. Explicit **Compact now** uses
 the larger host-assisted pass.
 
-Host and fault-injection tests cover these transactions. On-board latency,
-idle cancellation, pinned update and backup/restore still need hardware
-qualification before merging this checkpoint into main.
+On the Boardsource left half, a temporary 73-entry dictionary spread over three
+journals was edited 71 times. The automatic pass reduced the total journal count
+from five to three and freed two 64 KiB segments. The post-compaction export
+matched all 73 entries. The longest worker slice was 81.2 ms with the keyboard
+idle. After removal of the test dictionary, the original catalog, host layout,
+personal export and KAT lookup matched their pre-test state.
+
+Host and fault-injection tests also cover backup from a quarantined catalog
+and cancellation before publication. Typing during compaction, a physical power
+cut during compaction, and an on-board pinned update and full restore remain
+open hardware checks.
 
 ## What runs on the keyboard
 

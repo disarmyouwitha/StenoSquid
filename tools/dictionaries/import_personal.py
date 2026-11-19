@@ -68,8 +68,9 @@ def parse_dictionary(source):
 
 
 class Console:
-    def __init__(self, device):
+    def __init__(self, device, serial=None):
         self.device = device
+        self.serial = serial
         self.channel = 0
 
     def command(self, text, timeout=30):
@@ -117,7 +118,7 @@ def open_console(serial=None):
     device = hid.device()
     device.open_path(devices[0]["path"])
     try:
-        yield Console(device)
+        yield Console(device, devices[0]["serial_number"])
     finally:
         device.close()
 

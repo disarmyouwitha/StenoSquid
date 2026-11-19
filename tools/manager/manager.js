@@ -64,7 +64,7 @@ function render(newState, usage = {}) {
   node("layout").value = state.layout;
   node("refresh").textContent = "Refresh connection";
   node("workspace").hidden = false;
-  node("maintenance").textContent = `${state.tail} pending index edits · ${state.auto_checkpoints} automatic checkpoints this boot. Compiled images may be shared by several dictionaries.`;
+  node("maintenance").textContent = `${state.tail} pending index edits · ${state.auto_checkpoints} automatic checkpoints · ${state.auto_reclaimed} journal segments freed this boot. Compiled images may be shared by several dictionaries.`;
 }
 async function request(path, payload) {
   const options = {headers: {"X-StenoSquid-Token": token}};

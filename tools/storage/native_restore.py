@@ -70,6 +70,7 @@ def parse_backup(backup, limit, pins=PINS):
 
 def restore_all(serial, backup, progress=print):
     with open_console(serial) as console:
+        serial = console.serial
         capabilities = console.command("native_install update named-capabilities").split()
         if len(capabilities) != 3 or capabilities[:2] != ["OK", "NAMED1"]:
             raise RuntimeError("Flash the matching Native firmware before restoring a full backup.")
@@ -86,3 +87,4 @@ def restore_all(serial, backup, progress=print):
     wait_ready(serial)
     with open_console(serial) as console:
         checked(console, "set_host_layout " + backup["host_layout"])
+    return serial

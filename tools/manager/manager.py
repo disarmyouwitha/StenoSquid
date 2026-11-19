@@ -40,6 +40,7 @@ def read_state(console):
         "layout": console.command("get_parameter host_layout"),
         "read_only": status["read_only"],
         "auto_checkpoints": status.get("auto_checkpoints", 0),
+        "auto_reclaimed": status.get("auto_reclaimed", 0),
         "tail": status["tail"],
     }
 
@@ -55,12 +56,13 @@ def run_job(serial, request, progress):
     if action == "restore":
         if request.get("confirm") != "RESTORE":
             raise ValueError("Type RESTORE to confirm replacing this keyboard’s dictionaries.")
-        restore_all(serial, json.loads(request["source"]), progress)
+        serial = restore_all(serial, json.loads(request["source"]), progress)
         with open_console(serial) as console:
             return {"state": read_state(console), "restored": True}
     published = False
     report = {}
     with open_console(serial) as console:
+        serial = console.serial
         if action == "refresh":
             return {"state": read_state(console)}
         catalog = read_catalog(console)

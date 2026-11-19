@@ -262,6 +262,36 @@ void CheckMetadata(const std::vector<uint8_t> &image, const Plan &plan, bool del
               << " interrupted writes recovered" << std::endl;
 }
 
+void CheckRecoveryBackup(const std::vector<uint8_t> &image) {
+    Nor nor;
+    nor.data = image;
+    nor.data[kSegmentBytes + 32] ^= 1;
+    const auto before = nor.data;
+    NativeDevice device{{nor}};
+    NativeStore<NativeDevice> store(device);
+    NativeValidator<NativeDevice> validator(device, store.catalog);
+    assert(store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }) ==
+           CatalogResult::Quarantined);
+    NativeStage<NativeDevice> stage(store, validator);
+    assert(!stage.Begin(NativeUpdateKind::Compact));
+    assert(stage.Begin(NativeUpdateKind::Backup));
+    uint8_t bytes[64];
+    assert(stage.Read(stage.Root().address, bytes, sizeof(bytes)));
+    unsigned used = 2;
+    while (!stage.Protected().Contains(used)) ++used;
+    unsigned free = 2;
+    while (stage.Protected().Contains(free)) ++free;
+    assert(stage.Read(used * kSegmentBytes, bytes, sizeof(bytes)));
+    assert(!stage.Read(free * kSegmentBytes, bytes, sizeof(bytes)));
+    assert(!stage.Erase(free) && !stage.Write(free * kSegmentBytes, bytes, sizeof(bytes)));
+    bool reboot = false;
+    assert(stage.Commit(free, 64, 0, reboot) == CatalogResult::Invalid);
+    assert(!reboot && nor.data == before);
+    stage.Abort();
+    Check(store, false, false);
+    std::cout << "Quarantined catalog: read-only backup serves selected extents and leaves flash intact" << std::endl;
+}
+
 void CheckIdleCompaction(const std::vector<uint8_t> &image, bool cancel) {
     unsigned operations = 0;
     for (unsigned cut = 0; cut <= operations; ++cut) {
@@ -311,6 +341,7 @@ void CheckIdleCompaction(const std::vector<uint8_t> &image, bool cancel) {
             assert(CollectOwnership(device, recovered.catalog, recovered.selected.root, after) == CatalogResult::Ok);
             assert(AllocationPlan(after).Free() > AllocationPlan(before).Free());
             assert(!after.Contains(2) && recovered.live.TailCount() == 0);
+            assert(store.checkpoint.ReclaimedJournals() == 1);
             assert(recovered.live.Highwater() == 12);
         }
     }
@@ -366,6 +397,7 @@ int main(int argc, char **argv) {
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
     image.resize(256 * kSegmentBytes, 0x42);
+    CheckRecoveryBackup(image);
     CheckIdleCompaction(image, true);
     CheckIdleCompaction(image, false);
     Run(image, ReadPlan(argv[2]), true);

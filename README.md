@@ -92,12 +92,23 @@ Connect the left half over USB and close any Javelin Steno Tools connection. Run
 `python3 stenosquid.py --manager` from the repository. The local Manager opens in
 your browser. Select **Connect over USB** to view priority and checkboxes, edit
 a specific dictionary, import Plover JSON, export an individual dictionary or
-download a backup of all overlays and catalog settings. Use **Restore a full
-backup** to restore it to a board running matching firmware and pinned sources.
-The Manager can rename
-or delete independent dictionaries and switch the keyboard’s host layout.
+download a full backup. The Manager can rename or delete independent dictionaries
+and switch the keyboard’s host layout.
 **Check pinned updates** compares the installed revisions against this checkout.
 Updates keep local edits and report any outlines where upstream also changed.
+
+To move your dictionaries to a fresh board:
+
+1. Connect the original board and choose **Download full backup**. Keep the JSON
+   file with the repository version you used to make it.
+2. Flash matching Left firmware on the new board and connect it over USB.
+3. Open **Restore a full backup**, select the file, and type `RESTORE`. Wait for
+   the left half to reconnect, then verify your dictionary order and a personal
+   translation. Restore replaces the target board’s external dictionary pool.
+
+The backup includes personal and named entries, local base edits, dictionary
+order, checkboxes, and host layout. The Manager rebuilds the pinned bases from
+their sources.
 
 After 64 pending edits, the firmware can rebuild its indexes and reclaim
 stale journals while the keyboard is idle on USB power. It can copy up to
