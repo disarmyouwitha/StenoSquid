@@ -98,6 +98,7 @@ NativeStore<FlashDevice> store(flash_device);
 NativeValidator<FlashDevice> validator(flash_device,store.catalog);
 bool healthy=false,loaded=false,exporting=false,maintenance_hold=false;
 uint32_t maintenance_steps=0,warm_resumes=0,full_opens=0;
+uint32_t maintenance_max_slice_us=0;
 StenoDictionary *parent=nullptr;
 LiveView export_view;
 OverlayCursor export_cursor;
@@ -212,6 +213,7 @@ void StepWork(k_work *) {
     const NativeInputPause input_pause;
     flash_device.mapped=false;
     uint32_t steps=0;
+    const uint32_t slice_started = Clock::GetMicroseconds();
     const auto result=NativeWorkSlice(
         []{
             const auto status=store.Step([](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
@@ -221,6 +223,8 @@ void StepWork(k_work *) {
         []{return Clock::GetMicroseconds();},
         []{return steno_squid_native_input_waiting();},steps);
     flash_device.mapped=true;
+    const uint32_t elapsed = Clock::GetMicroseconds() - slice_started;
+    if (steps && elapsed > maintenance_max_slice_us) maintenance_max_slice_us = elapsed;
     if(result==JobResult::More){Kick();return;}
     if(!store.opened)base_provider.Fault();
     else if(result==JobResult::Done){for(size_t i=0;i<cell_count;++i)cells[i].Refresh();if(parent)parent->OnLookupDataChanged();}
@@ -409,7 +413,18 @@ void lookup_outline(void *,const char *line) {
 }
 void store_status(void *,const char *) {
     const auto *personal=ByName("user_dictionary");
-    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"read_only\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"warm_resumes\":%u,\"full_opens\":%u,\"work_steps\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",store.selected.quarantine?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),warm_resumes,full_opens,maintenance_steps,steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
+    Console::Printf(
+        "{\"format\":\"SQBCAT02\",\"ready\":%s,\"read_only\":%s,\"generation\":%u,"
+        "\"tail\":%u,\"maintenance\":%u,\"warm_resumes\":%u,\"full_opens\":%u,"
+        "\"work_steps\":%u,\"max_maintenance_slice_us\":%u,\"input_highwater\":%u,"
+        "\"input_overflows\":%u,\"max_replay_delay_ms\":%u,\"personal_id\":%u,"
+        "\"dictionaries\":%u,\"ids\":[",
+        healthy ? "true" : "false", store.selected.quarantine ? "true" : "false",
+        unsigned(store.selected.root.generation), store.live.TailCount(), unsigned(store.work),
+        warm_resumes, full_opens, maintenance_steps, maintenance_max_slice_us,
+        steno_squid_native_input_highwater(), steno_squid_native_input_overflows(),
+        steno_squid_native_input_max_delay_ms(), personal ? personal->identity : 0,
+        unsigned(cell_count));
     for(size_t i=0;i<cell_count;++i)Console::Printf("%s%u",i?",":"",cells[i].identity);
     Console::Printf("]}\n\n");
 }

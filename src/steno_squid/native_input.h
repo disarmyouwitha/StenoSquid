@@ -14,6 +14,7 @@ bool steno_squid_native_input_waiting(void);
 int64_t steno_squid_native_input_time(void);
 uint32_t steno_squid_native_input_overflows(void);
 uint32_t steno_squid_native_input_highwater(void);
+uint32_t steno_squid_native_input_max_delay_ms(void);
 #ifdef __cplusplus
 }
 class NativeInputPause {

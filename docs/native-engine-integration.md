@@ -466,8 +466,15 @@ reconnected. Raw automated logs and the artifact manifest are local under
    connections, wait for the flash LED to turn off, then type KAT. A same-boot idle
    wake should increase `warm_resumes` without another `full_opens`. Normal reset
    or deep sleep resets the RAM counters and should take full validation again.
-7. Exercise maintenance under active typing and record latency/drops, plus runtime
-   stack/heap peaks. CI correctness does not establish the typing-contention gate.
+7. Reboot for fresh counters and record `user_dictionary_status`. While typing
+   a known passage, start a native index rebuild with `user_dictionary_rebuild`.
+   Compare the editor output against the passage and check that `work_steps`
+   advanced, maintenance finished, and `input_overflows` stayed at zero. Record
+   `max_maintenance_slice_us` (wall time inside the worker slice) and
+   `max_replay_delay_ms` (time from a deferred key event to replay). These maxima
+   reset at reboot. They complement the existing queue high-water count and do
+   not include full keyboard-to-host latency. Capture runtime stack/heap peaks
+   separately.
 
 **Not yet complete:** relocating live records to compact partially stale journals,
 an overlong-tail rebuild;

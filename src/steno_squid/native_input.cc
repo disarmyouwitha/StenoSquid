@@ -4,6 +4,7 @@
 #include "engine_work.h"
 #include "../../tools/storage/native_input_queue.h"
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 extern "C" {
 extern struct k_mutex flash_lock;
 void zmk_javelin_steno_native_process_key(int key, bool pressed, uint32_t when);
@@ -12,6 +13,7 @@ void zmk_javelin_steno_native_cancel(void);
 namespace {
 candidate_b::NativeInputQueue<512> input;
 struct k_spinlock input_lock;
+atomic_t max_replay_delay_ms; // The engine queue is the only writer.
 void Drain(k_work *);
 K_WORK_DEFINE(drain_work, Drain);
 // Only the engine queue reads these values; callers on other threads never
@@ -50,7 +52,10 @@ void Drain(k_work *) {
                     continue;
                 }
                 const int64_t now = k_uptime_get();
-                replay_time = now - uint32_t(uint32_t(now) - event.when);
+                const uint32_t delay = uint32_t(now) - event.when;
+                if (delay > uint32_t(atomic_get(&max_replay_delay_ms)))
+                    atomic_set(&max_replay_delay_ms, delay);
+                replay_time = now - delay;
                 replaying = true;
                 zmk_javelin_steno_native_process_key(event.key, event.pressed, event.when);
                 replaying = false;
@@ -136,4 +141,7 @@ extern "C" uint32_t steno_squid_native_input_highwater(void) {
     auto result = input.Highwater();
     k_spin_unlock(&input_lock, key);
     return result;
+}
+extern "C" uint32_t steno_squid_native_input_max_delay_ms(void) {
+    return atomic_get(&max_replay_delay_ms);
 }
