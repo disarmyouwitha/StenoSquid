@@ -1,9 +1,7 @@
 # Candidate B: full engine/store integration test build
 
-Status: **The opt-in native engine passed CI and the owner's Boardsource acceptance tests.**
-Use the `Left-Native` GitHub Actions artifact to try it. `Left-Default` uses the
-production store. The earlier full-engine checkpoint is preserved at
-`checkpoint/native-engine-integrated` (`ec4c007`).
+Status: **Native is the everyday dictionary store for both board targets.**
+The earlier opt-in checkpoints below record development builds and board results.
 
 ## What runs on the keyboard
 
@@ -105,18 +103,15 @@ of assuming 1. Other IDs are never repurposed.
 
 ## Firmware and install
 
-CI builds `Boardsource-Left-Native` and `NiceNano-Left-Native` alongside every normal
-variant. Native images are development artifacts, excluded from public releases.
-Only the left needs changing; the existing right/display protocol is unchanged.
-The native format requires its own clean provision. A normal UF2 and a native
-external-flash image are not interchangeable.
+The `Left-Default` and `Left-No-Display` firmware use Native on both board targets.
+An existing Native store stays in place across the firmware update. An older
+fixed-layout store needs a personal backup and clean reprovision.
 
-With Native firmware flashed, leave the left running over USB and close other
-editor connections. Install the ordinary `hidapi` Python dependency, then run:
+Leave the left running over USB and close other editor connections:
 
 ```sh
-python3 tools/storage/native_install.py --status
-python3 tools/storage/native_install.py --install --confirm-erase
+python3 stenosquid.py --status
+python3 stenosquid.py --install --confirm-erase
 ```
 
 The explicit confirmation flag replaces **all external dictionaries in the 255
@@ -128,9 +123,8 @@ Pop displays Install. No serial port, polling daemon or second provisioning
 firmware is required. A stopped transfer releases its power hold after a minute;
 partial storage remains unavailable until an explicit retry.
 
-Native install refuses on normal firmware. The normal `base_install` path is not
-available in Native firmware. Returning to normal firmware requires reprovisioning
-its fixed bases with the existing repair/install tool; there is no converter.
+Returning to an older fixed-layout release requires an external personal backup,
+the matching older firmware and tools, and fresh fixed-layout provisioning.
 
 A private pre-test personal backup was captured locally at
 `build/native-engine/owner-personal-backup.json` (zero entries on the connected
@@ -613,7 +607,7 @@ operation does not release a burst of stale input.
 
 ## Hardware acceptance checklist
 
-1. Flash the exact Left-Native Actions UF2 and run the clean installer. Confirm
+1. Flash the exact Left-Default Actions UF2 and run the clean installer. Confirm
    READY and the seven catalog dictionaries; right typing/display should reconnect.
 2. Check ordinary typing, onboard KAT, multi-stroke HE/HROE, repeat/undo, Plover HID
    and offline Practice with a blank editor focused.

@@ -106,12 +106,12 @@ The factory application partition is `0x1000–0xD3FFF`. The settings partition 
 2. **Measure the empty header.** Confirm orientation, ground, and VCC with the accessories disconnected. Load the first left probe. Open its USB CDC serial port at 115200 with DTR asserted, which starts the probe and drives P0.31 LOW to enable the rail. Verify the enabled rail is suitable for 3.3 V flash and logic. Check rail rise and behavior on USB and battery, then repeat under load. Verify the nice!view rail and connector orientation separately. Once the Steno Squid is fitted with R1, the left diagnostic build can measure the same rail for you: run `stenosquid.py <port> --diag rail` on USB and again on battery, and `--diag bench` to power-cycle the flash ten times through the wake path (see the [diagnostics notes](../nicenano-wireless-corne/README.md)).
 3. **Read the flash ID and sample.** With power off, attach the flash to the left header. Reboot, open the probe's serial port, and expect `JEDEC ID: EF 40 18` followed by a 16-byte `FASTREAD` at address zero. Compare against known bytes when available. An erased chip normally reads all `FF`. The first probe issues neither write-enable nor program/erase commands.
 4. **Check quad reads.** Use the separate quad probe only after the rail and JEDEC checks. It compares standard SPI and quad reads over the first 64 KiB. Use a spare, independently preloaded reference chip with data exercising both bit states on all four lanes and look for a pass with lane mask `0xf`. An all-`FF` comparison is inconclusive. This build may temporarily set and restore the flash's volatile Quad Enable bit. It leaves the flash array alone.
-5. **Test mapped reads and the split.** A reference flash with both expected bases lets you test Javelin before any provisioning through the keyboard. Flash the matching right and everyday left UF2s. Use [stenosquid.py](../../stenosquid.py) over USB HID with `--status` for a read-only status query and look for `MAPPED`. Confirm ordinary typing on both halves, onboard `KAT` → “cat” with host Plover closed, raw Plover HID strokes, and nice!view mode and Practice updates. If you have only a blank flash, complete the electrical checks first and return to dictionary-dependent checks after initial provisioning.
+5. **Test mapped reads and the split.** A reference flash with a provisioned Native store lets you test Javelin before any provisioning through the keyboard. Flash the matching right and everyday left UF2s. Use [stenosquid.py](../../stenosquid.py) over USB HID with `--status` for a read-only status query and look for `NATIVE2 READY`. Confirm ordinary typing on both halves, onboard `KAT` → “cat” with host Plover closed, raw Plover HID strokes, and nice!view mode and Practice updates. If you have only a blank flash, complete the electrical checks first and return to dictionary-dependent checks after initial provisioning.
 6. **Test wireless and sleep.** Pair **Steno Squid** and unplug USB. Test ordinary typing, Plover HID, onboard Javelin, and Javelin Steno Tools **Connect via HID**. Let both halves reach deep sleep. Check that the left rail turns off, wake each half with one of its own keys, and check display and split reconnection, flash verification, and onboard output. On a diagnostic build, use `stenosquid.py <port> --diag status` after USB reconnection to inspect the last check path. Check right display rail behavior and battery readings independently.
 7. **Provision and test persistence.** Once power and patterned read checks pass,
-   flash the everyday Boardsource left UF2 and run `python3 stenosquid.py --install`
-   over USB HID. It installs the matching Lapwing, extras and Plover images.
-   Use `--verify` for a separate full CRC check and `--status` to confirm `MAPPED`.
+   flash the everyday Boardsource left UF2 and run `python3 stenosquid.py --install --confirm-erase`
+   over USB HID. It installs the packed Lapwing collection and Plover Base.
+   Use `--verify` for a separate full CRC check and `--status` to confirm `NATIVE2 READY`.
    Switch bases in the browser, save a temporary personal edit, reboot, verify
    persistence, and remove the test entry. Repeat the HID and wake checks.
 
@@ -137,8 +137,9 @@ Use the Boardsource artifacts from one successful workflow run:
    nice!view, use `Boardsource-Right-No-Display` and, for everyday use,
    `Boardsource-Left-No-Display`.
 4. `Boardsource-Left-Default` for everyday use. Connect the left half over USB and
-   run `python3 stenosquid.py --install` to provision the dictionaries. Use
+   run `python3 stenosquid.py --install --confirm-erase` to provision the dictionaries. Use
    `Boardsource-Left-No-Display` when using the right build without nice!view.
+   For an existing board, follow the [backup and update instructions](../../README.md#update-a-board-using-the-previous-dictionary-layout).
 
 The corrected everyday pair and wired Adafruit breakout passed the functional
 checks recorded above. Higher QSPI speeds and the populated daughterboard need

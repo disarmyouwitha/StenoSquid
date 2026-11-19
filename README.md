@@ -65,14 +65,26 @@ From the Javelin or Plover layer, tap the outer right thumb
 
    ```sh
    python3 -m pip install hidapi
-   python3 stenosquid.py --install
+   python3 stenosquid.py --install --confirm-erase
    ```
 
-   The installer downloads and prepares missing dictionaries, writes them to the left half, and verifies them. You can use Javelin as soon as the installer finishes. If interrupted, reconnect USB and rerun the same command.
+   This prepares the pinned dictionaries, replaces the external dictionary pool, and verifies the result. If a fresh install is interrupted, reconnect USB and rerun the same command. On a provisioned board, use `--install` without `--confirm-erase` to check that it is already installed.
 
-If the installer reports a conflict, run `python3 stenosquid.py --repair` to check
-all configured base images and replace the ones that need repair.
-The personal dictionary stays intact.
+### Update a board using the previous dictionary layout
+
+Before flashing the new Left UF2, keep the old firmware running and save your personal entries:
+
+```sh
+python3 stenosquid.py --backup personal.json
+```
+
+After flashing, provision the shared pool and restore the backup:
+
+```sh
+python3 stenosquid.py --install --confirm-erase --restore personal.json
+```
+
+The clean install uses the default dictionary selections. Restore your preferred checkboxes in Javelin Steno Tools. A board already running Native with a ready store can keep its dictionaries across the firmware update.
 
 ### Import a personal Plover dictionary
 
@@ -131,13 +143,9 @@ https://zmk.studio/
 https://lim.au/#/software/javelin-steno-tools
 
 ## External Memory Map
-The compiled base and extras images occupy about 4.43 MiB of external flash. The personal dictionary is read directly from QSPI. It uses one region from `0x500000` to `0xFF0000`, split into 175 segments of 64 KiB.
+Lapwing Base, Commands, Numbers, UK Additions, and Proper Nouns share one compact image and keep their own checkboxes. Plover has its own image. The personal dictionary and indexes grow in the shared QSPI pool. A fresh install leaves 180 free 64 KiB segments, including the three-segment maintenance reserve.
 
-![Left-half QSPI flash map with base-image growth room and a shared personal-dictionary segment pool](assets/qspi-flash-map.png)
-
-The opt-in Native build uses a shared pool. On a fresh Native install, Lapwing Base, Commands, Numbers, UK Additions, and Proper Nouns share one compact image and keep their own checkboxes. Plover has its own image.
-
-![Native external QSPI install map showing the combined Lapwing collection and the shared pool](assets/qspi-flash-map-native.png)
+![External QSPI install map showing the combined Lapwing collection and the shared pool](assets/qspi-flash-map-native.png)
 
 ## NiceNano Wiring Diagram
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)

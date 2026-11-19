@@ -106,11 +106,6 @@ jobs:
             snippet: zmk-usb-logging
             dictionaries: true
             diagnostics: true
-          - name: NiceNano-Left-Native
-            shield: corne_left
-            snippet: studio-rpc-usb-uart
-            dictionaries: true
-            native: true
           - name: NiceNano-Left-Default
             shield: corne_left
             snippet: studio-rpc-usb-uart
@@ -131,11 +126,6 @@ jobs:
             snippet: zmk-usb-logging
             dictionaries: true
             diagnostics: true
-          - name: Boardsource-Left-Native
-            boardsource: left
-            snippet: studio-rpc-usb-uart
-            dictionaries: true
-            native: true
           - name: Boardsource-Left-Default
             boardsource: left
             snippet: studio-rpc-usb-uart
@@ -226,9 +216,6 @@ jobs:
             left)
               board=blecorne_left
               conf="$split/corne.conf;$split/corne_left.conf"
-              if [ "${{ matrix.native }}" = "true" ]; then
-                conf="$conf;$split/native-store.conf"
-              fi
               if [ "${{ matrix.no_display }}" = "true" ]; then
                 conf="$conf;$split/left-no-display.conf"
               fi
@@ -274,9 +261,6 @@ jobs:
                 args+=("-DEXTRA_CONF_FILE=$split/logging.conf"
                        "-DEXTRA_DTC_OVERLAY_FILE=$split/logging.overlay")
               fi
-              if [ "${{ matrix.native }}" = "true" ]; then
-                args+=("-DEXTRA_CONF_FILE=$split/native-store.conf")
-              fi
               if [ -n "${{ matrix.extra }}" ]; then
                 args+=(${{ matrix.extra }})
               fi
@@ -293,6 +277,17 @@ jobs:
           fi
           set -o pipefail
           west build -s "$source" -d "$GITHUB_WORKSPACE/out" -b "$board" "${snippet[@]}" -- "${args[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+          case "${{ matrix.name }}" in
+            *-Left-Default|*-Left-No-Display)
+              config="$GITHUB_WORKSPACE/out/zephyr/.config"
+              expected='CONFIG_ZMK_STENO_SQUID_NATIVE_STORE=y'
+              if ! awk -v expected="$expected" '$0 == expected { found = 1 } END { exit !found }' "$config"; then
+                echo "::error::Default left firmware must use the Native dictionary store"
+                exit 1
+              fi
+              ;;
+          esac
 
       # The linker prints how full the internal flash and RAM are. Post it on
       # the run page so growth is visible on every push.

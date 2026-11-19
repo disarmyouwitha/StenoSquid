@@ -98,13 +98,13 @@ config ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     depends on USB_DEVICE_STACK && USB_HID_DEVICE_COUNT >= 3
 
 config ZMK_STENO_SQUID_NATIVE_STORE
-    bool "Experimental catalog-driven native dictionary engine"
+    bool "Use the Native dictionary store"
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     depends on !ZMK_JAVELIN_SERIAL_CONSOLE && !ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    default y
     help
-      Candidate-B engine/store integration. Requires an explicit clean native
-      provisioning image; never reads or migrates the old personal-store format.
-      Keep disabled in normal firmware until the hardware acceptance tests pass.
+      Use the shared QSPI dictionary pool. Provision it using the USB installer.
+      The diagnostic build uses fixed-layout tools for bench compatibility.
 
 config ZMK_STENO_SQUID_NATIVE_DICTIONARIES
     int "Maximum resident native dictionary wrappers"

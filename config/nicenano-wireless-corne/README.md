@@ -210,40 +210,21 @@ To use Plover's onboard base, enable **Plover Base** and disable **Lapwing Base*
 
 The existing website supplies these controls. Firmware support handles listing, selection, and persistence. Both bases remain read-only through the browser, and the personal dictionary remains editable.
 
-### Flash regions and initial Plover provisioning
+### External flash and provisioning
 
-| Contents | External flash offset | Image size | CRC32 |
-|---|---|---|---|
-| Lapwing Base, 114,885 outlines | `0x000000` | 1,830,444 bytes | `00f2d636` |
-| Plover Base, 147,424 outlines | `0x200000` | 2,339,620 bytes | `3e8f8d88` |
-| Lapwing extras | `0x480000` | 469,812 bytes | `98af1ecc` |
-| Personal dictionary | `0x500000` | 175 segments of 64 KiB (to `0xFEFFFF`) | Per-record CRC; indexes rebuildable |
-| Tail reserve | `0xFF0000` | 60 KiB before scratch | — |
-| Diagnostic scratch | `0xFFF000` | 4 KiB reserved | — |
+The left firmware uses the shared [external memory map](../../README.md#external-memory-map).
+Follow the [install and update steps](../../README.md#how-to-install) to provision
+it over USB HID. Use `--serial SERIAL_NUMBER` if multiple keyboards are connected.
+`python3 stenosquid.py --verify` checks the installed store and shows **Verify**
+on the right display during the scan.
 
-Images are pinned and verified by the preparation scripts. The fixed 2 MiB, 2.5 MiB, and 0.5 MiB base regions leave room for dictionary updates without relocating the personal pool.
-
-After flashing the everyday left firmware, let the keyboard reboot and run:
-
-```sh
-python3 -m pip install hidapi
-python3 stenosquid.py --install
-```
-
-The installer detects the wired HID device and prepares missing images from pinned sources. Use `--serial SERIAL_NUMBER` with multiple USB keyboards connected.
-
-Provisioning checks the complete transfer before programming, reads back each chunk, then checks the raw and mapped CRCs and native Javelin lookups. It writes only inside the configured base regions and rejects conflicting pre-existing bits. Rerun the installer to resume a partial transfer. The personal dictionary stays in place, and Javelin starts once every configured image verifies.
-
-On Left-Default, `python3 stenosquid.py --repair` checks all configured images
-over wired HID and replaces only the ones that need repair. Use
-`--repair --base lapwing` (or `plover` or `extras`) to check just one image.
-The replacement must match the firmware checksum before the selected region is erased.
-
-Both left builds use the same USB HID installer and repair commands. Serial is reserved for diagnostics.
+Left-Diagnostic uses the original fixed layout for the serial benchmark tools.
+Use its matching test flash if you need those tools.
 
 ### Lapwing extras
 
-A third image holds four smaller Lapwing dictionaries. Each has its own checkbox under **Active Dictionaries** in Javelin Steno Tools, and the keyboard remembers the choices.
+Lapwing Base and the four extras share a single compact image. Each dictionary
+has its own checkbox under **Active Dictionaries** in Javelin Steno Tools.
 
 | Dictionary | Entries | Starts |
 | --- | ---: | --- |
@@ -252,47 +233,13 @@ A third image holds four smaller Lapwing dictionaries. Each has its own checkbox
 | Lapwing UK Additions | 13,043 | Off |
 | Lapwing Proper Nouns | 15,788 | On |
 
-They rank above the bases, in that order: personal entries first, then the four extras, then Lapwing Base, then Plover Base.
-
-`prepare_extras.py` downloads the four pinned sources, compiles them into `build/extras/lapwing-extras.bin` (469,812 bytes) and checks every outline. The image lives at `0x480000` in the external flash and is uploaded, verified and repaired as one unit:
-
-```sh
-python3 stenosquid.py /dev/cu.usbmodem14501 --base extras
-```
-
-A firmware built with the extras image needs it in flash. After the first flash of such a build, onboard Javelin shows **No dictionary** until this upload finishes; the Lapwing and Plover bases already in flash are kept. `--verify --base all` checks all three images, and `--repair` works with `--base extras`.
-
-Eight of the command entries are Plover application commands, such as lookup and add translation, and do nothing on the keyboard. The key shortcuts in that dictionary send the keys as written, mostly with Control. The commands and numbers use the number key.
-
-### Verify or repair a base dictionary
-
-Both left builds run these commands over USB HID without a port argument.
-
-```sh
-python3 stenosquid.py --verify
-```
-
-`--verify` reads every byte of the chosen image, or of all of them, and compares the CRC with the image the firmware was built for. It writes and erases nothing, and it works when a dictionary cannot load. It prints `OK`, a CRC mismatch, or the offset of a read error, and exits with status 1 if any base fails.
-
-```sh
-python3 stenosquid.py --base lapwing --repair
-```
-
-`--repair` replaces a base that is damaged or holds other data, including one the keyboard still reports as verified. In order, it:
-
-1. checks the complete file's size and CRC against the image the firmware expects, before touching the flash;
-2. takes the dictionaries out of use and removes the saved verification record;
-3. erases that base's 4 KiB sectors, including the last, partly used one;
-4. sends the image once as base64, with bounded retries/resume and device-side write compatibility checks, reading back every chunk;
-5. runs the full CRC and native lookup checks, and saves the verification record again once every base passes.
-
-It never asks a question, so a script or an agent can run it. Passing `--repair` is the confirmation.
-
-The other base and the personal dictionary segments are never erased. If a repair is interrupted, the base is left unprovisioned and onboard Javelin shows **No dictionary**; run the same command again.
+Lookup priority is personal entries, the four extras in table order, Lapwing
+Base, then Plover Base. Plover application commands in the Commands dictionary
+have no effect in onboard Javelin.
 
 ## Flash and check
 
-Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. The same Lapwing image already on the left half's external flash should verify and load at boot. Run `python3 stenosquid.py --status` to check the dictionaries without writing.
+Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. An existing Native store should verify and load at boot. Run `python3 stenosquid.py --status` to check the dictionaries without writing.
 
 Check ordinary typing on both halves, then test `TP / -T / KAT / S / -T / KAT` in Javelin with host Plover closed. Use the right half for the final `-T`. Return to MAIN and check the same cross-half chords in Plover HID.
 
@@ -308,11 +255,11 @@ The left firmware exposes a dedicated HID console over USB and Bluetooth for [Ja
 
 Use **Add Translation** to enter an outline and translation, then press Return in the translation field to save. Add, replace, remove, or export personal outlines from the browser. A saved entry takes precedence over the same Lapwing outline in onboard Javelin. Removing the personal entry restores the Lapwing translation. Host Plover HID continues to send raw strokes to the host.
 
-The left half reads personal records and both lookup tables directly from QSPI. Adds and edits append a record; deletes mark a record dead. Commit flags and per-record checksums support interrupted-write recovery. Lookup tables can be rebuilt from the record log, and background cleanup reuses segments. The old snapshot writer and its `PageWriter` are gone. The new low-level writer still splits writes at 256-byte flash-page boundaries and verifies programmed bytes.
-
-Install or repair base dictionaries over USB HID with `stenosquid.py --install` or `stenosquid.py --repair`. Left-Diagnostic adds serial diagnostics, not another installer. Export the personal dictionary from Javelin Tools to keep an independent backup.
-
-The personal dictionary region passed a 220,000-entry host test with short, shared translations and two-stroke outlines. Capacity varies with outline length and UTF-8 translation size. Ordinary edits write only the changed record. Segment allocation, cleanup, and occasional table rebuilds take longer; these are not guaranteed constant-latency operations. For a Plover JSON file, use `stenosquid.py --import user.json` with the current left firmware over USB. The host merges the entries and transfers finished segments for the keyboard to verify and commit.
+The left reads personal records and both lookup tables from QSPI. Single edits
+append a checked record. Large USB imports build indexes on the host and publish
+a new catalog only after validation. Run `python3 stenosquid.py --compact` to
+reclaim space from partly obsolete journals. Keep a separate backup with
+`python3 stenosquid.py --backup personal.json`.
 
 The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checks power loss at every flash write, recovery from damaged tables, and write boundaries.
 
