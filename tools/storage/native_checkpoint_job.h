@@ -11,7 +11,7 @@ template <class Device>
 class NativeCheckpointJob {
     enum class Phase { Idle, Inspect, Plan, EraseForward, EraseReverse, Build,
                        FinishForward, FinishReverse, Forward, Reverse, Coverage,
-                       Publish, Recover, Done, Failed };
+                       Prune, Publish, Recover, Done, Failed };
     Device &device;
     NativeCatalog<Device> &catalog;
     LiveJournal<Device> &live;
@@ -20,10 +20,10 @@ class NativeCheckpointJob {
     NativeMergeOps<Device> ops;
     CheckpointBuilder<NativeMergeOps<Device>> builder;
     CatalogSelection current{},published{};
-    SegmentMap unavailable{};
+    SegmentMap unavailable{},needed_journals{};
     uint8_t prefix[32]{},retained[253]{},remap[253]{};
     uint16_t dictionaries=0,old_extents=0,kept=0;
-    uint32_t inspected=0,old_reverse_address=0,old_reverse_count=0;
+    uint32_t inspected=0,old_reverse_address=0,old_reverse_count=0,last_journal=0,prune_count=0;
     uint32_t starts[2]{},segments[2]{},erase_position=0,position=0,previous=0;
     bool did_publish=false;
     Phase phase=Phase::Idle;
@@ -117,6 +117,12 @@ public:
         const auto status=live.BeginMaintenance(frozen);
         if(status!=LiveResult::Ok)return status==LiveResult::Busy?JobResult::Busy:JobResult::ReadOnly;
         current=selection;published={};unavailable=excluded;did_publish=false;
+        needed_journals={};last_journal=prune_count=0;
+        if(frozen.highwater) {
+            const uint32_t segment=frozen.highwater_address/kSegmentBytes;
+            if(!frozen.journals.Contains(segment))return Stop(JobResult::Corrupt);
+            needed_journals.Add(segment,1);
+        }
         inspected=kept=position=previous=erase_position=old_reverse_address=old_reverse_count=0;
         std::memset(remap,255,sizeof(remap));
         if(!device.Read(frozen.root.address,prefix,32))return Stop(JobResult::IoError);
@@ -148,12 +154,14 @@ public:
                     old_reverse_count=Word(row+4)/4;
                     if(Word(row+4)%4 || old_reverse_count>kMaxEntries)return Stop(JobResult::Corrupt);
                 }
+                if(kind==2)last_journal=uint16_t(row[0]) | uint16_t(row[1])<<8;
                 if(kind==1 || kind==2){remap[inspected]=uint8_t(kept);retained[kept++]=uint8_t(inspected);}
                 else if(kind!=3 && kind!=4)return Stop(JobResult::Corrupt);
                 ++inspected;return JobResult::More;
             }
             if(kept>251 || 32u+dictionaries*96u+(kept+2u)*24u>catalog.PayloadCapacity() || frozen.forward_count>kMaxEntries-frozen.tail.count ||
                old_reverse_count>kMaxEntries-frozen.tail.count)return Stop(JobResult::NoSpace);
+            if(last_journal)needed_journals.Add(last_journal,1);
             ops.ReverseInput(old_reverse_address,old_reverse_count);phase=Phase::Plan;return JobResult::More;
         }
         if(phase==Phase::Plan) {
@@ -202,6 +210,7 @@ public:
             if(rev) {
                 if(Search(false,address,found)!=Result::Found || found!=address)return Stop(JobResult::Corrupt);
             } else {
+                needed_journals.Add(address/kSegmentBytes,1);
                 uint32_t latest=0;bool needed=false;
                 if(!Latest(record,latest,needed) || !needed || latest!=address)return Stop(JobResult::Corrupt);
                 if(!record.operation && (Search(true,address,found)!=Result::Found || found!=address))return Stop(JobResult::Corrupt);
@@ -209,7 +218,10 @@ public:
             previous=address;++position;return JobResult::More;
         }
         if(phase==Phase::Coverage) {
-            if(position==frozen.forward_count+frozen.tail.count){phase=Phase::Publish;return JobResult::More;}
+            if(position==frozen.forward_count+frozen.tail.count){
+                prune_count=kept;position=kept=0;std::memset(remap,255,sizeof(remap));
+                phase=Phase::Prune;return JobResult::More;
+            }
             uint32_t address;
             if(position<frozen.forward_count) {
                 if(!ops.ReadIndex(false,position,address))return Stop(JobResult::Corrupt);
@@ -220,6 +232,19 @@ public:
             if(ops.Active(record.identity) && !Latest(record,latest,needed))return Stop(JobResult::Corrupt);
             const auto status=Search(false,address,found);
             if(needed?(status!=Result::Found || found!=latest):status!=Result::Missing)return Stop(JobResult::Corrupt);
+            return JobResult::More;
+        }
+        if(phase==Phase::Prune) {
+            // Detach only journals with no surviving indexed record, sequence
+            // boundary or append cursor. The other catalog and reader pins
+            // continue to own their old extents; this phase never erases them.
+            if(position==prune_count){phase=Phase::Publish;return JobResult::More;}
+            const uint8_t original=retained[position++];uint8_t row[24];
+            if(!device.Read(frozen.root.address+32+dictionaries*96+original*24,row,24))return Stop(JobResult::IoError);
+            const uint32_t kind=Word(row+12),segment=uint16_t(row[0]) | uint16_t(row[1])<<8;
+            if(kind==1 || (kind==2 && needed_journals.Contains(segment))) {
+                remap[original]=uint8_t(kept);retained[kept++]=original;
+            } else if(kind!=2)return Stop(JobResult::Corrupt);
             return JobResult::More;
         }
         if(phase==Phase::Publish) {

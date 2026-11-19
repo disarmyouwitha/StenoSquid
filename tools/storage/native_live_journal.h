@@ -13,7 +13,7 @@ struct LiveView {
     Tail tail{};
     SegmentMap journals{};
     uint32_t identities[64]{};
-    uint32_t dictionary_count=0,forward_address=0,forward_count=0,token=0;
+    uint32_t dictionary_count=0,forward_address=0,forward_count=0,token=0,highwater_address=0;
     uint64_t through=0,highwater=0;
 };
 
@@ -114,7 +114,7 @@ public:
             JournalRecord record;const auto status=journal.Step(scan,record);
             if(status==JournalResult::IoError)return Fail(LiveResult::IoError);
             if(status==JournalResult::Ok) {
-                live.highwater=record.sequence;
+                live.highwater=record.sequence;live.highwater_address=record.address;
                 if(record.sequence==live.through)boundary_seen=true;
                 if(record.sequence>live.through && !live.tail.Append(record.address))return Fail(LiveResult::NeedRebuild);
                 return LiveResult::More;
@@ -181,7 +181,7 @@ public:
         // and queries until recovery reconstructs it; never retry at this cursor.
         if(status!=JournalResult::Ok)return Fail(status==JournalResult::IoError?LiveResult::IoError:LiveResult::Corrupt);
         if(!live.tail.Append(append_address))return Fail(LiveResult::Corrupt);
-        ++live.highwater;
+        ++live.highwater;live.highwater_address=append_address;
         append_address+=span;
         return LiveResult::Ok;
     }

@@ -25,11 +25,11 @@ public:
         if(work!=Work::None)return CatalogResult::Busy;
         opened=false;
         const auto result=catalog.OpenValidated(selected,validate);
-        if(result!=CatalogResult::Ok)return result;
+        if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined)return result;
         if(live.Begin(selected)!=LiveResult::More)return CatalogResult::Corrupt;
         for(;;) {
             const auto step=live.RecoverStep();
-            if(step==LiveResult::Ready){opened=true;last=JobResult::Done;return CatalogResult::Ok;}
+            if(step==LiveResult::Ready){opened=true;last=JobResult::Done;return result;}
             if(step!=LiveResult::More)return step==LiveResult::IoError?CatalogResult::IoError:CatalogResult::Corrupt;
         }
     }
@@ -45,6 +45,7 @@ public:
     JobResult Start(Work kind) {
         if(!opened)return JobResult::ReadOnly;
         if(work!=Work::None)return JobResult::Busy;
+        if(!catalog.CanWrite(selected.root))return JobResult::ReadOnly;
         const auto status=kind==Work::Checkpoint?checkpoint.Begin(selected):
             kind==Work::Rollover?rollover.Begin(selected):JobResult::Invalid;
         if(status==JobResult::More){work=kind;last=status;}
@@ -84,6 +85,7 @@ public:
     template<class Check>
     CatalogResult Clear(uint32_t id,uint32_t &replacement,LiveView &pin,Check check) {
         if(!opened || work!=Work::None || !id || pin.token)return CatalogResult::Busy;
+        if(!catalog.CanWrite(selected.root))return CatalogResult::Quarantined;
         uint8_t row[96]{},prefix[32];uint32_t index=0;
         for(;Row(index,row);++index)if(Word(row)==id)break;
         if(Word(row)!=id || row[8]!=255 || row[9]!=255 || !device.Read(selected.root.address,prefix,32))return CatalogResult::Invalid;
@@ -114,6 +116,7 @@ public:
     template<class Check>
     CatalogResult Enable(uint32_t id,bool enabled,LiveView &pin,Check check) {
         if(!opened || work!=Work::None || pin.token)return CatalogResult::Busy;
+        if(!catalog.CanWrite(selected.root))return CatalogResult::Quarantined;
         if(!id)return CatalogResult::Invalid;
         uint8_t row[96]{};uint32_t index=0;
         for(;Row(index,row);++index)if(Word(row)==id)break;

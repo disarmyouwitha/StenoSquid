@@ -391,7 +391,7 @@ void lookup_outline(void *,const char *line) {
 }
 void store_status(void *,const char *) {
     const auto *personal=ByName("user_dictionary");
-    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
+    Console::Printf("{\"format\":\"SQBCAT02\",\"ready\":%s,\"read_only\":%s,\"generation\":%u,\"tail\":%u,\"maintenance\":%u,\"input_highwater\":%u,\"input_overflows\":%u,\"personal_id\":%u,\"dictionaries\":%u,\"ids\":[",healthy?"true":"false",store.selected.quarantine?"true":"false",unsigned(store.selected.root.generation),store.live.TailCount(),unsigned(store.work),steno_squid_native_input_highwater(),steno_squid_native_input_overflows(),personal?personal->identity:0,unsigned(cell_count));
     for(size_t i=0;i<cell_count;++i)Console::Printf("%s%u",i?",":"",cells[i].identity);
     Console::Printf("]}\n\n");
 }
@@ -493,7 +493,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         flash_device.trust_bases=fingerprint && fingerprint==verified_fingerprint;
         const auto status=validator.Validate(root);flash_device.trust_bases=false;return status;
     });
-    if(result!=CatalogResult::Ok){base_provider.Fault();return false;}
+    if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined){base_provider.Fault();return false;}
     uint8_t prefix[8];if(!flash_device.Read(store.selected.root.address,prefix,8))return false;
     const size_t count=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
     if(count>MaxDictionaries || (loaded && count!=cell_count))return false;

@@ -1,8 +1,10 @@
 # Candidate B: full engine/store integration test build
 
-Status: **opt-in native engine implemented; first full CI passed; buffered-input checkpoint in verification; hardware validation pending**.
-Branch: `prototype/native-engine-integration`, based on the CI-verified
-`prototype/native-checkpoint-job` checkpoint. Main and normal firmware remain on
+Status: **opt-in native engine implemented; full engine checkpoint passed CI; journal reclamation follow-up in verification; hardware validation pending**.
+Working branch: `prototype/native-journal-reclamation`, following
+`prototype/native-engine-integration`. The CI-passing full-engine build is preserved
+at `checkpoint/native-engine-integrated` (`ec4c007`); the following stack reduction
+passed CI at `18e21a9`. Both descend from `prototype/native-checkpoint-job`. Main and normal firmware remain on
 the production store until the new path passes hardware acceptance.
 
 ## What runs on the keyboard
@@ -35,6 +37,20 @@ store for this build; it does not read, convert or migrate their storage format.
   Speed deadlines use captured event times; timer work waits for pending replay.
 - Read sessions keep the flash awake during maintenance and export. Normal idle
   shutdown/deep sleep retain the existing power driver and pin configuration.
+
+Checkpoint publication now detaches journals with no surviving indexed entries.
+It retains every live set/tombstone, the latest committed sequence's journal and
+the append journal (including an empty one). This phase changes ownership metadata;
+it does not erase the old journals. The alternate catalog and reader leases keep
+them protected until later publication/release. Only then can ordinary staging
+reuse those segments. Journals containing any live entry still require a future
+relocation cleaner; this is deliberately a narrower reclamation step.
+
+A torn partner catalog no longer hides a fully validated surviving catalog.
+Native open exposes it **read-only** for translation/export, reports `read_only`
+in status, and refuses edits, checkbox writes, reset and maintenance without
+changing flash. It does not automatically erase damaged metadata. Export a backup
+through Javelin Tools before choosing explicit clean reprovisioning.
 
 The native base-layout fingerprint has its own settings key. Unchanged bases can
 skip another full CRC pass on wake; mapped native lookups still exercise the base
@@ -161,14 +177,23 @@ this small merge command.
   through the actual Repeat → AllUp → JeffModifiers → Javelin pipeline for
   translation, repeat, undo and multi-stroke. The real Practice state machine
   tests queued on-time input after a delayed Speed timer and deferred advance.
+- Dead-journal reclamation: 275 simulated torn-operation cases, retained-reader
+  publication refusal, protected sequence/reset boundaries, empty-writer retention,
+  actual reuse after both catalogs/readers release, and continued translation in
+  read-only fallback. No old journal is erased during pruning.
 - All earlier native catalog/checkpoint/rollover fault tests remain enabled.
 
-The first full integration passed [CI 44401203921](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44401203921)
-with both native boards, normal variants, host regressions and Linux sanitizers.
-Its source is preserved at `checkpoint/native-engine-first-ci` (`d1667bb`).
-The subsequent buffered-input local ARM build links at 464,560 bytes of flash and
-230,126 bytes of RAM (87.79%). Final CI artifacts will be recorded after its gate.
-These are static figures, not measured runtime stack/heap peaks.
+The full-engine integration passed CI for `d1667bb`, buffered input for `08d5eb6`,
+wake collection synchronization for `ec4c007`, and metadata stack reduction for
+[`18e21a9`](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44425344006).
+Each gate includes both native boards, normal variants, host regressions and Linux
+sanitizers. Main has not been switched to this storage implementation.
+
+The reclamation local ARM build links at approximately 465 kB of internal flash
+and 230 kB of RAM (87.8%). Metadata reset/checkbox frames dropped from 2,136/2,096
+to 760/720 bytes by reusing existing scratch, with no added RAM. Static frame sizes
+are not runtime stack peaks; contention and peak measurements remain hardware
+acceptance work.
 
 ## Hardware acceptance when the owner returns
 
@@ -185,9 +210,11 @@ These are static figures, not measured runtime stack/heap peaks.
 6. Exercise maintenance under active typing and record latency/drops, plus runtime
    stack/heap peaks. CI correctness does not establish the typing-contention gate.
 
-**Not yet complete:** journal cleaning/reclamation and an overlong-tail rebuild;
+**Not yet complete:** relocating live records to compact partially stale journals,
+an overlong-tail rebuild;
 compact import/replacement/delete/rename/reorder manager transactions; physical
 power-cut qualification; measured 200 WPM/burst contention and runtime peaks.
-Old unreachable records remain until cleaning, so sustained growth can safely
+Wholly dead journals can now be reclaimed after ownership is released. Partially
+stale journals still retain their allocation, so sustained growth can safely
 refuse an edit when staging/reserve space is exhausted. Do not promote this build
 to the normal release until those remaining acceptance gates are resolved.

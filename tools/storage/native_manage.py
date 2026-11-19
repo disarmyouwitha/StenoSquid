@@ -79,6 +79,11 @@ def main():
             print(json.dumps(status, indent=2))
             print(console.command("list_dictionaries"))
             return
+        if status.get("read_only"):
+            raise RuntimeError(
+                "Native catalog is read-only after damaged metadata; export a backup "
+                "through Javelin Tools before an explicit clean reprovision"
+            )
         identity = (
             args.dictionary if args.dictionary is not None else status["personal_id"]
         )
