@@ -169,6 +169,13 @@ On the new firmware, an explicit full verification shows **Verify** on the
 right display and cancels steno chords entered during the scan. Regular
 checkpoint delivery still replays queued keys in order.
 
+On Boardsource hardware, the packed build from Actions run `44463275181`
+passed full install CRC verification and rebooted READY. The five Lapwing
+checkboxes each changed independently, then the previous selections were
+restored. A separate normal reboot retained those selections and all three
+personal entries. KAT and HE/HROE returned their expected translations.
+Re-running the normal install command reported the store already installed.
+
 ## USB manager and existing website
 
 Javelin Tools continues to use its current HID/BT connector, dictionary list,
