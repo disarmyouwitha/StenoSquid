@@ -127,7 +127,8 @@ def wait_ready(serial=None):
         try:
             with open_console(serial) as console:
                 status = console.command("native_install status", timeout=2)
-                if status.startswith(("NATIVE1 READY ", "NATIVE2 READY ")):
+                if (status.startswith(("NATIVE1 READY ", "NATIVE2 READY ")) and
+                        console.command("list_dictionaries", timeout=2).lstrip().startswith("[")):
                     print(
                         "Native engine ready. Test KAT, multi-stroke, Practice and browser edits."
                     )

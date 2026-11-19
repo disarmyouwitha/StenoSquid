@@ -212,8 +212,15 @@ torn-write cases with the previous or fully updated state recoverable.
 A separate 20,000-entry host run used 23 staging segments, 49.0 MB of reads
 through publication and 100.5 MB for cold verification and lookup of every entry.
 Those counts exclude USB reads used to gather the current snapshot.
-Physical interruption, capacity limits on a real board, and end-to-end USB
-timing still require testing.
+On Boardsource, the exact CI Native build uploaded 256 temporary entries in
+about 22 seconds including reboot. A second import replaced 253 of those in
+about 31 seconds. Compaction retired three journals and increased free space
+from 172 to 174 segments. All 256 test translations, the three existing
+personal entries and the original checkbox selection matched after reopening.
+The temporary entries were then removed and the original personal export matched.
+A USB polling race was found after reboot: the flash could report READY before
+the dictionary console registered. The client now waits for both.
+Physical interruption and near-full capacity still require board tests.
 
 ## USB manager and existing website
 

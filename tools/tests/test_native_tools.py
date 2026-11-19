@@ -3,12 +3,14 @@
 
 import base64
 import json
+from contextlib import nullcontext
 from pathlib import Path
 import sys
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
+from native_install import wait_ready
 from native_manage import import_entries, commit_with_progress
 from import_personal import parse_named
 
@@ -107,6 +109,20 @@ def main():
                 assert not succeeds and "timed out" in str(error)
         if not succeeds:
             assert elapsed[0] == (3600 if moving else 180)
+    # READY can precede registration of the Javelin dictionary commands.
+    rebooted = Mock()
+    rebooted.command.side_effect = [
+        "NATIVE2 READY 3", "ERR Dictionary flash is not ready",
+        "NATIVE2 READY 3", "[\n{d: user_dictionary}\n]",
+    ]
+    with (
+        patch("native_install.open_console", return_value=nullcontext(rebooted)),
+        patch("native_install.time.sleep"),
+    ):
+        wait_ready()
+    assert rebooted.command.call_args_list == [
+        call("native_install status", timeout=2), call("list_dictionaries", timeout=2),
+    ] * 2
     print(
         "Native USB tools: full-length UTF-8, newline/empty text, fresh personal ID, progress-aware Busy retries, stall and total timeout bounds passed"
     )
