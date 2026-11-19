@@ -40,4 +40,3 @@ void Upload(NativeStage<NativeDevice> &stage, const Plan &plan) {
         }
     }
 }
-

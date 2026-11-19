@@ -163,7 +163,7 @@ def main():
                                                baseline_entries=args.baseline, edit_sha256=tape_hash,
                                                incremental_sha256=incremental_hash, measurements=measurement), indent=2) + "\n")
         with args.output.with_suffix(".csv").open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, list(dict.fromkeys(k for row in measurement for k in row)))
+            writer = csv.DictWriter(stream, list(dict.fromkeys(k for row in measurement for k in row)), lineterminator="\n")
             writer.writeheader()
             writer.writerows(measurement)
         print(f"Cold-open and export parity passed for {len(measurement)} recorded scenarios")
