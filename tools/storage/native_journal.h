@@ -117,6 +117,11 @@ public:
     JournalResult Initialize(uint32_t segment, uint64_t epoch) {
         if (segment < 2 || segment >= 255 || !epoch) return JournalResult::Invalid;
         if (!device.Erase(segment)) return JournalResult::IoError;
+        return InitializeErased(segment,epoch);
+    }
+
+    JournalResult InitializeErased(uint32_t segment, uint64_t epoch) {
+        if (segment < 2 || segment >= 255 || !epoch) return JournalResult::Invalid;
         uint8_t header[32]{};
         std::memcpy(header, "SQJSEG01", 8);
         PutWord(header+8, uint32_t(epoch)); PutWord(header+12, uint32_t(epoch>>32));

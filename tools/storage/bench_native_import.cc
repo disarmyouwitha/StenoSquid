@@ -46,6 +46,13 @@ struct Device {
         ++erases;
         return nor.EraseBytes(segment * 65536, bytes);
     }
+    bool ErasePoolSector(uint32_t at) {
+        if (at < 2 * kSegmentBytes || at >= 255 * kSegmentBytes || at % kEraseSectorBytes)
+            return false;
+        Invalidate(at,kEraseSectorBytes);
+        ++erases;
+        return nor.EraseBytes(at,kEraseSectorBytes);
+    }
     bool EraseCatalog(uint32_t at, uint32_t n) {
         Invalidate(at, n);
         ++catalog_erases;

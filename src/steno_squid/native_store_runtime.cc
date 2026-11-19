@@ -88,6 +88,10 @@ struct FlashDevice {
     bool EraseIndex(uint32_t segment, uint32_t bytes) {
         return segment >= 2 && segment < 255 && EraseBlock(segment * kSegmentBytes, bytes);
     }
+    bool ErasePoolSector(uint32_t at) {
+        return at >= 2 * kSegmentBytes && at < Limit && !(at % kEraseSectorBytes) &&
+               EraseBlock(at, kEraseSectorBytes);
+    }
     bool EraseCatalog(uint32_t at, uint32_t bytes) {
         return (at == 0 || at == kSegmentBytes) && EraseBlock(at, bytes);
     }

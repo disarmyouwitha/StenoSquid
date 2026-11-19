@@ -23,6 +23,10 @@ struct LiveDevice {
         assert(bytes == kEraseSectorBytes || bytes == kSegmentBytes);
         return nor.EraseBytes(segment * kSegmentBytes, bytes);
     }
+    bool ErasePoolSector(uint32_t at) {
+        assert(at >= 2 * kSegmentBytes && !(at % kEraseSectorBytes));
+        return nor.EraseBytes(at,kEraseSectorBytes);
+    }
     bool EraseCatalog(uint32_t at,uint32_t n){return nor.EraseCatalog(at,n);}
 };
 struct LiveFixture {

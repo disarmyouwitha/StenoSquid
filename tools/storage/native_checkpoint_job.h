@@ -273,9 +273,15 @@ public:
             phase=relocate.destination?Phase::StageJournal:Phase::EraseForward;return JobResult::More;
         }
         if(phase==Phase::StageJournal) {
-            if(ops.Journal().Initialize(relocate.destination,relocate.epoch)!=JournalResult::Ok)
+            if(erase_position<kSegmentBytes) {
+                if(!device.ErasePoolSector(relocate.destination*kSegmentBytes+erase_position))
+                    return Stop(JobResult::IoError);
+                erase_position+=kEraseSectorBytes;
+                return JobResult::More;
+            }
+            if(ops.Journal().InitializeErased(relocate.destination,relocate.epoch)!=JournalResult::Ok)
                 return Stop(JobResult::IoError);
-            phase=Phase::CopyJournal;return JobResult::More;
+            erase_position=0;phase=Phase::CopyJournal;return JobResult::More;
         }
         if(phase==Phase::CopyJournal) {
             const auto status=CopyVictim();
@@ -290,9 +296,13 @@ public:
             // the erased bytes so a bad count cannot program the stale suffix.
             const bool small = maximum_rows <= kEraseSectorBytes / 4;
             const uint32_t erase_bytes = small ? kEraseSectorBytes : kSegmentBytes;
-            if (erase_position < segments[rev]) {
-                if (!device.EraseIndex(starts[rev] + erase_position, erase_bytes))
-                    return Stop(JobResult::IoError);
+            const uint32_t erase_step = compact ? kEraseSectorBytes : erase_bytes;
+            const uint32_t erase_steps = segments[rev] * (erase_bytes / erase_step);
+            if (erase_position < erase_steps) {
+                const bool erased = compact
+                    ? device.ErasePoolSector(starts[rev] * kSegmentBytes + erase_position * erase_step)
+                    : device.EraseIndex(starts[rev] + erase_position, erase_bytes);
+                if (!erased) return Stop(JobResult::IoError);
                 ++erase_position;
                 return JobResult::More;
             }
