@@ -77,6 +77,8 @@ jobs:
           python3 tools/tests/test_native_warm_resume.py
           python3 tools/tests/test_native_store.py
           python3 tools/tests/test_native_stage.py
+          python3 tools/tests/test_native_recovery.py
+          python3 tools/tests/test_native_layout.py
           python3 tools/tests/test_native_provisioner.py
           python3 tools/tests/test_native_image.py
           python3 tools/tests/test_native_rollover_job.py
@@ -300,6 +302,10 @@ jobs:
               expected='CONFIG_ZMK_STENO_SQUID_NATIVE_STORE=y'
               if ! awk -v expected="$expected" '$0 == expected { found = 1 } END { exit !found }' "$config"; then
                 echo "::error::Default left firmware must use the Native dictionary store"
+                exit 1
+              fi
+              if grep -qx 'CONFIG_ZMK_STENO_SQUID_USER_SNAPSHOTS=y' "$config"; then
+                echo "::error::Default left firmware must keep experimental snapshots disabled"
                 exit 1
               fi
               ;;
