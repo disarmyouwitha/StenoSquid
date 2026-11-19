@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Personal conversion plans, priority and effective translations after a cold open."""
+from pathlib import Path
+import struct
+import subprocess
+import tempfile
+import zlib
+
+from hostlib import compiler
+from test_native_stage import ROOT, fixture, write_plan
+
+from build_native_image import SEGMENT, catalog_header
+from compile_dict import parse_outline
+from native_snapshot import compile_snapshot, personal_baseline, plan_change
+from native_update import Edit, NoSpace, Snapshot, effective_entries, encode_record, plan, row_name
+
+
+def opened(image):
+    at = SEGMENT
+    length, crc = struct.unpack_from("<II", image, at + 16)
+    return Snapshot(lambda address, n: image[address:address + n], at + 32, length, crc)
+
+
+def publish_image(image, update, generation):
+    result = bytearray(image)
+    for segment, block in update.segments.items():
+        at = segment * SEGMENT
+        result[at:at + len(block)] = block
+    for slot in range(2):
+        at = slot * SEGMENT
+        payload = catalog_header(generation + slot, update.payload) + update.payload
+        result[at:at + len(payload)] = payload
+    return result
+
+
+def main():
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory)
+        image, snapshot, protected = fixture(path)
+        moved = plan(snapshot, protected, move=("user_dictionary", 4))
+        image = publish_image(image, moved, 3)
+        payload = bytearray(moved.payload)
+        struct.pack_into("<I", payload, 32 + 3 * 96 + 4, 0)  # disabled personal row
+        for slot in range(2):
+            at = slot * SEGMENT
+            image[at:at + 32 + len(payload)] = catalog_header(3 + slot, payload) + payload
+        before = opened(image)
+        kat, bob, tas = (parse_outline(outline) for outline in ("KAT", "PWOB", "TAS"))
+        edits = ((0, kat, b"local cat"), (1, bob, b""))
+        offset = before.anchor * SEGMENT + 256 + before.used[before.anchor]
+        for sequence, (op, outline, text) in enumerate(edits, before.highwater + 1):
+            entry = Edit(offset, before.personal, op, outline, text)
+            record = encode_record(entry, sequence)
+            image[offset:offset + len(record)] = record
+            offset += entry.span
+        before = opened(image)
+        baseline = personal_baseline(before, {kat: b"imported cat", bob: b"Bob", tas: b"addition"})
+        assert baseline[kat] == b"local cat" and bob not in baseline and baseline[tas] == b"addition"
+        compiled = compile_snapshot("user_dictionary", baseline)
+        update = plan_change(before, protected, before.personal, compiled, convert=True)
+        recovered = publish_image(image, update, 5)
+        current = opened(recovered)
+        assert current.personal == before.personal and current.next_id == before.next_id
+        assert row_name(current.rows[3]) == "user_dictionary" and current.rows[3][:8] == before.rows[3][:8]
+        assert current.rows[3][11] == 1 and current.entries[(before.personal, bob)].operation == 1
+        assert (before.personal, kat) not in current.entries
+        assert effective_entries(current, "user_dictionary", lambda at, n: recovered[at:at + n])["KAT"] == "local cat"
+        assert {entry.key for entry in current.entries.values() if entry.identity != before.personal} == {
+            entry.key for entry in before.entries.values() if entry.identity != before.personal}
+        try:
+            plan_change(before, set(range(252)) | {255}, before.personal, compiled, convert=True)
+        except NoSpace:
+            pass
+        else:
+            raise AssertionError("Personal conversion consumed the maintenance reserve")
+        before_file, plan_file, binary = (path / name for name in ("old.bin", "convert.bin", "test"))
+        before_file.write_bytes(image)
+        write_plan(plan_file, update)
+        subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+                        "-DSTENO_SQUID_TEST_USER_SNAPSHOTS", "-I", str(ROOT / "tools/storage"),
+                        str(ROOT / "tools/tests/test_native_personal_snapshot.cc"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary), str(before_file), str(plan_file)], check=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -102,11 +102,14 @@ def plan_named_snapshot(snapshot, protected, name, compiled, limit=16):
     return Update(blocks, metadata, payload, 0, 0)
 
 
-def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=False):
+def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=False, convert=False):
     deleting = compiled is None
     target = next((row for row in snapshot.rows if struct.unpack_from("<I", row)[0] == identity), None)
-    if target is None or target[11] != SNAPSHOT_MARKER or (deleting and row_name(target) == "user_dictionary"):
+    if target is None or (convert and (target[11] or row_name(target) != "user_dictionary" or deleting)):
+        raise ValueError("Select a journal-only personal dictionary")
+    if not convert and (target[11] != SNAPSHOT_MARKER or (deleting and row_name(target) == "user_dictionary")):
         raise ValueError("Select an eligible compact user dictionary")
+    consolidate |= convert
     old_base = struct.unpack_from("<H", target, 8)[0]
     kept, remap = [], {}
     for i, extent in enumerate(snapshot.extents):
@@ -118,7 +121,8 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
         remap[old_base] = len(kept)
         write(compiled, 1)
     if consolidate:
-        retained = [entry for entry in snapshot.entries.values() if entry.identity != identity]
+        retained = [entry for entry in snapshot.entries.values()
+                    if entry.identity != identity or (convert and entry.operation == 1)]
         for kind, entries in ((3, sorted(retained, key=lambda entry: entry.key)),
                               (4, sorted((entry for entry in retained if not entry.operation),
                                          key=lambda entry: (entry.text, entry.key)))):
@@ -133,7 +137,9 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
             continue
         row = bytearray(original)
         base = struct.unpack_from("<H", row, 8)[0]
-        if base != 65535:
+        if original is target and convert:
+            struct.pack_into("<HBB", row, 8, remap[old_base], 0, SNAPSHOT_MARKER)
+        elif base != 65535:
             if base == old_base and original is not target:
                 raise ValueError("Snapshot unexpectedly shares its compact extent")
             struct.pack_into("<H", row, 8, remap[base])
@@ -147,12 +153,29 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
     return Update(blocks, metadata, payload, 0, 0)
 
 
+def personal_baseline(snapshot, additions=None):
+    # Imported entries fill gaps. An existing local set or tombstone wins.
+    effective = dict(additions or {})
+    for entry in snapshot.entries.values():
+        if entry.identity != snapshot.personal:
+            continue
+        if entry.operation:
+            effective.pop(entry.strokes, None)
+        else:
+            effective[entry.strokes] = entry.text
+    return effective
+
+
 def change_snapshot(console, operation, name, *, source=None, stage=False, progress=print):
     if update_command(console, "snapshot-capabilities") != "OK SNAPSHOT2":
         raise RuntimeError("Flash the matching experimental lifecycle firmware")
     validate_name(name)
+    converting = operation == "personal"
+    if converting and update_command(console, "personal-snapshot-capabilities") != "OK PERSONAL1":
+        raise RuntimeError("Flash the experimental personal conversion firmware")
+    expected_kind = "personal" if converting else "snapshot"
     row = next((row for row in json.loads(console.command("native_catalog"))
-                if row["kind"] == "snapshot" and row["name"] == name), None)
+                if row["kind"] == expected_kind and row["name"] == name), None)
     if row is None:
         raise ValueError(f"No user snapshot named {name!r}")
     identity = row["id"]
@@ -160,17 +183,24 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
     published = False
     try:
         consolidating = operation == "consolidate"
-        snapshot, protected = read_snapshot(console, answer, metadata_only=not consolidating)
+        snapshot, protected = read_snapshot(console, answer, metadata_only=not (consolidating or converting))
         if not any(row_name(row) == name and struct.unpack_from("<I", row)[0] == identity for row in snapshot.rows):
             raise RuntimeError("Catalog changed before staging. Refresh and retry.")
         compiled = None
-        if consolidating:
+        if converting:
+            compiled = compile_snapshot(name, personal_baseline(snapshot, source))
+        elif consolidating:
             entries = effective_entries(snapshot, name, lambda at, n: read_flash(console, at, n))
             compiled = compile_snapshot(name, {parse_outline(outline): text.encode("utf-8")
                                                for outline, text in entries.items()})
         elif operation == "replace":
             compiled = source
-        update = plan_change(snapshot, protected, identity, compiled, consolidate=consolidating)
+        if compiled is not None:
+            free, largest = inspect_free(protected)
+            sectors = (len(compiled.data) + SEGMENT - 1) // SEGMENT
+            progress(f"{len(compiled.data):,} compact bytes · {sectors} contiguous segments needed · "
+                     f"{free} free, largest run {largest}, reserve 3")
+        update = plan_change(snapshot, protected, identity, compiled, consolidate=consolidating, convert=converting)
         progress(f"{operation.capitalize()} {name}: {len(update.segments)} staging segments")
         if stage:
             publish(console, update, progress)
@@ -197,28 +227,37 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dictionary", type=Path, metavar="PLOVER.JSON", nargs="?")
-    parser.add_argument("--name", required=True)
+    parser.add_argument("--name")
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--replace", action="store_true", help="Replace the baseline and keep current overlays")
     action.add_argument("--consolidate", action="store_true", help="Fold current overlays into a new baseline")
     action.add_argument("--delete", action="store_true", help="Retire the named snapshot")
+    action.add_argument("--convert-personal", action="store_true", help="Convert in place with optional fill-only JSON")
     parser.add_argument("--serial", required=True, help="USB serial of the experimental left half")
     parser.add_argument("--format", choices=("auto", "journal", "snapshot"), default="auto",
                         help="Choose an eligible representation for a new named dictionary")
     parser.add_argument("--stage", action="store_true", help="Write free segments and publish a new catalog")
     args = parser.parse_args()
+    if args.convert_personal:
+        if args.name:
+            parser.error("Personal conversion always targets user_dictionary")
+        args.name = "user_dictionary"
+    elif not args.name:
+        parser.error("--name is required")
     validate_name(args.name)
-    if bool(args.dictionary) == bool(args.consolidate or args.delete):
+    if not args.convert_personal and bool(args.dictionary) == bool(args.consolidate or args.delete):
         parser.error("Supply a Plover JSON file for a new baseline only")
+    entries = None
     if args.dictionary:
         entries, _ = parse_named(args.dictionary.read_bytes())
-    if args.replace or args.consolidate or args.delete:
+    if args.replace or args.consolidate or args.delete or args.convert_personal:
         if args.format != "auto":
             parser.error("--format only applies to new named dictionaries")
-        operation = "replace" if args.replace else "consolidate" if args.consolidate else "delete"
+        operation = "personal" if args.convert_personal else "replace" if args.replace else "consolidate" if args.consolidate else "delete"
         compiled = compile_snapshot(args.name, entries) if args.replace else None
         with open_console(args.serial) as console:
-            published = change_snapshot(console, operation, args.name, source=compiled, stage=args.stage)
+            published = change_snapshot(console, operation, args.name,
+                                        source=entries if args.convert_personal else compiled, stage=args.stage)
         if published:
             wait_ready(args.serial)
         return

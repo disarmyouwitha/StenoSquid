@@ -858,6 +858,8 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-capabilities\n"))
         return "OK SNAPSHOT2";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "personal-snapshot-capabilities\n"))
+        return "OK PERSONAL1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
@@ -878,6 +880,9 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         } else if (!std::strncmp(p, "delete ", 7)) {
             p += 7;
             kind = NativeUpdateKind::SnapshotDelete;
+        } else if (!std::strncmp(p, "personal ", 9)) {
+            p += 9;
+            kind = NativeUpdateKind::SnapshotPersonal;
         } else return "ERR Invalid snapshot action";
         if (!Number(p, snapshot_id) || !snapshot_id || !End(p))
             return "ERR Invalid snapshot dictionary ID";

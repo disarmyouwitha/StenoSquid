@@ -118,3 +118,16 @@ The endpoint has no polling, input pause, staging lease or write path. It defers
 7. Delete the disposable snapshot through Manager. Confirm its row disappears and an unrelated dictionary and its edits survive reboot. Check that wired setup, normal Javelin WebHID, typing and Practice still work.
 
 Full Gate B still needs physical cutoff timing, dense-store and sustained high-speed typing measurements, and verified USB recovery from a blank or partly written pool. Compact-baseline reverse/prefix/partial search, compact conversion of existing personal/journal dictionaries, and Bluetooth editing are outside this build.
+
+## Personal conversion
+
+Run the experimental CLI with the USB serial of the spare left.
+
+```sh
+python3 tools/storage/native_snapshot.py --convert-personal --serial YOUR_USB_SERIAL
+python3 tools/storage/native_snapshot.py additional.json --convert-personal --serial YOUR_USB_SERIAL
+```
+
+Append `--stage` after reviewing the contiguous extent requirement and the total staging segments. The second form fills missing outlines from Plover JSON. Local sets and tombstones win. The same catalog row keeps its ID, name, priority and enabled flag. Existing sets become the compact baseline and existing tombstones stay in the shared overlay. Further adds, replacements and removals use that overlay. Use `--consolidate --name user_dictionary` to fold subsequent edits into a new baseline. The bulk clear command remains unavailable for compact personal dictionaries.
+
+The [personal capacity report](benchmarks/personal-snapshot-capacity.json) validates every translation for Plover and the legal 200,000-entry target. A nearly full journal may leave too little contiguous room to preserve the old root while staging. The full Plover journal fixture left 29 contiguous segments and was refused. Both large compact images fit on the pinned factory pool using fill-only conversion, with no clean install. A fixture with 158 free segments but a seven-segment largest run refused both images. A small real Native transaction recovered across 92 simulated flash boundaries with two tear lengths, preserving the disabled flag, priority, ID and tombstone.

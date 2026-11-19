@@ -6,7 +6,7 @@ namespace candidate_b {
 
 enum class NativeUpdateKind {
     Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base,
-    SnapshotNamed, SnapshotReplace, SnapshotConsolidate, SnapshotDelete
+    SnapshotNamed, SnapshotReplace, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal
 };
 
 // Exclusive USB staging session. The active catalog and both retained roots
@@ -202,7 +202,8 @@ class NativeStage {
 
     bool CheckSnapshotChange(const CatalogRoot &candidate, uint32_t metadata, BaseProbe probe) {
         const bool deleting = kind == NativeUpdateKind::SnapshotDelete;
-        const bool consolidating = kind == NativeUpdateKind::SnapshotConsolidate;
+        const bool converting = kind == NativeUpdateKind::SnapshotPersonal;
+        const bool consolidating = converting || kind == NativeUpdateKind::SnapshotConsolidate;
         uint8_t before[32], after[32], target[96];
         if (!snapshot_id || (!deleting && !probe) ||
             !store.device.Read(original.root.address, before, 32) ||
@@ -221,11 +222,12 @@ class NativeStage {
             if (!store.Row(target_index, target)) return false;
             if (Word(target) == snapshot_id) break;
         }
-        if (target_index == rows || target[11] != kUserSnapshot ||
-            (deleting && target[12] == 15 && !std::memcmp(target + 16, "user_dictionary", 15)))
+        if (target_index == rows) return false;
+        const bool personal = target[12] == 15 && !std::memcmp(target + 16, "user_dictionary", 15);
+        if ((converting ? !personal || target[11] : target[11] != kUserSnapshot) || (deleting && personal))
             return false;
         const unsigned old_base = target[8] | target[9] << 8;
-        if (old_base >= extents) return false;
+        if (converting ? old_base != kNoExtent : old_base >= extents) return false;
         uint8_t remap[253]{};
         unsigned kept = 0;
         for (unsigned i = 0; i < extents; ++i) {
@@ -240,6 +242,7 @@ class NativeStage {
         const unsigned new_base = kept;
         if (!deleting) {
             uint8_t extent[24];
+            target[11] = kUserSnapshot;
             if (kept >= new_extents || !ReadExtent(candidate, new_rows, kept++, extent) ||
                 !StagedExtent(extent, metadata, 1) || !validator.Extent(new_base, extent) || !probe(extent, target))
                 return false;
@@ -261,9 +264,13 @@ class NativeStage {
             if (!store.Row(i, prior) ||
                 !store.device.Read(candidate.address + 32 + (j++) * 96, updated, 96)) return false;
             const unsigned base = prior[8] | prior[9] << 8;
-            if (base != kNoExtent) {
-                if (base >= extents || (i != target_index && base == old_base)) return false;
-                prior[8] = i == target_index ? new_base : remap[base];
+            if (i == target_index) {
+                prior[8] = new_base;
+                prior[9] = 0;
+                prior[11] = kUserSnapshot;
+            } else if (base != kNoExtent) {
+                if (base >= extents || base == old_base) return false;
+                prior[8] = remap[base];
             }
             if (std::memcmp(prior, updated, sizeof(prior))) return false;
         }
@@ -367,7 +374,10 @@ class NativeStage {
 
     bool PreservesEntries() {
         const bool merging_personal = kind == NativeUpdateKind::Personal;
-        const bool consolidating = kind == NativeUpdateKind::SnapshotConsolidate;
+        const auto folded = [&](const MergeRecord &entry) {
+            return entry.identity == snapshot_id && (kind == NativeUpdateKind::SnapshotConsolidate ||
+                   (kind == NativeUpdateKind::SnapshotPersonal && entry.operation == 0));
+        };
         if (merging_personal && !personal_id) return false;
         const auto &old = store.live.CurrentView();
         const auto &next = validator.ValidatedView();
@@ -385,7 +395,7 @@ class NativeStage {
             }
             MergeRecord entry;
             if (!old_ops.Record(address, entry)) return false;
-            if (consolidating && entry.identity == snapshot_id) continue;
+            if (folded(entry)) continue;
             if (!old_ops.Active(entry.identity)) continue;
             RecordView live;
             const auto state = store.live.FindLive(entry.identity, entry.strokes, entry.count, live);
@@ -413,7 +423,7 @@ class NativeStage {
             MergeRecord entry;
             if (!new_ops.ReadIndex(false, i, address) || !new_ops.Record(address, entry) ||
                 !new_ops.Active(entry.identity)) return false;
-            if (consolidating && entry.identity == snapshot_id) return false;
+            if (folded(entry)) return false;
             if (added_id && entry.identity == added_id) {
                 if (entry.operation || entry.record.sequence <= old.highwater) return false;
             } else if (!merging_personal || entry.identity != personal_id) {
@@ -525,7 +535,7 @@ public:
             changing_snapshot ? CheckSnapshotChange(candidate, segment, probe) :
             replacing_base ? CheckBaseLayout(candidate, segment, probe) : CheckLayout(candidate, segment);
         if (!layout_ok) return CatalogResult::Corrupt;
-        if (kind == NativeUpdateKind::SnapshotConsolidate ||
+        if (kind == NativeUpdateKind::SnapshotConsolidate || kind == NativeUpdateKind::SnapshotPersonal ||
             (!MetadataOnly() && !replacing_base && !adding_snapshot && !changing_snapshot)) {
             const auto validation = validator.Validate(candidate);
             if (validation != CatalogResult::Ok) return validation;
