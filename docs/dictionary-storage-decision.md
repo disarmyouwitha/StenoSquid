@@ -93,7 +93,7 @@ require explicit clean provisioning if the future layout changes. No firmware,
 flash layout or dictionary data changed as part of this decision.
 
 
-The first [B host reference prototype](hybrid-storage-prototype.md) now models
+The first [B host reference prototype](archive/hybrid-storage-prototype.md) now models
 the catalog, pooled extents, rebasing, overlays and crash-safe publication. It
 is a correctness reference with snapshot overlays, not the production format.
 Its documented test evidence does not close the remaining firmware gates.

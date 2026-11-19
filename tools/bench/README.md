@@ -105,5 +105,5 @@ Do not turn this initial baseline into a capacity or zero-stroke-loss promise.
 ## Candidate B reference prototype
 
 The next host-only correctness stage lives under `tools/storage/`. See
-[its design, commands and limits](../../docs/hybrid-storage-prototype.md).
+[its design, commands and limits](../../docs/archive/hybrid-storage-prototype.md).
 It is independent of the diagnostic firmware and never accesses real USB/flash.

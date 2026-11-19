@@ -1,7 +1,9 @@
 # Review: unified dictionary storage and benchmark spec
 
+> Historical record. For current storage behavior and open validation, see [Native dictionary storage](../native-engine-integration.md).
+
 Reviewed 2026-11-17 against `main` at `4b31c60`. The spec under review is now tracked at
-[docs/unified-dictionary-storage-spec.md](../docs/unified-dictionary-storage-spec.md).
+[the original storage spec](unified-dictionary-storage-spec.md).
 The original review below describes that historical baseline; see the current
 follow-up at the end before treating its implementation claims as current.
 These are opinions plus one back-of-envelope measurement, not benchmark results.

@@ -1,5 +1,7 @@
 # StenoSquid Unified Dictionary Storage and Benchmark Specification
 
+> Historical record. For current storage behavior and open validation, see [Native dictionary storage](../native-engine-integration.md).
+
 **Status:** P3 opt-in catalog-driven engine/store and clean USB provisioning implemented; full native-profile CI and hardware acceptance pending\
 **Repository baseline:** `disarmyouwitha/StenoSquid` `main` at `4b31c60` (2026-11-17)  
 **Primary rule:** Benchmark first; choose the on-flash representation from measurements, not aesthetics.
@@ -10,7 +12,7 @@ The historical baseline above predates the cleanup merged at `169d1c9`.
 Key delivery now has a bounded flash-lock wait, initialization runs on a worker,
 and personal exports yield between chunks. Those changes reduce blocking risk;
 they do not establish the zero-dropped-strokes performance gate below.
-See the [review and current follow-up](../notes/unified-dictionary-storage-review.md).
+See the [review and current follow-up](unified-dictionary-storage-review.md).
 
 **Owner constraint:** this is a single-user development project. Do not ship
 migration readers, backward-compatibility shims or a separate migration build.
@@ -19,7 +21,7 @@ clean reprovisioning during development, not a permanent firmware feature.
 Unknown nonblank storage must still be refused rather than automatically erased.
 
 The proposed manager is StenoSquid-owned. Its features must not depend on changes
-to the externally hosted Javelin Tools website. The subsequent [Phase-0 footprint decision](dictionary-storage-decision.md)
+to the externally hosted Javelin Tools website. The subsequent [Phase-0 footprint decision](../dictionary-storage-decision.md)
 rejects current-log-derived Candidate A and selects B for further development.
 B still requires design and hardware validation. Candidate C would relax the
 shared-pool goal.
@@ -169,8 +171,8 @@ The separate StenoSquid Manager should use the existing HID transport where supp
 - `tools/tests/test_user_dictionary_log.cc` and `tools/tests/test_user_dictionary_import.cc` — fake NOR, capacity, import and fault-injection starting points.
 - `.github/workflows/build.yml` — pinned dictionary compilation and current CI commands.
 
-Current evidence: [Phase-0 measurements](dictionary-benchmark-report.md),
-[A/B decision](dictionary-storage-decision.md),
+Current evidence: [Phase-0 measurements](../dictionary-benchmark-report.md),
+[A/B decision](../dictionary-storage-decision.md),
 [indexed host prototype](hybrid-index-publication.md), and
 [bounded native core](hybrid-native-core.md), with
 [first diagnostic QSPI hardware results](hybrid-hardware-probe.md).
@@ -184,4 +186,4 @@ helpers do not complete the hardware/performance acceptance gates. P1 design
 freeze and P2 large/near-full capacity work remain open while P3 native core
 development starts; no production storage format has changed.
 
-Current implementation: [native engine integration and acceptance plan](native-engine-integration.md).
+Current implementation: [native engine integration and acceptance plan](native-engine-development.md).

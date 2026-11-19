@@ -5,7 +5,7 @@
 ✅Javelin onboard steno\
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!\
-📚 Room for 200,000+ personal dictionary entries!
+📚 Shared 16 MiB onboard dictionary storage
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
 (But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
@@ -201,6 +201,8 @@ The 10 kΩ resistor connects CS# to the flash's switched 3.3 V supply.
 The 100 nF ceramic capacitor connects across flash VCC/GND. Both are nonpolarized.
 Wire the Adafruit #5634's exposed IO2 and IO3 pads directly.
 [Adafruit pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts)
+
+[Technical documentation](docs/README.md) covers the storage design, hardware results, and development checks.
 
 ## License
 

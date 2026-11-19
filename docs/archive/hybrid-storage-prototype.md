@@ -61,7 +61,7 @@ python3 tools/storage/exercise_pinned_hybrid.py
 The first test is automatically discovered by `tools/tests/run_all.py` and CI.
 The 10,000-edit and full pinned-corpus exercises are explicit development runs;
 they write reports under ignored `build/hybrid/`. Published summaries live in
-[docs/prototypes](prototypes/). Source dictionaries are hash-checked against the
+[archived prototype reports](prototypes/). Source dictionaries are hash-checked against the
 same manifest as production setup.
 
 Tests cover priority, dictionary identity, Unicode overlays, tombstone fall-through,

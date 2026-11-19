@@ -186,7 +186,7 @@ Lapwing `00f2d636`, Plover `3e8f8d88` and extras `98af1ecc`. The right accepted 
 UF2 and returned from bootloader; hands-on split typing, display and Practice
 tests are deferred until the owner returns.
 
-The [hardware report](benchmarks/candidate-b-native-checkpoint.json) includes
+The [hardware report](../benchmarks/candidate-b-native-checkpoint.json) includes
 artifact hashes, phase results, stack observations and preservation checks. The
 [native test report](prototypes/hybrid-native-catalog-checkpoint.json) records
 fault counts, the large merge case and source hashes. Neither includes personal

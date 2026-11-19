@@ -88,7 +88,7 @@ The owner subsequently confirmed ordinary text, onboard Javelin output
 (“Hi hello! the cat is the cat!”), and Practice. Independent typing checks
 for each half were not separately reported.
 
-The [sanitized report](benchmarks/candidate-b-native-scratch.json) retains both
+The [sanitized report](../benchmarks/candidate-b-native-scratch.json) retains both
 raw sample batches, artifact provenance, preservation checks and timing limits.
 Personal backups, unique device serials and local flash manifest remain ignored.
 

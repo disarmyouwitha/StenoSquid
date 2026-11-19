@@ -1,5 +1,7 @@
 # StenoSquid cleanup and engineering spec
 
+> Historical record. For current storage behavior and open validation, see [Native dictionary storage](../native-engine-integration.md).
+
 Status: **implemented and merged into main; CI and initial nice!nano hardware checks passed; extended acceptance pending.**
 The personal-dictionary redesign is complete and its separate spec was retired.
 P7, P8 and X1 are superseded. No migration code was added. The owner explicitly
@@ -30,7 +32,7 @@ Current verification and intentional exceptions:
 - Cleanup is merged into main after CI and initial hardware checks. The published
   v0.1.1 release remains unchanged.
 
-See [development checks](development.md) and [cleanup acceptance](cleanup-acceptance.md).
+See [development checks](../development.md) and [cleanup acceptance](cleanup-acceptance.md).
 
 Reviewed at commit `7908a68` (main), 2026-11-16.
 
