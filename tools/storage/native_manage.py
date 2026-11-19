@@ -50,7 +50,7 @@ def commit_with_progress(console, progress=print):
                 raise RuntimeError("Native store became unavailable or read-only")
             current = tuple(
                 status.get(key)
-                for key in ("generation", "maintenance", "work_steps", "tail")
+                for key in ("generation", "work_steps", "tail")
             )
             if current != previous:
                 previous, stall_deadline = current, now + 180

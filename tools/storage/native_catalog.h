@@ -99,6 +99,12 @@ public:
         for(auto &pin:pins)if(pin.token==token){pin={};return true;}
         return false;
     }
+    bool DestinationPinned(const CatalogSelection &current) const {
+        if(current.slot>1)return true;
+        const uint8_t destination=uint8_t(1-current.slot);
+        for(const auto &pin:pins)if(pin.token && (!current.root.generation || pin.slot==destination))return true;
+        return false;
+    }
     template <class Visit>
     CatalogResult VisitPins(Visit visit) {
         for(const auto &pin:pins)if(pin.token) {
@@ -248,13 +254,13 @@ public:
     // Active selection is caller-provided; quarantine forbids publication.
     template <class Source,class CheckExtent>
     CatalogResult Publish(const CatalogSelection &current,uint32_t bytes,Source source,CheckExtent check,
-                          CatalogSelection &published) {
+                          CatalogSelection &published,const uint32_t *expected_crc=nullptr) {
         if(&current==&published)return CatalogResult::Invalid;
         published={};
         if(!Bounds() || bytes<32 || bytes%4 || bytes>capacity-32 || current.slot>1 || current.quarantine ||
            current.root.generation==UINT64_MAX)return CatalogResult::Invalid;
         const uint8_t slot=current.root.generation?uint8_t(1-current.slot):0;
-        for(const auto &pin:pins)if(pin.token && (!current.root.generation || pin.slot==slot))return CatalogResult::Busy;
+        if(DestinationPinned(current))return CatalogResult::Busy;
         struct SourceDevice {
             Source &source;
             uint32_t bytes;
@@ -311,6 +317,9 @@ public:
             if(!Write(slots[slot]+32+offset,buffer,n))return CatalogResult::IoError;
             offset+=n;
         }
+        // Exact mirrors must retain the source payload checksum. Reject a
+        // changed source before writing a committed header for the new root.
+        if(expected_crc && crc!=*expected_crc)return CatalogResult::Corrupt;
         const uint64_t generation=current.root.generation+1;
         uint8_t header[32];std::memcpy(header,"SQBCAT02",8);
         PutWord(header+8,uint32_t(generation));PutWord(header+12,uint32_t(generation>>32));

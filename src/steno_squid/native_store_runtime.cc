@@ -212,10 +212,13 @@ void StepWork(k_work *) {
     flash_device.mapped=false;
     uint32_t steps=0;
     const auto result=NativeWorkSlice(
-        []{return store.Step([](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});},
+        []{
+            const auto status=store.Step([](uint32_t i,const uint8_t *row){return validator.Extent(i,row);});
+            if(status==JobResult::More || status==JobResult::Done)++maintenance_steps;
+            return status;
+        },
         []{return Clock::GetMicroseconds();},
         []{return steno_squid_native_input_waiting();},steps);
-    maintenance_steps+=steps;
     flash_device.mapped=true;
     if(result==JobResult::More){Kick();return;}
     if(!store.opened)base_provider.Fault();

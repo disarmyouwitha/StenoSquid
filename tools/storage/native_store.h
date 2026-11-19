@@ -14,7 +14,7 @@ public:
     NativeCheckpointJob<Device> checkpoint;
     NativeRolloverJob<Device> rollover;
     CatalogSelection selected{};
-    enum class Work { None, Checkpoint, Rollover } work=Work::None;
+    enum class Work { None, Checkpoint, Rollover, PrepareCheckpoint, PrepareRollover } work=Work::None;
     bool opened=false;
     JobResult last=JobResult::Done;
     explicit NativeStore(Device &value):device(value),catalog(value),live(value,catalog),
@@ -35,7 +35,8 @@ public:
     }
     bool Snapshot(LiveView &view) {
         if(!opened || view.token)return false;
-        if(work==Work::None)return live.Snapshot(view)==LiveResult::Ok;
+        if(work==Work::None || work==Work::PrepareCheckpoint || work==Work::PrepareRollover)
+            return live.Snapshot(view)==LiveResult::Ok;
         const auto &input=work==Work::Checkpoint?checkpoint.Input():rollover.Input();
         uint32_t token=0;
         if(!catalog.AcquirePin(input.root,token))return false;
@@ -46,14 +47,78 @@ public:
         if(!opened)return JobResult::ReadOnly;
         if(work!=Work::None)return JobResult::Busy;
         if(!catalog.CanWrite(selected.root))return JobResult::ReadOnly;
-        const auto status=kind==Work::Checkpoint?checkpoint.Begin(selected):
-            kind==Work::Rollover?rollover.Begin(selected):JobResult::Invalid;
-        if(status==JobResult::More){work=kind;last=status;}
-        return status;
+        if(kind!=Work::Checkpoint && kind!=Work::Rollover)return JobResult::Invalid;
+        work=kind==Work::Checkpoint?Work::PrepareCheckpoint:Work::PrepareRollover;
+        last=JobResult::More;return last;
     }
+private:
+    // Retire only ownership unique to the alternate catalog before allocating
+    // output, only when staging cannot fit with both generations. Mirroring
+    // the current payload retains two recoverable copies,
+    // preserves sequence/tail cursors, and avoids staging a third index pair.
+    template<class Check>
+    JobResult Prepare(Check check) {
+        const bool checkpoint_next=work==Work::PrepareCheckpoint;
+        if(!catalog.CanWrite(selected.root))return JobResult::ReadOnly;
+        if(catalog.DestinationPinned(selected))return JobResult::Busy;
+        CatalogRoot alternate;
+        const auto inspected=catalog.Inspect(uint8_t(1-selected.slot),alternate);
+        if(inspected!=CatalogResult::Ok && inspected!=CatalogResult::Empty)return JobResult::RecoveryRequired;
+        bool obsolete=false;
+        if(inspected==CatalogResult::Ok) {
+            SegmentMap current_map,alternate_map;uint32_t forward=0,reverse=0;
+            if(RootOwnership(device,catalog,selected.root,current_map,&forward,&reverse)!=CatalogResult::Ok ||
+               RootOwnership(device,catalog,alternate,alternate_map)!=CatalogResult::Ok)return JobResult::RecoveryRequired;
+            for(unsigned i=0;i<8;++i)obsolete |= (alternate_map.words[i]&~current_map.words[i])!=0;
+            if(obsolete) {
+                const uint32_t tail=live.TailCount();
+                if(checkpoint_next && (forward>kMaxEntries-tail || reverse>kMaxEntries-tail))return JobResult::NoSpace;
+                auto room=[&](SegmentMap owned) {
+                    AllocationPlan plan(owned);uint32_t start=0;
+                    if(!checkpoint_next)return plan.Reserve(1,start);
+                    const uint32_t f=(4*(forward+tail)+kSegmentBytes-1)/kSegmentBytes;
+                    const uint32_t r=(4*(reverse+tail)+kSegmentBytes-1)/kSegmentBytes;
+                    return plan.Reserve(f?f:1,start) && plan.Reserve(r?r:1,start);
+                };
+                auto both=current_map;both.Union(alternate_map);
+                // Preserve the older generation without extra flash wear when
+                // there is room. Retire it only to satisfy staging pressure.
+                if(room(both))obsolete=false;
+                else if(!room(current_map))return JobResult::NoSpace;
+            }
+        }
+        if(obsolete) {
+            const CatalogSelection previous=selected;
+            auto source=[&](uint32_t at,uint8_t *out,uint32_t bytes) {
+                return at<=previous.root.bytes && bytes<=previous.root.bytes-at &&
+                    device.Read(previous.root.address+at,out,bytes);
+            };
+            CatalogSelection next;
+            const auto status=catalog.Publish(previous,previous.root.bytes,source,check,next,&previous.root.crc);
+            if(status==CatalogResult::Busy)return JobResult::Busy;
+            if(status!=CatalogResult::Ok || !live.Retarget(next))return JobResult::RecoveryRequired;
+            selected=next;
+        }
+        // The source root may have an older reader after mirroring. Do not
+        // erase/program staged outputs only to discover this at publication.
+        if(catalog.DestinationPinned(selected))return JobResult::Busy;
+        const auto started=checkpoint_next?checkpoint.Begin(selected):rollover.Begin(selected);
+        if(started==JobResult::More)work=checkpoint_next?Work::Checkpoint:Work::Rollover;
+        return started;
+    }
+public:
     template<class Check>
     JobResult Step(Check check) {
         if(work==Work::None)return JobResult::Invalid;
+        if(work==Work::PrepareCheckpoint || work==Work::PrepareRollover) {
+            const auto status=Prepare(check);
+            if(status==JobResult::More)return status;
+            last=status;work=Work::None;
+            if(status==JobResult::RecoveryRequired || status==JobResult::Corrupt || status==JobResult::IoError || status==JobResult::Invalid) {
+                opened=false;catalog.Invalidate();
+            }
+            return status;
+        }
         const auto status=work==Work::Checkpoint?checkpoint.Step(check):rollover.Step(check);
         if(status==JobResult::More)return status;
         if(status==JobResult::Done)selected=work==Work::Checkpoint?checkpoint.Selection():rollover.Selection();
@@ -68,7 +133,7 @@ public:
         if(result==LiveResult::NeedCheckpoint || result==LiveResult::NeedJournal) {
             if(last==JobResult::NoSpace)return LiveResult::ReadOnly;
             const auto started=Start(result==LiveResult::NeedCheckpoint?Work::Checkpoint:Work::Rollover);
-            return started==JobResult::More?LiveResult::Busy:LiveResult::ReadOnly;
+            return started==JobResult::More || started==JobResult::Busy?LiveResult::Busy:LiveResult::ReadOnly;
         }
         if(result==LiveResult::Corrupt || result==LiveResult::IoError || result==LiveResult::Stale)opened=false;
         return result;

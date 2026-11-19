@@ -1,8 +1,8 @@
 # Candidate B: full engine/store integration test build
 
 Status: **opt-in native engine implemented; full engine checkpoint passed CI; journal reclamation follow-up in verification; hardware validation pending**.
-Working branch: `prototype/native-journal-reclamation`, following
-`prototype/native-engine-integration`. The CI-passing full-engine build is preserved
+Working branch: `prototype/native-index-retention`, following the CI-passing
+`prototype/native-journal-reclamation` and `prototype/native-engine-integration`. The CI-passing full-engine build is preserved
 at `checkpoint/native-engine-integrated` (`ec4c007`); the following stack reduction
 passed CI at `18e21a9`. Both descend from `prototype/native-checkpoint-job`. Main and normal firmware remain on
 the production store until the new path passes hardware acceptance.
@@ -214,7 +214,36 @@ to 760/720 bytes by reusing existing scratch, with no added RAM. Static frame si
 are not runtime stack peaks; contention and peak measurements remain hardware
 acceptance work.
 
-## Final checkpoint artifacts
+## Index retention under staging pressure
+
+Before allocating checkpoint indexes or another journal, the facade now compares
+ownership in both validated catalog copies. If the operation already fits, it
+keeps the older generation and adds no extra catalog writes. If staging is blocked
+by extents unique to that older copy, it first verifies that retiring them would
+make the allocation fit. Only then does it publish an exact copy of the current
+payload into the alternate catalog and retarget the live cursor without replay.
+
+This retains two valid catalog copies while allowing the obsolete index pair to
+be reused. The copied payload must match the source CRC before its new header can
+be committed. Slot pins can refuse retirement or the subsequent checkpoint before
+any staged outputs are written. A successfully committed mirror remains the live
+selection even if subsequent work is blocked. A possible commit/readback failure
+stops edits until a validated reopen.
+
+The prepare phase runs on the engine worker, supports normal read snapshots, and
+blocks edits just like the checkpoint itself. No new dictionary-sized buffer or
+on-flash format was added. A low-space operation can need one additional 64 KiB
+catalog erase; ordinary operations with sufficient space retain the previous wear
+cost. Imports count actual completed steps/generation changes as progress, rather
+than treating repeated Busy/prepare state changes as forward progress.
+
+Local strict-NOR tests cover 380 torn mirror/index/catalog operations; a constrained
+pool where direct three-pair checkpointing refuses but the prepared two-pair path
+succeeds; 24 edit/checkpoint/reboot reuse rounds; source and destination reader
+pins; ambiguous mirror commit; changed-source CRC refusal; and unchanged catalog
+commit counts when staging already fits. Full CI/hardware acceptance follows.
+
+## Verified integration baseline artifacts
 
 Source [`634255b`](https://github.com/disarmyouwitha/StenoSquid/commit/634255b2091cd34d1af894e1a14fe8826dff5239)
 passed [CI 44428306440](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44428306440):
@@ -254,25 +283,28 @@ external-flash changes were applied to the connected board during this solo work
 The 200,000-entry model bound is **not** a capacity promise. Native records include
 identity, sequence, commit/CRC, outline and text; checkpoints must also protect the
 index pair referenced by each catalog while staging a new pair. In the worst case
-that means three forward/reverse pairs at once. Journals containing live entries
+that meant three forward/reverse pairs at once in the verified baseline. The
+retention follow-up can drop that to two under pressure, with an extra catalog
+commit. Journals containing live entries
 cannot yet be relocated away from stale neighbors.
 
 Allocation arithmetic for importing the complete pinned JSON again as editable
 personal entries, while keeping all six compact bases installed:
 
-| Input | Entries | Journal segments | Segments per index | Worst pool requirement, including staging/reserve |
-| --- | ---: | ---: | ---: | ---: |
-| Lapwing Base | 114,885 | 107 | 8 | 234 of 255 |
-| Plover Base | 147,424 | 134 | 9 | 267 of 255: exceeds the pool |
+| Input | Entries | Journal segments | Segments per index | Baseline: three pairs | Retention: two pairs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Lapwing Base | 114,885 | 107 | 8 | 234 of 255 | 218 of 255 |
+| Plover Base | 147,424 | 134 | 9 | 267 of 255: exceeds pool | 249 of 255: fits arithmetic |
 
 This model packs `align4(40 + 4*stroke_count + utf8_text_bytes)` records into
 65,280 usable bytes per journal, reserves 74 segments for the six compact bases,
-two catalog segments, three index pairs, and the three-segment allocator reserve.
+two catalog segments, the stated number of index pairs, and the three-segment
+allocator reserve.
 Sources and SHA-256 are pinned in the factory image manifest. These are allocation
-estimates, not an on-device import result; packing, edits, readers and retained
-history also affect capacity. The compact Plover base is already present; duplicating
+estimates, not a completed full-scale host or on-device import result. Contiguous
+allocation/fragmentation, edits, readers and retained history also affect capacity. The compact Plover base is already present; duplicating
 it into an editable log is especially expensive. Compact replacement/import and
-lower-overhead retained-index staging remain future work. The manager stops and
+full-scale qualification of the lower-overhead retained-index staging remain future work. The manager stops and
 reports its last saved entry on safe space refusal; it does not discard existing
 committed entries to make a large import fit.
 

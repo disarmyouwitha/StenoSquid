@@ -90,7 +90,8 @@ void reader_ownership() {
     const auto live = Journals(f);
     for (unsigned i = 2; i < 255; ++i)
         if (before.Contains(i) && !live.Contains(i))
-            assert(!owned.Contains(i));
+            assert(!owned.Contains(i) ||
+                   std::memcmp(bytes.data() + i * 65536, f.nor.data.data() + i * 65536, 65536));
     f.Open();
     assert(Text(f, 1) == "latest");
     Edit(f, 1, "next");

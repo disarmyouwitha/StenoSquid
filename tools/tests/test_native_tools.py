@@ -74,7 +74,7 @@ def main():
                     {
                         "format": "SQBCAT02",
                         "ready": True,
-                        "maintenance": 1,
+                        "maintenance": self.done % 2,
                         "work_steps": self.done if self.moving else 0,
                     }
                 )
