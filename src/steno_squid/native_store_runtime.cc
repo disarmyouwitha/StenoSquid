@@ -1,4 +1,4 @@
-// Opt-in full-engine integration for Candidate B. Normal firmware is unchanged.
+// Native dictionary engine and QSPI command handlers.
 #include "native_store_runtime.h"
 #include "native_input.h"
 #include "native_warm_resume.h"
@@ -27,6 +27,10 @@
 #include "w25q_quad.h"
 #include "xip_load.h"
 #include <zephyr/devicetree.h>
+#include <zephyr/usb/usb_device.h>
+#include <zephyr/usb/class/usb_hid.h>
+#include <zmk/keys.h>
+#include <zmk/hid.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/crc.h>
 #include <zephyr/sys/base64.h>
@@ -37,6 +41,8 @@
 #include <cstring>
 
 extern "C" {
+#include <zmk/activity.h>
+#include <zmk/usb.h>
 extern struct k_mutex flash_lock;
 extern atomic_t lf_mapped_ready,lf_checked;
 extern bool lf_suspended,lf_provisioning_ready;
@@ -105,6 +111,11 @@ NativeValidator<FlashDevice> validator(flash_device,store.catalog);
 bool healthy=false,loaded=false,exporting=false,maintenance_hold=false;
 uint32_t maintenance_steps=0,warm_resumes=0,full_opens=0;
 uint32_t maintenance_max_slice_us=0;
+using Maintenance = NativeStore<FlashDevice>::Work;
+constexpr uint32_t IdleCheckpointTail = 64;
+bool automatic_maintenance = false;
+uint32_t automatic_checkpoints = 0;
+JobResult automatic_result = JobResult::Done;
 StenoDictionary *parent=nullptr;
 LiveView export_view;
 OverlayCursor export_cursor;
@@ -217,6 +228,15 @@ void FinishMaintenance() {
         steno_squid_split_maintenance(false);
     }
 }
+void IdleMaintenance(k_work *);
+K_WORK_DELAYABLE_DEFINE(idle_maintenance_work, IdleMaintenance);
+void QueueIdleMaintenance(k_timeout_t delay = K_SECONDS(10)) {
+    k_work_schedule_for_queue(&steno_squid_engine_queue, &idle_maintenance_work, delay);
+}
+bool IdleMaintenanceAllowed() {
+    return zmk_usb_is_powered() && zmk_activity_get_state() == ZMK_ACTIVITY_IDLE &&
+           !steno_squid_native_input_pending() && !steno_squid_native_input_waiting();
+}
 void Kick() {
     if (store.work == NativeStore<FlashDevice>::Work::None) return;
     if (!maintenance_hold) {
@@ -226,14 +246,40 @@ void Kick() {
     }
     k_work_schedule_for_queue(&steno_squid_engine_queue, &maintenance_work, K_MSEC(2));
 }
+void IdleMaintenance(k_work *) {
+    if (!IdleMaintenanceAllowed()) {
+        if (zmk_usb_is_powered()) QueueIdleMaintenance();
+        return;
+    }
+    // Background maintenance never powers up an idle-gated dictionary chip.
+    if (!dictionary_flash_mapped_address()) return;
+    const JavelinEngineLock lock;
+    if (!lock || !healthy || store.live.TailCount() < IdleCheckpointTail) return;
+    if (exporting || store.work != Maintenance::None || store.external_update) {
+        QueueIdleMaintenance();
+        return;
+    }
+    automatic_result = store.Start(Maintenance::Checkpoint);
+    if (automatic_result == JobResult::More) {
+        automatic_maintenance = true;
+        Kick();
+    }
+}
 void StepWork(k_work *) {
-    if(steno_squid_native_input_pending()){Kick();return;}
     const JavelinEngineLock lock;
     if (!lock) {
         if (!healthy) FinishMaintenance();
         else Kick();
         return;
     }
+    if (automatic_maintenance && !IdleMaintenanceAllowed() && store.CancelCheckpoint()) {
+        automatic_maintenance = false;
+        automatic_result = JobResult::Cancelled;
+        FinishMaintenance();
+        QueueIdleMaintenance(K_SECONDS(60));
+        return;
+    }
+    if (steno_squid_native_input_pending()) { Kick(); return; }
     const NativeInputPause input_pause;
     flash_device.mapped=false;
     uint32_t steps=0;
@@ -250,6 +296,11 @@ void StepWork(k_work *) {
     const uint32_t elapsed = Clock::GetMicroseconds() - slice_started;
     if (steps && elapsed > maintenance_max_slice_us) maintenance_max_slice_us = elapsed;
     if(result==JobResult::More){Kick();return;}
+    if (automatic_maintenance) {
+        automatic_maintenance = false;
+        automatic_result = result;
+        if (result == JobResult::Done) ++automatic_checkpoints;
+    }
     if(!store.opened)base_provider.Fault();
     else if(result==JobResult::Done){for(size_t i=0;i<cell_count;++i)cells[i].Refresh();if(parent)parent->OnLookupDataChanged();}
     FinishMaintenance();
@@ -262,7 +313,10 @@ LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t c
     flash_device.mapped=false;
     const auto result=store.Edit(cell.identity,operation,strokes,count,reinterpret_cast<const uint8_t *>(text),bytes);
     flash_device.mapped=true;
-    if(result==LiveResult::Ok){cell.Refresh();if(parent)parent->OnLookupDataChanged();}
+    if(result==LiveResult::Ok){
+        cell.Refresh();if(parent)parent->OnLookupDataChanged();
+        if (store.live.TailCount() >= IdleCheckpointTail) QueueIdleMaintenance();
+    }
     if(!store.opened)base_provider.Fault();
     Kick();return result;
 }
@@ -428,6 +482,31 @@ void remove_entry(void *,const char *line) {
     if(!personal || !outline || !parser.Parse(outline+1) || !parser.GetCount() || *parser.failureOrEnd){Console::Printf("ERR Invalid outline\n\n");return;}
     ReplyEdit(Edit(*personal,1,parser.GetData(),parser.GetCount(),nullptr,0));
 }
+void native_catalog(void *, const char *) {
+    Console::Printf("[");
+    for (size_t i = 0; i < cell_count; ++i) {
+        if (steno_squid_javelin_response_cancelled()) return;
+        const auto &cell = cells[i];
+        uint8_t row[96];
+        if (!store.Row(i, row)) return;
+        char digest[65];
+        for (unsigned byte = 0; byte < 32; ++byte)
+            snprintk(digest + byte * 2, 3, "%02x", unsigned(row[64 + byte]));
+        uint32_t base_entries = 0;
+        if (cell.base) {
+            for (unsigned length = 0; length < cell.definition.maximumOutlineLength; ++length) {
+                const auto &group = cell.strokes[length];
+                if (group.hashMapMask) base_entries += group.GetEntryCount();
+            }
+        }
+        Console::Printf("%s{\"id\":%u,\"name\":\"%s\",\"enabled\":%s,\"kind\":\"%s\","
+                        "\"base_entries\":%u,\"image_bytes\":%u,\"image_crc\":%u,\"source_sha256\":\"%s\"}",
+                        i ? "," : "", cell.identity, cell.name, cell.enabled ? "true" : "false",
+                        cell.base ? "base" : !std::strcmp(cell.name, "user_dictionary") ? "personal" : "named",
+                        base_entries, cell.base_bytes, cell.base_crc, digest);
+    }
+    Console::Printf("]\n\n");
+}
 void lookup_outline(void *,const char *line) {
     StrokeListParser parser;const char *outline=std::strchr(line,' ');
     if(!parent || !outline || !parser.Parse(outline+1) || !parser.GetCount()){Console::Printf("ERR Invalid outline\n\n");return;}
@@ -442,13 +521,14 @@ void store_status(void *,const char *) {
         "\"tail\":%u,\"maintenance\":%u,\"warm_resumes\":%u,\"full_opens\":%u,"
         "\"work_steps\":%u,\"max_maintenance_slice_us\":%u,\"input_highwater\":%u,"
         "\"input_overflows\":%u,\"max_replay_delay_ms\":%u,\"personal_id\":%u,"
+        "\"auto_checkpoints\":%u,\"auto_checkpoint_result\":%u,"
         "\"dictionaries\":%u,\"ids\":[",
         healthy ? "true" : "false", store.selected.quarantine ? "true" : "false",
         unsigned(store.selected.root.generation), store.live.TailCount(), unsigned(store.work),
         warm_resumes, full_opens, maintenance_steps, maintenance_max_slice_us,
         steno_squid_native_input_highwater(), steno_squid_native_input_overflows(),
         steno_squid_native_input_max_delay_ms(), personal ? personal->identity : 0,
-        unsigned(cell_count));
+        automatic_checkpoints, unsigned(automatic_result), unsigned(cell_count));
     for(size_t i=0;i<cell_count;++i)Console::Printf("%s%u",i?",":"",cells[i].identity);
     Console::Printf("]}\n\n");
 }
@@ -560,6 +640,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
     if(healthy && loaded && NativeWarmResumeEligible(store)) {
         flash_device.mapped=true;
         for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
+        if (store.live.TailCount() >= IdleCheckpointTail) QueueIdleMaintenance();
         ++warm_resumes;return true;
     }
     healthy=false;++full_opens;
@@ -593,6 +674,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         base_provider.Fault();return false;
     }
     const uint32_t fingerprint=BaseFingerprint(store.selected.root);
+    if (store.live.TailCount() >= IdleCheckpointTail) QueueIdleMaintenance();
     if(!scrub_due)scrub_due=k_uptime_get()+(fingerprint && fingerprint==verified_fingerprint?60000:24*60*60*1000LL);
     if(fingerprint && fingerprint!=verified_fingerprint) {
         verified_fingerprint=fingerprint;
@@ -677,16 +759,20 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         snprintk(reply, bytes, "OK NAMED1 %u", unsigned(MaxDictionaries));
         return nullptr;
     }
+    if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
     else if (!std::strcmp(command, "begin reorder\n")) kind = NativeUpdateKind::Reorder;
+    else if (!std::strcmp(command, "begin rename\n")) kind = NativeUpdateKind::Rename;
+    else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
+    else if (!std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
         if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries))
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();
-        stage_mode = (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named)
+        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();

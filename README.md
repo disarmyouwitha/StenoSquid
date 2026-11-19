@@ -86,6 +86,21 @@ python3 stenosquid.py --install --confirm-erase --restore personal.json
 
 The clean install uses the default dictionary selections. Restore your preferred checkboxes in Javelin Steno Tools. A board already running Native with a ready store can keep its dictionaries across the firmware update.
 
+### Steno Squid Manager
+
+Connect the left half over USB and close any Javelin Steno Tools connection. Run
+`python3 stenosquid.py --manager` from the repository. The local Manager opens in
+your browser. Select **Connect over USB** to view priority and checkboxes, edit
+a specific dictionary, import Plover JSON, export an individual dictionary or
+download a backup of all overlays and catalog settings. The Manager can rename
+or delete independent dictionaries and switch the keyboard’s host layout.
+
+On USB power, the firmware can rebuild its indexes and reclaim fully stale
+journals after 64 pending edits when the keyboard and flash are idle and ready.
+It defers unpublished work when you resume typing. **Compact now** also packs
+live entries from partly stale journals when there is room to stage both copies.
+
+
 ### Import a personal Plover dictionary
 
 With the current **Left** firmware connected by USB, close the Javelin browser connection and run:

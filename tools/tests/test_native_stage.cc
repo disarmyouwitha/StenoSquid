@@ -203,8 +203,67 @@ void CheckNamedCatalog(const std::vector<uint8_t> &image, const Plan &plan, Nati
               << ": " << operations << " interrupted writes recovered" << std::endl;
 }
 
+void CheckMetadata(const std::vector<uint8_t> &image, const Plan &plan, bool deleting) {
+    unsigned operations = 0;
+    for (unsigned cut = 0; cut <= operations; ++cut) {
+        for (unsigned tear : {1u, 4095u}) {
+            Nor nor;
+            nor.data = image;
+            nor.cut = cut;
+            nor.tear = tear;
+            NativeDevice device{{nor}};
+            NativeStore<NativeDevice> store(device);
+            NativeValidator<NativeDevice> validator(device, store.catalog);
+            auto open = [&] { return store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }); };
+            assert(open() == CatalogResult::Ok);
+            NativeStage<NativeDevice> stage(store, validator);
+            assert(stage.Begin(NativeUpdateKind::Backup));
+            assert(!stage.Erase(plan.metadata));
+            bool reopen = false;
+            assert(stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen) == CatalogResult::Invalid);
+            assert(!reopen);
+            stage.Abort();
+            assert(stage.Begin(deleting ? NativeUpdateKind::Delete : NativeUpdateKind::Rename));
+            try {
+                Upload(stage, plan);
+                assert(stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen) == CatalogResult::Ok);
+                assert(!cut && reopen);
+                operations = nor.operations;
+            } catch (const Cut &) {
+                assert(cut);
+            }
+            nor.cut = 0;
+            stage.Abort();
+            const auto result = open();
+            assert(result == CatalogResult::Ok || result == CatalogResult::Quarantined);
+            Check(store, false, false);
+            const bool published = store.selected.root.generation > 4;
+            uint8_t prefix[4], row[96];
+            assert(device.Read(store.selected.root.address, prefix, 4) && Word(prefix) == 9);
+            assert(store.Row(1, row));
+            const uint32_t outline = 1;
+            RecordView record;
+            if (published && deleting) {
+                assert(Word(row) == 2);
+                assert(!store.Row(7, row));
+                assert(store.live.FindLive(8, &outline, 1, record) == LiveResult::Invalid);
+            } else {
+                const std::string expected = published ? "Medical Practice" : "Medical";
+                assert(Word(row) == 8 && row[12] == expected.size());
+                assert(!std::memcmp(row + 16, expected.data(), expected.size()));
+                assert(store.live.FindLive(8, &outline, 1, record) == LiveResult::Ok);
+                assert(record.text_bytes == 14 &&
+                       !std::memcmp(nor.data.data() + record.text_address, "named override", 14));
+            }
+            if (!cut) break;
+        }
+    }
+    std::cout << (deleting ? "Delete" : "Rename") << ": " << 2 * operations
+              << " interrupted writes recovered" << std::endl;
+}
+
 int main(int argc, char **argv) {
-    assert(argc == 7);
+    assert(argc == 10);
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
     image.resize(256 * kSegmentBytes, 0x42);
@@ -213,4 +272,9 @@ int main(int argc, char **argv) {
     RefuseLostEntry(image, ReadPlan(argv[4]));
     CheckNamedCatalog(image, ReadPlan(argv[5]), NativeUpdateKind::Named);
     CheckNamedCatalog(image, ReadPlan(argv[6]), NativeUpdateKind::Reorder);
+    std::ifstream named_file(argv[7], std::ios::binary);
+    std::vector<uint8_t> named_image((std::istreambuf_iterator<char>(named_file)), {});
+    named_image.resize(256 * kSegmentBytes, 0x42);
+    CheckMetadata(named_image, ReadPlan(argv[8]), false);
+    CheckMetadata(named_image, ReadPlan(argv[9]), true);
 }

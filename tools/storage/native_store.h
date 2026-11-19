@@ -43,6 +43,12 @@ public:
         if(!catalog.AcquirePin(input.root,token))return false;
         view=input;view.token=token;return true;
     }
+    // An idle job may abandon unpublished index pages when typing resumes.
+    bool CancelCheckpoint() {
+        if(work==Work::Checkpoint && checkpoint.Cancel()!=JobResult::Cancelled)return false;
+        if(work!=Work::PrepareCheckpoint && work!=Work::Checkpoint)return false;
+        work=Work::None;last=JobResult::Cancelled;return true;
+    }
     bool Release(LiveView &view){return live.Release(view);}
     JobResult Start(Work kind) {
         if(!opened)return JobResult::ReadOnly;

@@ -4,7 +4,7 @@
 
 namespace candidate_b {
 
-enum class NativeUpdateKind { Compact, Personal, Named, Reorder };
+enum class NativeUpdateKind { Compact, Personal, Named, Reorder, Rename, Delete, Backup };
 
 // Exclusive USB staging session. The active catalog and both retained roots
 // remain readable. Writes are restricted to previously unowned segments.
@@ -38,6 +38,26 @@ class NativeStage {
         return true;
     }
 
+    bool MetadataOnly() const {
+        return kind == NativeUpdateKind::Reorder || kind == NativeUpdateKind::Rename ||
+               kind == NativeUpdateKind::Delete;
+    }
+
+    static bool EditableRow(const uint8_t *row) {
+        return row[8] == 255 && row[9] == 255 &&
+               !(row[12] == 15 && !std::memcmp(row + 16, "user_dictionary", 15));
+    }
+
+    bool NameAvailable(const CatalogRoot &root, unsigned count, const uint8_t *proposed) {
+        for (unsigned i = 0; i < count; ++i) {
+            uint8_t row[96];
+            if (!store.device.Read(root.address + 32 + i * sizeof(row), row, sizeof(row))) return false;
+            if (row[12] == proposed[12] &&
+                !std::memcmp(row + 16, proposed + 16, proposed[12])) return false;
+        }
+        return true;
+    }
+
     // Reorder changes only the row permutation. Named import adds one fresh
     // overlay identity. Every pre-existing row and compiled base is retained.
     bool CheckLayout(const CatalogRoot &candidate, uint32_t metadata_segment) {
@@ -50,13 +70,16 @@ class NativeStage {
         const uint16_t new_count = new_prefix[6] | new_prefix[7] << 8;
         const bool named = kind == NativeUpdateKind::Named;
         const bool reorder = kind == NativeUpdateKind::Reorder;
+        const bool rename = kind == NativeUpdateKind::Rename;
+        const bool remove = kind == NativeUpdateKind::Delete;
+        const bool metadata = MetadataOnly();
         const uint32_t next_id = Word(old_prefix);
-        if (new_dictionaries != dictionaries + unsigned(named) || new_dictionaries > dictionary_limit ||
+        if (new_dictionaries + unsigned(remove) != dictionaries + unsigned(named) || new_dictionaries > dictionary_limit ||
             (named && next_id == UINT32_MAX) || Word(new_prefix) != next_id + unsigned(named) ||
             old_count > 253 || new_count > 253 ||
             candidate.bytes != 32 + new_dictionaries * 96u + new_count * 24u) return false;
-        if (reorder) {
-            if (new_count != old_count || std::memcmp(old_prefix, new_prefix, 32)) return false;
+        if (metadata) {
+            if (new_count != old_count || std::memcmp(old_prefix + 6, new_prefix + 6, 26)) return false;
         } else {
             const uint64_t through = uint64_t(Word(new_prefix + 12)) << 32 | Word(new_prefix + 8);
             if (through < store.live.Highwater()) return false;
@@ -64,6 +87,7 @@ class NativeStage {
 
         personal_id = added_id = 0;
         unsigned previous = 0;
+        bool renamed = false;
         uint64_t seen = 0;
         for (unsigned i = 0; i < new_dictionaries; ++i) {
             uint8_t old_row[96], new_row[96];
@@ -74,20 +98,15 @@ class NativeStage {
             if (named && identity == next_id) {
                 if (added_id || new_base != kNoExtent || Word(new_row + 4) != 1 ||
                     !ValidName(new_row)) return false;
-                for (unsigned j = 0; j < dictionaries; ++j) {
-                    if (!store.device.Read(original.root.address + 32 + j * sizeof(old_row),
-                                           old_row, sizeof(old_row))) return false;
-                    if (old_row[12] == new_row[12] &&
-                        !std::memcmp(old_row + 16, new_row + 16, new_row[12])) return false;
-                }
+                if (!NameAvailable(original.root, dictionaries, new_row)) return false;
                 for (unsigned j = 64; j < sizeof(new_row); ++j)
                     if (new_row[j]) return false;
                 added_id = identity;
                 continue;
             }
             unsigned old_index = previous;
-            if (reorder) {
-                for (old_index = 0; old_index < dictionaries; ++old_index) {
+            if (reorder || remove) {
+                for (old_index = remove ? previous : 0; old_index < dictionaries; ++old_index) {
                     if (!store.device.Read(original.root.address + 32 + old_index * sizeof(old_row),
                                            old_row, sizeof(old_row))) return false;
                     if (Word(old_row) == identity) break;
@@ -98,9 +117,15 @@ class NativeStage {
             }
             if (old_index >= dictionaries || (seen & (uint64_t(1) << old_index))) return false;
             seen |= uint64_t(1) << old_index;
-            ++previous;
-            if (reorder) {
-                if (std::memcmp(old_row, new_row, sizeof(old_row))) return false;
+            previous = old_index + 1;
+            if (metadata) {
+                if (!std::memcmp(old_row, new_row, sizeof(old_row))) continue;
+                if (!rename || renamed || !EditableRow(old_row) || !ValidName(new_row) ||
+                    !NameAvailable(original.root, dictionaries, new_row) ||
+                    std::memcmp(old_row, new_row, 12) ||
+                    std::memcmp(old_row + 13, new_row + 13, 3) ||
+                    std::memcmp(old_row + 60, new_row + 60, 36)) return false;
+                renamed = true;
                 continue;
             }
             if (std::memcmp(old_row, new_row, 8) || std::memcmp(old_row + 10, new_row + 10, 86))
@@ -119,7 +144,16 @@ class NativeStage {
             }
         }
         if (named && !added_id) return false;
-        if (reorder) {
+        if (metadata) {
+            if (rename && !renamed) return false;
+            if (remove) {
+                for (unsigned i = 0; i < dictionaries; ++i) {
+                    if (seen & (uint64_t(1) << i)) continue;
+                    uint8_t row[96];
+                    if (!store.device.Read(original.root.address + 32 + i * sizeof(row), row, sizeof(row)) ||
+                        !EditableRow(row)) return false;
+                }
+            }
             for (unsigned i = 0; i < new_count; ++i) {
                 uint8_t old_extent[24], new_extent[24];
                 if (!ReadExtent(original.root, dictionaries, i, old_extent) ||
@@ -246,7 +280,7 @@ public:
     }
 
     bool Erase(uint32_t segment) {
-        if (!active || segment < 2 || segment >= 255 || protected_segments.Contains(segment))
+        if (kind == NativeUpdateKind::Backup || !active || segment < 2 || segment >= 255 || protected_segments.Contains(segment))
             return false;
         if (erased.Contains(segment)) return true;
         if (remaining <= 3 || !store.device.Erase(segment)) return false;
@@ -276,7 +310,7 @@ public:
     // caller must also reopen before allowing writes.
     CatalogResult Commit(uint32_t segment, uint32_t bytes, uint32_t crc, bool &reopen) {
         reopen = false;
-        if (!active || segment < 2 || segment >= 255 || !erased.Contains(segment) ||
+        if (kind == NativeUpdateKind::Backup || !active || segment < 2 || segment >= 255 || !erased.Contains(segment) ||
             bytes < 32 || bytes > store.catalog.PayloadCapacity() ||
             store.selected.root.generation != original.root.generation) return CatalogResult::Invalid;
         bool pinned = false;
@@ -286,7 +320,7 @@ public:
         uint32_t checksum = 0;
         if (!store.device.Checksum(candidate.address, bytes, checksum)) return CatalogResult::IoError;
         if (checksum != crc || !CheckLayout(candidate, segment)) return CatalogResult::Corrupt;
-        if (kind != NativeUpdateKind::Reorder) {
+        if (!MetadataOnly()) {
             const auto validation = validator.Validate(candidate);
             if (validation != CatalogResult::Ok) return validation;
             if (!PreservesEntries()) return CatalogResult::Corrupt;

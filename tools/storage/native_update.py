@@ -148,7 +148,47 @@ def row_name(row):
     return row[16:16 + row[12]].decode("utf-8")
 
 
-def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None):
+def validate_name(name):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,43}", name) or name.endswith(" "):
+        raise ValueError("Use 1–44 letters, digits, spaces, dots, underscores or hyphens for the name")
+    return name
+
+
+def metadata_payload(snapshot, *, move=None, rename=None, delete=None):
+    rows = snapshot.rows.copy()
+    names = [row_name(row) for row in rows]
+    target = move[0] if move else rename[0] if rename else delete
+    if target not in names:
+        raise ValueError(f"No installed dictionary named {target!r}")
+    index = names.index(target)
+    if move:
+        position = move[1] - 1
+        if not 0 <= position < len(rows):
+            raise ValueError("Choose a position in the current priority list")
+        if index == position:
+            return None
+        rows.insert(position, rows.pop(index))
+    else:
+        if target == "user_dictionary" or rows[index][8:10] != b"\xff\xff":
+            raise ValueError("Only independent named dictionaries can be renamed or deleted")
+        if rename:
+            label = validate_name(rename[1])
+            if label == target:
+                return None
+            if label in names:
+                raise ValueError(f"A dictionary named {label!r} is already installed")
+            row = bytearray(rows[index])
+            row[12] = len(label)
+            row[16:60] = label.encode("ascii").ljust(44, b"\0")
+            rows[index] = row
+        else:
+            rows.pop(index)
+    prefix = bytearray(snapshot.payload[:32])
+    struct.pack_into("<H", prefix, 4, len(rows))
+    return bytes(prefix) + b"".join(rows) + snapshot.payload[32 + len(snapshot.rows) * 96:]
+
+
+def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None, rename=None, delete=None):
     """Stage replacements in free segments. None selects live-record cleaning."""
     free = set(range(2, 255)) - set(protected)
     segments = {}
@@ -162,25 +202,16 @@ def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None):
                     return start
         raise NoSpace("Not enough contiguous staging space; no data was changed")
 
-    if move:
-        name_to_move, position = move
-        rows = snapshot.rows.copy()
-        names = [row_name(row) for row in rows]
-        if name_to_move not in names or not 1 <= position <= len(names):
-            raise ValueError("Choose an installed dictionary and a position in the current priority list")
-        index = names.index(name_to_move)
-        if index == position - 1:
+    if move or rename or delete:
+        payload = metadata_payload(snapshot, move=move, rename=rename, delete=delete)
+        if payload is None:
             return None
-        rows.insert(position - 1, rows.pop(index))
-        end = 32 + len(rows) * 96
-        payload = snapshot.payload[:32] + b"".join(rows) + snapshot.payload[end:]
         metadata = allocate()
         return Update({metadata: payload}, metadata, payload, 0, 0)
 
     identity, next_id = snapshot.personal, snapshot.next_id
     if name is not None:
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,43}", name) or name.endswith(" "):
-            raise ValueError("Use 1–44 letters, digits, spaces, dots, underscores or hyphens for the name")
+        validate_name(name)
         if any(row_name(row) == name for row in snapshot.rows):
             raise ValueError(f"A dictionary named {name!r} is already installed")
         if len(snapshot.rows) >= limit or next_id == 0xffffffff:
@@ -280,47 +311,88 @@ def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None):
     return Update(segments, metadata, payload, len(victims), len(pending))
 
 
-def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None):
+def update_command(console, text, timeout=30):
+    reply = console.command("native_install update " + text, timeout=timeout)
+    if reply != "OK" and not reply.startswith("OK "):
+        raise RuntimeError(reply)
+    return reply
+
+
+def read_snapshot(console, answer, *, metadata_only=False):
+    import base64
+
+    _, address, length, checksum, ownership = answer.split()
+    if len(ownership) != 64:
+        raise ValueError("Invalid ownership bitmap")
+    words = [int(ownership[i:i + 8], 16) for i in range(0, 64, 8)]
+    protected = {i for i in range(256) if words[i // 32] & (1 << (i % 32))}
+
+    def read(start, size):
+        result = bytearray()
+        for offset in range(0, size, 512):
+            count = min(size - offset, 512)
+            reply = update_command(console, f"read {start + offset} {count}")
+            data = base64.b64decode(reply[3:], validate=True)
+            if len(data) != count:
+                raise RuntimeError("Short snapshot read")
+            result.extend(data)
+        return bytes(result)
+
+    return Snapshot(read, int(address), int(length), int(checksum), metadata_only=metadata_only), protected
+
+
+def backup_all(console):
+    """Export exact live overlay operations and the catalog from one frozen view."""
+    layout = console.command("get_parameter host_layout")
+    answer = update_command(console, "begin backup")
+    try:
+        snapshot, _ = read_snapshot(console, answer)
+        dictionaries = []
+        for row in snapshot.rows:
+            identity, enabled, base, member = struct.unpack_from("<IIHB", row)
+            item = dict(id=identity, name=row_name(row), enabled=bool(enabled), entries=[])
+            if base != 65535:
+                item.update(source_sha256=row[64:96].hex(), image_member=member)
+            dictionaries.append(item)
+        by_id = {item["id"]: item for item in dictionaries}
+        for entry in sorted(snapshot.entries.values(), key=lambda item: item.key):
+            item = dict(strokes=entry.strokes, operation="remove" if entry.operation else "set")
+            if not entry.operation:
+                item["text"] = entry.text.decode("utf-8")
+            by_id[entry.identity]["entries"].append(item)
+        return dict(format="stenosquid-backup-1", host_layout=layout, dictionaries=dictionaries)
+    finally:
+        update_command(console, "abort", timeout=5)
+
+
+def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None):
     """Preflight, upload and commit one update over USB HID."""
     import base64
 
     def command(text, timeout=30):
-        reply = console.command("native_install update " + text, timeout=timeout)
-        if reply != "OK" and not reply.startswith("OK "):
-            raise RuntimeError(reply)
-        return reply
+        return update_command(console, text, timeout)
 
     if move:
         mode = "reorder"
+    elif rename:
+        mode = "rename"
+    elif delete:
+        mode = "delete"
     elif name is not None:
         mode = "named"
     else:
         mode = "compact" if incoming is None else "import"
     answer = command("begin " + mode)
     try:
-        _, address, length, checksum, ownership = answer.split()
-        if len(ownership) != 64:
-            raise ValueError("Invalid ownership bitmap")
-        words = [int(ownership[i:i + 8], 16) for i in range(0, 64, 8)]
-        protected = {i for i in range(256) if words[i // 32] & (1 << (i % 32))}
-
-        def read(start, size):
-            result = bytearray()
-            for offset in range(0, size, 512):
-                count = min(size - offset, 512)
-                data = base64.b64decode(command(f"read {start + offset} {count}")[3:], validate=True)
-                if len(data) != count:
-                    raise RuntimeError("Short snapshot read")
-                result.extend(data)
-            return bytes(result)
-
         progress("Reading the current dictionary store and planning free space…")
-        snapshot = Snapshot(read, int(address), int(length), int(checksum), metadata_only=bool(move))
-        update = plan(snapshot, protected, incoming, name=name, limit=limit, move=move)
+        snapshot, protected = read_snapshot(console, answer, metadata_only=bool(move or rename or delete))
+        update = plan(snapshot, protected, incoming, name=name, limit=limit, move=move, rename=rename, delete=delete)
         if update is None:
             command("abort")
             if move:
                 progress("The dictionary is already at that priority.")
+            elif rename:
+                progress("The dictionary already has that name.")
             elif incoming is None:
                 progress("No journals can be reclaimed in this pass.")
             else:
@@ -343,6 +415,10 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
             raise RuntimeError("Unexpected commit response")
         if move:
             progress(f"Moved {move[0]} to priority {move[1]}; the left half is rebooting.")
+        elif rename:
+            progress(f"Renamed {rename[0]} to {rename[1]}; the left half is rebooting.")
+        elif delete:
+            progress(f"Deleted {delete}; the left half is rebooting.")
         elif name is not None:
             progress(f"Imported {name} with {update.changes:,} entries; the left half is rebooting.")
         elif incoming is not None:

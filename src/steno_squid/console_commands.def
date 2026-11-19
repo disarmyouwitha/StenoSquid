@@ -24,6 +24,7 @@ USER_COMMAND("dictionary_checkpoint_probe", "Test native catalog and bounded ind
 #endif
 
 #ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+USER_COMMAND("native_catalog", "List Native dictionaries and compiled image metadata", native_catalog, false)
 USER_COMMAND("native_entry", "Stage and save a dictionary-qualified UTF-8 entry", native_entry, true)
 USER_COMMAND("native_remove_entry", "Hide an outline in one logical dictionary", native_edit_key, true)
 USER_COMMAND("native_reset_entry", "Restore the compact base outline", native_edit_key, true)

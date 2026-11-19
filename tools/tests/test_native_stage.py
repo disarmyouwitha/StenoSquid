@@ -105,11 +105,31 @@ def main():
         invalid = path / "invalid.bin"
         write_plan(invalid, plan(invalid_snapshot, protected, {(11,): b"unsafe"}))
         named = path / "named.bin"
-        write_plan(named, plan(snapshot, protected, {(1,): b"named override"}, name="Medical"))
+        named_plan = plan(snapshot, protected, {(1,): b"named override"}, name="Medical")
+        write_plan(named, named_plan)
+        named_image = bytearray(image)
+        for slot, block in named_plan.segments.items():
+            at = slot * SEGMENT
+            named_image[at:at + len(block)] = block
+        for slot in range(2):
+            at = slot * SEGMENT
+            body = catalog_header(slot + 3, named_plan.payload) + named_plan.payload
+            named_image[at:at + len(body)] = body
+        named_snapshot = Snapshot(lambda at, n: named_image[at:at+n], SEGMENT + 32,
+                                  len(named_plan.payload), zlib.crc32(named_plan.payload), metadata_only=True)
+        named_protected = {0, 1, 255}
+        for start, count, *_ in named_snapshot.extents:
+            named_protected.update(range(start, start + count))
+        named_before, rename, delete = (path / name for name in ("named-before.bin", "rename.bin", "delete.bin"))
+        named_before.write_bytes(named_image)
+        write_plan(rename, plan(named_snapshot, named_protected, rename=("Medical", "Medical Practice")))
+        write_plan(delete, plan(named_snapshot, named_protected, delete="Medical"))
+        assert plan(named_snapshot, named_protected, rename=("Medical", "Medical")) is None
         reorder = path / "reorder.bin"
         write_plan(reorder, plan(snapshot, protected, move=("Lapwing Base", 1)))
         for kwargs in ({"name": "Lapwing Base"}, {"name": "Too,long"}, {"name": "Medical", "limit": 7},
-                       {"move": ("Missing", 1)}, {"move": ("Lapwing Base", 8)}):
+                       {"move": ("Missing", 1)}, {"move": ("Lapwing Base", 8)},
+                       {"rename": ("user_dictionary", "Private")}, {"delete": "Lapwing Base"}):
             try:
                 plan(snapshot, protected, {}, **kwargs)
             except ValueError:
@@ -121,7 +141,8 @@ def main():
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-I", str(ROOT / "tools/storage"), str(ROOT / "tools/tests/test_native_stage.cc"),
                         "-o", str(binary)], check=True)
-        subprocess.run([str(binary), str(before), str(add), str(clean), str(invalid), str(named), str(reorder)], check=True)
+        subprocess.run([str(binary), str(before), str(add), str(clean), str(invalid), str(named), str(reorder),
+                        str(named_before), str(rename), str(delete)], check=True)
 
 
 if __name__ == "__main__":

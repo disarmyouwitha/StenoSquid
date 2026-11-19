@@ -248,12 +248,35 @@ def handle_native(console, args, status):
         if reply != "OK":
             raise RuntimeError(reply)
         print("Native dictionaries verified.")
+    elif args.list_dictionaries:
+        print(json.dumps(json.loads(console.command("native_catalog")), indent=2))
+    elif args.backup_all:
+        sys.path.insert(0, str(REPO / "tools/storage"))
+        from native_update import backup_all
+
+        backup = backup_all(console)
+        with args.backup_all.open("x", encoding="utf-8") as output:
+            json.dump(backup, output, ensure_ascii=False, indent=2)
+            output.write("\n")
+        print(f"Saved full overlay and settings backup to {args.backup_all}.")
     elif args.backup:
-        entries, names = parse_named(console.command("print_dictionary user_dictionary", timeout=1800))
+        name = args.dictionary or "user_dictionary"
+        if args.dictionary:
+            catalog = json.loads(console.command("native_catalog"))
+            if not any(item["name"] == name for item in catalog):
+                raise ValueError(f"No installed dictionary named {name!r}")
+        entries, names = parse_named(console.command("print_dictionary " + name, timeout=1800))
         if console.command("native_install status") != status:
             raise RuntimeError("Native dictionary state changed during export. No backup was written.")
         write_json(args.backup, entries, names)
-        print(f"Saved {len(entries):,} personal entries to {args.backup}.")
+        print(f"Saved {len(entries):,} entries from {name} to {args.backup}.")
+    elif args.rename or args.delete:
+        if console.command("native_install update manage-capabilities") != "OK MANAGE1":
+            raise RuntimeError("Flash firmware with dictionary management support first.")
+        sys.path.insert(0, str(REPO / "tools/storage"))
+        from native_update import transfer
+
+        return transfer(console, rename=args.rename, delete=args.delete)
     elif args.personal or args.compact or args.move:
         sys.path.insert(0, str(REPO / "tools/storage"))
         from native_manage import import_entries
@@ -281,9 +304,15 @@ def main():
     parser.add_argument("--install", action="store_true", help="Install and verify base dictionaries over USB HID")
     parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON", help="Merge a personal dictionary over USB HID")
     parser.add_argument("--as", dest="name", metavar="NAME", help="Import into a new named dictionary")
+    parser.add_argument("--rename", nargs=2, metavar=("OLD", "NEW"), help="Rename an independent dictionary")
+    parser.add_argument("--delete", metavar="NAME", help="Delete an independent dictionary")
+    parser.add_argument("--manager", action="store_true", help="Open the local Steno Squid Manager")
     parser.add_argument("--move", metavar="NAME", help="Move a dictionary in the lookup priority list")
     parser.add_argument("--position", type=int, metavar="N", help="Priority position for --move, starting at 1")
     parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
+    parser.add_argument("--list-dictionaries", action="store_true", help="Show the Native dictionary catalog")
+    parser.add_argument("--backup-all", type=Path, metavar="FILE.JSON", help="Save the Native catalog settings and overlays")
+    parser.add_argument("--dictionary", metavar="NAME", help="Select a dictionary for --backup")
     parser.add_argument("--backup", type=Path, metavar="FILE.JSON", help="Export the personal dictionary over USB HID")
     parser.add_argument("--confirm-erase", action="store_true", help="Explicitly replace the Native dictionary pool")
     parser.add_argument("--restore", type=Path, metavar="BACKUP.JSON", help="Seed personal entries when provisioning Native")
@@ -294,9 +323,11 @@ def main():
     parser.add_argument("--status", action="store_true", help="Read dictionary status")
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
-    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move)
+    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries)
     if sum(map(bool, actions)) != 1:
-        parser.error("Choose one action: --install, --import, --backup, --repair, --verify, --status, --compact, --move or --diag")
+        parser.error("Choose exactly one action (see --help)")
+    if args.dictionary is not None and not args.backup:
+        parser.error("--dictionary goes with --backup")
     if args.name is not None and not args.personal:
         parser.error("--as requires --import")
     if bool(args.move) != (args.position is not None) or (args.position is not None and args.position < 1):
@@ -315,10 +346,18 @@ def main():
                     print(f"\n[{section}]", flush=True)
                 diag(port, section)
         return
-    if (args.install or args.personal or args.backup or args.compact or args.move) and args.base:
+    if args.base and not (args.repair or args.verify or args.status):
         parser.error("--base goes with --repair, --verify or --status")
     if args.restore and not args.confirm_erase:
         parser.error("--restore requires --confirm-erase")
+    if args.manager:
+        if args.base:
+            parser.error("--base is unavailable with --manager")
+        sys.path.insert(0, str(REPO / "tools/manager"))
+        from manager import serve
+
+        serve(args.serial)
+        return
     from import_personal import open_console
 
     reboot = False
@@ -339,8 +378,8 @@ def main():
                 if not native.startswith("NATIVE2 "):
                     raise RuntimeError("Flash the matching Native firmware before installing this image.")
         elif native == "ERR Command unavailable on this keyboard":
-            if args.compact or args.move or args.name is not None:
-                raise ValueError("--compact, --move and --as require Native firmware.")
+            if any((args.compact, args.move, args.rename, args.delete, args.name, args.dictionary, args.backup_all, args.list_dictionaries)):
+                raise ValueError("This dictionary operation requires Native firmware.")
             if args.confirm_erase or args.restore:
                 raise ValueError("These install options require Native firmware.")
             if not (args.backup or args.personal):

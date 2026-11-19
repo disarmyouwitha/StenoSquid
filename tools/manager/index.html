@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="manager-token" content="MANAGER_SESSION_TOKEN">
+  <title>Steno Squid Manager</title>
+  <link rel="stylesheet" href="/manager.css">
+  <script type="module" src="/manager.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div><h1>Steno Squid Manager</h1><p>Onboard dictionaries and keyboard output</p></div>
+      <button id="refresh" type="button">Connect over USB</button>
+    </header>
+    <output id="status" aria-live="polite">Plug in your left half by USB. Close other dictionary tools before connecting.</output>
+    <div id="workspace" hidden>
+      <section aria-labelledby="catalog-title">
+        <div class="section-heading">
+          <h2 id="catalog-title">Dictionaries</h2>
+          <p>Highest lookup priority first.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Priority</th><th scope="col">Dictionary</th><th scope="col">Active</th><th scope="col">Compiled entries</th><th scope="col">Image</th></tr></thead>
+            <tbody id="catalog"></tbody>
+          </table>
+        </div>
+        <div class="toolbar">
+          <button type="button" id="up" data-write>Move up</button>
+          <button type="button" id="down" data-write>Move down</button>
+          <button type="button" id="rename" data-write>Rename</button>
+          <button type="button" id="delete" data-write>Delete</button>
+          <button type="button" id="export">Export JSON</button>
+        </div>
+      </section>
+      <div class="forms">
+        <section aria-labelledby="edit-title">
+          <h2 id="edit-title">Edit an outline</h2>
+          <p id="target"></p>
+          <form id="edit">
+            <label>Outline <input name="outline" required placeholder="KAT" spellcheck="false"></label>
+            <label>Translation <textarea name="translation" rows="3" spellcheck="false"></textarea></label>
+            <div class="toolbar">
+              <button value="set" data-write>Save entry</button>
+              <button value="remove" data-write>Hide outline</button>
+              <button value="reset" data-write>Restore base</button>
+            </div>
+          </form>
+        </section>
+        <section aria-labelledby="import-title">
+          <h2 id="import-title">Import Plover JSON</h2>
+          <form id="import">
+            <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
+            <label>New dictionary name <input name="name" maxlength="44" placeholder="Leave blank to merge into personal"></label>
+            <button data-write>Import</button>
+          </form>
+        </section>
+      </div>
+      <section aria-labelledby="settings-title">
+        <h2 id="settings-title">Keyboard and storage</h2>
+        <div class="toolbar">
+          <label>Host layout <select id="layout" data-write></select></label>
+          <button type="button" id="backup">Download full backup</button>
+          <button type="button" id="updates">Check pinned updates</button>
+          <button type="button" id="compact" data-write>Compact now</button>
+        </div>
+        <p id="maintenance"></p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,39 @@
+:root {
+  color-scheme: dark;
+  font: 100%/1.5 system-ui, sans-serif;
+  color: #eeedf8;
+  background: #15151e;
+  --surface: #21212e;
+  --muted: #b6b4c9;
+  --line: #45445a;
+  --accent: #c1a7ff;
+}
+* { box-sizing: border-box; }
+main { width: min(72rem, calc(100% - 2rem)); margin: 3rem auto; }
+header, .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+h1 { margin: 0; font-size: clamp(1.85rem, 5vw, 3rem); line-height: 1.1; letter-spacing: -.04em; }
+h2 { margin: 0; font-size: 1.3rem; }
+p { color: var(--muted); margin: .45rem 0; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: .75rem; padding: 1.1rem; margin: 0 0 1rem; min-width: 0; }
+output { display: block; margin: 1.4rem 0 1rem; padding: .85rem 1rem; border-left: .25rem solid var(--accent); background: var(--surface); overflow-wrap: anywhere; }
+output[data-error="true"] { border-color: #ff9d9d; color: #ffb6b6; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin: .55rem 0; text-align: left; }
+th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-size: .9rem; }
+td:nth-child(2) { min-width: 12rem; }
+tr:has(input[type="radio"]:checked) { background: #353049; }
+.forms { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+form { display: grid; justify-items: start; align-content: start; gap: .6rem; }
+form label { display: grid; width: 100%; gap: .15rem; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
+button, input, textarea, select { font: inherit; accent-color: var(--accent); }
+button, select, input:not([type="radio"], [type="checkbox"]), textarea { border: 1px solid var(--line); border-radius: .4rem; background: #171722; color: inherit; padding: .43rem .65rem; }
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled, input:disabled, select:disabled { opacity: .5; cursor: default; }
+#refresh, button[value="set"] { background: var(--accent); color: #24163e; border-color: var(--accent); font-weight: 650; }
+input[type="file"] { max-width: 100%; }
+textarea { resize: vertical; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 42rem) { .forms { grid-template-columns: 1fr; gap: 0; } }
