@@ -82,7 +82,7 @@ void Run(const std::vector<uint8_t> &image, const Plan &plan, bool merge) {
             };
             assert(open() == CatalogResult::Ok);
             NativeStage<NativeDevice> stage(store, validator);
-            assert(stage.Begin(merge));
+            assert(stage.Begin(merge ? NativeUpdateKind::Personal : NativeUpdateKind::Compact));
             assert(!stage.Erase(0) && !stage.Erase(2) && !stage.Erase(255));
             uint32_t stroke = 1;
             assert(store.Edit(1,0,&stroke,1,nullptr,0) == LiveResult::Busy);
@@ -143,7 +143,7 @@ void RefuseLostEntry(const std::vector<uint8_t> &image, const Plan &plan) {
     NativeValidator<NativeDevice> validator(device, store.catalog);
     assert(store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }) == CatalogResult::Ok);
     NativeStage<NativeDevice> stage(store, validator);
-    assert(stage.Begin(true));
+    assert(stage.Begin(NativeUpdateKind::Personal));
     Upload(stage, plan);
     bool reopen = false;
     assert(stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen) == CatalogResult::Corrupt);
@@ -153,12 +153,64 @@ void RefuseLostEntry(const std::vector<uint8_t> &image, const Plan &plan) {
     assert(std::equal(image.begin(), image.begin() + 2 * kSegmentBytes, nor.data.begin()));
 }
 
+void CheckNamedCatalog(const std::vector<uint8_t> &image, const Plan &plan, NativeUpdateKind kind) {
+    unsigned operations = 0;
+    for (unsigned cut = 0; cut <= operations; ++cut) {
+        Nor nor;
+        nor.data = image;
+        nor.cut = cut;
+        nor.tear = 1;
+        NativeDevice device{{nor}};
+        NativeStore<NativeDevice> store(device);
+        NativeValidator<NativeDevice> validator(device, store.catalog);
+        auto open = [&] { return store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }); };
+        assert(open() == CatalogResult::Ok);
+        NativeStage<NativeDevice> stage(store, validator);
+        assert(stage.Begin(kind, 16));
+        const bool named = kind == NativeUpdateKind::Named;
+        try {
+            Upload(stage, plan);
+            bool reopen = false;
+            assert(stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen) == CatalogResult::Ok);
+            assert(!cut && reopen);
+            operations = nor.operations;
+        } catch (const Cut &) {
+            assert(cut);
+        }
+        nor.cut = 0;
+        stage.Abort();
+        const auto recovered = open();
+        assert(recovered == CatalogResult::Ok || recovered == CatalogResult::Quarantined);
+        Check(store, false, false);
+        const bool published = store.selected.root.generation > 2;
+        uint8_t row[96];
+        assert(store.Row(0, row) && Word(row) == (published && !named ? 6u : 1u));
+        if (named) {
+            assert(store.Row(1, row) && Word(row) == (published ? 8u : 2u));
+            if (published) {
+                assert(row[12] == 7 && !std::memcmp(row + 16, "Medical", 7));
+                const uint32_t outline = 1;
+                RecordView record;
+                assert(store.live.FindLive(8, &outline, 1, record) == LiveResult::Ok);
+                assert(record.text_bytes == 14 &&
+                       !std::memcmp(nor.data.data() + record.text_address, "named override", 14));
+            }
+        } else {
+            assert(store.live.TailCount() == 7);
+        }
+    }
+    std::cout << (kind == NativeUpdateKind::Named ? "Named import" : "Priority move")
+              << ": " << operations << " interrupted writes recovered" << std::endl;
+}
+
 int main(int argc, char **argv) {
-    assert(argc == 5);
+    assert(argc == 7);
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
     image.resize(256 * kSegmentBytes, 0x42);
     Run(image, ReadPlan(argv[2]), true);
     Run(image, ReadPlan(argv[3]), false);
     RefuseLostEntry(image, ReadPlan(argv[4]));
+    CheckNamedCatalog(image, ReadPlan(argv[5]), NativeUpdateKind::Named);
+    CheckNamedCatalog(image, ReadPlan(argv[6]), NativeUpdateKind::Reorder);
 }

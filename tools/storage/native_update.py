@@ -1,6 +1,7 @@
 """Build a copy-on-write Native update from a frozen catalog and its journals."""
 
 from dataclasses import dataclass
+import re
 import struct
 import zlib
 
@@ -63,10 +64,11 @@ def encode_record(edit, sequence):
 
 
 class Snapshot:
-    def __init__(self, read, catalog_address, catalog_bytes, crc):
+    def __init__(self, read, catalog_address, catalog_bytes, crc, *, metadata_only=False):
         payload = read(catalog_address, catalog_bytes)
         if len(payload) != catalog_bytes or zlib.crc32(payload) != crc:
             raise ValueError("Catalog changed or failed its checksum")
+        self.payload = payload
         self.next_id, count, extents, through = struct.unpack_from("<IHHQ", payload)
         rows_end = 32 + count * 96
         if count > 64 or extents > 253 or len(payload) != rows_end + extents * 24:
@@ -78,6 +80,8 @@ class Snapshot:
         if len(personal) != 1 or personal[0][8:10] != b"\xff\xff":
             raise ValueError("Expected one overlay-only personal dictionary")
         self.personal = struct.unpack_from("<I", personal[0])[0]
+        if metadata_only:
+            return
         self.journals = [item for item in self.extents if item[4] == 2]
         self.highwater = 0
         self.anchor = None
@@ -140,7 +144,11 @@ class Update:
     changes: int
 
 
-def plan(snapshot, protected, incoming=None):
+def row_name(row):
+    return row[16:16 + row[12]].decode("utf-8")
+
+
+def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None):
     """Stage replacements in free segments. None selects live-record cleaning."""
     free = set(range(2, 255)) - set(protected)
     segments = {}
@@ -153,6 +161,31 @@ def plan(snapshot, protected, incoming=None):
                     free.difference_update(block)
                     return start
         raise NoSpace("Not enough contiguous staging space; no data was changed")
+
+    if move:
+        name_to_move, position = move
+        rows = snapshot.rows.copy()
+        names = [row_name(row) for row in rows]
+        if name_to_move not in names or not 1 <= position <= len(names):
+            raise ValueError("Choose an installed dictionary and a position in the current priority list")
+        index = names.index(name_to_move)
+        if index == position - 1:
+            return None
+        rows.insert(position - 1, rows.pop(index))
+        end = 32 + len(rows) * 96
+        payload = snapshot.payload[:32] + b"".join(rows) + snapshot.payload[end:]
+        metadata = allocate()
+        return Update({metadata: payload}, metadata, payload, 0, 0)
+
+    identity, next_id = snapshot.personal, snapshot.next_id
+    if name is not None:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,43}", name) or name.endswith(" "):
+            raise ValueError("Use 1–44 letters, digits, spaces, dots, underscores or hyphens for the name")
+        if any(row_name(row) == name for row in snapshot.rows):
+            raise ValueError(f"A dictionary named {name!r} is already installed")
+        if len(snapshot.rows) >= limit or next_id == 0xffffffff:
+            raise ValueError("The keyboard has reached its dictionary limit")
+        identity, next_id = next_id, next_id + 1
 
     entries = snapshot.entries.copy()
     pending = []
@@ -181,11 +214,11 @@ def plan(snapshot, protected, incoming=None):
         pending = [entry for entry in entries.values() if entry.address // SEGMENT in victims]
     else:
         for strokes, text in incoming.items():
-            key = snapshot.personal, strokes
+            key = identity, strokes
             old = entries.get(key)
             if old is None or old.operation or old.text != text:
-                pending.append(Edit(0, snapshot.personal, 0, strokes, text))
-        if not pending:
+                pending.append(Edit(0, identity, 0, strokes, text))
+        if not pending and name is None:
             return None
 
     extents = []
@@ -232,13 +265,22 @@ def plan(snapshot, protected, incoming=None):
         if base != 65535:
             struct.pack_into("<H", row, 8, remap[base])
         rows.append(row)
-    payload = struct.pack("<IHHQ16x", snapshot.next_id, len(rows), len(extents), highwater)
+    if name is not None:
+        label = name.encode("ascii")
+        row = bytearray(96)
+        struct.pack_into("<IIH", row, 0, identity, 1, 65535)
+        row[12] = len(label)
+        row[16:16 + len(label)] = label
+        personal_position = next(i for i, row in enumerate(rows)
+                                 if struct.unpack_from("<I", row)[0] == snapshot.personal)
+        rows.insert(personal_position + 1, row)
+    payload = struct.pack("<IHHQ16x", next_id, len(rows), len(extents), highwater)
     payload += b"".join(rows) + b"".join(extents)
     segments[metadata] = payload
     return Update(segments, metadata, payload, len(victims), len(pending))
 
 
-def transfer(console, incoming=None, progress=print):
+def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None):
     """Preflight, upload and commit one update over USB HID."""
     import base64
 
@@ -248,7 +290,12 @@ def transfer(console, incoming=None, progress=print):
             raise RuntimeError(reply)
         return reply
 
-    mode = "compact" if incoming is None else "import"
+    if move:
+        mode = "reorder"
+    elif name is not None:
+        mode = "named"
+    else:
+        mode = "compact" if incoming is None else "import"
     answer = command("begin " + mode)
     try:
         _, address, length, checksum, ownership = answer.split()
@@ -268,12 +315,16 @@ def transfer(console, incoming=None, progress=print):
             return bytes(result)
 
         progress("Reading the current dictionary store and planning free space…")
-        snapshot = Snapshot(read, int(address), int(length), int(checksum))
-        update = plan(snapshot, protected, incoming)
+        snapshot = Snapshot(read, int(address), int(length), int(checksum), metadata_only=bool(move))
+        update = plan(snapshot, protected, incoming, name=name, limit=limit, move=move)
         if update is None:
             command("abort")
-            progress("No journals can be reclaimed in this pass." if incoming is None
-                     else "All imported entries already match.")
+            if move:
+                progress("The dictionary is already at that priority.")
+            elif incoming is None:
+                progress("No journals can be reclaimed in this pass.")
+            else:
+                progress("All imported entries already match.")
             return False
         for index, (segment, block) in enumerate(update.segments.items(), 1):
             command(f"erase {segment}")
@@ -290,9 +341,14 @@ def transfer(console, incoming=None, progress=print):
                         timeout=1800)
         if reply != "OK Rebooting":
             raise RuntimeError("Unexpected commit response")
-        progress(f"Published {update.changes:,} entries; the left half is rebooting."
-                 if incoming is not None else
-                 f"Reclaimed {update.reclaimed} old journals; the left half is rebooting.")
+        if move:
+            progress(f"Moved {move[0]} to priority {move[1]}; the left half is rebooting.")
+        elif name is not None:
+            progress(f"Imported {name} with {update.changes:,} entries; the left half is rebooting.")
+        elif incoming is not None:
+            progress(f"Published {update.changes:,} entries; the left half is rebooting.")
+        else:
+            progress(f"Reclaimed {update.reclaimed} old journals; the left half is rebooting.")
         return True
     except BaseException:
         try:

@@ -673,14 +673,21 @@ bool Number(const char *&p,uint32_t &out) {
 bool End(const char *p){return !*p || (*p=='\n' && !p[1]);}
 const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "capabilities\n")) return "OK BULK1";
-    const bool importing = !std::strcmp(command, "begin import\n");
-    const bool compacting = !std::strcmp(command, "begin compact\n");
-    if (importing || compacting) {
-        if (!healthy || exporting || transfer.Active() || !staged.Begin(importing))
+    if (!std::strcmp(command, "named-capabilities\n")) {
+        snprintk(reply, bytes, "OK NAMED1 %u", unsigned(MaxDictionaries));
+        return nullptr;
+    }
+    NativeUpdateKind kind = NativeUpdateKind::Compact;
+    if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
+    else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
+    else if (!std::strcmp(command, "begin reorder\n")) kind = NativeUpdateKind::Reorder;
+    if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
+        if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries))
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();
-        stage_mode = importing ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
+        stage_mode = (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named)
+                         ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();
         int length = snprintk(reply, bytes, "OK %u %u %u ", root.address, root.bytes, root.crc);

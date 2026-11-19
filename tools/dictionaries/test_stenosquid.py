@@ -194,6 +194,29 @@ class InstallerTest(unittest.TestCase):
             stenosquid.main()
         console.command.assert_called_once_with('native_install status')
 
+    def test_named_import_and_priority_move_use_staged_protocol(self):
+        source = self.root / 'medical.json'
+        source.write_text('{"KAT": "triage"}')
+        for args, name, move in (
+            (['--import', str(source), '--as', 'Medical'], 'Medical', None),
+            (['--move', 'Medical', '--position', '1'], None, ('Medical', 1)),
+        ):
+            with self.subTest(args=args):
+                console = mock.Mock()
+                console.command.side_effect = [
+                    'NATIVE2 READY 3', '{"ready":true,"read_only":false,"personal_id":1}', 'OK NAMED1 16',
+                ]
+                with mock.patch.object(import_personal, 'open_console', return_value=nullcontext(console)), \
+                     mock.patch.object(sys, 'argv', ['stenosquid.py', *args]):
+                    sys.path.insert(0, str(stenosquid.REPO / "tools/storage"))
+                    with mock.patch('native_update.transfer', return_value=True) as transfer, \
+                         mock.patch('native_install.wait_ready') as wait:
+                        stenosquid.main()
+                    self.assertEqual(transfer.call_args.kwargs, {'name': name, 'move': move, 'limit': 16})
+                    wait.assert_called_once_with(None)
+                self.assertEqual(console.command.call_args_list[-1],
+                                 mock.call('native_install update named-capabilities'))
+
     def test_diag_auto_detects_one_port(self):
         port = object()
         with mock.patch.object(stenosquid, 'find_port', return_value='COM1'), \

@@ -104,11 +104,24 @@ def main():
         del invalid_snapshot.entries[(2, (6,))]
         invalid = path / "invalid.bin"
         write_plan(invalid, plan(invalid_snapshot, protected, {(11,): b"unsafe"}))
+        named = path / "named.bin"
+        write_plan(named, plan(snapshot, protected, {(1,): b"named override"}, name="Medical"))
+        reorder = path / "reorder.bin"
+        write_plan(reorder, plan(snapshot, protected, move=("Lapwing Base", 1)))
+        for kwargs in ({"name": "Lapwing Base"}, {"name": "Too,long"}, {"name": "Medical", "limit": 7},
+                       {"move": ("Missing", 1)}, {"move": ("Lapwing Base", 8)}):
+            try:
+                plan(snapshot, protected, {}, **kwargs)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"Invalid catalog operation accepted: {kwargs}")
+        assert plan(snapshot, protected, move=("user_dictionary", 1)) is None
         binary = path / "test"
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-I", str(ROOT / "tools/storage"), str(ROOT / "tools/tests/test_native_stage.cc"),
                         "-o", str(binary)], check=True)
-        subprocess.run([str(binary), str(before), str(add), str(clean), str(invalid)], check=True)
+        subprocess.run([str(binary), str(before), str(add), str(clean), str(invalid), str(named), str(reorder)], check=True)
 
 
 if __name__ == "__main__":

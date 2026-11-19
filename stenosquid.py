@@ -254,7 +254,7 @@ def handle_native(console, args, status):
             raise RuntimeError("Native dictionary state changed during export. No backup was written.")
         write_json(args.backup, entries, names)
         print(f"Saved {len(entries):,} personal entries to {args.backup}.")
-    elif args.personal or args.compact:
+    elif args.personal or args.compact or args.move:
         sys.path.insert(0, str(REPO / "tools/storage"))
         from native_manage import import_entries
         from native_update import transfer
@@ -263,6 +263,12 @@ def handle_native(console, args, status):
         state = json.loads(console.command("user_dictionary_status"))
         if not state.get("ready") or state.get("read_only") or not state.get("personal_id"):
             raise RuntimeError("Native dictionary is unavailable for writing")
+        if args.name is not None or args.move:
+            capabilities = console.command("native_install update named-capabilities").split()
+            if len(capabilities) != 3 or capabilities[:2] != ["OK", "NAMED1"]:
+                raise RuntimeError("Flash firmware with named dictionary support before using this command.")
+            return transfer(console, entries, name=args.name, limit=int(capabilities[2]),
+                            move=(args.move, args.position) if args.move else None)
         if args.compact or len(entries) >= 256:
             if console.command("native_install update capabilities") != "OK BULK1":
                 raise RuntimeError("Flash Native firmware with staged updates before running this command.")
@@ -274,6 +280,9 @@ def main():
     parser.add_argument("port", nargs="?", help="USB serial port for --diag only")
     parser.add_argument("--install", action="store_true", help="Install and verify base dictionaries over USB HID")
     parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON", help="Merge a personal dictionary over USB HID")
+    parser.add_argument("--as", dest="name", metavar="NAME", help="Import into a new named dictionary")
+    parser.add_argument("--move", metavar="NAME", help="Move a dictionary in the lookup priority list")
+    parser.add_argument("--position", type=int, metavar="N", help="Priority position for --move, starting at 1")
     parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
     parser.add_argument("--backup", type=Path, metavar="FILE.JSON", help="Export the personal dictionary over USB HID")
     parser.add_argument("--confirm-erase", action="store_true", help="Explicitly replace the Native dictionary pool")
@@ -285,9 +294,13 @@ def main():
     parser.add_argument("--status", action="store_true", help="Read dictionary status")
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
-    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact)
+    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move)
     if sum(map(bool, actions)) != 1:
-        parser.error("Choose one action: --install, --import, --backup, --repair, --verify, --status, --compact or --diag")
+        parser.error("Choose one action: --install, --import, --backup, --repair, --verify, --status, --compact, --move or --diag")
+    if args.name is not None and not args.personal:
+        parser.error("--as requires --import")
+    if bool(args.move) != (args.position is not None) or (args.position is not None and args.position < 1):
+        parser.error("--move requires --position with a positive position")
     if args.port and not args.diag:
         parser.error("Serial provisioning is retired. Omit the port to use USB HID; ports are only for --diag")
     if (args.confirm_erase or args.restore) and not args.install:
@@ -302,7 +315,7 @@ def main():
                     print(f"\n[{section}]", flush=True)
                 diag(port, section)
         return
-    if (args.install or args.personal or args.backup or args.compact) and args.base:
+    if (args.install or args.personal or args.backup or args.compact or args.move) and args.base:
         parser.error("--base goes with --repair, --verify or --status")
     if args.restore and not args.confirm_erase:
         parser.error("--restore requires --confirm-erase")
@@ -326,8 +339,8 @@ def main():
                 if not native.startswith("NATIVE2 "):
                     raise RuntimeError("Flash the matching Native firmware before installing this image.")
         elif native == "ERR Command unavailable on this keyboard":
-            if args.compact:
-                raise ValueError("--compact requires Native firmware.")
+            if args.compact or args.move or args.name is not None:
+                raise ValueError("--compact, --move and --as require Native firmware.")
             if args.confirm_erase or args.restore:
                 raise ValueError("These install options require Native firmware.")
             if not (args.backup or args.personal):

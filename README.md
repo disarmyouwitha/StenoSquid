@@ -96,6 +96,18 @@ python3 stenosquid.py --import user.json
 
 The file's translations win for matching outlines. Other personal entries stay in the dictionary. Use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
 
+To keep a file separate and give it its own checkbox and lookup priority:
+
+```sh
+python3 stenosquid.py --import medical.json --as "Medical"
+python3 stenosquid.py --move "Medical" --position 1
+```
+
+New named dictionaries start enabled, just below the personal dictionary.
+Position 1 has highest priority. Both commands publish over USB and reboot the
+left half when done. Use `--status` to see the current order. The firmware
+supports 16 dictionaries in total by default.
+
 ### Back up your dictionary
 
 Keep a copy of your personal dictionary on your computer. With the current **Left** firmware connected by USB, close the Javelin browser connection and run:

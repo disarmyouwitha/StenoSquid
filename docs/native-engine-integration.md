@@ -252,6 +252,16 @@ generation 23 with all three personal entries and the saved selections. After
 increased from zero to one while full opens stayed at one. Continue checking
 cold boot and automatic wake behavior before promoting Native.
 
+## Named dictionaries and lookup priority
+
+A named import allocates a stable ID and uses the same staged publication as
+bulk personal import. Existing dictionary rows, base references and live entries
+are checked before publication. A priority move validates a permutation of the
+current rows and retains the original journal and index extents, including
+uncheckpointed edits. Both commands reboot the left so Javelin builds the list
+in catalog order. Names must be unique and are limited to 44 ASCII characters.
+The count limit comes from the running firmware.
+
 ## USB manager and existing website
 
 Javelin Tools continues to use its current HID/BT connector, dictionary list,
@@ -278,8 +288,7 @@ These are overlays, not a replacement upload of the whole compiled theory.
 
 The existing format-3 bulk importer deliberately refuses this development format.
 Use the native manager for its imports. Staging a large compact replacement or a
-new logical dictionary is future manager work, rather than a hidden behavior of
-this small merge command.
+named dictionary uses the separate staged workflow above.
 
 ## Verification so far
 
@@ -632,7 +641,7 @@ operation does not release a burst of stale input.
    separately.
 
 **Not yet complete:** automatic compaction scheduling and an overlong-tail rebuild;
-compact import/replacement/delete/rename/reorder manager transactions; physical
+compact base replacement and named dictionary delete or rename; physical
 power-cut qualification; measured 200 WPM/burst contention and runtime peaks.
 Wholly dead journals can now be reclaimed after ownership is released. Partially
 stale journals still retain their allocation, so sustained growth can safely
