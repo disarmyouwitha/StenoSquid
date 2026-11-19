@@ -27,12 +27,10 @@ class NativeCheckpointJob {
     uint32_t starts[2]{},segments[2]{},erase_position=0,position=0,previous=0;
     bool did_publish=false, compact=false, reclaimed=false, mirror=true;
     NativeRelocationMap relocate;
-    NativeJournal<Device> relocate_journal;
     JournalScan scan{};
-    uint16_t live_bytes[255]{};
+    uint8_t live_units[255]{};
     uint32_t victim_row=0;
     uint64_t last_epoch=0;
-    uint8_t copy_text[2047];
     Phase phase=Phase::Idle;
 
     bool Active()const{return phase!=Phase::Idle && phase!=Phase::Done && phase!=Phase::Failed;}
@@ -128,27 +126,30 @@ class NativeCheckpointJob {
         if(!InputAddress(position++,address) || !ops.Record(address,record))return JobResult::Corrupt;
         const uint32_t segment=address/kSegmentBytes;
         if(segment==last_journal || needed_journals.Contains(segment) ||
-           live_bytes[segment]>NativeRelocationMap::CopyBudget || !ops.Active(record.identity))
+           live_units[segment]>NativeRelocationMap::CopyBudget/NativeRelocationMap::Granularity ||
+           !ops.Active(record.identity))
             return JobResult::More;
         bool needed=false;
         if(!Latest(record,latest,needed))return JobResult::Corrupt;
         if(needed && latest==address) {
-            const unsigned bytes=live_bytes[segment]+record.record.span;
-            live_bytes[segment]=bytes>NativeRelocationMap::CopyBudget?NativeRelocationMap::CopyBudget+1:bytes;
+            constexpr unsigned granularity=NativeRelocationMap::Granularity;
+            constexpr unsigned limit=NativeRelocationMap::CopyBudget/granularity;
+            const unsigned units=live_units[segment]+(record.record.span+granularity-1)/granularity;
+            live_units[segment]=units>limit?limit+1:units;
         }
         return JobResult::More;
     }
     void ChooseVictims(AllocationPlan &plan) {
-        uint32_t budget=NativeRelocationMap::CopyBudget,count=0;
-        for(uint32_t segment=2;segment<255;++segment) {
-            const uint16_t bytes=live_bytes[segment];
-            if(segment!=last_journal && bytes && bytes<=budget && !needed_journals.Contains(segment)) {
-                relocate.victims.Add(segment,1);budget-=bytes;++count;
+        uint32_t budget=NativeRelocationMap::CopyBudget/NativeRelocationMap::Granularity,count=0;
+        for(uint32_t segment=2;segment<255 && count<NativeRelocationMap::MaxVictims;++segment) {
+            const unsigned units=live_units[segment];
+            if(segment!=last_journal && units && units<=budget && !needed_journals.Contains(segment)) {
+                relocate.victims[count++]=segment;budget-=units;
             }
         }
-        if(count<2 || last_epoch==UINT64_MAX || frozen.highwater>UINT64_MAX-NativeRelocationMap::CopyBudget/44 ||
+        if(count<2 || last_epoch==UINT64_MAX || frozen.highwater>UINT64_MAX-NativeRelocationMap::MaxMoves ||
            !plan.Reserve(1,relocate.destination)) {
-            relocate.victims={};return;
+            relocate.Reset(frozen.highwater);return;
         }
         relocate.epoch=last_epoch+1;
     }
@@ -162,13 +163,13 @@ class NativeCheckpointJob {
             if(!device.Read(frozen.root.address+32+dictionaries*96+retained[victim_row++]*24,row,24))
                 return JobResult::IoError;
             const uint32_t segment=uint16_t(row[0]) | uint16_t(row[1])<<8;
-            if(Word(row+12)!=2 || !relocate.victims.Contains(segment))return JobResult::More;
+            if(Word(row+12)!=2 || !relocate.Contains(segment))return JobResult::More;
             const uint64_t epoch=uint64_t(Word(row+16)) | uint64_t(Word(row+20))<<32;
-            return relocate_journal.BeginScan(segment,epoch,0,scan)==JournalResult::Ok?
+            return ops.Journal().BeginScan(segment,epoch,0,scan)==JournalResult::Ok?
                 JobResult::More:JobResult::Corrupt;
         }
         JournalRecord row;
-        const auto result=relocate_journal.Step(scan,row);
+        const auto result=ops.Journal().Step(scan,row);
         if(result==JournalResult::End || result==JournalResult::Sealed) {
             scan.ready=false;return JobResult::More;
         }
@@ -182,17 +183,13 @@ class NativeCheckpointJob {
         if(!Latest(record,latest,needed))return JobResult::Corrupt;
         if(!needed || latest!=row.address)return JobResult::More;
         if(!relocate.Append(row.address,row.span))return JobResult::Corrupt;
-        if(record.text_bytes && !device.Read(record.text_address,copy_text,record.text_bytes))
-            return JobResult::IoError;
-        const uint32_t destination=relocate.moves[relocate.count-1].new_address;
-        return relocate_journal.Append(destination,++relocate.through,record.identity,record.operation,
-                   record.strokes,record.count,copy_text,record.text_bytes)==JournalResult::Ok?
+        return ops.Journal().Clone(relocate.Resolve(row.address),++relocate.through,row)==JournalResult::Ok?
             JobResult::More:JobResult::IoError;
     }
 public:
     NativeCheckpointJob(Device &value,NativeCatalog<Device> &roots,LiveJournal<Device> &state)
         :device(value),catalog(roots),live(state),forward(value),reverse(value),
-         ops(value,frozen,forward,reverse),builder(ops),relocate_journal(value){}
+         ops(value,frozen,forward,reverse),builder(ops){}
     NativeCheckpointJob(const NativeCheckpointJob &)=delete;
     NativeCheckpointJob &operator=(const NativeCheckpointJob &)=delete;
     bool Published()const{return did_publish;}
@@ -207,7 +204,7 @@ public:
         current=selection;published={};unavailable=excluded;did_publish=false;
         compact=clean;reclaimed=false;mirror=true;victim_row=0;last_epoch=0;scan={};
         relocate.Reset(frozen.highwater);ops.Relocation(nullptr);
-        if(compact)std::memset(live_bytes,0,sizeof(live_bytes));
+        if(compact)std::memset(live_units,0,sizeof(live_units));
         needed_journals={};last_journal=prune_count=0;
         if(frozen.highwater) {
             const uint32_t segment=frozen.highwater_address/kSegmentBytes;
@@ -276,7 +273,7 @@ public:
             phase=relocate.destination?Phase::StageJournal:Phase::EraseForward;return JobResult::More;
         }
         if(phase==Phase::StageJournal) {
-            if(relocate_journal.Initialize(relocate.destination,relocate.epoch)!=JournalResult::Ok)
+            if(ops.Journal().Initialize(relocate.destination,relocate.epoch)!=JournalResult::Ok)
                 return Stop(JobResult::IoError);
             phase=Phase::CopyJournal;return JobResult::More;
         }

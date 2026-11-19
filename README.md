@@ -94,6 +94,8 @@ your browser. Select **Connect over USB** to view priority and checkboxes, edit
 a specific dictionary, import Plover JSON, export an individual dictionary or
 download a backup of all overlays and catalog settings. The Manager can rename
 or delete independent dictionaries and switch the keyboard’s host layout.
+**Check pinned updates** compares the installed revisions against this checkout.
+Updates keep local edits and report any outlines where upstream also changed.
 
 After 64 pending edits, the firmware can rebuild its indexes and reclaim
 stale journals while the keyboard is idle on USB power. It can copy up to

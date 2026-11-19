@@ -248,6 +248,19 @@ def handle_native(console, args, status):
         if reply != "OK":
             raise RuntimeError(reply)
         print("Native dictionaries verified.")
+    elif args.update:
+        sys.path.insert(0, str(REPO / "tools/storage"))
+        from native_base_update import replace_pinned
+
+        catalog = json.loads(console.command("native_catalog"))
+        changed, conflicts = replace_pinned(console, catalog)
+        if not changed:
+            print("Installed bases already match the pinned versions.")
+        else:
+            print(f"Updated {', '.join(changed)}. Retained {len(conflicts)} conflicting local edits.")
+            if conflicts:
+                print(json.dumps(conflicts, ensure_ascii=False, indent=2))
+        return bool(changed)
     elif args.list_dictionaries:
         print(json.dumps(json.loads(console.command("native_catalog")), indent=2))
     elif args.backup_all:
@@ -310,6 +323,7 @@ def main():
     parser.add_argument("--move", metavar="NAME", help="Move a dictionary in the lookup priority list")
     parser.add_argument("--position", type=int, metavar="N", help="Priority position for --move, starting at 1")
     parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
+    parser.add_argument("--update", action="store_true", help="Update installed bases to the pinned revisions")
     parser.add_argument("--list-dictionaries", action="store_true", help="Show the Native dictionary catalog")
     parser.add_argument("--backup-all", type=Path, metavar="FILE.JSON", help="Save the Native catalog settings and overlays")
     parser.add_argument("--dictionary", metavar="NAME", help="Select a dictionary for --backup")
@@ -323,7 +337,7 @@ def main():
     parser.add_argument("--status", action="store_true", help="Read dictionary status")
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
-    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries)
+    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update)
     if sum(map(bool, actions)) != 1:
         parser.error("Choose exactly one action (see --help)")
     if args.dictionary is not None and not args.backup:
@@ -378,7 +392,7 @@ def main():
                 if not native.startswith("NATIVE2 "):
                     raise RuntimeError("Flash the matching Native firmware before installing this image.")
         elif native == "ERR Command unavailable on this keyboard":
-            if any((args.compact, args.move, args.rename, args.delete, args.name, args.dictionary, args.backup_all, args.list_dictionaries)):
+            if any((args.compact, args.move, args.rename, args.delete, args.name, args.dictionary, args.backup_all, args.list_dictionaries, args.update)):
                 raise ValueError("This dictionary operation requires Native firmware.")
             if args.confirm_erase or args.restore:
                 raise ValueError("These install options require Native firmware.")

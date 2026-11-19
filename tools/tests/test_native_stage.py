@@ -2,6 +2,7 @@
 """Exercise the actual planner, staged store and every torn-write boundary."""
 
 from copy import copy
+import hashlib
 import json
 from pathlib import Path
 import struct
@@ -16,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
 from build_native_image import build, catalog_header, SEGMENT, SOURCES, write_journal_header
 from native_update import Edit, Snapshot, NoSpace, encode_record, plan, EXTENT
+sys.path.insert(0, str(ROOT / "tools/dictionaries"))
+from native_base_update import GROUPS, Image, plan_replacements
+from compile_dict import DictionaryCollectionBuilder, parse_outline
+from verify_mapped_dict import verify
 
 
 def fixture(path):
@@ -137,12 +142,40 @@ def main():
             else:
                 raise AssertionError(f"Invalid catalog operation accepted: {kwargs}")
         assert plan(snapshot, protected, move=("user_dictionary", 1)) is None
+        group = GROUPS[0]
+        definitions = [(name, {"KAT": "new upstream" if index == 0 else name})
+                       for index, name in enumerate(group)]
+        digests = {name: hashlib.sha256(json.dumps(entries).encode()).digest()
+                   for name, entries in definitions}
+        compiler_image = DictionaryCollectionBuilder(0)
+        compiled = Image(definitions, compiler_image.build(definitions), compiler_image.pointer_offsets, digests)
+        conflict_snapshot = copy(snapshot)
+        conflict_snapshot.entries = snapshot.entries.copy()
+        strokes = parse_outline("KAT")
+        conflict = Edit(0, 2, 0, strokes, b"my override")
+        conflict_snapshot.entries[conflict.key] = conflict
+        revised, changed, conflicts = plan_replacements(conflict_snapshot, protected, {group: compiled},
+                                                        lambda at, n: bytes(image[at:at+n]))
+        assert changed == ["Lapwing Commands"]
+        assert conflicts == [{"dictionary": "Lapwing Commands", "outline": "KAT",
+                              "before": "Lapwing Commands", "after": "new upstream", "local": "my override"}]
+        image_segment, binary_image = next(iter(revised.segments.items()))
+        for index, (_, entries) in enumerate(definitions):
+            verify(entries, binary_image, 0x12000000 + image_segment * SEGMENT, index, len(group))
+        try:
+            plan_replacements(snapshot, set(range(251)), {group: compiled})
+        except NoSpace:
+            pass
+        else:
+            raise AssertionError("Base update ignored the staging reserve")
+        replace = path / "replace.bin"
+        write_plan(replace, revised)
         binary = path / "test"
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-I", str(ROOT / "tools/storage"), str(ROOT / "tools/tests/test_native_stage.cc"),
                         "-o", str(binary)], check=True)
         subprocess.run([str(binary), str(before), str(add), str(clean), str(invalid), str(named), str(reorder),
-                        str(named_before), str(rename), str(delete)], check=True)
+                        str(named_before), str(rename), str(delete), str(replace)], check=True)
 
 
 if __name__ == "__main__":

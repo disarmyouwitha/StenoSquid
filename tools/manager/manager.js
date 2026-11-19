@@ -96,13 +96,25 @@ async function watch(id) {
   const result = job.result;
   if (result.state) {
     render(result.state);
-    notify(state.read_only ? "Connected. The keyboard is in read-only recovery." : "Keyboard ready.");
+    if (result.updated) {
+      node("apply-updates").hidden = true;
+      const summary = result.updated.length ? `Updated ${result.updated.join(", ")}.` : "All installed bases already match.";
+      if (result.conflicts.length) {
+        download("stenosquid-update-conflicts.json", result.conflicts);
+        notify(`${summary} Kept ${result.conflicts.length} local edits over upstream changes. Conflict report downloaded.`);
+      } else {
+        notify(summary);
+      }
+    } else {
+      notify(state.read_only ? "Connected. The keyboard is in read-only recovery." : "Keyboard ready.");
+    }
   } else if (result.download) {
     download(result.filename, result.download);
     notify(`Downloaded ${result.filename}${result.count === undefined ? "" : ` with ${number.format(result.count)} entries`}.`);
   } else if (result.updates) {
+    node("apply-updates").hidden = !result.updates.length;
     notify(result.updates.length
-      ? `Pinned updates available for ${result.updates.join(", ")}. A safe in-place update is unavailable in this build.`
+      ? `Pinned updates available for ${result.updates.join(", ")}.`
       : "All installed bases match this version’s pinned sources.");
   }
 }
@@ -124,6 +136,11 @@ async function run(payload) {
 for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"], ["updates", "check_updates"], ["compact", "compact"]]) {
   node(id).onclick = () => run({action});
 }
+node("apply-updates").onclick = () => {
+  if (window.confirm("Apply the pinned base revisions? The left half will reboot after saving.")) {
+    run({action: "apply_updates", approved: true});
+  }
+};
 node("layout").onchange = () => {
   const layout = node("layout").value;
   node("layout").value = state.layout;

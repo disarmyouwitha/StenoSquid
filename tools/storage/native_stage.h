@@ -4,7 +4,7 @@
 
 namespace candidate_b {
 
-enum class NativeUpdateKind { Compact, Personal, Named, Reorder, Rename, Delete, Backup };
+enum class NativeUpdateKind { Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base };
 
 // Exclusive USB staging session. The active catalog and both retained roots
 // remain readable. Writes are restricted to previously unowned segments.
@@ -184,6 +184,58 @@ class NativeStage {
         return true;
     }
 
+    using BaseProbe = bool (*)(const uint8_t *extent, const uint8_t *row);
+    bool CheckBaseLayout(const CatalogRoot &candidate, uint32_t metadata_segment, BaseProbe probe) {
+        uint8_t old_prefix[32], prefix[32];
+        if (!probe || candidate.bytes != original.root.bytes ||
+            !store.device.Read(original.root.address, old_prefix, sizeof(old_prefix)) ||
+            !store.device.Read(candidate.address, prefix, sizeof(prefix)) ||
+            std::memcmp(old_prefix, prefix, sizeof(prefix))) return false;
+        const uint16_t dictionaries = prefix[4] | prefix[5] << 8;
+        const uint16_t count = prefix[6] | prefix[7] << 8;
+        SegmentMap updated, changed_sources;
+        for (unsigned i = 0; i < count; ++i) {
+            uint8_t before[24], after[24];
+            if (!ReadExtent(original.root, dictionaries, i, before) ||
+                !ReadExtent(candidate, dictionaries, i, after)) return false;
+            if (!std::memcmp(before, after, sizeof(before))) continue;
+            if (Word(before + 12) != 1 || Word(after + 12) != 1) return false;
+            const unsigned start = after[0] | after[1] << 8, segments = after[2] | after[3] << 8;
+            const uint32_t bytes = Word(after + 4);
+            if (start < 2 || start >= 255 || !segments || segments > 255 - start ||
+                bytes < 40 || bytes > segments * kSegmentBytes || bytes % 4 ||
+                Word(after + 16) || Word(after + 20)) return false;
+            for (unsigned j = start; j < start + segments; ++j)
+                if (j == metadata_segment || !erased.Contains(j)) return false;
+            if (!validator.Extent(i, after)) return false;
+            updated.Add(i, 1);
+        }
+        bool has_update = false;
+        for (unsigned i = 0; i < dictionaries; ++i) {
+            uint8_t before[96], after[96];
+            if (!store.device.Read(original.root.address + 32 + i * 96, before, sizeof(before)) ||
+                !store.device.Read(candidate.address + 32 + i * 96, after, sizeof(after)) ||
+                std::memcmp(before, after, 64)) return false;
+            const uint16_t base = after[8] | after[9] << 8;
+            const bool changed = std::memcmp(before + 64, after + 64, 32) != 0;
+            if (base >= count) {
+                if (changed) return false;
+                continue;
+            }
+            if (!updated.Contains(base)) {
+                if (changed) return false;
+                continue;
+            }
+            if (changed) {
+                changed_sources.Add(base, 1);
+                has_update = true;
+            }
+            uint8_t extent[24];
+            if (!ReadExtent(candidate, dictionaries, base, extent) || !probe(extent, after)) return false;
+        }
+        return has_update && !std::memcmp(updated.words, changed_sources.words, sizeof(updated.words));
+    }
+
     bool PreservesEntries() {
         const bool merging_personal = kind == NativeUpdateKind::Personal;
         if (merging_personal && !personal_id) return false;
@@ -289,7 +341,7 @@ public:
     }
 
     bool Write(uint32_t address, const uint8_t *data, uint32_t bytes) {
-        if (!active || !bytes || bytes > 512 || address % 256 || bytes % 4 ||
+        if (kind == NativeUpdateKind::Backup || !active || !bytes || bytes > 512 || address % 256 || bytes % 4 ||
             address >= 255 * kSegmentBytes || bytes > kSegmentBytes - address % kSegmentBytes ||
             !erased.Contains(address / kSegmentBytes)) return false;
         uint8_t verify[256];
@@ -308,7 +360,8 @@ public:
 
     // A successful commit needs a reopen. On ambiguous flash failures the
     // caller must also reopen before allowing writes.
-    CatalogResult Commit(uint32_t segment, uint32_t bytes, uint32_t crc, bool &reopen) {
+    CatalogResult Commit(uint32_t segment, uint32_t bytes, uint32_t crc, bool &reopen,
+                         BaseProbe probe = nullptr) {
         reopen = false;
         if (kind == NativeUpdateKind::Backup || !active || segment < 2 || segment >= 255 || !erased.Contains(segment) ||
             bytes < 32 || bytes > store.catalog.PayloadCapacity() ||
@@ -319,8 +372,10 @@ public:
         const CatalogRoot candidate{original.root.generation + 1, segment * kSegmentBytes, bytes, crc};
         uint32_t checksum = 0;
         if (!store.device.Checksum(candidate.address, bytes, checksum)) return CatalogResult::IoError;
-        if (checksum != crc || !CheckLayout(candidate, segment)) return CatalogResult::Corrupt;
-        if (!MetadataOnly()) {
+        const bool replacing_base = kind == NativeUpdateKind::Base;
+        if (checksum != crc || !(replacing_base ? CheckBaseLayout(candidate, segment, probe)
+                                                : CheckLayout(candidate, segment))) return CatalogResult::Corrupt;
+        if (!MetadataOnly() && !replacing_base) {
             const auto validation = validator.Validate(candidate);
             if (validation != CatalogResult::Ok) return validation;
             if (!PreservesEntries()) return CatalogResult::Corrupt;

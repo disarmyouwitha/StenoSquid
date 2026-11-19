@@ -23,6 +23,7 @@ public:
     NativeMergeOps(Device &value,const LiveView &input,IndexSink<Device> &f,IndexSink<Device> &r)
         :device(value),journal(value),view(input),forward(f),reverse(r){}
     void Relocation(const NativeRelocationMap *value){relocation=value;}
+    NativeJournal<Device> &Journal(){return journal;}
     void ReverseInput(uint32_t at,uint32_t count){reverse_address=at;reverse_count=count;}
     bool Active(uint32_t identity)const {
         for(uint32_t i=0;i<view.dictionary_count;++i)if(view.identities[i]==identity)return true;

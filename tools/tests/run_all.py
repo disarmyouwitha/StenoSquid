@@ -37,9 +37,9 @@ def main():
         print('+ ' + ' '.join(map(str, command)), flush=True)
         subprocess.run(list(map(str, command)), cwd=ROOT, check=True, env={**os.environ, "STENO_SQUID_TEST_ZEPHYR": str(zmk.parent / "zephyr")})
 
-    # Discover Python tests in all three maintained test directories.
+    # Discover Python tests in the maintained test directories.
     special = {'test_practice_menu.py': [engine], 'test_practice_entry.py': [zmk / 'app']}
-    for directory in ('tools/tests', 'tools/dictionaries', 'tools/dict_compiler'):
+    for directory in ('tools/tests', 'tools/dictionaries', 'tools/dict_compiler', 'tools/manager'):
         for test in sorted((ROOT / directory).glob('test_*.py')):
             run([sys.executable, test, *special.get(test.name, [])])
     for language, flags in [('c', ['-std=c11']), ('c++', ['-std=c++17', '-x', 'c++'])]:

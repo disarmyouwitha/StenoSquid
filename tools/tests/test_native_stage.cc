@@ -318,8 +318,51 @@ void CheckIdleCompaction(const std::vector<uint8_t> &image, bool cancel) {
               << " (" << operations << " flash operations)" << std::endl;
 }
 
+void CheckBaseReplacement(const std::vector<uint8_t> &image, const Plan &plan) {
+    unsigned operations = 0;
+    for (unsigned cut = 0; cut <= operations; ++cut) {
+        Nor nor;
+        nor.data = image;
+        nor.cut = cut;
+        nor.tear = 11;
+        NativeDevice device{{nor}};
+        NativeStore<NativeDevice> store(device);
+        NativeValidator<NativeDevice> validator(device, store.catalog);
+        auto open = [&] { return store.Open([&](const CatalogRoot &root) { return validator.Validate(root); }); };
+        assert(open() == CatalogResult::Ok);
+        NativeStage<NativeDevice> stage(store, validator);
+        assert(stage.Begin(NativeUpdateKind::Base));
+        uint8_t old_row[96], new_row[96];
+        assert(store.Row(1, old_row));
+        try {
+            Upload(stage, plan);
+            bool reopen = false;
+            auto fail = [](const uint8_t *, const uint8_t *) { return false; };
+            assert(stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen, fail) == CatalogResult::Corrupt);
+            assert(!reopen);
+            auto probe = [](const uint8_t *extent, const uint8_t *row) {
+                return Word(extent + 12) == 1 && row[10] < 5;
+            };
+            assert(stage.Commit(plan.metadata, plan.bytes, plan.crc, reopen, probe) == CatalogResult::Ok);
+            assert(!cut && reopen);
+            operations = nor.operations;
+        } catch (const Cut &) {
+            assert(cut);
+        }
+        nor.cut = 0;
+        stage.Abort();
+        const auto result = open();
+        assert(result == CatalogResult::Ok || result == CatalogResult::Quarantined);
+        Check(store, false, false);
+        assert(store.Row(1, new_row) && !std::memcmp(new_row, old_row, 64));
+        assert((std::memcmp(new_row + 64, old_row + 64, 32) != 0) ==
+               (store.selected.root.generation > 2));
+    }
+    std::cout << "Pinned base replacement: " << operations << " interrupted writes recovered" << std::endl;
+}
+
 int main(int argc, char **argv) {
-    assert(argc == 10);
+    assert(argc == 11);
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
     image.resize(256 * kSegmentBytes, 0x42);
@@ -335,4 +378,5 @@ int main(int argc, char **argv) {
     named_image.resize(256 * kSegmentBytes, 0x42);
     CheckMetadata(named_image, ReadPlan(argv[8]), false);
     CheckMetadata(named_image, ReadPlan(argv[9]), true);
+    CheckBaseReplacement(image, ReadPlan(argv[10]));
 }

@@ -195,6 +195,14 @@ public:
         hint=new (hint_storage) StenoSquidHintIndex(address,bytes,member,count,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
         return true;
     }
+    uint32_t GroupEntries(const StenoCompactMapDictionaryStrokesDefinition &group) const {
+        const auto last = reinterpret_cast<uintptr_t>(group.offsets) +
+            (group.hashMapMask / 128) * sizeof(StenoCompactHashMapEntryBlock);
+        uint32_t count = xip_load_word(reinterpret_cast<const void *>(last + 16));
+        for (unsigned offset = 0; offset < 16; offset += 4)
+            count += __builtin_popcount(xip_load_word(reinterpret_cast<const void *>(last + offset)));
+        return count;
+    }
 } cells[MaxDictionaries];
 size_t cell_count=0;
 Cell *ById(uint32_t id){for(size_t i=0;i<cell_count;++i)if(cells[i].identity==id)return &cells[i];return nullptr;}
@@ -513,7 +521,7 @@ void native_catalog(void *, const char *) {
         if (cell.base) {
             for (unsigned length = 0; length < cell.definition.maximumOutlineLength; ++length) {
                 const auto &group = cell.strokes[length];
-                if (group.hashMapMask) base_entries += group.GetEntryCount();
+                if (group.hashMapMask) base_entries += cell.GroupEntries(group);
             }
         }
         Console::Printf("%s{\"id\":%u,\"name\":\"%s\",\"enabled\":%s,\"kind\":\"%s\","
@@ -774,6 +782,21 @@ bool Number(const char *&p,uint32_t &out) {
     return true;
 }
 bool End(const char *p){return !*p || (*p=='\n' && !p[1]);}
+bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
+    Cell probe;
+    std::memcpy(probe.name, row + 16, row[12]);
+    const uint32_t start = uint16_t(extent[0]) | uint16_t(extent[1]) << 8;
+    if (!probe.LoadBase(start * kSegmentBytes, Word(extent + 4), Word(extent + 8), row[10]))
+        return false;
+    for (unsigned i = 0; i < probe.definition.maximumOutlineLength; ++i) {
+        const auto &group = probe.strokes[i];
+        if (!group.hashMapMask) continue;
+        const auto data = reinterpret_cast<uintptr_t>(group.data);
+        const auto hash = reinterpret_cast<uintptr_t>(group.offsets);
+        if (hash < data || probe.GroupEntries(group) > (hash - data) / (3 * (i + 2))) return false;
+    }
+    return true;
+}
 const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "capabilities\n")) return "OK BULK1";
     if (!std::strcmp(command, "named-capabilities\n")) {
@@ -781,6 +804,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return nullptr;
     }
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
+    if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
@@ -788,12 +812,13 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     else if (!std::strcmp(command, "begin rename\n")) kind = NativeUpdateKind::Rename;
     else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
     else if (!std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
+    else if (!std::strcmp(command, "begin base\n")) kind = NativeUpdateKind::Base;
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
         if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries))
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();
-        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named)
+        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();
@@ -848,7 +873,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         uint32_t segment, size, crc;
         if (Number(p, segment) && *p++ == ' ' && Number(p, size) && *p++ == ' ' &&
             Number(p, crc) && End(p)) {
-            const auto status = staged.Commit(segment, size, crc, reboot);
+            const auto status = staged.Commit(segment, size, crc, reboot, ProbeStagedBase);
             if (status == CatalogResult::Ok) result = "OK Rebooting";
             else if (status == CatalogResult::Quarantined) result = "ERR Update committed; catalog mirror requires recovery";
             else result = "ERR Native update commit refused";

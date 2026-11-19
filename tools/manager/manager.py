@@ -16,7 +16,7 @@ from native_manage import checked, import_entries
 from native_update import backup_all, transfer
 from import_personal import open_console, parse_named
 from compile_dict import parse_outline
-from manifest import BASES
+from native_base_update import changed_pins, replace_pinned
 
 MAX_REQUEST = 48 * 1024 * 1024
 
@@ -52,6 +52,7 @@ def safe_name(value):
 def run_job(serial, request, progress):
     action = request["action"]
     published = False
+    report = {}
     with open_console(serial) as console:
         if action == "refresh":
             return {"state": read_state(console)}
@@ -90,11 +91,13 @@ def run_job(serial, request, progress):
             progress("Reading saved edits, dictionary order and checkboxes…")
             return {"download": backup_all(console), "filename": "stenosquid-backup.json"}
         elif action == "check_updates":
-            pins = {label: digest for base in BASES.values() for _, _, label, digest in base["sources"]}
-            pins["Lapwing Base"] = pins.pop("lapwing-base")
-            changed = [row["name"] for row in catalog
-                       if row["kind"] == "base" and row["source_sha256"] != pins.get(row["name"])]
-            return {"updates": changed}
+            return {"updates": changed_pins(catalog)}
+        elif action == "apply_updates":
+            if not request.get("approved") is True:
+                raise ValueError("Confirm the pinned dictionary update.")
+            changed, conflicts = replace_pinned(console, catalog, progress)
+            published = bool(changed)
+            report = {"updated": changed, "conflicts": conflicts}
         elif action in {"move", "rename", "delete", "import", "compact"}:
             if console.command("native_install update manage-capabilities") != "OK MANAGE1":
                 raise RuntimeError("Flash the matching Manager firmware before writing.")
@@ -129,7 +132,7 @@ def run_job(serial, request, progress):
             raise RuntimeError("The keyboard acknowledged the commit but has not reconnected. Refresh when it is back.") from exc
     with open_console(serial) as console:
         state = read_state(console)
-    return {"state": state}
+    return {"state": state, **report}
 
 
 class Jobs:

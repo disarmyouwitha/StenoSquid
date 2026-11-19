@@ -218,6 +218,50 @@ public:
         return JournalResult::Ok;
     }
 
+    // The destination belongs to a newly erased, unpublished journal.
+    // Reuse the page buffer instead of holding a whole translation in RAM.
+    JournalResult Clone(uint32_t address, uint64_t sequence, const JournalRecord &source) {
+        uint8_t header[32];
+        JournalRecord old;
+        const auto loaded = ReadEnvelope(source.address, old, header);
+        if (loaded != JournalResult::Ok || old.sequence != source.sequence || old.span != source.span)
+            return JournalResult::Corrupt;
+        const uint32_t offset = address % kSegmentBytes;
+        if (address / kSegmentBytes < 2 || address / kSegmentBytes >= 255 || address % 4 ||
+            offset < kPageBytes || source.span > kSegmentBytes - offset || sequence <= source.sequence)
+            return JournalResult::Invalid;
+        const uint32_t original_crc = Word(header+20);
+        uint32_t old_crc = Crc(0,header+8,8);
+        PutWord(header+8,uint32_t(sequence)); PutWord(header+12,uint32_t(sequence>>32));
+        uint32_t crc = Crc(0,header+8,8);
+        for (uint32_t at=0;at<old.payload_bytes;) {
+            const uint32_t n=old.payload_bytes-at<sizeof(buffer)?old.payload_bytes-at:sizeof(buffer);
+            if(!device.Read(source.address+32+at,buffer,n))return JournalResult::IoError;
+            old_crc=Crc(old_crc,buffer,n);crc=Crc(crc,buffer,n);at+=n;
+        }
+        if(old_crc!=original_crc)return JournalResult::Corrupt;
+        PutWord(header+20,crc);PutWord(header+24,Crc(0,header,24));PutWord(header+28,UINT32_MAX);
+        if(!Write(address,header,32))return JournalResult::IoError;
+        for (uint32_t at=0;at<old.payload_bytes;) {
+            const uint32_t n=old.payload_bytes-at<sizeof(buffer)?old.payload_bytes-at:sizeof(buffer);
+            if(!device.Read(source.address+32+at,buffer,n) || !Write(address+32+at,buffer,n))
+                return JournalResult::IoError;
+            at+=n;
+        }
+        if(!device.Read(address,buffer,32) || std::memcmp(buffer,header,32))return JournalResult::IoError;
+        uint32_t check=Crc(0,header+8,8);
+        for (uint32_t at=0;at<old.payload_bytes;) {
+            const uint32_t n=old.payload_bytes-at<sizeof(buffer)?old.payload_bytes-at:sizeof(buffer);
+            if(!device.Read(address+32+at,buffer,n))return JournalResult::IoError;
+            check=Crc(check,buffer,n);at+=n;
+        }
+        if(check!=crc)return JournalResult::IoError;
+        PutWord(header,kCommit);
+        if(!Write(address+28,header,4))return JournalResult::IoError;
+        JournalRecord stored;
+        return Read(address,stored);
+    }
+
     // Caller preflights capacity/tail and supplies an exclusive, verified blank
     // append location. Program the commit only after complete payload readback.
     // After ANY write failure, discard writer state and rescan before retry.

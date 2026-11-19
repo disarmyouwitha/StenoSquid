@@ -319,8 +319,6 @@ def update_command(console, text, timeout=30):
 
 
 def read_snapshot(console, answer, *, metadata_only=False):
-    import base64
-
     _, address, length, checksum, ownership = answer.split()
     if len(ownership) != 64:
         raise ValueError("Invalid ownership bitmap")
@@ -328,17 +326,23 @@ def read_snapshot(console, answer, *, metadata_only=False):
     protected = {i for i in range(256) if words[i // 32] & (1 << (i % 32))}
 
     def read(start, size):
-        result = bytearray()
-        for offset in range(0, size, 512):
-            count = min(size - offset, 512)
-            reply = update_command(console, f"read {start + offset} {count}")
-            data = base64.b64decode(reply[3:], validate=True)
-            if len(data) != count:
-                raise RuntimeError("Short snapshot read")
-            result.extend(data)
-        return bytes(result)
+        return read_flash(console, start, size)
 
     return Snapshot(read, int(address), int(length), int(checksum), metadata_only=metadata_only), protected
+
+
+def read_flash(console, start, size):
+    import base64
+
+    result = bytearray()
+    for offset in range(0, size, 512):
+        count = min(size - offset, 512)
+        reply = update_command(console, f"read {start + offset} {count}")
+        data = base64.b64decode(reply[3:], validate=True)
+        if len(data) != count:
+            raise RuntimeError("Short snapshot read")
+        result.extend(data)
+    return bytes(result)
 
 
 def backup_all(console):
@@ -365,10 +369,35 @@ def backup_all(console):
         update_command(console, "abort", timeout=5)
 
 
-def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None):
-    """Preflight, upload and commit one update over USB HID."""
+def publish(console, update, progress):
     import base64
 
+    for index, (segment, block) in enumerate(update.segments.items(), 1):
+        update_command(console, f"erase {segment}")
+        for offset in range(0, len(block), 512):
+            data = block[offset:offset + 512]
+            if data == b"\xff" * len(data):
+                continue
+            encoded = base64.b64encode(data).decode("ascii")
+            update_command(console, f"write {segment * SEGMENT + offset} {encoded}")
+        if index % 8 == 0 or index == len(update.segments):
+            progress(f"Staged {index}/{len(update.segments)} segments")
+    progress("Validating the staged dictionaries and publishing the new catalog…")
+    reply = update_command(console, f"commit {update.metadata} {len(update.payload)} {zlib.crc32(update.payload)}",
+                           timeout=1800)
+    if reply != "OK Rebooting":
+        raise RuntimeError("Unexpected commit response")
+
+
+def abort(console):
+    try:
+        update_command(console, "abort", timeout=2)
+    except (OSError, RuntimeError):
+        pass
+
+
+def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None):
+    """Preflight, upload and commit one update over USB HID."""
     def command(text, timeout=30):
         return update_command(console, text, timeout)
 
@@ -398,21 +427,7 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
             else:
                 progress("All imported entries already match.")
             return False
-        for index, (segment, block) in enumerate(update.segments.items(), 1):
-            command(f"erase {segment}")
-            for offset in range(0, len(block), 512):
-                data = block[offset:offset + 512]
-                if all(byte == 255 for byte in data):
-                    continue
-                encoded = base64.b64encode(data).decode("ascii")
-                command(f"write {segment * SEGMENT + offset} {encoded}")
-            if index % 8 == 0 or index == len(update.segments):
-                progress(f"Staged {index}/{len(update.segments)} segments")
-        progress("Validating the staged dictionaries and publishing the new catalog…")
-        reply = command(f"commit {update.metadata} {len(update.payload)} {zlib.crc32(update.payload)}",
-                        timeout=1800)
-        if reply != "OK Rebooting":
-            raise RuntimeError("Unexpected commit response")
+        publish(console, update, progress)
         if move:
             progress(f"Moved {move[0]} to priority {move[1]}; the left half is rebooting.")
         elif rename:
@@ -427,8 +442,5 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
             progress(f"Reclaimed {update.reclaimed} old journals; the left half is rebooting.")
         return True
     except BaseException:
-        try:
-            command("abort", timeout=2)
-        except (OSError, RuntimeError):
-            pass
+        abort(console)
         raise
