@@ -1,0 +1,9 @@
+{
+  "KAT": "sqcheck cat",
+  "KAT/TA": "sqcheck catalog",
+  "TA/KAT": "sqcheck inside",
+  "KAT/KAT/TA": "sqcheck repeated",
+  "PWOB": "sqcheck removed",
+  "TEFT": "sqcheck level",
+  "STKPWHR": "sqcheck fill must lose"
+}
