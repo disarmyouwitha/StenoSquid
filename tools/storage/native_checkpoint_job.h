@@ -43,12 +43,12 @@ class NativeCheckpointJob {
         uint8_t bytes[4];if(!device.Read(starts[rev]*kSegmentBytes+i*4,bytes,4))return false;
         out=Word(bytes);return true;
     }
-    Result Search(bool rev,uint32_t address,uint32_t &found) {
+    Result Search(bool rev,const MergeRecord &target,uint32_t &found) {
         auto read=[&](uint32_t offset,uint8_t *out,size_t n) {
             const uint32_t bytes=rev?reverse.Bytes():forward.Bytes();
             return offset<=bytes && n<=bytes-offset && device.Read(starts[rev]*kSegmentBytes+offset,out,n);
         };
-        auto compare=[&](uint32_t candidate){return rev?ops.CompareReverse(candidate,address):ops.CompareKey(candidate,address);};
+        auto compare=[&](uint32_t candidate){return ops.CompareTo(candidate,target,rev);};
         return FindOrdered(rev?reverse.Count():forward.Count(),read,compare,found);
     }
     bool Latest(const MergeRecord &record,uint32_t &address,bool &needed) {
@@ -208,12 +208,12 @@ public:
                record.operation==2 || (rev && record.operation) ||
                (previous && (rev?ops.CompareReverse(previous,address):ops.CompareKey(previous,address))>=0))return Stop(JobResult::Corrupt);
             if(rev) {
-                if(Search(false,address,found)!=Result::Found || found!=address)return Stop(JobResult::Corrupt);
+                if(Search(false,record,found)!=Result::Found || found!=address)return Stop(JobResult::Corrupt);
             } else {
                 needed_journals.Add(address/kSegmentBytes,1);
                 uint32_t latest=0;bool needed=false;
                 if(!Latest(record,latest,needed) || !needed || latest!=address)return Stop(JobResult::Corrupt);
-                if(!record.operation && (Search(true,address,found)!=Result::Found || found!=address))return Stop(JobResult::Corrupt);
+                if(!record.operation && (Search(true,record,found)!=Result::Found || found!=address))return Stop(JobResult::Corrupt);
             }
             previous=address;++position;return JobResult::More;
         }
@@ -230,7 +230,7 @@ public:
             if(!ops.Record(address,record,true))return Stop(JobResult::Corrupt);
             uint32_t latest=0,found=0;bool needed=false;
             if(ops.Active(record.identity) && !Latest(record,latest,needed))return Stop(JobResult::Corrupt);
-            const auto status=Search(false,address,found);
+            const auto status=Search(false,record,found);
             if(needed?(status!=Result::Found || found!=latest):status!=Result::Missing)return Stop(JobResult::Corrupt);
             return JobResult::More;
         }

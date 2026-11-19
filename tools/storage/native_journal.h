@@ -55,6 +55,19 @@ struct JournalRecord {
     uint64_t sequence = 0;
     uint32_t address = 0, span = 0, payload_bytes = 0;
 };
+struct JournalKey {
+    uint32_t identity = 0, strokes[16]{};
+    uint16_t text_bytes = 0;
+    uint8_t operation = 0, count = 0;
+};
+inline int CompareJournalKey(const JournalKey &key, uint32_t id,
+                             const uint32_t *strokes, uint8_t count) {
+    if (key.identity != id) return key.identity < id ? -1 : 1;
+    for (uint8_t i = 0; i < key.count && i < count; ++i) {
+        if (key.strokes[i] != strokes[i]) return key.strokes[i] < strokes[i] ? -1 : 1;
+    }
+    return key.count == count ? 0 : key.count < count ? -1 : 1;
+}
 struct JournalScan {
     uint64_t previous = 0;
     uint32_t next = 0, end = 0;
@@ -67,6 +80,25 @@ template <class Device>
 class NativeJournal {
     Device &device;
     uint8_t buffer[256]{};
+
+    static bool DecodeKeyPrefix(const uint8_t *bytes, uint32_t payload_size, JournalKey &key) {
+        key.identity = Word(bytes);
+        key.operation = bytes[4];
+        key.count = bytes[5];
+        key.text_bytes = uint16_t(bytes[6]) | uint16_t(bytes[7]) << 8;
+        return key.identity && key.operation <= 2 && key.count >= 1 && key.count <= 16 &&
+            key.text_bytes <= 2047 && (!key.operation || !key.text_bytes) &&
+            payload_size == 8u + 4u * key.count + key.text_bytes;
+    }
+
+    static bool DecodeStrokes(const uint8_t *bytes, JournalKey &key) {
+        for (uint8_t i = 0; i < key.count; ++i) {
+            const uint32_t stroke = Word(bytes + 4u * i);
+            if (!stroke || stroke >> 25) return false;
+            key.strokes[i] = stroke;
+        }
+        return true;
+    }
 
     bool Write(uint32_t address, const uint8_t *data, uint32_t size) {
         while (size) {
@@ -146,29 +178,24 @@ public:
     }
 
     // Only for records validated at append/recovery and held in owned immutable
-    // extents. Misses do not scan translation text. This is not a scrub: payload
-    // damage introduced after recovery may require reopen to detect a false miss.
-    JournalResult ReadKey(uint32_t address,JournalRecord &record) {
-        uint8_t header[32],key[72];
-        auto status=ReadEnvelope(address,record,header);
-        if(status!=JournalResult::Ok)return status;
-        if(!device.Read(address+32,key,8))return JournalResult::IoError;
-        const uint8_t op=key[4],count=key[5];
-        const uint16_t text=uint16_t(key[6]) | uint16_t(key[7])<<8;
-        if(!Word(key) || op>2 || count<1 || count>16 || text>2047 ||
-           (op && text) || record.payload_bytes!=8u+4u*count+text)return JournalResult::Corrupt;
-        if(!device.Read(address+40,key,4u*count))return JournalResult::IoError;
-        for(uint8_t i=0;i<count;++i)if(!Word(key+4*i) || Word(key+4*i)>>25)return JournalResult::Corrupt;
-        return JournalResult::Ok;
+    // extents. Misses do not scan translation text. This is not a scrub.
+    JournalResult ReadKey(uint32_t address, JournalRecord &record, JournalKey &key) {
+        uint8_t header[32], bytes[64];
+        const auto status = ReadEnvelope(address, record, header);
+        if (status != JournalResult::Ok) return status;
+        if (!device.Read(address + 32, bytes, 8)) return JournalResult::IoError;
+        if (!DecodeKeyPrefix(bytes, record.payload_bytes, key)) return JournalResult::Corrupt;
+        if (!device.Read(address + 40, bytes, 4u * key.count)) return JournalResult::IoError;
+        return DecodeStrokes(bytes, key) ? JournalResult::Ok : JournalResult::Corrupt;
     }
 
-    JournalResult Read(uint32_t address, JournalRecord &record) {
+    JournalResult Read(uint32_t address, JournalRecord &record, JournalKey *decoded = nullptr) {
         uint8_t header[32];
         auto status=ReadEnvelope(address,record,header);
         if(status!=JournalResult::Ok)return status;
         const uint32_t size=record.payload_bytes;
         uint32_t crc=Crc(0, header+8, 8), position=0;
-        uint8_t count=0, op=0;
+        JournalKey key;
         uint32_t text_start=0;
         Utf8 utf;
         while (position < size) {
@@ -177,21 +204,16 @@ public:
             if (!device.Read(address+32+position,buffer,n)) return JournalResult::IoError;
             crc=Crc(crc,buffer,n);
             if (!position) {
-                op=buffer[4]; count=buffer[5];
-                uint16_t text=uint16_t(buffer[6]) | uint16_t(buffer[7])<<8;
-                text_start=8u+4u*count;
-                if (!Word(buffer) || op>2 || count<1 || count>16 || text>2047 ||
-                    (op && text) || size!=text_start+text) return JournalResult::Corrupt;
-                for (uint8_t i=0;i<count;++i) {
-                    const uint32_t mask=Word(buffer+8+4*i);
-                    if (!mask || mask>>25) return JournalResult::Corrupt;
-                }
+                if (!DecodeKeyPrefix(buffer, size, key) || !DecodeStrokes(buffer + 8, key))
+                    return JournalResult::Corrupt;
+                text_start = 8u + 4u * key.count;
             }
             for (uint32_t i=0;i<n;++i)
                 if (position+i>=text_start && !utf.Push(buffer[i])) return JournalResult::Corrupt;
             position+=n;
         }
         if (utf.remaining || crc!=Word(header+20)) return JournalResult::Corrupt;
+        if (decoded) *decoded = key;
         return JournalResult::Ok;
     }
 

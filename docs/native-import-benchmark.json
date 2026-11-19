@@ -82,5 +82,32 @@
     "dataset_sha256": "47e928192959b2d94ab6745e816b9d723a5f8d78555ad06389ae7addca69b229",
     "storage_source_sha256": "ce00eb939fb05b61c138f276bb0f2cb3ad877fcb6fad41360a206f93355b9654",
     "model": "strict NOR, actual NativeStore, 32-range CRC cache; host timing only"
+  },
+  "decoded_key_reuse": {
+    "outcome": "complete",
+    "requested": 5000,
+    "committed": 5000,
+    "verified_after_reopen": 5000,
+    "free_segments": 170,
+    "maintenance_steps": 770480,
+    "maintenance_jobs": 24,
+    "read_calls": 25320963,
+    "read_bytes": 360808897,
+    "checksum_bytes": 14428176,
+    "import_read_bytes": 335708509,
+    "verification_read_bytes": 25100388,
+    "cold_reopen_verified": true,
+    "program_calls": 22776,
+    "journal_index_erases": 44,
+    "catalog_erases": 24,
+    "host_import_ms": 943,
+    "host_verify_ms": 90,
+    "source_sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+    "image_sha256": "1c95cb7d6551f7791a94a61e378e2eded1b563041f65905147a6bfc66431e2e2",
+    "unique_source_outlines": 147424,
+    "selected": 5000,
+    "dataset_sha256": "22f47043c48bcb30e7f2f87adb42cb28d37af2035cdbfb134704be064a9d8c71",
+    "storage_source_sha256": "9b01b33800cab8639a3b27b9faa8dc40b595d7e428dc1ebab0f6cc4829991eae",
+    "model": "strict NOR, actual NativeStore, 32-range CRC cache; host timing only"
   }
 }

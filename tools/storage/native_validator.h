@@ -18,11 +18,11 @@ class NativeValidator {
         if(!device.Read((reverse?reverse_address:view.forward_address)+position*4,word,4))return false;
         address=Word(word);return true;
     }
-    bool MatchIndex(bool reverse,uint32_t address) {
+    bool MatchIndex(bool reverse,const MergeRecord &target) {
         auto read=[&](uint32_t offset,uint8_t *out,size_t n){return device.Read((reverse?reverse_address:view.forward_address)+offset,out,n);};
-        auto compare=[&](uint32_t at){return reverse?ops.CompareReverse(at,address):ops.CompareKey(at,address);};
+        auto compare=[&](uint32_t at){return ops.CompareTo(at,target,reverse);};
         uint32_t found=0;
-        return FindOrdered(reverse?reverse_count:view.forward_count,read,compare,found)==Result::Found && found==address;
+        return FindOrdered(reverse?reverse_count:view.forward_count,read,compare,found)==Result::Found && found==target.record.address;
     }
 public:
     NativeValidator(Device &value,NativeCatalog<Device> &roots):device(value),catalog(roots),journal(value),
@@ -74,7 +74,7 @@ public:
                 if(!Index(reverse,i,address) || !ops.Record(address,record,true) || record.identity>=Word(prefix) ||
                    record.record.sequence>view.through || record.operation==2 || (reverse && record.operation) ||
                    (previous && (reverse?ops.CompareReverse(previous,address):ops.CompareKey(previous,address))>=0) ||
-                   (reverse?!MatchIndex(false,address):(!record.operation && !MatchIndex(true,address))))return CatalogResult::Corrupt;
+                   (reverse?!MatchIndex(false,record):(!record.operation && !MatchIndex(true,record))))return CatalogResult::Corrupt;
                 previous=address;
             }
         }

@@ -56,16 +56,12 @@ class LiveJournal {
         if(live.tail.count==Tail::kCapacity)return LiveResult::NeedRebuild;
         uint32_t low=0,high=live.tail.count;
         while(low<high) {
-            const uint32_t mid=low+(high-low)/2;JournalRecord record;
+            const uint32_t mid=low+(high-low)/2;JournalRecord record;JournalKey key;
             if(!Owns(live,live.tail.addresses[mid]))return LiveResult::Corrupt;
-            const auto status=journal.ReadKey(live.tail.addresses[mid],record);
+            const auto status=journal.ReadKey(live.tail.addresses[mid],record,key);
             if(status==JournalResult::IoError)return LiveResult::IoError;
             if(status!=JournalResult::Ok || record.sequence>live.highwater || record.sequence<=live.through)return LiveResult::Corrupt;
-            RecordView ignored;bool io=false;
-            const int order=CompareOutline(record.address+32,record.payload_bytes,id,strokes,count,
-                [&](uint32_t at,uint8_t *out,size_t n){if(!device.Read(at,out,n)){io=true;return false;}return true;},ignored);
-            if(io)return LiveResult::IoError;
-            if(order<-1 || order>1)return LiveResult::Corrupt;
+            const int order = CompareJournalKey(key, id, strokes, count);
             if(order<=0)low=mid+1;else high=mid;
         }
         for(uint32_t i=live.tail.count;i>low;--i)live.tail.addresses[i]=live.tail.addresses[i-1];
@@ -81,14 +77,12 @@ class LiveJournal {
         auto compare=[&](uint32_t address) {
             if(!Owns(view,address)){corrupt=true;return 2;}
             JournalRecord record;
-            const auto status=journal.ReadKey(address,record);
+            JournalKey key;
+            const auto status=journal.ReadKey(address,record,key);
             if(status==JournalResult::IoError){io=true;return 2;}
             if(status!=JournalResult::Ok || record.sequence>view.highwater ||
                (indexed?record.sequence>view.through:record.sequence<=view.through)){corrupt=true;return 2;}
-            const auto comparison=CompareOutline(address+32,record.payload_bytes,id,strokes,count,
-                [&](uint32_t at,uint8_t *out,size_t n){if(!device.Read(at,out,n)){io=true;return false;}return true;},result);
-            if(comparison<-1 || comparison>1)corrupt=true;
-            return comparison;
+            return CompareJournalKey(key, id, strokes, count);
         };
         auto read=[&](uint32_t offset,uint8_t *out,size_t n) {
             indexed=true;
@@ -109,14 +103,16 @@ class LiveJournal {
         }
         if(!io && !corrupt && found==Result::Missing)found=FindOrdered(view.forward_count,read,compare,address);
         if(found==Result::Found && !io && !corrupt) {
-            // Re-read the selected key so result describes the newest matching
-            // row, then CRC-check its full payload once, not at every probe.
-            if(compare(address)!=0)corrupt=true;
-            else {
-                JournalRecord record;const auto checked=journal.Read(address,record);
-                if(checked==JournalResult::IoError)io=true;
-                else if(checked!=JournalResult::Ok)corrupt=true;
-            }
+            // Publish metadata only from the fully verified matching payload.
+            JournalRecord record;
+            JournalKey key;
+            const auto status = journal.Read(address, record, &key);
+            if (status == JournalResult::IoError) return LiveResult::IoError;
+            if (status != JournalResult::Ok || record.sequence > view.highwater ||
+                (indexed ? record.sequence > view.through : record.sequence <= view.through) ||
+                CompareJournalKey(key, id, strokes, count) != 0) return LiveResult::Corrupt;
+            result = {static_cast<Operation>(key.operation),
+                      address + 40u + 4u * key.count, key.text_bytes};
         }
         if(io)return LiveResult::IoError;
         if(corrupt || found==Result::Corrupt || found==Result::IoError)return LiveResult::Corrupt;
