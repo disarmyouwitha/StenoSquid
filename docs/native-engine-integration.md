@@ -220,7 +220,19 @@ personal entries and the original checkbox selection matched after reopening.
 The temporary entries were then removed and the original personal export matched.
 A USB polling race was found after reboot: the flash could report READY before
 the dictionary console registered. The client now waits for both.
-Physical interruption and near-full capacity still require board tests.
+One Boardsource power-loss trial interrupted the 182nd USB staging write for
+a temporary import, before either catalog was published. After battery and USB
+power were restored, both catalog headers matched the pre-test copies, the
+selected generation was still 23, and the three personal entries and checkbox
+settings matched. KAT resolved to cat, and full store verification passed.
+The trial interrupted staging, so it does not qualify cuts at catalog
+publication or near-full operation.
+
+Before the trial, the board briefly reported unavailable after a failed
+export and two power cycles. A read-only diagnostic firmware boot then
+validated both original catalogs and recovered access without changing flash.
+The cause of the initial failure is unconfirmed. Continue checking cold boot
+and automatic wake behavior before promoting Native.
 
 ## USB manager and existing website
 
