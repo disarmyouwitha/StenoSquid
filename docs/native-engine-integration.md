@@ -175,6 +175,10 @@ checkboxes each changed independently, then the previous selections were
 restored. A separate normal reboot retained those selections and all three
 personal entries. KAT and HE/HROE returned their expected translations.
 Re-running the normal install command reported the store already installed.
+The explicit integrity scan passed in 8.157 seconds. The queue logged a
+high-water mark of 42 events and zero overflows without increasing the replay
+delay. The owner confirmed the editor stayed blank during and after Verify,
+and KAT typed cat normally after the scan.
 
 ## USB manager and existing website
 
