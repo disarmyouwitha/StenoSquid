@@ -266,12 +266,11 @@ def handle_native(console, args, status):
     elif args.backup_all:
         sys.path.insert(0, str(REPO / "tools/storage"))
         from native_update import backup_all
+        from native_recovery import save_atomic
 
         backup = backup_all(console)
-        with args.backup_all.open("x", encoding="utf-8") as output:
-            json.dump(backup, output, ensure_ascii=False, indent=2)
-            output.write("\n")
-        print(f"Saved full overlay and settings backup to {args.backup_all}.")
+        save_atomic(args.backup_all, backup)
+        print(f"Saved full dictionary backup to {args.backup_all}.")
     elif args.backup:
         name = args.dictionary or "user_dictionary"
         if args.dictionary:

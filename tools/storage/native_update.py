@@ -64,7 +64,7 @@ def encode_record(edit, sequence):
 
 
 class Snapshot:
-    def __init__(self, read, catalog_address, catalog_bytes, crc, *, metadata_only=False):
+    def __init__(self, read, catalog_address, catalog_bytes, crc, *, metadata_only=False, strict=False):
         payload = read(catalog_address, catalog_bytes)
         if len(payload) != catalog_bytes or zlib.crc32(payload) != crc:
             raise ValueError("Catalog changed or failed its checksum")
@@ -77,8 +77,8 @@ class Snapshot:
         self.extents = list(EXTENT.iter_unpack(payload[rows_end:]))
         identities = {struct.unpack_from("<I", row)[0] for row in self.rows}
         personal = [row for row in self.rows if row[16:16 + row[12]] == b"user_dictionary"]
-        if len(personal) != 1 or personal[0][8:10] != b"\xff\xff":
-            raise ValueError("Expected one overlay-only personal dictionary")
+        if len(personal) != 1 or (personal[0][8:10] != b"\xff\xff" and personal[0][11] != 1):
+            raise ValueError("Expected one personal dictionary")
         self.personal = struct.unpack_from("<I", personal[0])[0]
         if metadata_only:
             return
@@ -87,7 +87,13 @@ class Snapshot:
         self.anchor = None
         self.used = {}
         records, tail = {}, []
+        epochs = 0
+        boundary = not through
+        sequences = {}
         for segment, _, _, _, _, epoch in self.journals:
+            if strict and epoch <= epochs:
+                raise ValueError("Recovery journal epochs are out of order")
+            epochs = epoch
             start = segment * SEGMENT
             data = read(start, SEGMENT)
             if len(data) != SEGMENT or data[:16] != struct.pack("<8sQ", b"SQJSEG01", epoch):
@@ -105,6 +111,9 @@ class Snapshot:
                 if sequence > through:
                     tail.append(entry)
                 records[entry.address] = entry
+                if strict:
+                    sequences[entry.address] = sequence
+                    boundary |= sequence == through
                 offset += entry.span
             self.used[segment] = offset - 256
 
@@ -112,18 +121,33 @@ class Snapshot:
         # checkpointed away along with its journal, so replaying all history
         # from retained segments could wrongly resurrect an old Set.
         self.entries = {}
+        if strict and not boundary:
+            raise ValueError("Recovery checkpoint boundary is missing")
+        indexed = {}
         for start, _, length, expected, kind, _ in self.extents:
-            if kind != 3:
+            if kind != 3 and (not strict or kind != 4):
                 continue
             data = read(start * SEGMENT, length)
             if len(data) != length or zlib.crc32(data) != expected:
                 raise ValueError("Source forward index failed checksum")
+            previous = None
             for (address,) in struct.iter_unpack("<I", data):
                 entry = records.get(address)
                 if not entry or entry.operation == 2:
-                    raise ValueError("Invalid source forward index record")
-                if entry.identity in identities:
+                    raise ValueError("Invalid source index record")
+                if strict:
+                    sequence = sequences[address]
+                    if entry.identity >= self.next_id or sequence > through or (kind == 4 and entry.operation):
+                        raise ValueError("Invalid recovery index record")
+                    key = entry.key if kind == 3 else (entry.text, entry.key)
+                    if previous is not None and key <= previous:
+                        raise ValueError("Recovery index is out of order")
+                    previous = key
+                    indexed.setdefault(kind, set()).add(address)
+                if kind == 3 and entry.identity in identities:
                     self.entries[entry.key] = entry
+        if strict and {address for address in indexed.get(3, ()) if not records[address].operation} != indexed.get(4, set()):
+            raise ValueError("Recovery indexes disagree")
         for entry in tail:
             if entry.identity not in identities:
                 continue
@@ -350,9 +374,14 @@ def backup_all(console):
     layout = console.command("get_parameter host_layout")
     answer = update_command(console, "begin backup")
     try:
-        snapshot, _ = read_snapshot(console, answer)
+        snapshot, _ = read_snapshot(console, answer, metadata_only=True)
         if any(row[11] for row in snapshot.rows):
-            raise ValueError("Whole-store backup cannot restore experimental compact snapshots. Export the dictionaries individually.")
+            from native_recovery import capture
+            result = capture(lambda start, size: read_flash(console, start, size), snapshot, layout)
+            if console.command("get_parameter host_layout") != layout:
+                raise RuntimeError("Host layout changed during backup. Retry the backup.")
+            return result
+        snapshot, _ = read_snapshot(console, answer)
         dictionaries = []
         for row in snapshot.rows:
             identity, enabled, base, member = struct.unpack_from("<IIHB", row)
@@ -368,6 +397,19 @@ def backup_all(console):
             by_id[entry.identity]["entries"].append(item)
         return dict(format="stenosquid-backup-1", host_layout=layout, next_id=snapshot.next_id,
                     dictionaries=dictionaries)
+    finally:
+        update_command(console, "abort", timeout=5)
+
+
+def overlay_usage(console):
+    answer = update_command(console, "begin backup")
+    try:
+        snapshot, _ = read_snapshot(console, answer)
+        usage = {struct.unpack_from("<I", row)[0]: {"count": 0, "bytes": 0} for row in snapshot.rows}
+        for entry in snapshot.entries.values():
+            usage[entry.identity]["count"] += 1
+            usage[entry.identity]["bytes"] += entry.span
+        return usage
     finally:
         update_command(console, "abort", timeout=5)
 

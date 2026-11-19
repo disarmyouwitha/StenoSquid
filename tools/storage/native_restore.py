@@ -5,11 +5,9 @@ from native_base_update import PINS
 from native_install import provision, wait_ready
 from native_manage import checked
 from native_update import validate_name
+from native_recovery import FORMAT, LAYOUTS
 from prepare import fetch
 from manifest import ROOT
-
-LAYOUTS = ("Mac U.S.", "Windows U.S. (plain text)")
-
 
 def parse_backup(backup, limit, pins=PINS):
     if not isinstance(backup, dict) or backup.get("format") != "stenosquid-backup-1" or backup.get("host_layout") not in LAYOUTS:
@@ -69,6 +67,8 @@ def parse_backup(backup, limit, pins=PINS):
 
 
 def restore_all(serial, backup, progress=print):
+    if isinstance(backup, dict) and backup.get("format") == FORMAT:
+        raise ValueError("Experimental bundles support offline verification only. USB recovery is not qualified.")
     with open_console(serial) as console:
         serial = console.serial
         capabilities = console.command("native_install update named-capabilities").split()

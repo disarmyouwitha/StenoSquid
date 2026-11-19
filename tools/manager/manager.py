@@ -13,7 +13,7 @@ TOOLS = HERE.parent
 sys.path.insert(0, str(TOOLS / "storage"))
 from native_install import wait_ready
 from native_manage import checked, import_entries
-from native_update import backup_all, export_dictionary, transfer
+from native_update import backup_all, export_dictionary, overlay_usage, transfer
 from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
@@ -97,18 +97,9 @@ def run_job(serial, request, progress):
             return {"download": entries, "filename": name + ".json", "count": len(entries)}
         elif action in {"backup", "measure"}:
             progress("Reading saved edits, dictionary order and checkboxes…")
-            backup = backup_all(console)
             if action == "backup":
-                return {"download": backup, "filename": "stenosquid-backup.json"}
-            usage = {}
-            for row in backup["dictionaries"]:
-                entries = row["entries"]
-                live_bytes = sum(
-                    (43 + 4 * len(entry["strokes"]) + len(entry.get("text", "").encode("utf-8"))) & ~3
-                    for entry in entries
-                )
-                usage[row["id"]] = {"count": len(entries), "bytes": live_bytes}
-            return {"state": read_state(console), "usage": usage}
+                return {"download": backup_all(console), "filename": "stenosquid-backup.json"}
+            return {"state": read_state(console), "usage": overlay_usage(console)}
         elif action == "check_updates":
             return {"updates": changed_pins(catalog)}
         elif action == "apply_updates":
