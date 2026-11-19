@@ -109,7 +109,7 @@ void ResumeInput(bool discard) {
 }
 }
 extern "C" void steno_squid_native_input_resume(void) { ResumeInput(false); }
-extern "C" void steno_squid_native_input_resume_after_verify(void) { ResumeInput(true); }
+extern "C" void steno_squid_native_input_resume_discard(void) { ResumeInput(true); }
 extern "C" void steno_squid_native_input_cancel(void) {
     const auto key = k_spin_lock(&input_lock);
     input.Cancel(k_uptime_get_32());

@@ -27,6 +27,7 @@ class NativeValidator {
 public:
     NativeValidator(Device &value,NativeCatalog<Device> &roots):device(value),catalog(roots),journal(value),
         unused_f(value),unused_r(value),ops(value,view,unused_f,unused_r){}
+    const LiveView &ValidatedView() const { return view; }
     bool Extent(uint32_t,const uint8_t *extent) {
         const uint32_t start=uint16_t(extent[0]) | uint16_t(extent[1])<<8,bytes=Word(extent+4),kind=Word(extent+12);
         if(kind==2)return journal.Open(start,uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32)==JournalResult::Ok;

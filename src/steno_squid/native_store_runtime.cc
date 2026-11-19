@@ -10,6 +10,7 @@
 #include "../../tools/storage/native_store.h"
 #include "../../tools/storage/native_validator.h"
 #include "../../tools/storage/native_provisioner.h"
+#include "../../tools/storage/native_stage.h"
 #include "../../tools/storage/native_entry_stager.h"
 #include "../../tools/storage/reverse_cursor.h"
 #include "dictionary/compact_map_dictionary.h"
@@ -464,7 +465,7 @@ void store_verify(void *,const char *) {
     else base_provider.Fault();
     // This explicit scan is an exclusive operation. Cancel any complete or
     // partial steno chord entered during it before normal delivery resumes.
-    steno_squid_native_input_resume_after_verify();
+    steno_squid_native_input_resume_discard();
     steno_squid_upload_status(STENO_SQUID_MODE_VERIFY, 0);
     if (good) Console::SendOk();
     else Console::Printf("ERR Native integrity failure\n\n");
@@ -646,6 +647,8 @@ StenoDictionaryLookupResult lapwing_copy_lookup_text(const uint8_t *text) {
 
 namespace {
 NativeProvisioner<FlashDevice> transfer(flash_device);
+NativeStage<FlashDevice> staged(store, validator);
+enum steno_squid_mode stage_mode = STENO_SQUID_MODE_IMPORT;
 alignas(4) uint8_t incoming[512];
 void reboot_worker(k_work *){sys_reboot(SYS_REBOOT_COLD);}
 K_WORK_DELAYABLE_DEFINE(reboot_work,reboot_worker);
@@ -655,9 +658,9 @@ K_WORK_DELAYABLE_DEFINE(install_timeout_work,install_timeout);
 void TouchInstall(){install_deadline=k_uptime_get()+60000;k_work_reschedule_for_queue(&steno_squid_engine_queue,&install_timeout_work,K_SECONDS(60));}
 void install_timeout(k_work *) {
     k_mutex_lock(&flash_lock,K_FOREVER);
-    if(transfer.Active() && k_uptime_get()>=install_deadline) {
-        transfer.Abort();dictionary_flash_read_session(false);steno_squid_upload_status(STENO_SQUID_MODE_UNKNOWN,0);
-    } else if(transfer.Active())TouchInstall();
+    if((transfer.Active() || staged.Active()) && k_uptime_get()>=install_deadline) {
+        transfer.Abort();staged.Abort();dictionary_flash_read_session(false);steno_squid_upload_status(STENO_SQUID_MODE_UNKNOWN,0);
+    } else if(transfer.Active() || staged.Active())TouchInstall();
     k_mutex_unlock(&flash_lock);
 }
 
@@ -668,14 +671,96 @@ bool Number(const char *&p,uint32_t &out) {
     return true;
 }
 bool End(const char *p){return !*p || (*p=='\n' && !p[1]);}
+const char *Update(const char *command, char *reply, size_t bytes) {
+    if (!std::strcmp(command, "capabilities\n")) return "OK BULK1";
+    const bool importing = !std::strcmp(command, "begin import\n");
+    const bool compacting = !std::strcmp(command, "begin compact\n");
+    if (importing || compacting) {
+        if (!healthy || exporting || transfer.Active() || !staged.Begin(importing))
+            return "ERR Native store cannot stage an update";
+        dictionary_flash_read_session(true);
+        TouchInstall();
+        stage_mode = importing ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
+        steno_squid_upload_status(stage_mode, 60000);
+        const auto &root = staged.Root();
+        int length = snprintk(reply, bytes, "OK %u %u %u ", root.address, root.bytes, root.crc);
+        for (const auto word : staged.Protected().words)
+            length += snprintk(reply + length, bytes - length, "%08x", word);
+        return nullptr;
+    }
+    if (!staged.Active()) return "ERR No native update active";
+    TouchInstall();
+    steno_squid_upload_status(stage_mode, 60000);
+    if (!std::strcmp(command, "abort\n")) {
+        staged.Abort();
+        dictionary_flash_read_session(false);
+        k_work_cancel_delayable(&install_timeout_work);
+        steno_squid_upload_status(stage_mode, 0);
+        return "OK";
+    }
+    if (!std::strncmp(command, "read ", 5)) {
+        const char *p = command + 5;
+        uint32_t address, size;
+        size_t encoded = 0;
+        if (!Number(p, address) || *p++ != ' ' || !Number(p, size) || !End(p) ||
+            !staged.Read(address, incoming, size) ||
+            base64_encode(reinterpret_cast<uint8_t *>(reply + 3), bytes - 3, &encoded, incoming, size))
+            return "ERR Native update read refused";
+        std::memcpy(reply, "OK ", 3);
+        reply[3 + encoded] = 0;
+        return nullptr;
+    }
+    const NativeInputPause input_pause(true);
+    flash_device.mapped = false;
+    const char *result = "ERR Invalid native update command";
+    bool reboot = false;
+    if (!std::strncmp(command, "erase ", 6)) {
+        const char *p = command + 6;
+        uint32_t segment;
+        if (Number(p, segment) && End(p))
+            result = staged.Erase(segment) ? "OK" : "ERR Native staging erase refused";
+    } else if (!std::strncmp(command, "write ", 6)) {
+        const char *p = command + 6;
+        uint32_t address;
+        if (Number(p, address) && *p++ == ' ') {
+            const size_t encoded = std::strcspn(p, "\n");
+            size_t size = 0;
+            if (End(p + encoded) && !base64_decode(incoming, sizeof(incoming), &size,
+                                                  reinterpret_cast<const uint8_t *>(p), encoded))
+                result = staged.Write(address, incoming, size) ? "OK" : "ERR Native staging write refused";
+        }
+    } else if (!std::strncmp(command, "commit ", 7)) {
+        const char *p = command + 7;
+        uint32_t segment, size, crc;
+        if (Number(p, segment) && *p++ == ' ' && Number(p, size) && *p++ == ' ' &&
+            Number(p, crc) && End(p)) {
+            const auto status = staged.Commit(segment, size, crc, reboot);
+            if (status == CatalogResult::Ok) result = "OK Rebooting";
+            else if (status == CatalogResult::Quarantined) result = "ERR Update committed; catalog mirror requires recovery";
+            else result = "ERR Native update commit refused";
+        }
+    }
+    if (reboot) {
+        staged.Abort();
+        dictionary_flash_read_session(false);
+        k_work_cancel_delayable(&install_timeout_work);
+        healthy = store.opened = false;
+        atomic_clear(&lf_mapped_ready);
+        k_work_reschedule(&reboot_work, K_SECONDS(2));
+    } else {
+        flash_device.mapped = true;
+    }
+    return result;
+}
 const char *Install(const char *command,char *reply,size_t bytes) {
+    if (!std::strncmp(command, "update ", 7)) return Update(command + 7, reply, bytes);
     if(!std::strcmp(command,"status\n")) {
         snprintk(reply,bytes,"NATIVE2 %s %u",healthy?"READY":transfer.Active()?"INSTALL":"UNPROVISIONED",unsigned(store.selected.root.generation));return nullptr;
     }
     if(!std::strncmp(command,"begin CLEAR ",12)) {
         const char *p=command+12;uint32_t crc;
         if(!Number(p,crc) || !End(p))return "ERR Invalid manifest CRC";
-        if(transfer.Active() || exporting || store.work!=NativeStore<FlashDevice>::Work::None)return "ERR Native store busy";
+        if(transfer.Active() || staged.Active() || exporting || store.work!=NativeStore<FlashDevice>::Work::None)return "ERR Native store busy";
         if(lf_suspended || !lf_provisioning_ready || !squid_qspi_reactivate())return "ERR Flash unavailable";
         if(!ForgetBaseTrust())return "ERR Cannot invalidate native base trust; no flash changed";
         healthy=store.opened=false;flash_device.mapped=false;flash_device.Invalidate();store.catalog.Invalidate();atomic_clear(&lf_mapped_ready);

@@ -163,7 +163,7 @@ host run reopened and checked all 147,424 Plover entries restored as personal
 entries, leaving 29 segments free.
 This path provisions a complete image. A power cut during provisioning can
 leave the board unprovisioned. Keep the backup and rerun the install.
-In-place atomic bulk merge and live-record compaction are still separate work.
+The commands below cover in-place bulk merge and explicit live-record compaction.
 
 On the new firmware, an explicit full verification shows **Verify** on the
 right display and cancels steno chords entered during the scan. Regular
@@ -180,6 +180,36 @@ high-water mark of 42 events and zero overflows without increasing the replay
 delay. The owner confirmed the editor stayed blank during and after Verify,
 and KAT typed cat normally after the scan.
 
+## In-place bulk merge and live-record compaction
+
+On the staged-update build, `python3 stenosquid.py --import personal.json`
+uses staged USB HID import for 256 or more entries. Smaller imports use the
+ordinary entry commands. `python3 stenosquid.py --compact` runs a reclamation
+pass. Both commands operate on Native and use the existing board layout.
+
+The host reads the trusted checkpoint and its journal tail, then plans the
+complete change against the union of both catalog copies and active reader
+ownership. It writes the new records and indexes to free segments, without
+changing the current root. Firmware verifies the new indexes and checks that
+the result retains every old live entry. Only a personal merge may replace a
+personal translation. Base extents, checkbox states, IDs, and order are kept.
+The second catalog publication retires the old extents after the new root is
+durable. A power cut can leave the previous or the new root selected. A damaged
+alternate catalog can put the store into read-only recovery.
+
+Compaction packs survivors from partly stale journals into at most one fresh
+journal per pass. It preserves the current append journal and the sequence
+boundary. A pass that needs to copy records selects at least two victim
+journals so that it returns space. It refuses if the replacement indexes and
+working space cannot fit alongside the current store. This is an explicit USB
+command. Automatic selection and scheduling on the keyboard are future work.
+
+Pop shows Import or Saving during the operation. Input entered during exclusive
+write steps is discarded rather than replayed in a burst. The left half reboots
+after publication. The NOR tests cover both operations across staging, both
+catalog commits, and partially erased sectors. Physical interruption, capacity
+limits on a real board, and end-to-end USB timing still require testing.
+
 ## USB manager and existing website
 
 Javelin Tools continues to use its current HID/BT connector, dictionary list,
@@ -194,8 +224,8 @@ python3 tools/storage/native_manage.py --dictionary 6 --remove KAT
 python3 tools/storage/native_manage.py --dictionary 6 --reset-outline KAT
 ```
 
-Imports merge entries one at a time. The complete input is validated before opening
-the keyboard. Each entry uses a retry-safe bounded transaction, supports empty
+The developer manager imports entries one at a time. The complete input is
+validated before opening the keyboard. Each entry uses a retry-safe bounded transaction, supports empty
 text, newlines and up to 2,047 UTF-8 bytes, and is committed only when complete.
 Busy waits follow the reported maintenance step counter, refusing after three
 minutes without observed progress or one hour total for an entry. On error the
@@ -559,8 +589,7 @@ operation does not release a burst of stale input.
    not include full keyboard-to-host latency. Capture runtime stack/heap peaks
    separately.
 
-**Not yet complete:** relocating live records to compact partially stale journals,
-an overlong-tail rebuild;
+**Not yet complete:** automatic compaction scheduling and an overlong-tail rebuild;
 compact import/replacement/delete/rename/reorder manager transactions; physical
 power-cut qualification; measured 200 WPM/burst contention and runtime peaks.
 Wholly dead journals can now be reclaimed after ownership is released. Partially

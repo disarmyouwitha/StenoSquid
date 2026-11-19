@@ -122,6 +122,8 @@ public:
     LiveJournal(Device &value,NativeCatalog<Device> &roots):device(value),catalog(roots),journal(value){}
     bool Ready()const{return ready;}
     uint64_t Highwater()const{return live.highwater;}
+    // The caller holds the exclusive store lock for the whole walk.
+    const LiveView &CurrentView() const { return live; }
     uint32_t TailCount()const{return live.tail.count;}
     const CatalogRoot &Root()const{return live.root;}
     uint8_t MaximumOutline(uint32_t id)const {

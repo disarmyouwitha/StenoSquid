@@ -16,6 +16,7 @@ public:
     CatalogSelection selected{};
     enum class Work { None, Checkpoint, Rollover, PrepareCheckpoint, PrepareRollover } work=Work::None;
     bool opened=false;
+    bool external_update=false;
     JobResult last=JobResult::Done;
     explicit NativeStore(Device &value):device(value),catalog(value),live(value,catalog),
         checkpoint(value,catalog,live),rollover(value,catalog,live){}
@@ -45,7 +46,7 @@ public:
     bool Release(LiveView &view){return live.Release(view);}
     JobResult Start(Work kind) {
         if(!opened)return JobResult::ReadOnly;
-        if(work!=Work::None)return JobResult::Busy;
+        if(work!=Work::None || external_update)return JobResult::Busy;
         if(!catalog.CanWrite(selected.root))return JobResult::ReadOnly;
         if(kind!=Work::Checkpoint && kind!=Work::Rollover)return JobResult::Invalid;
         work=kind==Work::Checkpoint?Work::PrepareCheckpoint:Work::PrepareRollover;
@@ -128,7 +129,7 @@ public:
     }
     LiveResult Edit(uint32_t id,uint8_t operation,const uint32_t *strokes,uint8_t count,const uint8_t *text,uint16_t bytes) {
         if(!opened)return LiveResult::ReadOnly;
-        if(work!=Work::None)return LiveResult::Busy;
+        if(work!=Work::None || external_update)return LiveResult::Busy;
         const auto result=live.Append(id,operation,strokes,count,text,bytes);
         if(result==LiveResult::NeedCheckpoint || result==LiveResult::NeedJournal) {
             if(last==JobResult::NoSpace)return LiveResult::ReadOnly;
@@ -149,7 +150,7 @@ public:
     // Caller owns the scratch view and may not reuse a leased export/lookup view.
     template<class Check>
     CatalogResult Clear(uint32_t id,uint32_t &replacement,LiveView &pin,Check check) {
-        if(!opened || work!=Work::None || !id || pin.token)return CatalogResult::Busy;
+        if(!opened || work!=Work::None || external_update || !id || pin.token)return CatalogResult::Busy;
         if(!catalog.CanWrite(selected.root))return CatalogResult::Quarantined;
         uint8_t row[96]{},prefix[32];uint32_t index=0;
         for(;Row(index,row);++index)if(Word(row)==id)break;
@@ -180,7 +181,7 @@ public:
     // An existing lease in caller-owned scratch is refused before any mutation.
     template<class Check>
     CatalogResult Enable(uint32_t id,bool enabled,LiveView &pin,Check check) {
-        if(!opened || work!=Work::None || pin.token)return CatalogResult::Busy;
+        if(!opened || work!=Work::None || external_update || pin.token)return CatalogResult::Busy;
         if(!catalog.CanWrite(selected.root))return CatalogResult::Quarantined;
         if(!id)return CatalogResult::Invalid;
         uint8_t row[96]{};uint32_t index=0;

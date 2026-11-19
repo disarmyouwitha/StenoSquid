@@ -117,6 +117,10 @@ def install(serial=None, image_path=None, restore=None):
         image, manifest = build(ROOT / "build", personal)
     with open_console(serial) as console:
         provision(console, image, manifest)
+    wait_ready(serial)
+
+
+def wait_ready(serial=None):
     time.sleep(3)
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:

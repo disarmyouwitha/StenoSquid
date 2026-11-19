@@ -254,14 +254,19 @@ def handle_native(console, args, status):
             raise RuntimeError("Native dictionary state changed during export. No backup was written.")
         write_json(args.backup, entries, names)
         print(f"Saved {len(entries):,} personal entries to {args.backup}.")
-    elif args.personal:
+    elif args.personal or args.compact:
         sys.path.insert(0, str(REPO / "tools/storage"))
         from native_manage import import_entries
+        from native_update import transfer
 
-        entries, names = parse_named(args.personal.read_text(encoding="utf-8"))
+        entries, names = parse_named(args.personal.read_text(encoding="utf-8")) if args.personal else ({}, {})
         state = json.loads(console.command("user_dictionary_status"))
         if not state.get("ready") or state.get("read_only") or not state.get("personal_id"):
             raise RuntimeError("Native dictionary is unavailable for writing")
+        if args.compact or len(entries) >= 256:
+            if console.command("native_install update capabilities") != "OK BULK1":
+                raise RuntimeError("Flash Native firmware with staged updates before running this command.")
+            return transfer(console, None if args.compact else entries)
         import_entries(console, state["personal_id"], entries, names)
 
 def main():
@@ -269,6 +274,7 @@ def main():
     parser.add_argument("port", nargs="?", help="USB serial port for --diag only")
     parser.add_argument("--install", action="store_true", help="Install and verify base dictionaries over USB HID")
     parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON", help="Merge a personal dictionary over USB HID")
+    parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
     parser.add_argument("--backup", type=Path, metavar="FILE.JSON", help="Export the personal dictionary over USB HID")
     parser.add_argument("--confirm-erase", action="store_true", help="Explicitly replace the Native dictionary pool")
     parser.add_argument("--restore", type=Path, metavar="BACKUP.JSON", help="Seed personal entries when provisioning Native")
@@ -279,9 +285,9 @@ def main():
     parser.add_argument("--status", action="store_true", help="Read dictionary status")
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
-    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag)
+    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact)
     if sum(map(bool, actions)) != 1:
-        parser.error("Choose one action: --install, --import, --backup, --repair, --verify, --status or --diag")
+        parser.error("Choose one action: --install, --import, --backup, --repair, --verify, --status, --compact or --diag")
     if args.port and not args.diag:
         parser.error("Serial provisioning is retired. Omit the port to use USB HID; ports are only for --diag")
     if (args.confirm_erase or args.restore) and not args.install:
@@ -296,27 +302,32 @@ def main():
                     print(f"\n[{section}]", flush=True)
                 diag(port, section)
         return
-    if (args.install or args.personal or args.backup) and args.base:
+    if (args.install or args.personal or args.backup or args.compact) and args.base:
         parser.error("--base goes with --repair, --verify or --status")
     if args.restore and not args.confirm_erase:
         parser.error("--restore requires --confirm-erase")
     from import_personal import open_console
 
+    reboot = False
     with open_console(args.serial) as console:
         native = console.command("native_install status")
         if native.startswith(("NATIVE1 ", "NATIVE2 ")):
             if not args.install:
-                handle_native(console, args, native)
-                return
-            if not args.confirm_erase:
-                if native.startswith(("NATIVE1 READY ", "NATIVE2 READY ")):
-                    print("Native dictionaries are already installed.")
+                reboot = handle_native(console, args, native)
+                if not reboot:
                     return
-                raise RuntimeError("Provisioning replaces the dictionary pool. Back up existing data first, "
-                                   "then run --install --confirm-erase (optionally with --restore BACKUP.JSON).")
-            if not native.startswith("NATIVE2 "):
-                raise RuntimeError("Flash the matching Native firmware before installing this image.")
+            else:
+                if not args.confirm_erase:
+                    if native.startswith(("NATIVE1 READY ", "NATIVE2 READY ")):
+                        print("Native dictionaries are already installed.")
+                        return
+                    raise RuntimeError("Provisioning replaces the dictionary pool. Back up existing data first, "
+                                       "then run --install --confirm-erase (optionally with --restore BACKUP.JSON).")
+                if not native.startswith("NATIVE2 "):
+                    raise RuntimeError("Flash the matching Native firmware before installing this image.")
         elif native == "ERR Command unavailable on this keyboard":
+            if args.compact:
+                raise ValueError("--compact requires Native firmware.")
             if args.confirm_erase or args.restore:
                 raise ValueError("These install options require Native firmware.")
             if not (args.backup or args.personal):
@@ -329,7 +340,11 @@ def main():
         else:
             raise RuntimeError(f"Unrecognized dictionary installer response: {native}")
 
-    if args.install:
+    if reboot:
+        from native_install import wait_ready
+
+        wait_ready(args.serial)
+    elif args.install:
         sys.path.insert(0, str(REPO / "tools/storage"))
         from native_install import install
 

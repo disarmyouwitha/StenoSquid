@@ -38,12 +38,13 @@ def catalog_header(generation, payload):
     return header + struct.pack("<II", zlib.crc32(header), 0x434F4D54)
 
 
-def write_journal_header(image, segment, epoch):
+def write_journal_header(image, segment, epoch, *, extent_segment=None):
     prefix = struct.pack("<8sQ", b"SQJSEG01", epoch)
     header = prefix + struct.pack("<I", zlib.crc32(prefix)) + bytes(12)
     address = segment * SEGMENT
     image[address : address + len(header)] = header
-    return struct.pack("<HHIIIQ", segment, 1, SEGMENT, 0, 2, epoch)
+    return struct.pack("<HHIIIQ", segment if extent_segment is None else extent_segment,
+                       1, SEGMENT, 0, 2, epoch)
 
 
 def seed_personal(image, extents, next_segment, entries):
