@@ -38,69 +38,104 @@ def catalog_header(generation, payload):
     return header + struct.pack("<II", zlib.crc32(header), 0x434F4D54)
 
 
-def build(source_root):
+def write_journal_header(image, segment, epoch):
+    prefix = struct.pack("<8sQ", b"SQJSEG01", epoch)
+    header = prefix + struct.pack("<I", zlib.crc32(prefix)) + bytes(12)
+    address = segment * SEGMENT
+    image[address : address + len(header)] = header
+    return struct.pack("<HHIIIQ", segment, 1, SEGMENT, 0, 2, epoch)
+
+
+def seed_personal(image, extents, next_segment, entries):
+    """Stage a restored dictionary and build each index once, before USB writes."""
+    if not entries:
+        return next_segment
+    epoch, segment = 1, 2
+    address = segment * SEGMENT + 256
+    records = {}
+    for sequence, (strokes, text) in enumerate(entries.items(), 1):
+        payload = struct.pack("<IBBH", 1, 0, len(strokes), len(text))
+        payload += struct.pack(f"<{len(strokes)}I", *strokes) + text
+        span = (32 + len(payload) + 3) & ~3
+        if address + span > (segment + 1) * SEGMENT:
+            segment, next_segment = next_segment, next_segment + 1
+            if next_segment > 252:
+                raise ValueError("Personal dictionary exhausts the three-segment reserve")
+            epoch += 1
+            extents.append(write_journal_header(image, segment, epoch))
+            address = segment * SEGMENT + 256
+        crc = zlib.crc32(payload, zlib.crc32(struct.pack("<Q", sequence)))
+        header = struct.pack("<4sIQII", b"SQJR", span, sequence, len(payload), crc)
+        record = header + struct.pack("<II", zlib.crc32(header), 0x434F4D54) + payload
+        image[address : address + len(record)] = record
+        records[strokes] = address
+        address += span
+    for kind, order in ((3, sorted(entries)), (4, sorted(entries, key=lambda key: (entries[key], key)))):
+        index = b"".join(struct.pack("<I", records[key]) for key in order)
+        count = (len(index) + SEGMENT - 1) // SEGMENT
+        if next_segment + count > 252:
+            raise ValueError("Personal indexes exhaust the three-segment reserve")
+        start = next_segment * SEGMENT
+        image[start : start + len(index)] = index
+        extents.append(struct.pack("<HHIIIQ", next_segment, count, len(index),
+                                   zlib.crc32(index), kind, 0))
+        next_segment += count
+    return next_segment
+
+
+def read_personal(path):
+    sys.path.insert(0, str(ROOT / "tools/dictionaries"))
+    from import_personal import parse_named
+
+    return parse_named(path.read_text(encoding="utf-8"))[0]
+
+
+def build(source_root, personal=None):
     image = bytearray(b"\xff" * LIMIT)
-    journal = bytearray(32)
-    journal[:8] = b"SQJSEG01"
-    struct.pack_into("<Q", journal, 8, 1)
-    struct.pack_into("<I", journal, 16, zlib.crc32(journal[:16]))
-    image[2 * SEGMENT : 2 * SEGMENT + 32] = journal
-    extents = [struct.pack("<HHIIIQ", 2, 1, SEGMENT, 0, 2, 1)]
+    extents = [write_journal_header(image, 2, 1)]
     dictionaries = []
     manifest = []
     next_segment = 3
-    for identity, name, enabled, source in SOURCES:
-        base = 65535
-        digest = b"\0" * 32
-        if source:
+    location = {}
+    for region_name, sources in (("Lapwing + extras", SOURCES[1:6]), ("Plover Base", SOURCES[6:])):
+        members = []
+        definitions = []
+        for index, (identity, name, _, source) in enumerate(sources):
             raw = (source_root / source).read_bytes()
-            entries = json.loads(raw)
-            address = next_segment * SEGMENT
-            binary = DictionaryCollectionBuilder(XIP + address).build([(name, entries)])
-            count = (len(binary) + SEGMENT - 1) // SEGMENT
-            if next_segment + count > 252:
-                raise ValueError("Base images exhaust the three-segment reserve")
-            image[address : address + len(binary)] = binary
-            base = len(extents)
             digest = hashlib.sha256(raw).digest()
-            extents.append(
-                struct.pack(
-                    "<HHIIIQ",
-                    next_segment,
-                    count,
-                    len(binary),
-                    zlib.crc32(binary),
-                    1,
-                    0,
-                )
-            )
-            manifest.append(
-                dict(
-                    id=identity,
-                    name=name,
-                    address=address,
-                    bytes=len(binary),
-                    segments=count,
-                    crc32=zlib.crc32(binary),
-                    source_sha256=digest.hex(),
-                )
-            )
-            next_segment += count
+            definitions.append((name, json.loads(raw)))
+            location[identity] = len(extents), index, digest
+            members.append(dict(id=identity, index=index, name=name, source_sha256=digest.hex()))
+        address = next_segment * SEGMENT
+        binary = DictionaryCollectionBuilder(XIP + address).build(definitions)
+        count = (len(binary) + SEGMENT - 1) // SEGMENT
+        if next_segment + count > 252:
+            raise ValueError("Base images exhaust the three-segment reserve")
+        image[address : address + len(binary)] = binary
+        crc = zlib.crc32(binary)
+        extents.append(struct.pack("<HHIIIQ", next_segment, count, len(binary), crc, 1, 0))
+        manifest.append(dict(name=region_name, address=address, bytes=len(binary),
+                             segments=count, crc32=crc, dictionaries=members))
+        next_segment += count
+    for identity, name, enabled, _ in SOURCES:
+        base, index, digest = location.get(identity, (65535, 0, bytes(32)))
         encoded = name.encode()
         row = bytearray(96)
-        struct.pack_into("<IIH", row, 0, identity, int(enabled), base)
+        struct.pack_into("<IIHB", row, 0, identity, int(enabled), base, index)
         row[12] = len(encoded)
         row[16 : 16 + len(encoded)] = encoded
         row[64:96] = digest
         dictionaries.append(row)
+    personal = personal or {}
+    next_segment = seed_personal(image, extents, next_segment, personal)
     prefix = bytearray(32)
-    struct.pack_into("<IHHQ", prefix, 0, 8, len(dictionaries), len(extents), 0)
+    struct.pack_into("<IHHQ", prefix, 0, 8, len(dictionaries), len(extents), len(personal))
     payload = bytes(prefix) + b"".join(dictionaries) + b"".join(extents)
     for slot in range(2):
         blob = catalog_header(slot + 1, payload) + payload
         image[slot * SEGMENT : slot * SEGMENT + len(blob)] = blob
     report = dict(
-        schema=1,
+        schema=2,
         format="SQBCAT02",
         bytes=LIMIT,
         crc32=zlib.crc32(image),
@@ -110,6 +145,7 @@ def build(source_root):
         free_segments=255 - next_segment,
         provision="explicit clean erase; no migration",
         personal_id=1,
+        personal_entries=len(personal),
     )
     return bytes(image), report
 
@@ -120,8 +156,9 @@ def main():
     parser.add_argument(
         "--output", type=Path, default=ROOT / "build/native-store/image.bin"
     )
+    parser.add_argument("--personal", type=Path, metavar="BACKUP.JSON")
     args = parser.parse_args()
-    image, report = build(args.sources)
+    image, report = build(args.sources, read_personal(args.personal) if args.personal else None)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(image)
     args.output.with_suffix(".json").write_text(json.dumps(report, indent=2) + "\n")

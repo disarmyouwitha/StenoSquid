@@ -8,6 +8,7 @@ bool steno_squid_native_input_offer(int key, bool pressed, uint32_t when);
 bool steno_squid_native_input_retry(int key, bool pressed, uint32_t when);
 void steno_squid_native_input_pause(void);
 void steno_squid_native_input_resume(void);
+void steno_squid_native_input_resume_after_verify(void);
 void steno_squid_native_input_cancel(void);
 bool steno_squid_native_input_pending(void);
 bool steno_squid_native_input_waiting(void);

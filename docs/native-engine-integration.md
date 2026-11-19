@@ -136,6 +136,39 @@ A private pre-test personal backup was captured locally at
 `build/native-engine/owner-personal-backup.json` (zero entries on the connected
 keyboard). It is not checked in.
 
+## Packed Lapwing and backup restore
+
+The proposed fresh install map groups Lapwing Base, Commands, Numbers, UK
+Additions and Proper Nouns in one JSC4 collection. Each keeps its catalog ID,
+order, enabled flag, content hash and hint index. Catalog row byte 10 selects
+the member within the collection. The flash verifier checks the collection
+once, while the catalog rejects duplicate member references.
+See the [External Memory Map](../assets/qspi-flash-map-native.png).
+
+On a board using the previous layout, back up personal entries **before**
+flashing the new Native firmware. Use the same backup for a clean reprovision
+after flashing. These commands operate on the selected left half over USB.
+
+```sh
+python3 stenosquid.py --backup personal.json
+# Flash the matching Native UF2.
+python3 stenosquid.py --install --confirm-erase --restore personal.json
+python3 stenosquid.py --status
+```
+
+The restore validates the entire JSON and capacity before erasing. The host
+writes the journal records and sorts the forward and reverse indexes once.
+The installer writes referenced data before either catalog. A strict NOR
+host run reopened and checked all 147,424 Plover entries restored as personal
+entries, leaving 29 segments free.
+This path provisions a complete image. A power cut during provisioning can
+leave the board unprovisioned. Keep the backup and rerun the install.
+In-place atomic bulk merge and live-record compaction are still separate work.
+
+On the new firmware, an explicit full verification shows **Verify** on the
+right display and cancels steno chords entered during the scan. Regular
+checkpoint delivery still replays queued keys in order.
+
 ## USB manager and existing website
 
 Javelin Tools continues to use its current HID/BT connector, dictionary list,

@@ -97,14 +97,19 @@ extern "C" void steno_squid_native_input_pause(void) {
     input.Pause();
     k_spin_unlock(&input_lock, key);
 }
-extern "C" void steno_squid_native_input_resume(void) {
+namespace {
+void ResumeInput(bool discard) {
+    const uint32_t when = discard ? k_uptime_get_32() : 0;
     const auto key = k_spin_lock(&input_lock);
+    if (discard && input.HasEvents()) input.Cancel(when);
     input.Resume();
-    const bool wake = !input.Paused();
+    const bool wake = input.HasEvents() && !input.Paused();
     k_spin_unlock(&input_lock, key);
-    if (wake)
-        Schedule();
+    if (wake) Schedule();
 }
+}
+extern "C" void steno_squid_native_input_resume(void) { ResumeInput(false); }
+extern "C" void steno_squid_native_input_resume_after_verify(void) { ResumeInput(true); }
 extern "C" void steno_squid_native_input_cancel(void) {
     const auto key = k_spin_lock(&input_lock);
     input.Cancel(k_uptime_get_32());

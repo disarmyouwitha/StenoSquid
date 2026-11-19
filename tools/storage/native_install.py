@@ -9,6 +9,7 @@ import argparse
 import base64
 import hashlib
 import json
+from itertools import chain
 from pathlib import Path
 import subprocess
 import sys
@@ -18,7 +19,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from import_personal import open_console
-from build_native_image import build, LIMIT, SOURCES
+from build_native_image import build, read_personal, LIMIT, SEGMENT, SOURCES
 
 
 def check_image(image, manifest):
@@ -41,15 +42,30 @@ def command(console, text, timeout=30):
 def provision(console, image, manifest, progress=print):
     check_image(image, manifest)
     status = console.command("native_install status")
-    if not status.startswith("NATIVE1 "):
-        raise RuntimeError("Install the Native-Engine UF2 first: " + status)
+    versions = ("NATIVE1 ", "NATIVE2 ") if manifest.get("schema") == 1 else ("NATIVE2 ",)
+    if not status.startswith(versions):
+        raise RuntimeError("Flash the matching Native firmware before installing: " + status)
     command(console, f"begin CLEAR {manifest['crc32']}")
+    try:
+        write_pool(console, image, progress)
+    except BaseException:
+        try:
+            command(console, "abort", timeout=2)
+        except (OSError, RuntimeError, TimeoutError):
+            pass
+        raise
+
+
+def write_pool(console, image, progress):
     for segment in range(255):
         command(console, f"erase {segment}")
         if segment % 16 == 0:
             progress(f"Erasing shared pool: {segment + 1}/255")
     sent = 0
-    for at in range(0, len(image), 512):
+    # Write all referenced data before making either catalog visible at boot.
+    catalog_end = 2 * SEGMENT
+    offsets = chain(range(catalog_end, len(image), 512), range(0, catalog_end, 512))
+    for at in offsets:
         data = image[at : at + 512]
         if data == b"\xff" * len(data):
             continue
@@ -69,6 +85,7 @@ def main():
     parser.add_argument("--confirm-erase", action="store_true")
     parser.add_argument("--serial", help="USB serial number, not a serial port")
     parser.add_argument("--image", type=Path)
+    parser.add_argument("--restore", type=Path, metavar="BACKUP.JSON")
     args = parser.parse_args()
     if args.status:
         with open_console(args.serial) as console:
@@ -78,10 +95,17 @@ def main():
         parser.error(
             "A clean provision needs --confirm-erase; it replaces all external dictionaries"
         )
-    if args.image:
-        image = args.image.read_bytes()
-        manifest = json.loads(args.image.with_suffix(".json").read_text())
+    if args.image and args.restore:
+        parser.error("--restore builds an image and cannot be combined with --image")
+    install(args.serial, args.image, args.restore)
+
+
+def install(serial=None, image_path=None, restore=None):
+    if image_path:
+        image = image_path.read_bytes()
+        manifest = json.loads(image_path.with_suffix(".json").read_text())
     else:
+        personal = read_personal(restore) if restore else None
         if any(
             source and not (ROOT / "build" / source).exists()
             for _, _, _, source in SOURCES
@@ -90,28 +114,16 @@ def main():
                 [sys.executable, str(ROOT / "tools/dictionaries/prepare.py")],
                 check=True,
             )
-        image, manifest = build(ROOT / "build")
-        path = ROOT / "build/native-store/image.bin"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(image)
-        path.with_suffix(".json").write_text(json.dumps(manifest, indent=2) + "\n")
-    check_image(image, manifest)
-    with open_console(args.serial) as console:
-        try:
-            provision(console, image, manifest)
-        except BaseException:
-            try:
-                command(console, "abort", timeout=2)
-            except (OSError, RuntimeError, TimeoutError):
-                pass
-            raise
+        image, manifest = build(ROOT / "build", personal)
+    with open_console(serial) as console:
+        provision(console, image, manifest)
     time.sleep(3)
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
         try:
-            with open_console(args.serial) as console:
+            with open_console(serial) as console:
                 status = console.command("native_install status", timeout=2)
-                if status.startswith("NATIVE1 READY "):
+                if status.startswith(("NATIVE1 READY ", "NATIVE2 READY ")):
                     print(
                         "Native engine ready. Test KAT, multi-stroke, Practice and browser edits."
                     )

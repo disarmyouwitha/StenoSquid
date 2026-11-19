@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
 sys.path.insert(0, str(ROOT / "tools/dict_compiler"))
 from build_native_image import build, SOURCES, SEGMENT, XIP
+from compile_dict import parse_outline
 from jsc4 import reader
 from native_install import check_image
 
@@ -32,16 +33,21 @@ def validate(image, report, sources):
         )
     verified = 0
     for base in report["base_images"]:
-        identity = base["id"]
-        source = next(path for ident, _, _, path in SOURCES if ident == identity)
-        raw = (sources / source).read_bytes()
-        assert hashlib.sha256(raw).hexdigest() == base["source_sha256"]
         binary = image[base["address"] : base["address"] + base["bytes"]]
         assert zlib.crc32(binary) == base["crc32"]
-        lookup = reader(binary, XIP + base["address"])
-        for outline, translation in json.loads(raw).items():
-            assert lookup(outline) == translation, (base["name"], outline)
-            verified += 1
+        for member in base["dictionaries"]:
+            identity = member["id"]
+            source = next(path for ident, _, _, path in SOURCES if ident == identity)
+            raw = (sources / source).read_bytes()
+            assert hashlib.sha256(raw).hexdigest() == member["source_sha256"]
+            row_offset = SEGMENT + 64 + 96 * (identity - 1)
+            extent, index = struct.unpack_from("<HB", image, row_offset + 8)
+            start = struct.unpack_from("<H", image, SEGMENT + 64 + 96 * 7 + 24 * extent)[0]
+            assert start * SEGMENT == base["address"] and index == member["index"]
+            lookup = reader(binary, XIP + base["address"], index, len(base["dictionaries"]))
+            for outline, translation in json.loads(raw).items():
+                assert lookup(outline) == translation, (member["name"], outline)
+                verified += 1
     return verified
 
 
@@ -53,9 +59,14 @@ def main():
                 target = path / source
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(
-                    json.dumps({"KAT": "cat", "HE/HROE": "hello", "SA": "ça va"})
+                    json.dumps({"KAT": target.stem, "HE/HROE": "hello", "SA": "ça va"})
                 )
-        image, report = build(path)
+        personal = {parse_outline("KAT"): "restored ç".encode(), parse_outline("HE/HROE"): b""}
+        # Span multiple journals so decoding exercises epoch/cursor recovery.
+        for i in range(1, 301):
+            personal[(0x1000 + i, 4)] = (f"é{i} " * 70).encode()
+        image, report = build(path, personal)
+        assert report["personal_entries"] == len(personal)
         assert validate(image, report, path) == 18
         image_path = path / "native.bin"
         image_path.write_bytes(image)

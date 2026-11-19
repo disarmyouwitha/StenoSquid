@@ -158,6 +158,7 @@ public:
            root.bytes!=32+header.dictionaries*kDictionaryBytes+header.extents*kExtentBytes)return CatalogResult::Corrupt;
         for(unsigned i=16;i<32;++i)if(prefix[i])return CatalogResult::Corrupt;
         uint32_t ids[64]{};
+        uint16_t base_members[64]{};
         SegmentMap occupied, bases;
         occupied.Add(0,2);occupied.Add(255,1);
         unsigned forwards=0,reverses=0;
@@ -185,7 +186,7 @@ public:
             uint16_t base=uint16_t(dictionary[8]) | uint16_t(dictionary[9])<<8;
             uint8_t name= dictionary[12];
             if(!id || id>=header.next_id || flags>1 || Word(dictionary+60) ||
-               dictionary[10] || dictionary[11] || !name || name>44 ||
+               dictionary[10]>=64 || dictionary[11] || !name || name>44 ||
                dictionary[13] || dictionary[14] || dictionary[15])return CatalogResult::Corrupt;
             for(uint32_t j=0;j<i;++j)if(ids[j]==id)return CatalogResult::Corrupt;
             ids[i]=id;
@@ -193,16 +194,23 @@ public:
             for(uint32_t j=0;j<name;++j)if(!utf.Push(dictionary[16+j]))return CatalogResult::Corrupt;
             if(utf.remaining)return CatalogResult::Corrupt;
             for(uint32_t j=name;j<44;++j)if(dictionary[16+j])return CatalogResult::Corrupt;
-            if(base!=kNoExtent) {
-                if(base>=header.extents || bases.Contains(base))return CatalogResult::Corrupt;
+            const uint8_t member = dictionary[10];
+            if (base == kNoExtent) {
+                if (member) return CatalogResult::Corrupt;
+                base_members[i] = UINT16_MAX;
+            } else {
+                if (base >= header.extents) return CatalogResult::Corrupt;
+                const uint16_t reference = (base << 6) | member;
+                for (uint32_t j = 0; j < i; ++j)
+                    if (base_members[j] == reference) return CatalogResult::Corrupt;
+                base_members[i] = reference;
                 uint8_t extent[24];
                 if(!input.Read(extent_start+base*24,extent,24))return CatalogResult::IoError;
                 if(Word(extent+12)!=uint32_t(ExtentKind::Base))return CatalogResult::Corrupt;
                 bases.Add(base,1);
             }
         }
-        // Every base extent needs exactly one logical owner; grouped ownership
-        // is intentionally unsupported until its rules are explicitly designed.
+        // Every base extent needs a catalog member. A member pair is unique.
         for(uint32_t i=0;i<header.extents;++i) {
             uint8_t extent[24];
             if(!input.Read(extent_start+i*24,extent,24))return CatalogResult::IoError;

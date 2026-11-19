@@ -135,6 +135,10 @@ The compiled base and extras images occupy about 4.43 MiB of external flash. The
 
 ![Left-half QSPI flash map with base-image growth room and a shared personal-dictionary segment pool](assets/qspi-flash-map.png)
 
+The opt-in Native build uses a shared pool. On a fresh Native install, Lapwing Base, Commands, Numbers, UK Additions, and Proper Nouns share one compact image and keep their own checkboxes. Plover has its own image.
+
+![Native external QSPI install map showing the combined Lapwing collection and the shared pool](assets/qspi-flash-map-native.png)
+
 ## NiceNano Wiring Diagram
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)
 

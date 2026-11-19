@@ -122,6 +122,7 @@ class Cell final : public StenoDictionary {
 public:
     uint32_t identity=0,base_offset=0,base_bytes=0,base_crc=0;
     bool enabled=false;
+    uint8_t base_member = 0;
     char name[45]{};
     StenoCompactMapDictionaryDefinition definition{};
     StenoCompactMapDictionaryStrokesDefinition strokes[16]{};
@@ -147,15 +148,20 @@ public:
     void PrintDictionary(PrintDictionaryContext &context)const override;
     void PrintEntriesWithPrefix(PrintPrefixContext &context)const override;
     void PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)const override;
-    bool LoadBase(uint32_t at,uint32_t bytes,uint32_t crc) {
-        if(base)return base_offset==at && base_bytes==bytes && base_crc==crc;
-        base_offset=at;base_bytes=bytes;base_crc=crc;
+    bool LoadBase(uint32_t at, uint32_t bytes, uint32_t crc, uint8_t member) {
+        if (base) return base_offset == at && base_bytes == bytes && base_crc == crc &&
+                         base_member == member;
+        base_offset=at;base_bytes=bytes;base_crc=crc;base_member=member;
         const uintptr_t address=Xip+at;
         auto in=[&](uintptr_t p,size_t n){return p>=address && p-address<=bytes && n<=bytes-(p-address);};
         const auto *collection=reinterpret_cast<const uint8_t *>(address);
-        if(bytes<20 || xip_load_word(collection)!=STENO_MAP_DICTIONARY_COLLECTION_MAGIC ||
-           xip_load_word(collection+offsetof(StenoDictionaryCollection,dictionaryCount))!=1)return false;
-        const uintptr_t map=xip_load_word(collection+offsetof(StenoDictionaryCollection,dictionaries));
+        constexpr size_t pointers = offsetof(StenoDictionaryCollection, dictionaries);
+        if (bytes < pointers || xip_load_word(collection) != STENO_MAP_DICTIONARY_COLLECTION_MAGIC)
+            return false;
+        const uint32_t count = xip_load_word(collection + offsetof(StenoDictionaryCollection, dictionaryCount));
+        if (count > 64 || member >= count || count > (bytes - pointers) / sizeof(uint32_t))
+            return false;
+        const uintptr_t map = xip_load_word(collection + pointers + member * sizeof(uint32_t));
         if(map%4 || !in(map,sizeof(definition)))return false;
         copy_xip_bytes(&definition,reinterpret_cast<const void *>(map),sizeof(definition));
         const uintptr_t table=reinterpret_cast<uintptr_t>(definition.strokes);
@@ -173,7 +179,7 @@ public:
         base=new (definition) StenoCompactMapDictionary(definition);
         if(!base)return false;
         const uint32_t text_bytes=xip_load_word(collection+offsetof(StenoDictionaryCollection,textBlock));
-        hint=new (hint_storage) StenoSquidHintIndex(address,bytes,0,1,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
+        hint=new (hint_storage) StenoSquidHintIndex(address,bytes,member,count,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
         return true;
     }
 } cells[MaxDictionaries];
@@ -448,9 +454,20 @@ void store_status(void *,const char *) {
 void store_verify(void *,const char *) {
     if(store.work!=NativeStore<FlashDevice>::Work::None){Console::Printf("ERR Native maintenance busy\n\n");return;}
     if(steno_squid_native_input_pending()){Console::Printf("ERR Input replay busy\n\n");return;}
-    const NativeInputPause input_pause;
-    flash_device.Invalidate();flash_device.mapped=false;const bool good=validator.Validate(store.selected.root)==CatalogResult::Ok;flash_device.mapped=true;
-    if(good){scrub_due=k_uptime_get()+24*60*60*1000LL;Console::SendOk();}else {base_provider.Fault();Console::Printf("ERR Native integrity failure\n\n");}
+    steno_squid_upload_status(STENO_SQUID_MODE_VERIFY, 180000);
+    steno_squid_native_input_pause();
+    flash_device.Invalidate();
+    flash_device.mapped = false;
+    const bool good = validator.Validate(store.selected.root) == CatalogResult::Ok;
+    flash_device.mapped = true;
+    if (good) scrub_due = k_uptime_get() + 24 * 60 * 60 * 1000LL;
+    else base_provider.Fault();
+    // This explicit scan is an exclusive operation. Cancel any complete or
+    // partial steno chord entered during it before normal delivery resumes.
+    steno_squid_native_input_resume_after_verify();
+    steno_squid_upload_status(STENO_SQUID_MODE_VERIFY, 0);
+    if (good) Console::SendOk();
+    else Console::Printf("ERR Native integrity failure\n\n");
 }
 void store_rebuild(void *,const char *) {
     const auto result=store.Start(NativeStore<FlashDevice>::Work::Checkpoint);Kick();
@@ -564,7 +581,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         if(base!=kNoExtent) {
             uint8_t extent[24];
             if(!flash_device.Read(store.selected.root.address+32+count*96+base*24,extent,24) ||
-               !cell.LoadBase((uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes,Word(extent+4),Word(extent+8)))return false;
+               !cell.LoadBase((uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes,Word(extent+4),Word(extent+8),row[10]))return false;
         } else if(cell.base)return false;
         cell.Bind();
     }
@@ -653,7 +670,7 @@ bool Number(const char *&p,uint32_t &out) {
 bool End(const char *p){return !*p || (*p=='\n' && !p[1]);}
 const char *Install(const char *command,char *reply,size_t bytes) {
     if(!std::strcmp(command,"status\n")) {
-        snprintk(reply,bytes,"NATIVE1 %s %u",healthy?"READY":transfer.Active()?"INSTALL":"UNPROVISIONED",unsigned(store.selected.root.generation));return nullptr;
+        snprintk(reply,bytes,"NATIVE2 %s %u",healthy?"READY":transfer.Active()?"INSTALL":"UNPROVISIONED",unsigned(store.selected.root.generation));return nullptr;
     }
     if(!std::strncmp(command,"begin CLEAR ",12)) {
         const char *p=command+12;uint32_t crc;
@@ -712,7 +729,18 @@ extern "C" int32_t steno_squid_native_scrub_wait(void) {
 }
 extern "C" void steno_squid_native_scrub_step(void) {
     if(steno_squid_native_scrub_wait()!=0)return;
-    while(scrub_cell<cell_count && !cells[scrub_cell].base)++scrub_cell;
+    if (!scrub_offset) {
+        while (scrub_cell < cell_count) {
+            const auto &candidate = cells[scrub_cell];
+            bool seen = false;
+            for (size_t previous = 0; previous < scrub_cell; ++previous) {
+                if (cells[previous].base && cells[previous].base_offset == candidate.base_offset)
+                    seen = true;
+            }
+            if (candidate.base && !seen) break;
+            ++scrub_cell;
+        }
+    }
     if(scrub_cell==cell_count){scrub_cell=0;scrub_due=k_uptime_get()+24*60*60*1000LL;return;}
     const auto &cell=cells[scrub_cell];uint32_t n=cell.base_bytes-scrub_offset;if(n>sizeof(scrub_chunk))n=sizeof(scrub_chunk);
     if(!flash_device.Read(cell.base_offset+scrub_offset,scrub_chunk,n)){base_provider.Fault();return;}
