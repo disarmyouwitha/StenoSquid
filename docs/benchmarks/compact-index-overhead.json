@@ -1,0 +1,96 @@
+{
+  "segment_bytes": 65536,
+  "plover_source_sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+  "pinned-plover": {
+    "entries": 147424,
+    "largest_stroke_group": 64101,
+    "reverse_records": 147424,
+    "partial_buckets": 19413,
+    "partial_postings": 308470,
+    "unique_posting_lists": 19373,
+    "parts": {
+      "jsc4_through_timestamp": 2178865,
+      "legacy_alignment": 3,
+      "legacy_hint_records": 160736,
+      "legacy_hint_directory": 8,
+      "legacy_hint_footer": 12,
+      "reverse_text": 589696,
+      "partial_buckets": 155304,
+      "partial_postings": 1233880,
+      "sqs1_alignment": 0,
+      "sqs1_footer": 20
+    },
+    "no_search_bytes": 2339624,
+    "no_search_segments": 36,
+    "search_bytes": 1978900,
+    "indexed_bytes": 4318524,
+    "indexed_segments": 66,
+    "segment_padding": 6852,
+    "experimental_estimates": {
+      "packed_24bit_rank_tokens_and_bucket_fields": {
+        "bytes": 3823804,
+        "segments": 59,
+        "saved_bytes": 494720,
+        "saved_segments": 7
+      },
+      "deduplicate_with_explicit_bucket_lengths": {
+        "bytes": 4396012,
+        "segments": 68,
+        "saved_bytes": -77488,
+        "saved_segments": -2
+      },
+      "signed_leb128_posting_deltas": {
+        "bytes": 4231284,
+        "segments": 65,
+        "saved_bytes": 87240,
+        "saved_segments": 1
+      }
+    }
+  },
+  "legal-200k": {
+    "entries": 200000,
+    "largest_stroke_group": 200000,
+    "reverse_records": 200000,
+    "partial_buckets": 1024,
+    "partial_postings": 399804,
+    "unique_posting_lists": 1024,
+    "parts": {
+      "jsc4_through_timestamp": 1931910,
+      "legacy_alignment": 2,
+      "legacy_hint_records": 0,
+      "legacy_hint_directory": 8,
+      "legacy_hint_footer": 12,
+      "reverse_text": 800000,
+      "partial_buckets": 8192,
+      "partial_postings": 1599216,
+      "sqs1_alignment": 0,
+      "sqs1_footer": 20
+    },
+    "no_search_bytes": 1931932,
+    "no_search_segments": 30,
+    "search_bytes": 2407428,
+    "indexed_bytes": 4339360,
+    "indexed_segments": 67,
+    "segment_padding": 51552,
+    "experimental_estimates": {
+      "packed_24bit_rank_tokens_and_bucket_fields": {
+        "bytes": 3737508,
+        "segments": 58,
+        "saved_bytes": 601852,
+        "saved_segments": 9
+      },
+      "deduplicate_with_explicit_bucket_lengths": {
+        "bytes": 4343456,
+        "segments": 67,
+        "saved_bytes": -4096,
+        "saved_segments": 0
+      },
+      "signed_leb128_posting_deltas": {
+        "bytes": 4326244,
+        "segments": 67,
+        "saved_bytes": 13116,
+        "saved_segments": 0
+      }
+    }
+  }
+}

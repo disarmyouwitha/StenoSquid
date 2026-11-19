@@ -158,3 +158,16 @@ Convert the spare's existing personal dictionary. For a search fixture, supply a
 In the Javelin console over USB, use `lookup TEXT` for reverse search, `lookup_prefix 20 PREFIX` for text prefixes, and `lookup_partial_outline OUTLINE 20` for a stroke sequence. Check a multi-stroke hit, a hidden baseline, and whether moving a higher-priority dictionary or disabling the snapshot changes the result. While editing, also try normal Javelin typing, an existing one-stroke hint, and a Practice round to check responsiveness.
 
 The import preview now distinguishes a same-size copy-on-write replacement, an initial image that fits but would need more space for a future replacement, and an initial image that cannot stage. The second case remains gated. Experimental USB recovery currently restores the verified bundle exactly. Using a rebuilt target to admit an otherwise ineligible import still needs physical recovery qualification and a validated target-layout workflow. Manager offers no destructive fallback.
+
+### SQS1 size audit
+
+| Corpus | Reverse/text | Partial buckets | Partial postings | SQS1 alignment | SQS1 footer | Added bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Pinned Plover | 589,696 | 155,304 | 1,233,880 | 0 | 20 | 1,978,900 |
+| Legal 200,000-entry fixture | 800,000 | 8,192 | 1,599,216 | 0 | 20 | 2,407,428 |
+
+Legacy pre-index alignment contributes three bytes for Plover and two for the synthetic corpus. The usable segment rounding leaves 6,852 and 51,552 unused bytes respectively. Plover's 19,413 buckets include 19,373 distinct posting lists, and the synthetic lists have no duplicates. Adding explicit lengths to share identical lists would therefore grow both images. Signed delta encoding of the existing ordered posting lists would save one Plover segment and zero synthetic segments before any random-access metadata.
+
+A fixed-width 24-bit rank-token design merits follow-up after hardware testing. Using 20 rank bits, four stroke-length bits and six-byte bucket descriptors projects savings of 494,720 bytes and seven segments for Plover, and 601,852 bytes and nine segments for the 200,000-entry fixture. That estimate assumes tightly packed tables with only final padding. A reader would need group addressing information and unaligned field handling, so the current build keeps SQS1 until the new reader's latency, stack use and recovery compatibility are measured. The binary format of tonight's firmware is unchanged.
+
+Reproduce with `python3 tools/bench/compact_index_overhead.py --output build/compact-index-overhead.json` once the pinned dictionaries are prepared. [Detailed size audit](benchmarks/compact-index-overhead.json)
