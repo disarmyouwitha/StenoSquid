@@ -24,6 +24,11 @@ store for this build; it does not read, convert or migrate their storage format.
 - All set results, including compact-base text, become owned RAM strings before
   their pin is released. Base export uses erratum-safe QSPI accessors rather than
   the upstream generic exporter's byte loads.
+- A per-dictionary outline-length bitset is rebuilt from validated journals and
+  retained with reader snapshots. Empty or absent-length overlay misses need zero
+  flash reads. Resident wrappers advertise the actual base/overlay maximum,
+  avoiding pointless 16-stroke history searches for an empty personal dictionary.
+  No per-edit metadata save or on-flash format change is needed.
 - Reverse overlays use the ordered reverse index and bounded recent tail. Existing
   single-stroke SHI1 base hints are filtered against overlays and winning priority.
 - Checkpoint and rollover jobs run in slices on the existing engine work queue.
@@ -191,6 +196,10 @@ this small merge command.
   wrap, terminal result propagation and yielding after a slow erase. Import client
   tests cover continued progress beyond three minutes, stalled work, and the
   absolute one-hour limit with a simulated clock.
+- Outline-length summaries: zero-read empty/wrong-length misses, pinned snapshot
+  isolation, remove/reset semantics, full 16-stroke bounds, cold reconstruction and
+  fresh-ID personal reset. Summaries are conservative until stale journals leave
+  the catalog; they never suppress a potentially present outline.
 - All earlier native catalog/checkpoint/rollover fault tests remain enabled.
 
 The full-engine integration passed CI for `d1667bb`, buffered input for `08d5eb6`,
@@ -199,8 +208,8 @@ wake collection synchronization for `ec4c007`, and metadata stack reduction for
 Each gate includes both native boards, normal variants, host regressions and Linux
 sanitizers. Main has not been switched to this storage implementation.
 
-The reclamation local ARM build links at approximately 465 kB of internal flash
-and 230 kB of RAM (87.8%). Metadata reset/checkbox frames dropped from 2,136/2,096
+The reclamation/lookup local ARM build links at 465,912 bytes of internal flash
+and 230,942 bytes of RAM (88.10%). Metadata reset/checkbox frames dropped from 2,136/2,096
 to 760/720 bytes by reusing existing scratch, with no added RAM. Static frame sizes
 are not runtime stack peaks; contention and peak measurements remain hardware
 acceptance work.

@@ -13,6 +13,7 @@ struct LiveView {
     Tail tail{};
     SegmentMap journals{};
     uint32_t identities[64]{};
+    uint16_t outline_lengths[64]{};
     uint32_t dictionary_count=0,forward_address=0,forward_count=0,token=0,highwater_address=0;
     uint64_t through=0,highwater=0;
 };
@@ -36,6 +37,16 @@ class LiveJournal {
         for(uint32_t i=0;i<view.dictionary_count;++i)if(view.identities[i]==id)return true;
         return false;
     }
+    static bool HasLength(const LiveView &view,uint32_t id,uint8_t count) {
+        for(uint32_t i=0;i<view.dictionary_count;++i)
+            if(view.identities[i]==id)return view.outline_lengths[i]&(uint16_t(1)<<(count-1));
+        return false;
+    }
+    void Observe(uint32_t id,uint8_t count) {
+        for(uint32_t i=0;i<live.dictionary_count;++i)if(live.identities[i]==id) {
+            live.outline_lengths[i]|=uint16_t(1)<<(count-1);return;
+        }
+    }
     bool Owns(const LiveView &view,uint32_t at)const {
         return at/kSegmentBytes<255 && at%kSegmentBytes>=256 && !(at%4) && view.journals.Contains(at/kSegmentBytes);
     }
@@ -44,6 +55,7 @@ class LiveJournal {
         if(!id || !strokes || !count || count>16 || view.tail.count>256 || view.dictionary_count>64 ||
            view.forward_count>kMaxEntries || !HasIdentity(view,id))return LiveResult::Invalid;
         for(uint8_t i=0;i<count;++i)if(!strokes[i] || strokes[i]>>25)return LiveResult::Invalid;
+        if(!HasLength(view,id,count))return LiveResult::Missing;
         bool io=false,corrupt=false,indexed=false;
         auto compare=[&](uint32_t address) {
             if(!Owns(view,address)){corrupt=true;return 2;}
@@ -80,6 +92,13 @@ public:
     uint64_t Highwater()const{return live.highwater;}
     uint32_t TailCount()const{return live.tail.count;}
     const CatalogRoot &Root()const{return live.root;}
+    uint8_t MaximumOutline(uint32_t id)const {
+        for(uint32_t i=0;i<live.dictionary_count;++i)if(live.identities[i]==id) {
+            const auto bits=live.outline_lengths[i];
+            return bits?uint8_t(32-__builtin_clz(unsigned(bits))):0;
+        }
+        return 0;
+    }
 
     // Attach only a fully validated selection from this catalog instance.
     // Opening/recovery is read-only and advances one metadata row or record/call.
@@ -114,6 +133,10 @@ public:
             JournalRecord record;const auto status=journal.Step(scan,record);
             if(status==JournalResult::IoError)return Fail(LiveResult::IoError);
             if(status==JournalResult::Ok) {
+                uint8_t key[8];
+                if(!device.Read(record.address+32,key,8))return Fail(LiveResult::IoError);
+                if(!Word(key) || key[5]<1 || key[5]>16)return Fail(LiveResult::Corrupt);
+                Observe(Word(key),key[5]);
                 live.highwater=record.sequence;live.highwater_address=record.address;
                 if(record.sequence==live.through)boundary_seen=true;
                 if(record.sequence>live.through && !live.tail.Append(record.address))return Fail(LiveResult::NeedRebuild);
@@ -181,6 +204,7 @@ public:
         // and queries until recovery reconstructs it; never retry at this cursor.
         if(status!=JournalResult::Ok)return Fail(status==JournalResult::IoError?LiveResult::IoError:LiveResult::Corrupt);
         if(!live.tail.Append(append_address))return Fail(LiveResult::Corrupt);
+        Observe(id,count);
         ++live.highwater;live.highwater_address=append_address;
         append_address+=span;
         return LiveResult::Ok;

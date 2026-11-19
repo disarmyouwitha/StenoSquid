@@ -124,9 +124,14 @@ public:
     StenoSquidHintIndex *hint=nullptr;
     Cell():StenoDictionary(16){}
     bool Probe()const;
-    void Bind(){new (overlay_storage) NativeOverlayDictionary(backend,identity,name);}
+    void Refresh() {
+        maximumOutlineLength=store.live.MaximumOutline(identity);
+        if(base && definition.maximumOutlineLength>maximumOutlineLength)maximumOutlineLength=definition.maximumOutlineLength;
+    }
+    void Bind(){new (overlay_storage) NativeOverlayDictionary(backend,identity,name);Refresh();}
     const char *GetName()const override{return name;}
     StenoDictionaryLookupResult Lookup(const StenoDictionaryLookup &lookup)const override {
+        if(lookup.length>maximumOutlineLength)return StenoDictionaryLookupResult::CreateInvalid();
         return reinterpret_cast<const NativeOverlayDictionary *>(overlay_storage)->Lookup(lookup);
     }
     bool CanRemove()const override{return true;}
@@ -214,6 +219,7 @@ void StepWork(k_work *) {
     flash_device.mapped=true;
     if(result==JobResult::More){Kick();return;}
     if(!store.opened)base_provider.Fault();
+    else if(result==JobResult::Done){for(size_t i=0;i<cell_count;++i)cells[i].Refresh();if(parent)parent->OnLookupDataChanged();}
     if(maintenance_hold){dictionary_flash_read_session(false);maintenance_hold=false;}
 }
 LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t count,const char *text,size_t bytes) {
@@ -224,7 +230,7 @@ LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t c
     flash_device.mapped=false;
     const auto result=store.Edit(cell.identity,operation,strokes,count,reinterpret_cast<const uint8_t *>(text),bytes);
     flash_device.mapped=true;
-    if(result==LiveResult::Ok && parent)parent->OnLookupDataChanged();
+    if(result==LiveResult::Ok){cell.Refresh();if(parent)parent->OnLookupDataChanged();}
     if(!store.opened)base_provider.Fault();
     Kick();return result;
 }
