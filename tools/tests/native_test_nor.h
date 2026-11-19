@@ -30,7 +30,7 @@ struct Nor {
     }
     bool EraseCatalog(uint32_t at,uint32_t size) {
         if(fail_erase)return false;
-        assert((at==0 || at==65536) && size==65536);
+        assert((at == 0 || at == 65536) && (size == 4096 || size == 65536));
         return EraseBytes(at,size);
     }
     bool EraseSegment(uint32_t segment) {

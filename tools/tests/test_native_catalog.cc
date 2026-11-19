@@ -48,8 +48,37 @@ void faults(unsigned count) {
     }
     std::cout<<"Native catalog "<<count<<" dictionaries: "<<cases<<" torn publication cases passed\n";
 }
+void ShrinkThenGrow() {
+    Nor nor;
+    NativeCatalog<Nor> catalog(nor);
+    CatalogSelection empty, large, small, smaller, bridge, grown;
+    const auto initial = payload(64);
+    auto compact = payload(1);
+    PutWord(compact.data(), 65);
+    auto replacement = payload(64);
+    PutWord(replacement.data(), 128);
+    for (unsigned i = 1; i < 64; ++i) {
+        PutWord(replacement.data() + 32 + 96 * i, 64 + i);
+    }
+    assert(catalog.Publish(empty, initial.size(), Source{initial}, accept, large) == CatalogResult::Ok);
+    const auto old = nor.data;
+    assert(catalog.Publish(large, compact.size(), Source{compact}, accept, small) == CatalogResult::Ok);
+    assert(catalog.Publish(small, compact.size(), Source{compact}, accept, smaller) == CatalogResult::Ok);
+    assert(smaller.slot == large.slot);
+    assert(std::memcmp(nor.data.data() + 4096, old.data() + 4096, 65536 - 4096) == 0);
+    NativeCatalog<Nor> reopened(nor);
+    CatalogSelection selected;
+    assert(reopened.Open(selected, accept) == CatalogResult::Ok);
+    assert(selected.root.generation == smaller.root.generation && selected.root.bytes == compact.size());
+    assert(reopened.Publish(selected, compact.size(), Source{compact}, accept, bridge) == CatalogResult::Ok);
+    assert(reopened.Publish(bridge, replacement.size(), Source{replacement}, accept, grown) == CatalogResult::Ok);
+    assert(grown.slot == large.slot && grown.root.bytes == replacement.size());
+    assert(std::memcmp(nor.data.data() + grown.root.address, replacement.data(), replacement.size()) == 0);
+}
+
 int main() {
     faults(1);faults(64);
+    ShrinkThenGrow();
     // First provisioning can leave no committed root, never a fabricated root.
     auto initial=payload();Nor dryInitial;NativeCatalog<Nor> initialCatalog(dryInitial);
     CatalogSelection virgin,initialized;

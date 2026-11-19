@@ -5,6 +5,7 @@
 
 namespace candidate_b {
 constexpr uint32_t kCatalogHeader = 32, kCatalogPrefix = 32;
+constexpr uint32_t kCatalogSectorBytes = 4096;
 constexpr uint32_t kDictionaryBytes = 96, kExtentBytes = 24;
 constexpr uint16_t kNoExtent = 65535;
 enum class CatalogResult { Ok, Empty, Corrupt, IoError, Invalid, Quarantined, Busy };
@@ -308,7 +309,15 @@ public:
         if(!current.root.generation)Invalidate();
         trusted[slot]={}; // Erase/program failures must not leave a trusted old root.
         write_blocked=true;
-        if(!device.EraseCatalog(slots[slot],capacity))return CatalogResult::IoError;
+        // A small root fits in the first erase sector. Inspect follows the
+        // committed header length, so bytes left behind by a larger old root
+        // are unreachable. Any future large publication erases the full slot.
+        uint32_t erase_bytes = capacity;
+        if (capacity >= kCatalogSectorBytes && slots[slot] % kCatalogSectorBytes == 0 &&
+            bytes + kCatalogHeader <= kCatalogSectorBytes) {
+            erase_bytes = kCatalogSectorBytes;
+        }
+        if (!device.EraseCatalog(slots[slot], erase_bytes)) return CatalogResult::IoError;
         uint32_t crc=0;
         for(uint32_t offset=0;offset<bytes;) {
             uint32_t n=bytes-offset;if(n>sizeof(buffer))n=sizeof(buffer);

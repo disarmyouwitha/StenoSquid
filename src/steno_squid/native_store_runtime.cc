@@ -75,9 +75,13 @@ struct FlashDevice {
         return nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_64KB,segment*kSegmentBytes)==NRFX_SUCCESS && squid_qspi_wait_ready(4000)==NRFX_SUCCESS;
     }
     bool EraseCatalog(uint32_t at,uint32_t bytes) {
-        if(mapped || (at && at!=kSegmentBytes) || bytes!=kSegmentBytes)return false;
-        Dirty(at,bytes);
-        return nrfx_qspi_erase(NRF_QSPI_ERASE_LEN_64KB,at)==NRFX_SUCCESS && squid_qspi_wait_ready(4000)==NRFX_SUCCESS;
+        if (mapped || (at && at != kSegmentBytes) ||
+            (bytes != kCatalogSectorBytes && bytes != kSegmentBytes)) return false;
+        Dirty(at, bytes);
+        const auto length = bytes == kCatalogSectorBytes ? NRF_QSPI_ERASE_LEN_4KB
+                                                       : NRF_QSPI_ERASE_LEN_64KB;
+        return nrfx_qspi_erase(length, at) == NRFX_SUCCESS &&
+               squid_qspi_wait_ready(4000) == NRFX_SUCCESS;
     }
     bool CheckBase(uint32_t at,uint32_t bytes,uint32_t expected) {
         if(trust_bases){cached[cache_next++%32]={at,bytes,expected};return true;}
