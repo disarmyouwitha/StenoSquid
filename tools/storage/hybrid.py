@@ -542,9 +542,9 @@ def format_stroke(mask):
     )
 
 
-def compact_entries(blob, base):
-    """Enumerate real JSC4 data blocks, using bitmap counts, never a JSON shadow."""
-    reader(blob, base)
+def compact_entries(blob, base, member=0, count=1):
+    """Enumerate one member’s real JSC4 data blocks using bitmap counts."""
+    reader(blob, base, member, count)
 
     def word(offset):
         return struct.unpack_from("<I", blob, offset)[0]
@@ -555,7 +555,7 @@ def compact_entries(blob, base):
             raise Corrupt("Compact pointer bounds")
         return value
 
-    definition = pointer(36)
+    definition = pointer(36 + 4 * member)
     text = pointer(definition + 8)
     table = pointer(definition + 12)
     maximum = blob[definition + 1]

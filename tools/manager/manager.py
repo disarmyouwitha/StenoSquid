@@ -13,7 +13,7 @@ TOOLS = HERE.parent
 sys.path.insert(0, str(TOOLS / "storage"))
 from native_install import wait_ready
 from native_manage import checked, import_entries
-from native_update import backup_all, transfer
+from native_update import backup_all, export_dictionary, transfer
 from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
@@ -91,9 +91,8 @@ def run_job(serial, request, progress):
                 checked(console, f"native_{verb}_entry {selected['id']} {outline}")
         elif action == "export":
             progress(f"Exporting {name}…")
-            raw = console.command(f"print_dictionary {name}", timeout=1800)
-            _, names = parse_named(raw)
-            return {"download": json.loads(raw), "filename": name + ".json", "count": len(names)}
+            entries = export_dictionary(console, name)
+            return {"download": entries, "filename": name + ".json", "count": len(entries)}
         elif action in {"backup", "measure"}:
             progress("Reading saved edits, dictionary order and checkboxes…")
             backup = backup_all(console)

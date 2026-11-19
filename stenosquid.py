@@ -275,10 +275,12 @@ def handle_native(console, args, status):
     elif args.backup:
         name = args.dictionary or "user_dictionary"
         if args.dictionary:
-            catalog = json.loads(console.command("native_catalog"))
-            if not any(item["name"] == name for item in catalog):
-                raise ValueError(f"No installed dictionary named {name!r}")
-        entries, names = parse_named(console.command("print_dictionary " + name, timeout=1800))
+            sys.path.insert(0, str(REPO / "tools/storage"))
+            from native_update import export_dictionary
+
+            entries, names = parse_named(json.dumps(export_dictionary(console, name)))
+        else:
+            entries, names = parse_named(console.command("print_dictionary user_dictionary", timeout=1800))
         if console.command("native_install status") != status:
             raise RuntimeError("Native dictionary state changed during export. No backup was written.")
         write_json(args.backup, entries, names)

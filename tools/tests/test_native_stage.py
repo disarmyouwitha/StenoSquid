@@ -2,6 +2,7 @@
 """Exercise the actual planner, staged store and every torn-write boundary."""
 
 from copy import copy
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -16,7 +17,7 @@ from hostlib import compiler
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
 from build_native_image import build, catalog_header, SEGMENT, SOURCES, write_journal_header
-from native_update import Edit, Snapshot, NoSpace, encode_record, plan, EXTENT
+from native_update import Edit, Snapshot, NoSpace, encode_record, export_dictionary, plan, EXTENT
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from native_base_update import GROUPS, Image, plan_replacements
 from compile_dict import DictionaryCollectionBuilder, parse_outline
@@ -81,6 +82,31 @@ def write_plan(path, update):
     path.write_bytes(result)
 
 
+def check_exports(image, payload):
+    class SnapshotConsole:
+        active = False
+
+        def command(self, command, timeout=30):
+            if command == "native_install update begin backup":
+                assert not self.active
+                self.active = True
+                return f"OK {SEGMENT + 32} {len(payload)} {zlib.crc32(payload)} " + "0" * 64
+            assert self.active
+            if command == "native_install update abort":
+                self.active = False
+                return "OK"
+            prefix, start, size = command.rsplit(" ", 2)
+            assert prefix == "native_install update read"
+            start, size = int(start), int(size)
+            return "OK " + base64.b64encode(image[start:start + size]).decode()
+
+    console = SnapshotConsole()
+    assert export_dictionary(console, "Medical") == {"#": "named override"}
+    assert export_dictionary(console, "Lapwing Numbers") == {"KAT": "Lapwing Numbers"}
+    assert export_dictionary(console, "Lapwing Commands") == {"KAT": "Lapwing Commands", "ST": "base-override"}
+    assert not console.active
+
+
 def main():
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory)
@@ -126,6 +152,7 @@ def main():
         for start, count, *_ in named_snapshot.extents:
             named_protected.update(range(start, start + count))
         named_before, rename, delete = (path / name for name in ("named-before.bin", "rename.bin", "delete.bin"))
+        check_exports(named_image, named_plan.payload)
         named_before.write_bytes(named_image)
         write_plan(rename, plan(named_snapshot, named_protected, rename=("Medical", "Medical Practice")))
         write_plan(delete, plan(named_snapshot, named_protected, delete="Medical"))

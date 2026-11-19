@@ -68,8 +68,10 @@ class ManagerTest(unittest.TestCase):
             self.run_job("set", id=8, outline="KAT\nnative_entry abort", translation="bad")
 
     def test_export_and_delete_confirmation(self):
-        result = self.run_job("export", id=8)
-        self.assertEqual(result["download"], {"KAT": "ça"})
+        with patch.object(manager, "export_dictionary", return_value={"KAT": "ça"}) as export:
+            result = self.run_job("export", id=8)
+            self.assertEqual(result["download"], {"KAT": "ça"})
+            export.assert_called_once_with(self.keyboard, "Medical")
         with patch.object(manager, "transfer", return_value=True) as transfer, patch.object(manager, "wait_ready") as wait:
             with self.assertRaises(ValueError):
                 self.run_job("delete", id=8, confirm="other")
