@@ -1,6 +1,7 @@
 #include "native_store_fixture.h"
 #include "native_provisioner.h"
 #include "compact_search.h"
+#include "hint_index.h"
 #include <fstream>
 #include <iostream>
 
@@ -42,21 +43,38 @@ void TestLookups(RepackDevice &device) {
     uint8_t row[96], root[32], extent[24];
     assert(store.Row(1, row) && Word(row) == 20 && !Word(row + 4) && row[11] == kUserSnapshot);
     assert(device.Read(store.selected.root.address, root, 32));
-    const unsigned count = root[4] | unsigned(root[5]) << 8, base = row[8] | unsigned(row[9]) << 8;
-    assert(device.Read(store.selected.root.address + 32 + 96 * count + 24 * base, extent, 24));
-    const unsigned segment = extent[0] | unsigned(extent[1]) << 8, address = segment * kSegmentBytes;
-    const auto *blob = device.nor.data.data() + address;
-    const auto pointer = reinterpret_cast<uintptr_t>(blob);
-    StenoSquidCompactSearch view(pointer, Word(extent + 4),
-                                pointer + Word(blob + 12) - Xip - address,
-                                Word(blob + 8), ReadWord, ReadByte);
-    assert(view.Available());
-    StenoSquidCompactSearch::Range range;
-    StenoSquidCompactSearch::Entry entry;
-    assert(view.TextRange("personal cat", 12, false, range) && range.end - range.begin == 1);
-    assert(view.ReadTextEntry(range.begin, entry) && entry.length == 1 && entry.strokes[0] == 524552);
-    assert(view.TextRange("personal cat", 12, true, range) && range.end - range.begin == 2);
-    assert(view.OutlineRange(524552, range) && range.end - range.begin == 2);
+    const unsigned count = root[4] | unsigned(root[5]) << 8;
+    auto snapshot = [&](const uint8_t *row) {
+        const unsigned base = row[8] | unsigned(row[9]) << 8;
+        assert(device.Read(store.selected.root.address + 32 + 96 * count + 24 * base, extent, 24));
+        const unsigned segment = extent[0] | unsigned(extent[1]) << 8, address = segment * kSegmentBytes;
+        const auto *blob = device.nor.data.data() + address;
+        const auto pointer = reinterpret_cast<uintptr_t>(blob);
+        const uintptr_t text = pointer + Word(blob + 12) - Xip - address;
+        const uint32_t bytes = Word(extent + 4), text_bytes = Word(blob + 8);
+        return std::pair{StenoSquidCompactSearch(pointer, bytes, text, text_bytes, ReadWord, ReadByte),
+                         StenoSquidHintIndex(pointer, bytes, 0, 1, text, text_bytes, ReadWord, ReadByte)};
+    };
+    const auto [lean, hint] = snapshot(row);
+    uint32_t stroke;
+    assert(!lean.Available() && hint.Find("personal cat", stroke) && stroke == 524552);
+
+    bool found = false;
+    for (unsigned i = 0; i < count; ++i) {
+        assert(store.Row(i, row));
+        if (std::memcmp(row + 16, "Keep Compact", 13)) continue;
+        const auto [legacy, ignored] = snapshot(row);
+        assert(legacy.Available());
+        StenoSquidCompactSearch::Range range;
+        StenoSquidCompactSearch::Entry entry;
+        assert(legacy.TextRange("stay compact", 12, false, range) && range.end - range.begin == 1);
+        assert(legacy.ReadTextEntry(range.begin, entry) && entry.length == 1 && entry.strokes[0] == 8);
+        assert(legacy.TextRange("stay ", 5, true, range) && range.end - range.begin == 2);
+        assert(legacy.OutlineRange(8, range) && range.end - range.begin == 1);
+        found = true;
+        break;
+    }
+    assert(found);
     const uint32_t kat = 524552, bob = 66096;
     RecordView record;
     assert(store.live.FindLive(20, &bob, 1, record) == LiveResult::Ok && record.operation == Operation::Remove);

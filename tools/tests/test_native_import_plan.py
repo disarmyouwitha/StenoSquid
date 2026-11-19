@@ -88,6 +88,11 @@ def main():
 
             native = named_import(console, "Preview", small, preference="snapshot")
             assert native["selected"] == "snapshot"
+            named_import(console, "Preview", small, preference="snapshot", stage=True, expected=native["token"])
+            snapshot_update = publish.call_args.args[1]
+            assert next(iter(snapshot_update.segments.values()))[-12:-8] == b"SHI1"
+            console.active = False  # The real publish closes this simulated session.
+            publish.reset_mock()
             named_import(console, "Preview", small, stage=True, expected=preview["token"])
             assert console.mode == "named"
             publish.assert_called_once()

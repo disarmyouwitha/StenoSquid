@@ -8,7 +8,7 @@ import struct
 
 from snapshot_feasibility import ROOT, synthetic
 from build_native_image import SEGMENT
-from compact_search_index import FOOTER, MAGIC
+from compact_search_index import FOOTER, MAGIC, add_search_index
 from import_personal import parse_named
 from native_base_update import PINS
 from native_snapshot import compile_snapshot
@@ -19,7 +19,7 @@ def segments(size):
 
 
 def measure(entries):
-    data = compile_snapshot("user_dictionary", entries).data
+    data = add_search_index(compile_snapshot("user_dictionary", entries).data)
     magic, legacy, reverse, buckets, postings = FOOTER.unpack_from(data, len(data) - FOOTER.size)
     assert magic == MAGIC and reverse == len(entries)
     hint_magic, hint_start, hint_members = struct.unpack_from("<4sII", data, legacy - 12)

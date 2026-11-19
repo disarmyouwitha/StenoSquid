@@ -1,4 +1,5 @@
 #include "compact_search.h"
+#include "hint_index.h"
 #include <cassert>
 #include <cstring>
 #include <fstream>
@@ -24,7 +25,21 @@ int main(int argc, char **argv) {
     std::vector<uint8_t> data(std::istreambuf_iterator<char>(source), {});
     const uintptr_t start = reinterpret_cast<uintptr_t>(data.data());
     StenoSquidCompactSearch view(start, data.size(), start + Word(data.data() + 12), Word(data.data() + 8), Word, Byte);
-    assert(view.Available());
+    const bool lean = std::strcmp(argv[2], "lean") == 0;
+    assert(view.Available() != lean);
+    if (std::strcmp(argv[2], "large") != 0) {
+        StenoSquidHintIndex hint(start, view.LegacyBytes(), 0, 1,
+                                start + Word(data.data() + 12), Word(data.data() + 8), Word, Byte);
+        uint32_t stroke;
+        assert(hint.Find("cat", stroke) && (stroke == 524552 || stroke == 8));
+        assert(!hint.Find("catalog", stroke));  // A multi-stroke-only result.
+    }
+    if (lean) {
+        assert(view.LegacyBytes() == data.size());
+        StenoSquidCompactSearch::Range unavailable;
+        assert(!view.TextRange("cat", 3, false, unavailable));
+        return 0;
+    }
     StenoSquidCompactSearch::Range range;
     StenoSquidCompactSearch::Entry entry;
     const bool large = std::strcmp(argv[2], "large") == 0;

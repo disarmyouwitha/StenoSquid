@@ -79,8 +79,7 @@ def collect(image, scenario, mode, total, oracle, physical, *, name):
         planned["explicit_journal_refused"] = str(exc)
     if mode == "S":
         from compile_dict import parse_outline
-        compiled = compile_snapshot(name, {parse_outline(key): text.encode() for key, text in current.items()},
-                                    search=False)
+        compiled = compile_snapshot(name, {parse_outline(key): text.encode() for key, text in current.items()})
         planned["consolidated_bytes"] = len(compiled.data)
         try:
             next_snapshot = plan_change(view, protected, 8, compiled, consolidate=True)
@@ -147,7 +146,7 @@ def main():
         measurement = []
         planners = {
             "J": plan(base, occupied(base), initial, name=name),
-            "S": plan_named_snapshot(base, occupied(base), name, compile_snapshot(name, initial, search=False)),
+            "S": plan_named_snapshot(base, occupied(base), name, compile_snapshot(name, initial)),
         }
         for mode, update in planners.items():
             prepared, _ = apply(image, base, update)

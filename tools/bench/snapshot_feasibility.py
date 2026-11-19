@@ -138,9 +138,9 @@ def main():
     for label, entries in cases:
         if label=="dense-6900":
             with contextlib.redirect_stderr(io.StringIO()):
-                compiled=compile_snapshot("Experiment",entries, search=False)
+                compiled=compile_snapshot("Experiment",entries)
         else:
-            compiled=compile_snapshot("Experiment",entries, search=False)
+            compiled=compile_snapshot("Experiment",entries)
         for mode in ("J","S"):
             row=measure(label,entries,image,base,mode,compiled)
             print(json.dumps(row),flush=True)

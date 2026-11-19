@@ -5,10 +5,11 @@ import json
 
 from snapshot_feasibility import ROOT, apply, occupied, open_image, synthetic
 from build_native_image import SEGMENT, build
+from compact_search_index import add_search_index
 from hybrid import format_stroke
 from import_personal import parse_named
 from native_base_update import PINS
-from native_snapshot import compile_snapshot, inspect_free, personal_baseline, plan_change
+from native_snapshot import CompactImage, compile_snapshot, inspect_free, personal_baseline, plan_change
 from native_update import NoSpace, effective_entries
 
 
@@ -43,7 +44,9 @@ def main():
     empty, _ = build(ROOT / "build")
     report = {}
     for name, entries in corpora.items():
-        compact = compile_snapshot("user_dictionary", entries, search=args.search_index)
+        compact = compile_snapshot("user_dictionary", entries)
+        if args.search_index:
+            compact = CompactImage(add_search_index(compact.data), compact.pointers)
         metrics = dict(entries=len(entries), compact_bytes=len(compact.data),
                        contiguous_required=(len(compact.data) + SEGMENT - 1)//SEGMENT)
         metrics["fill_existing_personal"] = measure(empty, entries, compact)

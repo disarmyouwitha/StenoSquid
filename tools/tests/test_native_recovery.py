@@ -17,11 +17,12 @@ from test_native_stage import fixture, write_plan, ROOT
 
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from build_native_image import SEGMENT, catalog_header
+from compact_search_index import add_search_index
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import FORMAT, digest, pack, reconstruct, save_atomic, unpack
 from native_restore import restore_all
-from native_snapshot import compile_snapshot, plan_change, plan_named_snapshot
+from native_snapshot import CompactImage, compile_snapshot, plan_change, plan_named_snapshot
 from native_update import backup_all, effective_entries, encode_record, Edit, export_dictionary, overlay_usage, plan, row_name
 
 
@@ -67,7 +68,8 @@ def main():
         assert prior["format"] == "stenosquid-backup-1"
         kat, bob, tas = (parse_outline(word) for word in ("KAT", "PWOB", "TAS"))
         compiled = compile_snapshot("Smoke", {kat: b"snapshot cat", bob: b"Bob", (8, 16): "bêta".encode()})
-        update = plan_named_snapshot(snapshot, protected, "Smoke", compiled)
+        legacy = CompactImage(add_search_index(compiled.data), compiled.pointers)
+        update = plan_named_snapshot(snapshot, protected, "Smoke", legacy)
         for segment, block in update.segments.items():
             start = segment * SEGMENT
             image[start:start + len(block)] = block
@@ -133,6 +135,9 @@ def main():
         merged = cold(consolidated)
         assert export_dictionary(merged, "Smoke") == exported
         assert overlay_usage(merged)[identity]["count"] == 0
+        lean_backup = backup_all(merged)
+        lean_image, _ = reconstruct(lean_backup)
+        assert export_dictionary(Console(lean_image, consolidated.payload), "Smoke") == exported
         with patch("native_update.read_flash") as no_device:
             assert effective_entries(restored, "Smoke", lambda at, size: decoded[at:at + size]) == exported
             no_device.assert_not_called()

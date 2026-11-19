@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-// Views a relocatable SQS1 trailer without an on-device index allocation.
+// Reads legacy SQS1 trailers. New JSC4 images keep SHI1 only.
 class StenoSquidCompactSearch {
 public:
     using WordReader = uint32_t (*)(const void *);

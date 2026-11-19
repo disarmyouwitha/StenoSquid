@@ -1,4 +1,4 @@
-"""Optional SQS1 search tables for one user-owned JSC4 member.
+"""Legacy SQS1 verification and test fixture generation for JSC4 images.
 
 Text index tokens sort by translation offset and then outline length and keys.
 Partial-outline buckets map a stroke to all longer outlines containing it.
