@@ -15,7 +15,7 @@ function selection() {
 }
 function controls() {
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
-  for (const id of ["refresh", "backup", "updates", "export", "restore-submit"]) node(id).disabled = busy;
+  for (const id of ["refresh", "backup", "updates", "export", "restore-submit", "measure"]) node(id).disabled = busy;
   if (!state) return;
   const row = selection();
   const rank = state.catalog.indexOf(row);
@@ -29,7 +29,7 @@ function controls() {
     el.disabled = !editable || !row || (el.value === "reset" && row.kind !== "base");
   }
 }
-function render(newState) {
+function render(newState, usage = {}) {
   state = newState;
   if (!selection()) selectedId = state.catalog[0]?.id;
   node("catalog").replaceChildren();
@@ -57,6 +57,8 @@ function render(newState) {
     tr.insertCell().append(checkbox);
     tr.insertCell().textContent = row.kind === "base" ? number.format(row.base_entries) : "—";
     tr.insertCell().textContent = row.image_bytes ? `${number.format(Math.ceil(row.image_bytes / 1024))} KiB` : "—";
+    const saved = usage[row.id];
+    tr.insertCell().textContent = saved ? `${number.format(saved.count)} · ${number.format(saved.bytes)} B` : "—";
   }
   node("layout").replaceChildren(...state.layouts.map((layout) => new Option(layout, layout)));
   node("layout").value = state.layout;
@@ -95,7 +97,7 @@ async function watch(id) {
   if (job.status === "error") throw new Error(job.message);
   const result = job.result;
   if (result.state) {
-    render(result.state);
+    render(result.state, result.usage);
     if (result.updated) {
       node("apply-updates").hidden = true;
       const summary = result.updated.length ? `Updated ${result.updated.join(", ")}.` : "All installed bases already match.";
@@ -135,7 +137,7 @@ async function run(payload) {
     controls();
   }
 }
-for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"], ["updates", "check_updates"], ["compact", "compact"]]) {
+for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"], ["updates", "check_updates"], ["compact", "compact"], ["measure", "measure"]]) {
   node(id).onclick = () => run({action});
 }
 node("apply-updates").onclick = () => {

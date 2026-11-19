@@ -94,9 +94,20 @@ def run_job(serial, request, progress):
             raw = console.command(f"print_dictionary {name}", timeout=1800)
             _, names = parse_named(raw)
             return {"download": json.loads(raw), "filename": name + ".json", "count": len(names)}
-        elif action == "backup":
+        elif action in {"backup", "measure"}:
             progress("Reading saved edits, dictionary order and checkboxes…")
-            return {"download": backup_all(console), "filename": "stenosquid-backup.json"}
+            backup = backup_all(console)
+            if action == "backup":
+                return {"download": backup, "filename": "stenosquid-backup.json"}
+            usage = {}
+            for row in backup["dictionaries"]:
+                entries = row["entries"]
+                live_bytes = sum(
+                    (43 + 4 * len(entry["strokes"]) + len(entry.get("text", "").encode("utf-8"))) & ~3
+                    for entry in entries
+                )
+                usage[row["id"]] = {"count": len(entries), "bytes": live_bytes}
+            return {"state": read_state(console), "usage": usage}
         elif action == "check_updates":
             return {"updates": changed_pins(catalog)}
         elif action == "apply_updates":

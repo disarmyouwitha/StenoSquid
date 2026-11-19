@@ -79,6 +79,14 @@ class ManagerTest(unittest.TestCase):
             wait.assert_called_once()
 
 
+    def test_measure_counts_saved_edits(self):
+        backup = {"dictionaries": [{"id": 8, "entries": [
+            {"strokes": [1], "operation": "set", "text": "ç"},
+            {"strokes": [2], "operation": "remove"},
+        ]}]}
+        with patch.object(manager, "backup_all", return_value=backup):
+            self.assertEqual(self.run_job("measure")["usage"], {8: {"count": 2, "bytes": 92}})
+
     def test_local_http_routes_require_session_and_origin(self):
         started = Queue()
         server_type = manager.ThreadingHTTPServer
