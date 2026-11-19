@@ -207,8 +207,13 @@ command. Automatic selection and scheduling on the keyboard are future work.
 Pop shows Import or Saving during the operation. Input entered during exclusive
 write steps is discarded rather than replayed in a burst. The left half reboots
 after publication. The NOR tests cover both operations across staging, both
-catalog commits, and partially erased sectors. Physical interruption, capacity
-limits on a real board, and end-to-end USB timing still require testing.
+catalog commits, and partially erased sectors. Each operation passed 184
+torn-write cases with the previous or fully updated state recoverable.
+A separate 20,000-entry host run used 23 staging segments, 49.0 MB of reads
+through publication and 100.5 MB for cold verification and lookup of every entry.
+Those counts exclude USB reads used to gather the current snapshot.
+Physical interruption, capacity limits on a real board, and end-to-end USB
+timing still require testing.
 
 ## USB manager and existing website
 
