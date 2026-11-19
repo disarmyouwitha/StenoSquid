@@ -2,7 +2,7 @@
 
 The bundle holds the selected catalog and its exact referenced extents. Keeping
 their physical addresses preserves mapped pointers and both journal indexes.
-Offline reconstruction never exposes the result to the USB provisioner.
+Offline verification is the default. USB recovery is an experimental opt-in.
 """
 import argparse
 import base64
@@ -177,11 +177,87 @@ def save_atomic(path, document, dump=json.dump):
             temporary.unlink(missing_ok=True)
 
 
+def recovery_images(image):
+    staged = bytearray(image)
+    for root in (0, SEGMENT):
+        staged[root + 28:root + 32] = b"\xff" * 4
+    return bytes(staged), zlib.crc32(staged), zlib.crc32(image)
+
+
+def recover_usb(backup, serial, confirmation, progress=print):
+    if not serial or confirmation != serial:
+        raise ValueError("Recovery needs an explicit USB serial and identical erase confirmation.")
+    image, snapshot = reconstruct(backup)
+    staged, staged_crc, final_crc = recovery_images(image)
+    from native_install import command, open_console, wait_ready, write_pool
+    from native_manage import checked
+
+    def matches(console):
+        return console.command(f"native_install match RECOVERY {final_crc}", timeout=180) == "OK MATCH"
+
+    uncertain = False
+    with open_console(serial) as console:
+        if console.serial != serial:
+            raise RuntimeError("The connected USB serial differs from the confirmed recovery target.")
+        if console.command("native_install update recovery-capabilities") != "OK RECOVERY1":
+            raise RuntimeError("Flash the matching experimental USB recovery firmware first.")
+        status = console.command("native_install status")
+        if not status.startswith("NATIVE2 "):
+            raise RuntimeError("Native recovery transport unavailable.")
+        already_installed = status.startswith("NATIVE2 READY ") and matches(console)
+        if not already_installed:
+            command(console, f"begin RECOVERY {staged_crc} {final_crc}")
+            try:
+                write_pool(console, staged, progress, finish=False)
+            except BaseException:
+                try:
+                    command(console, "abort", timeout=2)
+                except (OSError, RuntimeError, TimeoutError):
+                    pass
+                raise
+            progress("Verifying the staged image before publishing either catalog root…")
+            try:
+                command(console, "finish", timeout=240)
+            except (OSError, RuntimeError, TimeoutError):
+                uncertain = True
+        else:
+            progress("The confirmed keyboard already matches this recovery image.")
+
+    if not already_installed:
+        try:
+            wait_ready(serial)
+        except RuntimeError as exc:
+            raise RuntimeError("Recovery did not reach READY. Reconnect and repeat explicitly with the same bundle.") from exc
+    with open_console(serial) as console:
+        if console.serial != serial:
+            raise RuntimeError("The recovered USB serial differs from the confirmed target.")
+        if uncertain and not matches(console):
+            raise RuntimeError("Publication could not be confirmed. Nothing was erased again. Inspect the board before retrying.")
+        actual = json.loads(console.command("native_catalog"))
+        wanted = [(struct.unpack_from("<I", row)[0], row_name(row), bool(row[4])) for row in snapshot.rows]
+        if [(row["id"], row["name"], row["enabled"]) for row in actual] != wanted:
+            raise RuntimeError("The recovered catalog does not match the bundle.")
+        checked(console, "set_host_layout " + backup["host_layout"])
+        if console.command("get_parameter host_layout") != backup["host_layout"]:
+            raise RuntimeError("The dictionaries recovered, but the host layout could not be restored.")
+    progress("Recovery complete. Dictionary catalog and host layout match the bundle.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify a complete experimental backup offline.")
     parser.add_argument("backup", type=Path)
+    parser.add_argument("--restore", action="store_true", help="Run explicit experimental recovery on a spare")
+    parser.add_argument("--serial", help="Exact USB serial on the spare keyboard")
+    parser.add_argument("--confirm-erase", metavar="USB_SERIAL", help="Repeat the target serial to authorize erasing the shared pool")
     args = parser.parse_args()
+    if args.restore and (not args.serial or args.confirm_erase != args.serial):
+        parser.error("--restore requires --serial and --confirm-erase with the exact same USB serial")
+    if not args.restore and (args.serial or args.confirm_erase):
+        parser.error("USB options require --restore")
     backup = json.loads(args.backup.read_text(encoding="utf-8"))
+    if args.restore:
+        recover_usb(backup, args.serial, args.confirm_erase)
+        return
     _, snapshot = reconstruct(backup)
     print(f"Verified {len(snapshot.rows)} dictionaries, {len(snapshot.entries):,} live overlay records"
           f" and {len(snapshot.extents)} extents. Host layout: {backup['host_layout']}.")

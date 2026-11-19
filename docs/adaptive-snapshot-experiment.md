@@ -55,7 +55,7 @@ The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengt
 
 Version 2 records the selected binary catalog, the checked host layout, and the exact referenced extents with a SHA-256 checksum. This preserves compact snapshot and pinned image contents, pinned source digests, logical IDs, priority, checkboxes, and every live override and tombstone. It includes raw journal bytes, which can contain old translations that no longer appear in a dictionary export. Treat it as private. The CLI publishes the file only after validation and flush.
 
-Offline reconstruction verifies catalog ownership, compact lookup parity, journal records and both indexes, then produces two valid roots in memory. It needs no downloads. The version 1 backup and restore format remains available for ordinary journal-backed stores. USB installation of a version 2 bundle or a reconstructed image is disabled pending physical recovery qualification.
+Offline reconstruction verifies catalog ownership, compact lookup parity, journal records and both indexes, then produces two valid roots in memory. It needs no downloads. The version 1 backup and restore format remains available for ordinary journal-backed stores. Manager and the ordinary installer refuse version 2 recovery.
 
 ## Snapshot lifecycle
 
@@ -71,7 +71,7 @@ Replacement changes the compact baseline and keeps the existing override and tom
 
 The on-flash catalog magic remains `SQBCAT02`. Byte 11 of a user-owned row is the version-one snapshot marker. It references a single-member JSC4 extent and shares the existing ID-qualified overlay. Factory rows and existing records retain their original format. Stable firmware rejects a marked root and may see the preceding root or enter recovery. Before staging a snapshot, rollback is simply reflashing the stable left. After staging, return to an untouched spare pool or restore the pre-test backup using the existing standard Native provisioning path on your disposable fixture. That explicit operation rewrites the pool. Preserve the backup separately and keep the experimental firmware installed until you are ready for that restore.
 
-Bluetooth editing and destructive USB snapshot rescue are follow-up work.
+Bluetooth editing is follow-up work.
 
 ## Edit churn and import preflight
 
@@ -117,7 +117,7 @@ The endpoint has no polling, input pause, staging lease or write path. It defers
 6. For a **test-only power cut on the spare**, use a larger throwaway named import or same-ID replacement to allow time to interrupt staging. With a verified host bundle and an exported copy of the test dictionary safely on disk, disconnect USB and switch off its battery during data staging, then reconnect. Record whether the old or complete new catalog appears and compare the effective export and priority. Repeat near the catalog publish message if the window is observable. For ambiguous acknowledgment, reconnect and inspect the ID and generation before retrying. Do not infer physical cut coverage from console progress alone.
 7. Delete the disposable snapshot through Manager. Confirm its row disappears and an unrelated dictionary and its edits survive reboot. Check that wired setup, normal Javelin WebHID, typing and Practice still work.
 
-Full Gate B still needs physical cutoff timing, dense-store and sustained high-speed typing measurements, and verified USB recovery from a blank or partly written pool. Compact-baseline reverse/prefix/partial search, compact conversion of existing personal/journal dictionaries, and Bluetooth editing are outside this build.
+Full Gate B still needs physical cutoff timing, dense-store and sustained high-speed typing measurements, plus USB recovery on a blank or partly written pool. Existing named journal conversion and Bluetooth editing are outside this build.
 
 ## Personal conversion
 
@@ -137,3 +137,16 @@ The [personal capacity report](benchmarks/personal-snapshot-capacity.json) valid
 New user snapshots include a relocatable SQS1 trailer. Explicit Javelin editor searches use a sorted text index for exact and prefix lookups, and a posting table for partial outlines anywhere in a longer stroke sequence. Search filters out replaced and removed baseline entries, disabled snapshots, and outlines owned by a higher-priority enabled dictionary. Forward lookup and Practice use the same JSC4 tables as before. Typing-time suggestions retain the existing one-stroke hint path. Earlier snapshots remain readable and gain the search tables on explicit consolidation or replacement.
 
 For the 200,000-entry fixture, locating an exact-text result range took 86 simulated word reads and 485 byte reads. Locating a partial-outline bucket took 13 word reads before candidate checks. These are reader calls in a host harness, and physical timing remains a board test. The indexes are read directly from flash and add no persistent RAM allocation. They raise the Plover snapshot footprint from 36 to 66 contiguous segments, and the legal 200,000-entry fixture from 30 to 67. Both indexed fixtures passed full personal export parity. [Indexed capacity report](benchmarks/personal-snapshot-indexed-capacity.json)
+
+## Experimental USB recovery on a spare
+
+Verify the bundle offline with `python3 tools/storage/native_recovery.py experiment.json` first. On an expendable spare running the matching experimental firmware, close the editor, connect over USB, and confirm its serial. Recovery erases the spare's shared dictionary pool when it differs from the bundle. It leaves the reserved final segment outside the transfer. Use the same serial twice so a mismatched target cannot start.
+
+```sh
+python3 tools/storage/native_recovery.py experiment.json --restore \
+  --serial SPARE_USB_SERIAL --confirm-erase SPARE_USB_SERIAL
+```
+
+The host validates every extent before contacting the board. The firmware accepts the recovery transport without a mounted Native catalog. It erases the pool, writes and checks the content with the catalog commit words still erased, then publishes each root and verifies the complete image. After reboot, the host verifies dictionary IDs, order and flags before applying and reading back the saved host layout. If the final acknowledgment is lost, a matching image can finish without re-erasing. If the store remains incomplete, reconnect and explicitly repeat with the same bundle. No destructive retry is automatic.
+
+For physical qualification, test an initially blank spare and interruptions during **Erasing**, data transfer, and the **Verifying** message. Record the point reached, reboot with USB and battery restored, and repeat the command. Verify the exported test dictionary and overlays, dictionary ordering, checkboxes, and host layout against the bundle. Inspect the physical catalog after a near-publication cut if the timing is observable. Host fault injection covered 138 boundaries in two initial states and with two tear lengths. Neither Manager nor automatic import selection offers destructive recovery.

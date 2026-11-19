@@ -64,7 +64,7 @@ def provision(console, image, manifest, progress=print):
         raise
 
 
-def write_pool(console, image, progress):
+def write_pool(console, image, progress, *, finish=True):
     for segment in range(255):
         command(console, f"erase {segment}")
         if segment % 16 == 0:
@@ -81,8 +81,9 @@ def write_pool(console, image, progress):
         sent += len(data)
         if sent % (128 * 1024) == 0:
             progress(f"Writing native image: {sent // 1024} KiB")
-    progress("Verifying the complete shared pool; the left will reboot afterward")
-    command(console, "finish", timeout=180)
+    if finish:
+        progress("Verifying the complete shared pool; the left will reboot afterward")
+        command(console, "finish", timeout=180)
 
 
 def main():

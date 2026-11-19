@@ -963,6 +963,8 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return "OK SNAPSHOT2";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "personal-snapshot-capabilities\n"))
         return "OK PERSONAL1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "recovery-capabilities\n"))
+        return "OK RECOVERY1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
@@ -1078,14 +1080,32 @@ const char *Install(const char *command,char *reply,size_t bytes) {
     if(!std::strcmp(command,"status\n")) {
         snprintk(reply,bytes,"NATIVE2 %s %u",healthy?"READY":transfer.Active()?"INSTALL":"UNPROVISIONED",unsigned(store.selected.root.generation));return nullptr;
     }
-    if(!std::strncmp(command,"begin CLEAR ",12)) {
-        const char *p=command+12;uint32_t crc;
-        if(!Number(p,crc) || !End(p))return "ERR Invalid manifest CRC";
+    if (kUserSnapshotsEnabled && !std::strncmp(command, "match RECOVERY ", 15)) {
+        const char *p = command + 15;
+        uint32_t expected, actual;
+        if (!Number(p, expected) || !End(p)) return "ERR Invalid recovery CRC";
+        if (!healthy || lf_suspended || transfer.Active() || staged.Active() || exporting ||
+            store.work != NativeStore<FlashDevice>::Work::None)
+            return "ERR Recovery verification unavailable";
+        const NativeInputPause pause(true);
+        const bool mapped = flash_device.mapped;
+        flash_device.mapped = false;
+        const bool match = flash_device.Checksum(0, Limit, actual) && actual == expected;
+        flash_device.mapped = mapped;
+        return match ? "OK MATCH" : "ERR Recovery contents differ";
+    }
+    const bool recovering = kUserSnapshotsEnabled && !std::strncmp(command,"begin RECOVERY ",15);
+    if (recovering || !std::strncmp(command,"begin CLEAR ",12)) {
+        const char *p=command+(recovering ? 15 : 12);
+        uint32_t crc, final_crc = 0;
+        if (!Number(p, crc) || (recovering && (*p++ != ' ' || !Number(p, final_crc))) || !End(p))
+            return "ERR Invalid manifest CRC";
         if(transfer.Active() || staged.Active() || exporting || store.work!=NativeStore<FlashDevice>::Work::None)return "ERR Native store busy";
         if(lf_suspended || !lf_provisioning_ready || !squid_qspi_reactivate())return "ERR Flash unavailable";
         if(!ForgetBaseTrust())return "ERR Cannot invalidate native base trust; no flash changed";
         healthy=store.opened=false;flash_device.mapped=false;flash_device.Invalidate();store.catalog.Invalidate();atomic_clear(&lf_mapped_ready);
-        if(transfer.Begin(crc)!=ProvisionResult::Ok)return "ERR Native installer busy";
+        const auto result = recovering ? transfer.BeginRecovery(crc, final_crc) : transfer.Begin(crc);
+        if(result!=ProvisionResult::Ok)return "ERR Native installer busy";
         dictionary_flash_read_session(true);TouchInstall();
         steno_squid_upload_status(STENO_SQUID_MODE_INSTALL,30000);return "OK";
     }

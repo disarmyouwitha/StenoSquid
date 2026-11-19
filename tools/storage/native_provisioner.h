@@ -11,8 +11,8 @@ class NativeProvisioner {
     static constexpr uint32_t Bytes=Segments*65536;
     Device &device;
     SegmentMap erased{};
-    uint32_t expected=0;
-    bool active=false,finished=false;
+    uint32_t expected=0, published_crc=0;
+    bool active=false,finished=false,recovery=false,verified=false;
     alignas(4) uint8_t readback[512];
     bool AllErased()const{for(unsigned i=0;i<Segments;++i)if(!erased.Contains(i))return false;return true;}
 public:
@@ -20,17 +20,25 @@ public:
     bool Active()const{return active;}
     ProvisionResult Begin(uint32_t checksum) {
         if(active)return ProvisionResult::Busy;
-        erased={};expected=checksum;active=true;finished=false;return ProvisionResult::Ok;
+        erased={};expected=checksum;active=true;finished=recovery=verified=false;return ProvisionResult::Ok;
+    }
+    ProvisionResult BeginRecovery(uint32_t staged, uint32_t published) {
+        const auto result = Begin(staged);
+        if (result == ProvisionResult::Ok) { recovery = true; published_crc = published; }
+        return result;
     }
     void Abort(){active=finished=false;}
     ProvisionResult Erase(uint32_t segment) {
-        if(!active || segment>=Segments)return ProvisionResult::Invalid;
+        if(!active || verified || segment>=Segments)return ProvisionResult::Invalid;
         if(erased.Contains(segment))return ProvisionResult::Ok;
         if(!(segment<2?device.EraseCatalog(segment*65536,65536):device.Erase(segment)))return ProvisionResult::IoError;
         erased.Add(segment,1);return ProvisionResult::Ok;
     }
     ProvisionResult Write(uint32_t at,const uint8_t *data,uint32_t bytes) {
-        if(!active || !data || !bytes || bytes>512 || bytes%4 || at%256 || at>=Bytes || bytes>Bytes-at)return ProvisionResult::Invalid;
+        if(!active || verified || !data || !bytes || bytes>512 || bytes%4 || at%256 || at>=Bytes || bytes>Bytes-at)return ProvisionResult::Invalid;
+        if (recovery && (at == 0 || at == 65536) && bytes >= 32 &&
+            (data[28] != 255 || data[29] != 255 || data[30] != 255 || data[31] != 255))
+            return ProvisionResult::Invalid;
         if(!AllErased())return ProvisionResult::Incomplete;
         if(!device.Read(at,readback,bytes))return ProvisionResult::IoError;
         for(uint32_t i=0;i<bytes;++i)if((readback[i]&data[i])!=data[i])return ProvisionResult::Invalid;
@@ -46,8 +54,26 @@ public:
         if(!active)return ProvisionResult::Invalid;
         if(!AllErased())return ProvisionResult::Incomplete;
         uint32_t crc;
-        if(!device.Checksum(0,Bytes,crc))return ProvisionResult::IoError;
-        if(crc!=expected)return ProvisionResult::ChecksumMismatch;
+        if (!verified) {
+            if (!device.Checksum(0, Bytes, crc)) return ProvisionResult::IoError;
+            if (crc != expected) return ProvisionResult::ChecksumMismatch;
+            verified = true;
+        }
+        if (recovery) {
+            // Publish only after all data and both uncommitted headers match.
+            // Each publication is independently retryable after lost readback.
+            const uint8_t marker[4]{0x54, 0x4d, 0x4f, 0x43};
+            for (uint32_t root = 0; root < 2 * 65536u; root += 65536u) {
+                const uint32_t at = root + 28;
+                if (!device.Read(at, readback, 4)) return ProvisionResult::IoError;
+                if (std::memcmp(readback, marker, 4) &&
+                    (!device.Program(at, marker, 4) || !device.Read(at, readback, 4) ||
+                     std::memcmp(readback, marker, 4)))
+                    return ProvisionResult::IoError;
+            }
+            if (!device.Checksum(0, Bytes, crc)) return ProvisionResult::IoError;
+            if (crc != published_crc) return ProvisionResult::ChecksumMismatch;
+        }
         active=false;finished=true;return ProvisionResult::Ok;
     }
 };
