@@ -1,13 +1,9 @@
 # Candidate B: full engine/store integration test build
 
-Status: **opt-in native engine passed CI and initial automated hardware checks; hands-on acceptance and remaining storage work pending**.
-Working branch: `prototype/native-warm-resume`, following the CI-passing
-`prototype/native-sorted-tail` and
-`prototype/native-index-retention` and
-`prototype/native-journal-reclamation` and `prototype/native-engine-integration`. The CI-passing full-engine build is preserved
-at `checkpoint/native-engine-integrated` (`ec4c007`); the following stack reduction
-passed CI at `18e21a9`. Both descend from `prototype/native-checkpoint-job`. Main and normal firmware remain on
-the production store until the new path passes hardware acceptance.
+Status: **The opt-in native engine passed CI and the owner's Boardsource acceptance tests.**
+Use the `Left-Native` GitHub Actions artifact to try it. `Left-Default` uses the
+production store. The earlier full-engine checkpoint is preserved at
+`checkpoint/native-engine-integrated` (`ec4c007`).
 
 ## What runs on the keyboard
 
@@ -448,12 +444,13 @@ Automated USB HID checks passed:
   `maintenance=0`, `ready=true`, `read_only=false`, and no input overflows.
   This confirms the guarded same-boot idle path without another full open.
 
-Raw logs and the verified artifact manifest are local under
-`build/native-engine/warm-ready/`. These command checks do not establish physical
-stroke capture, wireless editor behavior, reset persistence, deep sleep, typing
-contention or display/Practice acceptance; those remain in the checklist below.
+The owner confirmed the typing, Javelin, Plover HID and Practice smoke tests,
+then passed the follow-up for Bluetooth editor changes, saved dictionary
+selections after reboot, and typing after deep sleep with the right half
+reconnected. Raw automated logs and the artifact manifest are local under
+`build/native-engine/warm-ready/`.
 
-## Hardware acceptance when the owner returns
+## Hardware acceptance checklist
 
 1. Flash the exact Left-Native Actions UF2 and run the clean installer. Confirm
    READY and the seven catalog dictionaries; right typing/display should reconnect.
