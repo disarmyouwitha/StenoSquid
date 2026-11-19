@@ -253,9 +253,11 @@ void NoteIdleMaintenance() {
         QueueIdleMaintenance();
     }
 }
+bool IdleMaintenanceEnvironment() {
+    return zmk_usb_is_powered() && zmk_activity_get_state() == ZMK_ACTIVITY_IDLE;
+}
 bool IdleMaintenanceAllowed() {
-    return zmk_usb_is_powered() && zmk_activity_get_state() == ZMK_ACTIVITY_IDLE &&
-           !steno_squid_native_input_pending() && !steno_squid_native_input_waiting();
+    return IdleMaintenanceEnvironment() && !steno_squid_native_input_pending();
 }
 void Kick() {
     if (store.work == NativeStore<FlashDevice>::Work::None) return;
@@ -319,8 +321,10 @@ void StepWork(k_work *) {
         },
         []{return Clock::GetMicroseconds();},
         [] {
+            // The job holds an input pause here. Check real queued input,
+            // not the pause itself, when deciding whether this slice may run.
             return steno_squid_native_input_waiting() ||
-                   (automatic_maintenance && !store.checkpoint.Published() && !IdleMaintenanceAllowed());
+                   (automatic_maintenance && !store.checkpoint.Published() && !IdleMaintenanceEnvironment());
         },steps);
     flash_device.mapped=true;
     const uint32_t elapsed = Clock::GetMicroseconds() - slice_started;
