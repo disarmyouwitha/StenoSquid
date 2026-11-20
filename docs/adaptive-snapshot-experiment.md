@@ -297,10 +297,11 @@ its exact build hash over HID.
 5. **Edit, check priority, and consolidate.** Both commands **write external
    flash** and run separately. The edit replaces `KAT/TA`, adds `KAT/KAT`,
    and tombstones personal `PWOB`. The readback checks exact exports and the
-   factory fallback for `PWOB`. Between the two commands, optionally use
-   Manager to put personal below Lapwing Base and then disable it. Confirm
-   that factory `KAT` wins and restore the original order and selection before
-   consolidation. Those Manager changes also write the catalog.
+   factory fallback for `PWOB`. Between the two commands, try `KAT/TA` and
+   `KAT/KAT` on the keys over USB and BLE while the edits still live in the
+   overlay. Optionally use Manager to put personal below Lapwing Base and
+   then disable it. Confirm that factory `KAT` wins. Restore the original
+   order and selection before consolidation. Those Manager changes also write the catalog.
 
    ```sh
    python3 tools/bench/gate_b.py edit --serial "$SERIAL" --confirm-write "$SERIAL" --out "$OUT"
@@ -391,8 +392,11 @@ check lookup correctness and do not measure the physical typing path.
   `WHEPB, -T, KAT, S, A, ROUPBD`. Rehearse once and check the expected
   capitalization and spaces. After conversion, use the same chord sequences
   for comparison and account for any intentional fixture substitutions.
-  Record actual elapsed time, intended and produced words, and whether any
-  output was missing, late, repeated or reordered.
+  Add a separate short mixed pass with a physically reachable outline that
+  `lookup_stroke` reports as a miss for the current catalog. Record how
+  Javelin renders the fallback. Record actual elapsed time, intended and
+  produced words, and whether any output was missing, late, repeated or
+  reordered.
 - Test the map on USB while another person types or with a second app
   window. Capture whether it completed or deferred and save any abnormal
   output. For background maintenance, bracket a typing pass with read-only
