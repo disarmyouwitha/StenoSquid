@@ -39,8 +39,7 @@
 
 StenoSquid ships with 291,403 factory dictionary entries. Tests verified an additional ~150,000 entries in the shared journal, for ~440,000 total stored entries. (Compacting dictionary snapshots can make significantly more efficient use of the same 16 MiB flash!)
 
-You can set active dictionary and priorities in [StenoSquid Manager](https://github.com/disarmyouwitha/StenoSquid#stenosquid-manager). Selections and personal edits survive reboot and firmware updates.\
-With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
+You can set active dictionary and priorities in [StenoSquid Manager](https://github.com/disarmyouwitha/StenoSquid#stenosquid-manager). Selections and personal edits survive reboot and firmware updates. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
 ## Practice Mode
 
