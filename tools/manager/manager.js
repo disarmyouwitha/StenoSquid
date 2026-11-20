@@ -5,6 +5,7 @@ let state;
 let selectedId;
 let busy = false;
 let importToApply;
+let optimizationToApply;
 const number = new Intl.NumberFormat();
 
 function notify(text, error = false) {
@@ -16,7 +17,7 @@ function selection() {
 }
 function controls() {
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
-  for (const id of ["refresh", "backup", "updates", "export", "restore-submit", "measure"]) node(id).disabled = busy;
+  for (const id of ["refresh", "backup", "backup-complete", "updates", "export", "restore-submit", "measure"]) node(id).disabled = busy;
   node("flash-map-scan").disabled = busy;
   if (!state) return;
   const row = selection();
@@ -25,6 +26,16 @@ function controls() {
   node("up").disabled = !editable || rank <= 0;
   node("down").disabled = !editable || rank < 0 || rank >= state.catalog.length - 1;
   for (const id of ["rename", "delete"]) node(id).disabled = !editable || !["named", "snapshot"].includes(row?.kind);
+  if (row?.name === "user_dictionary") {
+    node("rename").disabled = true;
+    node("delete").disabled = true;
+  }
+  const snapshot = state.adaptive_imports && row?.kind === "snapshot";
+  const personal = state.personal_conversion && row?.kind === "personal";
+  node("optimize").hidden = !snapshot && !personal;
+  node("optimize").disabled = !editable;
+  node("optimize").textContent = snapshot ? "Preview consolidation" : "Preview conversion";
+  node("replace-snapshot").hidden = !snapshot;
   node("export").disabled = busy || !row;
   node("target").textContent = row ? `Editing ${row.name}` : "Select a dictionary first.";
   for (const el of node("edit").querySelectorAll("button")) {
@@ -34,6 +45,7 @@ function controls() {
 function render(newState, usage = {}) {
   state = newState;
   clearImportPlan();
+  clearOptimizationPlan();
   node("flash-map-panel").hidden = !state.layout_map;
   node("flash-map-result").hidden = true;
   node("import-advanced").hidden = !state.adaptive_imports;
@@ -48,7 +60,7 @@ function render(newState, usage = {}) {
     radio.type = "radio";
     radio.name = "dictionary";
     radio.checked = selectedId === row.id;
-    radio.onchange = () => { selectedId = row.id; controls(); };
+    radio.onchange = () => { clearOptimizationPlan(); selectedId = row.id; controls(); };
     label.append(radio, ` ${row.name}`);
     tr.insertCell().append(label);
     const checkbox = document.createElement("input");
@@ -71,7 +83,8 @@ function render(newState, usage = {}) {
   node("layout").value = state.layout;
   node("refresh").textContent = "Refresh connection";
   node("workspace").hidden = false;
-  node("maintenance").textContent = `${state.tail} pending index edits · ${state.auto_checkpoints} automatic checkpoints · ${state.auto_reclaimed} journal segments freed this boot. Compiled images may be shared by several dictionaries.`;
+  node("backup-complete").hidden = !state.adaptive_imports;
+  node("maintenance").textContent = `${state.generation === null ? "" : `Catalog generation ${state.generation} · `}${state.maintenance_active ? "Maintenance active · " : ""}${state.tail} pending index edits · ${state.auto_checkpoints} automatic checkpoints · ${state.auto_reclaimed} journal segments freed this boot. Compiled images may be shared by several dictionaries.`;
 }
 async function request(path, payload) {
   const options = {headers: {"X-StenoSquid-Token": token}};
@@ -114,6 +127,8 @@ async function watch(id) {
       } else {
         notify(summary);
       }
+    } else if (result.optimized) {
+      notify(`Saved the compact baseline for ${result.optimized}. The keyboard is ready.`);
     } else if (result.restored) {
       notify("Backup restored. The keyboard is ready.");
     } else {
@@ -129,6 +144,8 @@ async function watch(id) {
       : "All installed bases match this version’s pinned sources.");
   } else if (result.import_plan) {
     showImportPlan(result.import_plan);
+  } else if (result.optimization_plan) {
+    showOptimizationPlan(result.optimization_plan);
   } else if (result.layout_map) {
     showFlashMap(result.layout_map);
   }
@@ -138,7 +155,11 @@ function showFlashMap(map) {
   summary.textContent = map.free_segments === null
     ? "Free space is unknown. A catalog is unavailable or the store is in read-only recovery."
     : `${map.free_segments} free segments, ${map.largest_free_run} contiguous, ${map.reserve} held in reserve.`;
-  if (map.staging_blocked && map.free_segments !== null) summary.textContent += " Publication is currently pinned.";
+  if (map.free_segments !== null) {
+    const unavailable = map.segments.length - 3 - map.free_segments;
+    summary.textContent += ` ${unavailable} referenced data segments, plus 2 roots and 1 diagnostic segment.`;
+    if (map.staging_blocked) summary.textContent += " A retained catalog reader currently blocks publication.";
+  }
   const grid = node("flash-map-grid");
   const labels = {c: "Catalog roots", x: "Reserved", b: "Pinned images", s: "User snapshots", h: "Latest journal",
     j: "Journals", f: "Forward index", r: "Reverse index", "retained-journal": "Retained-only journals",
@@ -193,8 +214,28 @@ function showImportPlan(plan) {
   if (importToApply) importToApply.token = plan.token;
   notify(plan.selected ? "Review the staging plan before importing." : "This format cannot stage safely.", !plan.selected);
 }
+function clearOptimizationPlan() {
+  optimizationToApply = undefined;
+  node("optimization-plan").hidden = true;
+}
+function showOptimizationPlan(plan) {
+  if (optimizationToApply?.id !== plan.id || optimizationToApply.operation !== plan.operation) return;
+  optimizationToApply.token = plan.token;
+  node("optimization-summary").textContent =
+    `${plan.name} · ${number.format(plan.compact_bytes)} B · ${plan.image_segments} image segments · ${plan.staging_segments} staging segments. ` +
+    `${plan.free_segments} free, ${plan.largest_free_run} contiguous, ${plan.reserve} held in reserve.`;
+  const effects = {
+    personal: "Convert the existing personal entries to a compact baseline and retain existing tombstones.",
+    consolidate: "Fold the current edits and removals into the compact baseline.",
+    replace: "Replace the baseline from this file. Saved edits and tombstones still take precedence."
+  };
+  node("optimization-content").textContent = effects[plan.operation];
+  node("optimization-plan").hidden = false;
+  notify("Review the staging cost before approving the change.");
+}
 async function run(payload) {
   if (busy) return;
+  if (payload.action !== "preview_optimize") clearOptimizationPlan();
   busy = true;
   controls();
   notify("Connecting to the keyboard…");
@@ -208,9 +249,39 @@ async function run(payload) {
     controls();
   }
 }
-for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"], ["updates", "check_updates"], ["compact", "compact"], ["measure", "measure"]]) {
+for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"], ["updates", "check_updates"], ["measure", "measure"]]) {
   node(id).onclick = () => run({action});
 }
+node("compact").onclick = () => {
+  if (window.confirm("Compact the journal over USB? Typing may pause and the left half may reboot.")) {
+    run({action: "compact"});
+  }
+};
+node("backup-complete").onclick = () => run({action: "backup", complete: true});
+node("optimize").onclick = () => {
+  const row = selection();
+  clearOptimizationPlan();
+  optimizationToApply = {id: row.id, operation: row.kind === "personal" ? "personal" : "consolidate"};
+  run({action: "preview_optimize", ...optimizationToApply});
+};
+node("replace-snapshot").onchange = clearOptimizationPlan;
+node("replace-snapshot").onsubmit = async (event) => {
+  event.preventDefault();
+  const row = selection();
+  clearOptimizationPlan();
+  try {
+    const source = await new FormData(event.currentTarget).get("file").text();
+    if (selection()?.id !== row.id || busy) return;
+    optimizationToApply = {id: row.id, operation: "replace", source};
+    await run({action: "preview_optimize", ...optimizationToApply});
+  } catch (error) {
+    notify(error.message, true);
+  }
+};
+node("optimization-apply").onclick = () => {
+  if (optimizationToApply?.token) run({action: "apply_optimize", ...optimizationToApply});
+};
+node("optimization-cancel").onclick = clearOptimizationPlan;
 node("flash-map-scan").onclick = () => run({action: "layout_map"});
 node("apply-updates").onclick = () => {
   if (window.confirm("Apply the pinned base revisions? The left half will reboot after saving.")) {

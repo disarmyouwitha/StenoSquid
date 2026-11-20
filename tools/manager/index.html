@@ -34,6 +34,18 @@
           <button type="button" id="delete" data-write>Delete</button>
           <button type="button" id="export">Export JSON</button>
           <button type="button" id="measure">Measure saved edits</button>
+          <button type="button" id="optimize" data-write hidden>Preview conversion</button>
+        </div>
+        <form id="replace-snapshot" hidden>
+          <label>Replacement Plover JSON <input name="file" type="file" accept=".json,application/json" required></label>
+          <button data-write>Preview baseline replacement</button>
+        </form>
+        <div id="optimization-plan" hidden aria-live="polite">
+          <p id="optimization-summary"></p>
+          <p id="optimization-content"></p>
+          <p>Keep USB connected. Publishing can pause typing and will reboot the left half.</p>
+          <button type="button" id="optimization-apply" data-write>Stage approved change</button>
+          <button type="button" id="optimization-cancel">Cancel</button>
         </div>
       </section>
       <div class="forms">
@@ -76,11 +88,13 @@
         <div class="toolbar">
           <label>Host layout <select id="layout" data-write></select></label>
           <button type="button" id="backup">Download full backup</button>
+          <button type="button" id="backup-complete" hidden>Download USB rescue bundle</button>
           <button type="button" id="updates">Check pinned updates</button>
           <button type="button" id="apply-updates" data-write hidden>Apply pinned updates</button>
-          <button type="button" id="compact" data-write>Compact now</button>
+          <button type="button" id="compact" data-write>Compact journal</button>
         </div>
         <p id="maintenance"></p>
+        <p>USB required for imports, storage changes, and backups. Journal cleanup may free segments. Compact dictionary images stay where they are.</p>
       </section>
     </div>
     <section id="flash-map-panel" hidden aria-labelledby="flash-map-title">
@@ -98,7 +112,7 @@
     <section>
       <details>
         <summary>Restore a full backup</summary>
-        <p>This replaces the external dictionary pool and restores saved priority, local edits and host layout.</p>
+        <p>This replaces the external dictionary pool and restores saved priority, local edits and host layout. Experimental USB rescue bundles use the separate rescue command.</p>
         <form id="restore">
           <label>Steno Squid backup <input name="file" type="file" accept=".json,application/json" required></label>
           <label>Type RESTORE to confirm <input name="confirm" pattern="RESTORE" required></label>

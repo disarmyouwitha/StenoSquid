@@ -18,7 +18,7 @@ from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
 from native_restore import restore_all
-from native_snapshot import change_snapshot
+from native_snapshot import change_snapshot, compile_snapshot
 from native_import_plan import named_import
 from native_layout import read_layout
 
@@ -46,6 +46,10 @@ def read_state(console):
         "auto_checkpoints": status.get("auto_checkpoints", 0),
         "auto_reclaimed": status.get("auto_reclaimed", 0),
         "tail": status["tail"],
+        "generation": status.get("generation"),
+        "maintenance_active": bool(status.get("maintenance")),
+        "personal_conversion": adaptive and console.command(
+            "native_install update personal-snapshot-capabilities") == "OK PERSONAL1",
         "adaptive_imports": adaptive,
         "layout_map": adaptive and console.command("native_install update layout-capabilities") == "OK MAP1",
     }
@@ -76,7 +80,7 @@ def run_job(serial, request, progress):
         catalog = read_catalog(console)
         by_id = {row["id"]: row for row in catalog}
         selected = by_id.get(request.get("id"))
-        if action in {"enable", "move", "rename", "delete", "export", "set", "remove", "reset"} and selected is None:
+        if action in {"enable", "move", "rename", "delete", "export", "set", "remove", "reset", "preview_optimize", "apply_optimize"} and selected is None:
             raise ValueError("Select a dictionary from the current catalog.")
         name = safe_name(selected["name"]) if selected else None
         if action == "enable":
@@ -93,6 +97,8 @@ def run_job(serial, request, progress):
             outline = request["outline"]
             if not isinstance(outline, str) or not 1 <= len(parse_outline(outline)) <= 16:
                 raise ValueError("Enter an outline of up to 16 strokes.")
+            if action == "reset" and selected["kind"] != "base":
+                raise ValueError("Restore base applies to a pinned dictionary.")
             if action == "set":
                 entries, names = parse_named(json.dumps({outline: request["translation"]}))
                 import_entries(console, selected["id"], entries, names, progress)
@@ -106,7 +112,9 @@ def run_job(serial, request, progress):
         elif action in {"backup", "measure"}:
             progress("Reading saved edits, dictionary order and checkboxes…")
             if action == "backup":
-                return {"download": backup_all(console), "filename": "stenosquid-backup.json"}
+                complete = request.get("complete") is True
+                return {"download": backup_all(console, complete=complete),
+                        "filename": "stenosquid-rescue.json" if complete else "stenosquid-backup.json"}
             return {"state": read_state(console), "usage": overlay_usage(console)}
         elif action == "check_updates":
             return {"updates": changed_pins(catalog)}
@@ -116,6 +124,28 @@ def run_job(serial, request, progress):
             changed, conflicts = replace_pinned(console, catalog, progress)
             published = bool(changed)
             report = {"updated": changed, "conflicts": conflicts}
+        elif action in {"preview_optimize", "apply_optimize"}:
+            applying = action == "apply_optimize"
+            expected = request.get("token")
+            if applying and (not isinstance(expected, str) or len(expected) != 64):
+                raise ValueError("Preview the optimization before staging.")
+            operation = request.get("operation")
+            if selected["kind"] == "personal" and operation == "personal":
+                source = None
+            elif selected["kind"] == "snapshot" and operation == "consolidate":
+                source = None
+            elif selected["kind"] == "snapshot" and operation == "replace":
+                entries, _ = parse_named(request["source"])
+                source = compile_snapshot(name, entries)
+            else:
+                raise ValueError("Choose an eligible personal journal or user snapshot.")
+            outcome = change_snapshot(console, operation, name, source=source, stage=applying,
+                                      preview=not applying, expected=expected if applying else None,
+                                      target_id=selected["id"], progress=progress)
+            if not applying:
+                return {"optimization_plan": outcome}
+            published = outcome
+            report = {"optimized": name}
         elif action in {"preview_import", "apply_import"}:
             entries, _ = parse_named(request["source"])
             staging = action == "apply_import"

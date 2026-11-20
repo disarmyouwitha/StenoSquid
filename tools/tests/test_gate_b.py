@@ -17,6 +17,8 @@ from test_native_personal_snapshot import opened, publish_image
 from test_native_stage import ROOT, fixture
 from build_native_image import SEGMENT, SOURCES, build
 from compile_dict import parse_outline
+from native_snapshot import change_snapshot, compile_snapshot
+from import_personal import parse_named
 from native_update import Edit, effective_entries, encode_record, row_name
 
 sys.path.insert(0, str(ROOT / "tools/bench"))
@@ -162,6 +164,9 @@ def main():
             clean = directory / "verified"
             shutil.copytree(out, clean, ignore=shutil.ignore_patterns("*-failed-*.json"))
             spare.defer_map = False
+            fill, _ = parse_named((gate_b.FIXTURES / "fill-personal.json").read_bytes())
+            catalog_preview = change_snapshot(spare, "personal", gate_b.PERSONAL, source=fill, preview=True)
+            assert catalog_preview["id"] == opened(spare.image).personal and not spare.active
             assert stage("convert", clean)["result"] == "pass"
             failed = directory / "interrupted"
             shutil.copytree(clean, failed)
@@ -175,12 +180,49 @@ def main():
                 before = len(interrupted.commands)
                 assert stage("edit", failed)["result"] == "fail" and len(interrupted.commands) == before
             assert stage("edit", clean)["result"] == "pass"
+            consolidation = change_snapshot(spare, "consolidate", gate_b.PERSONAL, preview=True)
+            assert consolidation["compact_bytes"] > 0 and not spare.active
             assert stage("consolidate", clean)["result"] == "pass"
             assert reboot.call_count == 2
             cold = gate_b.run("cold", spare.serial, clean)
             assert cold["result"] == "pass" and cold["personal_overlay_count"] == 0
             assert cold["personal"]["sha256"] == gate_b.load(clean / "edit.json")["personal"]["sha256"]
             assert gate_b.run("inspect", spare.serial, clean)["result"] == "pass"
+            baseline = compile_snapshot(gate_b.PERSONAL, {parse_outline("KAT"): b"other cat"})
+            plan = change_snapshot(spare, "replace", gate_b.PERSONAL, source=baseline, preview=True)
+            assert plan["image_segments"] == 1 and plan["staging_segments"] == 2
+            assert not spare.active
+            variants = (
+                (spare.generation, "different-spare", baseline),
+                (spare.generation + 1, spare.serial, baseline),
+                (spare.generation, spare.serial, compile_snapshot(gate_b.PERSONAL,
+                    {parse_outline("KAT"): b"changed source"})),
+            )
+            original_generation, original_serial = spare.generation, spare.serial
+            prior_image = spare.image[:]
+            spare.append(opened(spare.image).personal, "KAT", b"another edit")
+            try:
+                change_snapshot(spare, "replace", gate_b.PERSONAL, source=baseline, stage=True, expected=plan["token"])
+            except RuntimeError as exc:
+                assert "plan changed" in str(exc)
+            else:
+                raise AssertionError("Uncheckpointed edit left approval valid")
+            assert not spare.active
+            spare.image = prior_image
+            for generation, serial, compiled in variants:
+                spare.generation, spare.serial = generation, serial
+                try:
+                    change_snapshot(spare, "replace", gate_b.PERSONAL, source=compiled, stage=True,
+                                    expected=plan["token"])
+                except RuntimeError as exc:
+                    assert "plan changed" in str(exc)
+                else:
+                    raise AssertionError("Stale or cross-device approval was accepted")
+                assert not spare.active and spare.generation == generation
+            spare.generation, spare.serial = original_generation, original_serial
+            assert change_snapshot(spare, "replace", gate_b.PERSONAL, source=baseline, stage=True,
+                                   expected=plan["token"])
+            assert spare.command("lookup_stroke KAT") == "other cat"
             assert not any("begin RECOVERY" in line or "begin CLEAR" in line for line in spare.commands)
     print("Gate B: read-only baseline, V2 backup, digest/serial gates, fixture lifecycle and cold readback passed")
 

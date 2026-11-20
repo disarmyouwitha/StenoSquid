@@ -20,11 +20,13 @@ class Keyboard:
         self.commands = []
         self.enabled = True
         self.layout = "Windows U.S. (plain text)"
+        self.kind = "named"
+        self.adaptive = False
 
     def command(self, command, timeout=30):
         self.commands.append(command)
         if command == "native_catalog":
-            return json.dumps([{"id": 8, "name": "Medical", "enabled": self.enabled, "kind": "named"}])
+            return json.dumps([{"id": 8, "name": "Medical", "enabled": self.enabled, "kind": self.kind}])
         if command == "user_dictionary_status":
             return '{"format":"SQBCAT02","ready":true,"read_only":false,"tail":64,"auto_checkpoints":2}'
         if command == "get_parameter host_layout":
@@ -42,7 +44,11 @@ class Keyboard:
         if command == "native_install update manage-capabilities":
             return "OK MANAGE1"
         if command == "native_install update snapshot-capabilities":
-            return "ERR Unsupported"
+            return "OK SNAPSHOT2" if self.adaptive else "ERR Unsupported"
+        if command == "native_install update personal-snapshot-capabilities":
+            return "OK PERSONAL1"
+        if command == "native_install update layout-capabilities":
+            return "OK MAP1"
         if command.startswith("native_entry "):
             return "OK"
         raise AssertionError(command)
@@ -90,6 +96,40 @@ class ManagerTest(unittest.TestCase):
         with patch.object(manager, "overlay_usage", return_value=usage) as inspect:
             self.assertEqual(self.run_job("measure")["usage"], usage)
             inspect.assert_called_once_with(self.keyboard)
+
+    def test_optimize_requires_matching_selection_and_preview(self):
+        self.keyboard.adaptive = True
+        self.keyboard.kind = "snapshot"
+        self.assertTrue(self.run_job("refresh")["state"]["personal_conversion"])
+        with patch.object(manager, "change_snapshot") as change, patch.object(manager, "wait_ready") as wait:
+            with self.assertRaisesRegex(ValueError, "Preview"):
+                self.run_job("apply_optimize", id=8, operation="consolidate")
+            with self.assertRaisesRegex(ValueError, "eligible"):
+                self.run_job("preview_optimize", id=8, operation="personal")
+            with self.assertRaisesRegex(ValueError, "pinned"):
+                self.run_job("reset", id=8, outline="KAT")
+            change.assert_not_called()
+            plan = {"id": 8, "operation": "consolidate", "token": "a" * 64}
+            change.return_value = plan
+            self.assertEqual(self.run_job("preview_optimize", id=8, operation="consolidate")["optimization_plan"], plan)
+            self.assertTrue(change.call_args.kwargs["preview"])
+            self.assertFalse(change.call_args.kwargs["stage"])
+            wait.assert_not_called()
+            change.return_value = True
+            reply = self.run_job("apply_optimize", id=8, operation="replace", token=plan["token"],
+                                 source='{"KAT":"replacement"}')
+            self.assertEqual(reply["optimized"], "Medical")
+            self.assertEqual(change.call_args.kwargs["target_id"], 8)
+            self.assertEqual(change.call_args.kwargs["expected"], plan["token"])
+            self.assertEqual(change.call_args.kwargs["source"].data[-12:-8], b"SHI1")
+            wait.assert_called_once_with("smoke-board")
+
+    def test_complete_backup_has_separate_action(self):
+        with patch.object(manager, "backup_all", return_value={"format": "stenosquid-backup-2"}) as backup:
+            self.assertEqual(self.run_job("backup")["filename"], "stenosquid-backup.json")
+            backup.assert_called_with(self.keyboard, complete=False)
+            self.assertEqual(self.run_job("backup", complete=True)["filename"], "stenosquid-rescue.json")
+            backup.assert_called_with(self.keyboard, complete=True)
 
     def test_local_http_routes_require_session_and_origin(self):
         started = Queue()

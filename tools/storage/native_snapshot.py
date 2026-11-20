@@ -1,6 +1,7 @@
 """Preflight an experimental named snapshot. Pass --stage to publish it."""
 import argparse
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import struct
@@ -167,7 +168,10 @@ def personal_baseline(snapshot, additions=None):
     return effective
 
 
-def change_snapshot(console, operation, name, *, source=None, stage=False, progress=print):
+def change_snapshot(console, operation, name, *, source=None, stage=False, progress=print,
+                    preview=False, expected=None, target_id=None):
+    if (preview and stage) or ((preview or expected is not None) and operation not in {"personal", "consolidate", "replace"}):
+        raise ValueError("Select an optimization to preview or stage.")
     if update_command(console, "snapshot-capabilities") != "OK SNAPSHOT2":
         raise RuntimeError("Flash the matching experimental lifecycle firmware")
     validate_name(name)
@@ -177,16 +181,20 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
     expected_kind = "personal" if converting else "snapshot"
     row = next((row for row in json.loads(console.command("native_catalog"))
                 if row["kind"] == expected_kind and row["name"] == name), None)
-    if row is None:
-        raise ValueError(f"No user snapshot named {name!r}")
+    if row is None or (target_id is not None and row["id"] != target_id):
+        raise ValueError("The selected dictionary is no longer eligible. Refresh and choose it again.")
     identity = row["id"]
     answer = update_command(console, f"begin snapshot-{operation} {identity}")
     published = False
     try:
         consolidating = operation == "consolidate"
-        snapshot, protected = read_snapshot(console, answer, metadata_only=not (consolidating or converting))
+        report = preview or expected is not None
+        snapshot, protected = read_snapshot(console, answer, metadata_only=not (consolidating or converting or report))
         if not any(row_name(row) == name and struct.unpack_from("<I", row)[0] == identity for row in snapshot.rows):
             raise RuntimeError("Catalog changed before staging. Refresh and retry.")
+        # Read generation under the staging lease. A textually identical plan
+        # from a different generation or keyboard needs its own approval.
+        generation = json.loads(console.command("user_dictionary_status"))["generation"] if report else None
         compiled = None
         if converting:
             compiled = compile_snapshot(name, personal_baseline(snapshot, source))
@@ -203,6 +211,22 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
                      f"{free} free, largest run {largest}, reserve 3")
         update = plan_change(snapshot, protected, identity, compiled, consolidate=consolidating, convert=converting)
         progress(f"{operation.capitalize()} {name}: {len(update.segments)} staging segments")
+        if report:
+            digest = hashlib.sha256()
+            digest.update(json.dumps([console.serial, generation, operation, identity, snapshot.highwater,
+                                      sorted(protected)], separators=(",", ":")).encode())
+            digest.update(snapshot.payload)
+            for segment, block in sorted(update.segments.items()):
+                digest.update(struct.pack("<II", segment, len(block)))
+                digest.update(block)
+            token = digest.hexdigest()
+            if expected is not None and expected != token:
+                raise RuntimeError("The optimization plan changed. Preview it again before staging.")
+            if preview:
+                return dict(token=token, id=identity, name=name, operation=operation, generation=generation,
+                            compact_bytes=len(compiled.data), image_segments=sectors,
+                            staging_segments=len(update.segments), free_segments=free, largest_free_run=largest,
+                            reserve=3)
         if stage:
             publish(console, update, progress)
             published = True

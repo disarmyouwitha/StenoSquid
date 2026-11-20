@@ -71,6 +71,30 @@ python3 tools/storage/native_snapshot.py --name 'Snapshot Smoke' --serial YOUR_U
 
 Replacement changes the compact baseline and keeps the existing override and tombstone records. Consolidation takes the current effective dictionary as the new baseline, then removes only that dictionary's live overlay references. Both keep its ID, position and enabled state. An empty effective dictionary cannot be consolidated into JSC4. Delete retires the dictionary and its compact extent without reusing the ID. Ordinary journal maintenance can later reclaim its stale edits. The allocator protects both roots, retained readers and the three-segment reserve. A capacity refusal leaves the previous catalog in place.
 
+### Optimize in Manager
+
+Connect the experimental left over USB with other editor sessions closed.
+Select the personal journal for **Preview conversion**, or a user snapshot
+for **Preview consolidation** or **Preview baseline replacement**. Replacement
+takes a Plover JSON file and keeps saved edits and tombstones. Consolidation
+folds them into the new baseline. Conversion compiles the existing personal
+entries. All three retain the dictionary ID, position and enabled state.
+
+The preview displays compiled image bytes, contiguous image segments and
+total staging segments, including metadata and any shared checkpoint indexes.
+It opens a temporary staging session and aborts it without programming flash.
+**Stage approved change** rechecks the named keyboard, catalog generation,
+live journal boundary, protected segments and compiled plan before writing.
+A changed plan needs a fresh preview. Publication can pause typing and reboots
+the left. Insufficient space stops the operation before programming.
+
+**Download USB rescue bundle** captures a complete version 2 bundle even when
+all user dictionaries are still journals. Verify it offline with
+`python3 tools/storage/native_recovery.py stenosquid-rescue.json`. The separate
+serial-confirmed USB rescue procedure remains the restore path for that bundle.
+**Compact journal** is shared journal cleanup. It never moves a compact image
+to make a contiguous run.
+
 The on-flash catalog magic remains `SQBCAT02`. Byte 11 of a user-owned row is the version-one snapshot marker. It references a single-member JSC4 extent and shares the existing ID-qualified overlay. Factory rows and existing records retain their original format. Stable firmware rejects a marked root and may see the preceding root or enter recovery. Before staging a snapshot, rollback is simply reflashing the stable left. After staging, return to an untouched spare pool or restore the pre-test backup using the existing standard Native provisioning path on your disposable fixture. That explicit operation rewrites the pool. Preserve the backup separately and keep the experimental firmware installed until you are ready for that restore.
 
 Manager lifecycle and recovery commands require USB. The standard Javelin editor transport also supports Bluetooth.
