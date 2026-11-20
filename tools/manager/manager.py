@@ -3,9 +3,11 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+from queue import Empty, Queue
 import secrets
+import signal
 import sys
-from threading import Lock, Thread
+from threading import Lock, Thread, current_thread, main_thread
 import webbrowser
 
 HERE = Path(__file__).resolve().parent
@@ -159,6 +161,8 @@ def run_job(serial, request, progress):
                 return {"import_plan": import_report}
             published = True
         elif action in {"move", "rename", "delete", "import", "compact"}:
+            if action in {"rename", "delete"} and (name == "user_dictionary" or selected["kind"] not in {"named", "snapshot"}):
+                raise ValueError("Rename and delete are available for added dictionaries.")
             if console.command("native_install update manage-capabilities") != "OK MANAGE1":
                 raise RuntimeError("Flash the matching Manager firmware before writing.")
             options = {}
@@ -202,15 +206,19 @@ class Jobs:
     def __init__(self, serial):
         self.serial = serial
         self.lock = Lock()
+        self.pending = Queue()
+        self.stopping = False
         self.current = {"id": "", "status": "idle"}
 
     def start(self, request):
         with self.lock:
+            if self.stopping:
+                raise ValueError("Manager is shutting down.")
             if self.current["status"] == "running":
                 raise ValueError("A keyboard operation is already running.")
             identity = secrets.token_hex(8)
             self.current = {"id": identity, "status": "running", "message": "Connecting over USB HID…"}
-        Thread(target=self.run, args=(request,), daemon=False).start()
+            self.pending.put_nowait(request)
         return identity
 
     def update(self, **values):
@@ -220,6 +228,16 @@ class Jobs:
     def snapshot(self):
         with self.lock:
             return dict(self.current)
+
+    def serve(self):
+        # macOS HIDAPI enumerates devices through the current CoreFoundation
+        # run loop. Keep every HID session on the process main thread.
+        while not self.stopping:
+            try:
+                request = self.pending.get(timeout=0.2)
+            except Empty:
+                continue
+            self.run(request)
 
     def run(self, request):
         try:
@@ -308,10 +326,26 @@ def serve(serial=None):
     with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
         host = f"127.0.0.1:{server.server_port}"
         url = "http://" + host
-        print(f"Steno Squid Manager is running at {url}", flush=True)
-        webbrowser.open(url)
+
+        def stop(*_):
+            jobs.stopping = True
+
+        def serve_http():
+            try:
+                server.serve_forever()
+            finally:
+                stop()
+
+        # Finish a pending flash transaction before exiting on Ctrl-C.
+        previous = signal.signal(signal.SIGINT, stop) if current_thread() is main_thread() else None
+        http = Thread(target=serve_http)
+        http.start()
         try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            if jobs.snapshot()["status"] == "running":
-                print("Waiting for the active keyboard operation before exiting.", flush=True)
+            print(f"Steno Squid Manager is running at {url}", flush=True)
+            webbrowser.open(url)
+            jobs.serve()
+        finally:
+            server.shutdown()
+            http.join()
+            if previous is not None:
+                signal.signal(signal.SIGINT, previous)

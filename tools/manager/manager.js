@@ -25,11 +25,15 @@ function controls() {
   const editable = !busy && !state.read_only;
   node("up").disabled = !editable || rank <= 0;
   node("down").disabled = !editable || rank < 0 || rank >= state.catalog.length - 1;
-  for (const id of ["rename", "delete"]) node(id).disabled = !editable || !["named", "snapshot"].includes(row?.kind);
-  if (row?.name === "user_dictionary") {
-    node("rename").disabled = true;
-    node("delete").disabled = true;
+  const independent = row?.name !== "user_dictionary" && ["named", "snapshot"].includes(row?.kind);
+  for (const id of ["rename", "delete"]) {
+    node(id).disabled = !editable || !independent;
   }
+  const note = node("dictionary-actions-note");
+  note.hidden = !row || independent;
+  note.textContent = row?.name === "user_dictionary"
+    ? "The personal dictionary is built in. You can edit and export its entries here."
+    : "This is a factory dictionary. You can turn it off or change its priority.";
   const snapshot = state.adaptive_imports && row?.kind === "snapshot";
   const personal = state.personal_conversion && row?.kind === "personal";
   node("optimize").hidden = !snapshot && !personal;
@@ -49,7 +53,7 @@ function render(newState, usage = {}) {
   node("flash-map-panel").hidden = !state.layout_map;
   node("flash-map-result").hidden = true;
   node("import-advanced").hidden = !state.adaptive_imports;
-  node("import-preview").textContent = state.adaptive_imports ? "Preview named import" : "Import";
+  updateImportControls();
   if (!selection()) selectedId = state.catalog[0]?.id;
   node("catalog").replaceChildren();
   for (const [index, row] of state.catalog.entries()) {
@@ -190,6 +194,15 @@ function showFlashMap(map) {
   node("flash-map-result").hidden = false;
   notify("Catalog layout loaded.");
 }
+function updateImportControls() {
+  const named = node("import").elements.name.value.trim() !== "";
+  node("import-preview").textContent = named
+    ? (state?.adaptive_imports ? "Preview new dictionary" : "Import new dictionary")
+    : "Import into personal";
+  node("import-help").textContent = named && state?.adaptive_imports
+    ? "Preview checks how much space the new dictionary needs. Nothing is written until you approve."
+    : "Enter a name to create a separate dictionary, or leave it blank to import into your personal dictionary.";
+}
 function clearImportPlan() {
   importToApply = undefined;
   node("import-plan").hidden = true;
@@ -310,7 +323,10 @@ node("edit").onsubmit = (event) => {
   const fields = new FormData(event.currentTarget);
   run({action: event.submitter.value, id: selectedId, outline: fields.get("outline").trim(), translation: fields.get("translation")});
 };
-node("import").onchange = clearImportPlan;
+node("import").oninput = () => {
+  clearImportPlan();
+  updateImportControls();
+};
 node("import-apply").onclick = () => {
   if (importToApply?.token) {
     const approved = importToApply;
@@ -332,6 +348,9 @@ for (const action of ["import", "restore"]) {
         importToApply = {source, ...options, preference: fields.get("preference")};
         await run({action: "preview_import", ...importToApply});
       } else {
+        if (action === "import" && !options.name && !window.confirm(
+          "Import this file into your personal dictionary? Entries with matching outlines will be replaced."
+        )) return;
         await run({action, source, ...options});
       }
     } catch (error) {

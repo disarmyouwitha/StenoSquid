@@ -4,7 +4,8 @@ from contextlib import nullcontext
 import json
 from queue import Queue
 import re
-from threading import Thread
+import time
+from threading import Thread, current_thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import unittest
@@ -22,11 +23,14 @@ class Keyboard:
         self.layout = "Windows U.S. (plain text)"
         self.kind = "named"
         self.adaptive = False
+        self.name = "Medical"
+        self.command_threads = []
 
     def command(self, command, timeout=30):
         self.commands.append(command)
+        self.command_threads.append(current_thread())
         if command == "native_catalog":
-            return json.dumps([{"id": 8, "name": "Medical", "enabled": self.enabled, "kind": self.kind}])
+            return json.dumps([{"id": 8, "name": self.name, "enabled": self.enabled, "kind": self.kind}])
         if command == "user_dictionary_status":
             return '{"format":"SQBCAT02","ready":true,"read_only":false,"tail":64,"auto_checkpoints":2}'
         if command == "get_parameter host_layout":
@@ -90,6 +94,26 @@ class ManagerTest(unittest.TestCase):
             self.assertEqual(transfer.call_args.kwargs, {"delete": "Medical"})
             wait.assert_called_once_with("smoke-board")
 
+
+    def test_rename_and_delete_named_and_protect_builtin_rows(self):
+        with patch.object(manager, "transfer", return_value=True) as transfer, \
+                patch.object(manager, "change_snapshot", return_value=True) as change, \
+                patch.object(manager, "wait_ready"):
+            self.run_job("rename", id=8, name="Anatomy")
+            self.assertEqual(transfer.call_args.kwargs, {"rename": ("Medical", "Anatomy")})
+            self.keyboard.kind = "snapshot"
+            self.run_job("delete", id=8, confirm="Medical")
+            change.assert_called_once_with(self.keyboard, "delete", "Medical", stage=True, progress=unittest.mock.ANY)
+            transfer.reset_mock()
+            change.reset_mock()
+            for name, kind in (("Lapwing Base", "base"), ("user_dictionary", "snapshot")):
+                self.keyboard.name, self.keyboard.kind = name, kind
+                with self.assertRaisesRegex(ValueError, "added dictionaries"):
+                    self.run_job("rename", id=8, name="Anatomy")
+                with self.assertRaisesRegex(ValueError, "added dictionaries"):
+                    self.run_job("delete", id=8, confirm=name)
+            transfer.assert_not_called()
+            change.assert_not_called()
 
     def test_measure_counts_saved_edits(self):
         usage = {8: {"count": 2, "bytes": 92}}
@@ -155,7 +179,19 @@ class ManagerTest(unittest.TestCase):
                 self.assertEqual(wrong_origin.exception.code, 403)
                 with urlopen(Request(url + "/api/job", data=task, headers={**headers, "Origin": url}), timeout=2) as response:
                     self.assertEqual(response.status, 202)
-                    self.assertIn("id", json.load(response))
+                    identity = json.load(response)["id"]
+                headers["Origin"] = url
+                deadline = time.monotonic() + 2
+                while True:
+                    with urlopen(Request(url + "/api/job", headers=headers), timeout=2) as response:
+                        job = json.load(response)
+                    self.assertEqual(job["id"], identity)
+                    if job["status"] != "running" or time.monotonic() >= deadline:
+                        break
+                    time.sleep(0.01)
+                self.assertEqual(job["status"], "done")
+                self.assertTrue(self.keyboard.command_threads)
+                self.assertEqual(set(self.keyboard.command_threads), {server_thread})
             finally:
                 server.shutdown()
                 server_thread.join(timeout=2)

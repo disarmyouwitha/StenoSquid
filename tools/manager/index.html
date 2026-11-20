@@ -36,9 +36,11 @@
           <button type="button" id="measure">Measure saved edits</button>
           <button type="button" id="optimize" data-write hidden>Preview conversion</button>
         </div>
+        <p id="dictionary-actions-note" hidden></p>
         <form id="replace-snapshot" hidden>
-          <label>Replacement Plover JSON <input name="file" type="file" accept=".json,application/json" required></label>
-          <button data-write>Preview baseline replacement</button>
+          <label>New base entries (.json) <input name="file" type="file" accept=".json,application/json" required></label>
+          <p>Replace the imported entries in this dictionary. Saved edits and hidden outlines still take precedence.</p>
+          <button data-write>Preview replacement</button>
         </form>
         <div id="optimization-plan" hidden aria-live="polite">
           <p id="optimization-summary"></p>
@@ -66,14 +68,14 @@
           <h2 id="import-title">Import Plover JSON</h2>
           <form id="import">
             <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
-            <label>New dictionary name <input name="name" maxlength="44" placeholder="Leave blank to merge into personal"></label>
+            <label>New dictionary name (optional) <input name="name" maxlength="44" placeholder="Leave blank to add to personal"></label>
             <details id="import-advanced" hidden>
               <summary>Advanced format</summary>
               <label>Format <select name="preference" data-write>
                 <option value="auto">Automatic</option><option value="journal">Journal</option><option value="snapshot">Compact snapshot</option>
               </select></label>
-              <p>Compact snapshots support forward lookup and one-stroke hints. Export for exhaustive baseline searches.</p>
             </details>
+            <p id="import-help">Enter a name to create a separate dictionary, or leave it blank to import into your personal dictionary.</p>
             <button id="import-preview" data-write>Import</button>
           </form>
           <div id="import-plan" hidden aria-live="polite">
