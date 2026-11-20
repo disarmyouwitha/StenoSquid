@@ -182,12 +182,16 @@ def main():
             assert stage("edit", clean)["result"] == "pass"
             consolidation = change_snapshot(spare, "consolidate", gate_b.PERSONAL, preview=True)
             assert consolidation["compact_bytes"] > 0 and not spare.active
+            assert consolidation["before_bytes"] > 0 and consolidation["after_bytes"] == consolidation["compact_bytes"]
             assert stage("consolidate", clean)["result"] == "pass"
             assert reboot.call_count == 2
             cold = gate_b.run("cold", spare.serial, clean)
             assert cold["result"] == "pass" and cold["personal_overlay_count"] == 0
             assert cold["personal"]["sha256"] == gate_b.load(clean / "edit.json")["personal"]["sha256"]
             assert gate_b.run("inspect", spare.serial, clean)["result"] == "pass"
+            unchanged = change_snapshot(spare, "consolidate", gate_b.PERSONAL, preview=True)
+            assert unchanged["token"] is None and unchanged["before_bytes"] == unchanged["after_bytes"]
+            spare.append(opened(spare.image).personal, "TAS", b"new local entry")
             plan = change_snapshot(spare, "consolidate", gate_b.PERSONAL, preview=True)
             assert plan["image_segments"] == 1 and plan["staging_segments"] == 2
             assert not spare.active

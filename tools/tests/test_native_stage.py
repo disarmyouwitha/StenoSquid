@@ -10,6 +10,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from unittest.mock import Mock, patch
 import zlib
 
 from hostlib import compiler
@@ -17,7 +18,7 @@ from hostlib import compiler
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
 from build_native_image import build, catalog_header, SEGMENT, SOURCES, write_journal_header
-from native_update import Edit, Snapshot, NoSpace, encode_record, export_dictionary, plan, EXTENT
+from native_update import Edit, Snapshot, NoSpace, encode_record, export_dictionary, plan, transfer, EXTENT
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from native_base_update import GROUPS, Image, plan_replacements
 from native_snapshot import compile_snapshot, plan_named_snapshot
@@ -116,6 +117,21 @@ def main():
         clean_plan = plan(snapshot, protected)
         assert import_plan.changes == 2
         assert clean_plan.reclaimed == 2 and clean_plan.changes == 2
+        console = Mock(serial="test-left")
+        console.command.return_value = "OK frozen catalog"
+        with patch("native_update.read_snapshot", return_value=(snapshot, protected)), patch("native_update.publish") as publish:
+            preview = transfer(console, progress=lambda _: None, preview_compact=True)
+            assert len(preview["reclaimable"]) == 2
+            publish.assert_not_called()
+            try:
+                transfer(console, progress=lambda _: None, expected_compact="stale")
+            except ValueError as error:
+                assert "Preview cleanup again" in str(error)
+            else:
+                raise AssertionError("A stale cleanup preview was accepted")
+            publish.assert_not_called()
+            assert transfer(console, progress=lambda _: None, expected_compact=preview["token"])
+            assert publish.call_count == 1
         assert plan(snapshot, protected, {(1,): b"stay-1"}) is None
         try:
             plan(snapshot, set(range(250)), {(11,): b"no space"})

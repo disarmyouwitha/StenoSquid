@@ -6,7 +6,7 @@ namespace candidate_b {
 
 enum class NativeUpdateKind {
     Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base,
-    SnapshotNamed, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal
+    SnapshotNamed, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal, SnapshotClear
 };
 
 // Exclusive USB staging session. The active catalog and both retained roots
@@ -202,10 +202,11 @@ class NativeStage {
 
     bool CheckSnapshotChange(const CatalogRoot &candidate, uint32_t metadata, BaseProbe probe) {
         const bool deleting = kind == NativeUpdateKind::SnapshotDelete;
+        const bool clearing = kind == NativeUpdateKind::SnapshotClear;
         const bool converting = kind == NativeUpdateKind::SnapshotPersonal;
-        const bool consolidating = converting || kind == NativeUpdateKind::SnapshotConsolidate;
+        const bool consolidating = converting || clearing || kind == NativeUpdateKind::SnapshotConsolidate;
         uint8_t before[32], after[32], target[96];
-        if (!snapshot_id || (!deleting && !probe) ||
+        if (!snapshot_id || (!deleting && !clearing && !probe) ||
             !store.device.Read(original.root.address, before, 32) ||
             !store.device.Read(candidate.address, after, 32))
             return false;
@@ -224,10 +225,11 @@ class NativeStage {
         }
         if (target_index == rows) return false;
         const bool personal = target[12] == 15 && !std::memcmp(target + 16, "user_dictionary", 15);
-        if ((converting ? !personal || target[11] : target[11] != kUserSnapshot) || (deleting && personal))
+        if ((clearing ? !personal : converting ? !personal || target[11] : target[11] != kUserSnapshot) ||
+            (deleting && personal))
             return false;
         const unsigned old_base = target[8] | target[9] << 8;
-        if (converting ? old_base != kNoExtent : old_base >= extents) return false;
+        if ((converting || (clearing && !target[11])) ? old_base != kNoExtent : old_base >= extents) return false;
         uint8_t remap[253]{};
         unsigned kept = 0;
         for (unsigned i = 0; i < extents; ++i) {
@@ -240,7 +242,7 @@ class NativeStage {
             remap[i] = kept++;
         }
         const unsigned new_base = kept;
-        if (!deleting) {
+        if (!deleting && !clearing) {
             uint8_t extent[24];
             target[11] = kUserSnapshot;
             if (kept >= new_extents || !ReadExtent(candidate, new_rows, kept++, extent) ||
@@ -265,9 +267,10 @@ class NativeStage {
                 !store.device.Read(candidate.address + 32 + (j++) * 96, updated, 96)) return false;
             const unsigned base = prior[8] | prior[9] << 8;
             if (i == target_index) {
-                prior[8] = new_base;
-                prior[9] = 0;
-                prior[11] = kUserSnapshot;
+                prior[8] = clearing ? 255 : new_base;
+                prior[9] = clearing ? 255 : 0;
+                if (clearing) prior[10] = 0;
+                prior[11] = clearing ? 0 : kUserSnapshot;
             } else if (base != kNoExtent) {
                 if (base >= extents || base == old_base) return false;
                 prior[8] = remap[base];
@@ -376,6 +379,7 @@ class NativeStage {
         const bool merging_personal = kind == NativeUpdateKind::Personal;
         const auto folded = [&](const MergeRecord &entry) {
             return entry.identity == snapshot_id && (kind == NativeUpdateKind::SnapshotConsolidate ||
+                   kind == NativeUpdateKind::SnapshotClear ||
                    (kind == NativeUpdateKind::SnapshotPersonal && entry.operation == 0));
         };
         if (merging_personal && !personal_id) return false;
@@ -437,6 +441,7 @@ public:
     NativeStage(NativeStore<Device> &store, NativeValidator<Device> &validator)
         : store(store), validator(validator) {}
     bool Active() const { return active; }
+    NativeUpdateKind Kind() const { return kind; }
     const SegmentMap &Protected() const { return protected_segments; }
     const CatalogRoot &Root() const { return original.root; }
 
@@ -536,6 +541,7 @@ public:
             replacing_base ? CheckBaseLayout(candidate, segment, probe) : CheckLayout(candidate, segment);
         if (!layout_ok) return CatalogResult::Corrupt;
         if (kind == NativeUpdateKind::SnapshotConsolidate || kind == NativeUpdateKind::SnapshotPersonal ||
+            kind == NativeUpdateKind::SnapshotClear ||
             (!MetadataOnly() && !replacing_base && !adding_snapshot && !changing_snapshot)) {
             const auto validation = validator.Validate(candidate);
             if (validation != CatalogResult::Ok) return validation;

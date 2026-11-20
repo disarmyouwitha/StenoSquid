@@ -6,7 +6,15 @@ let selectedId;
 let busy = false;
 let importToApply;
 let optimizationToApply;
+let cleanupToken;
 const number = new Intl.NumberFormat();
+const jobMessages = {
+  measure: "Measuring saved edits…", preview_optimize: "Calculating compact storage…",
+  apply_optimize: "Saving compact dictionary…", layout_map: "Reading flash layout…",
+  preview_import: "Calculating import size…", apply_import: "Importing dictionary…", import: "Importing dictionary…",
+  backup: "Preparing backup…", export: "Exporting dictionary…", restore: "Restoring backup…",
+  preview_compact: "Checking journal space…", compact: "Compacting journal…", clear_personal: "Clearing personal dictionary…"
+};
 
 function notify(text, error = false) {
   status.textContent = text;
@@ -16,6 +24,8 @@ function selection() {
   return state?.catalog.find((row) => row.id === selectedId);
 }
 function controls() {
+  node("job-status").toggleAttribute("data-busy", busy);
+  node("job-status").querySelector(".job-spinner").hidden = !busy;
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
   for (const id of ["refresh", "backup", "backup-complete", "updates", "export", "restore-submit", "measure"]) node(id).disabled = busy;
   node("flash-map-scan").disabled = busy;
@@ -29,23 +39,23 @@ function controls() {
   node("up").disabled = !editable || rank <= 0;
   node("down").disabled = !editable || rank < 0 || rank >= state.catalog.length - 1;
   const independent = row?.name !== "user_dictionary" && ["named", "snapshot"].includes(row?.kind);
-  for (const id of ["rename", "delete"]) {
-    node(id).disabled = !editable || !independent;
-  }
-  const note = node("dictionary-actions-note");
-  note.hidden = !row || independent;
-  note.textContent = row?.name === "user_dictionary"
-    ? "The personal dictionary is built in. You can edit and export its entries here."
-    : "This is a factory dictionary. You can turn it off or change its priority.";
+  const builtIn = row?.name === "user_dictionary";
+  node("rename").disabled = !editable || !independent;
+  const canClearPersonal = builtIn && (row.kind === "personal" || state.personal_clear);
+  node("delete").disabled = !editable || !(independent || canClearPersonal);
   const snapshot = state.adaptive_imports && row?.kind === "snapshot";
   const personal = state.personal_conversion && row?.kind === "personal";
   node("optimize").hidden = !snapshot && !personal;
   node("optimize").disabled = !editable;
-  node("optimize").textContent = snapshot ? "Preview consolidation" : "Preview conversion";
   node("export").disabled = busy || !row;
   node("target").textContent = row ? `Editing ${row.name}` : "Select a dictionary first.";
+  const canRevert = row?.kind === "base";
+  node("edit-note").hidden = !row;
+  node("edit-revert-note").hidden = !canRevert;
   for (const el of node("edit").querySelectorAll("button")) {
-    el.disabled = !editable || !row || (el.value === "reset" && row.kind !== "base");
+    const unavailable = el.value === "reset" && !canRevert;
+    el.hidden = unavailable;
+    el.disabled = !editable || !row || unavailable;
   }
 }
 function render(newState, usage = {}) {
@@ -53,10 +63,12 @@ function render(newState, usage = {}) {
   clearImportPlan();
   clearOptimizationPlan();
   node("flash-map-panel").hidden = !state.layout_map;
+  node("flash-map-error").hidden = true;
   node("flash-map-result").hidden = true;
   updateImportControls();
   if (!selection()) selectedId = state.catalog[0]?.id;
   node("catalog").replaceChildren();
+  const sizes = new Map((state.images ?? []).flatMap((image) => image.dictionaries.map((row) => [row.id, row.bytes])));
   for (const [index, row] of state.catalog.entries()) {
     const tr = node("catalog").insertRow();
     tr.insertCell().textContent = String(index + 1);
@@ -80,7 +92,10 @@ function render(newState, usage = {}) {
     };
     tr.insertCell().append(checkbox);
     tr.insertCell().textContent = ["base", "snapshot"].includes(row.kind) ? number.format(row.base_entries) : "—";
-    tr.insertCell().textContent = row.image_bytes ? `${number.format(Math.ceil(row.image_bytes / 1024))} KiB` : "—";
+    const image = tr.insertCell();
+    const bytes = sizes.get(row.id) ?? (row.kind === "snapshot" ? row.image_bytes : null);
+    image.textContent = bytes == null ? "—" : formatBytes(bytes);
+    if (bytes != null) image.title = `${number.format(bytes)} bytes`;
     const saved = usage[row.id];
     tr.insertCell().textContent = saved ? `${number.format(saved.count)} · ${number.format(saved.bytes)} B` : "—";
   }
@@ -89,7 +104,6 @@ function render(newState, usage = {}) {
   node("refresh").textContent = "Refresh connection";
   node("workspace").hidden = false;
   node("backup-complete").hidden = !state.adaptive_imports;
-  node("maintenance").textContent = `${state.generation === null ? "" : `Catalog generation ${state.generation} · `}${state.maintenance_active ? "Maintenance active · " : ""}${state.tail} pending index edits · ${state.auto_checkpoints} automatic checkpoints · ${state.auto_reclaimed} journal segments freed this boot. Compiled images may be shared by several dictionaries.`;
 }
 async function request(path, payload) {
   const options = {headers: {"X-StenoSquid-Token": token}};
@@ -100,6 +114,10 @@ async function request(path, payload) {
   }
   const response = await fetch(path, options);
   const result = await response.json();
+  if (payload && !response.ok && result.error === "A keyboard operation is already running.") {
+    const job = await request(path);
+    return {id: job.id, existing: true, message: job.status === "running" ? job.message : ""};
+  }
   if (!response.ok) throw new Error(result.error || "Manager request failed.");
   return result;
 }
@@ -117,7 +135,7 @@ async function watch(id) {
     await new Promise((resolve) => setTimeout(resolve, 550));
     job = await request("/api/job");
     if (job.id !== id) throw new Error("Operation status changed. Refresh the keyboard to check its saved state.");
-    if (job.message && job.status === "running") notify(job.message);
+    if (job.message && job.message !== "Connecting over USB HID…" && job.status === "running") notify(job.message);
   } while (job.status === "running");
   if (job.status === "error") throw new Error(job.message);
   const result = job.result;
@@ -132,6 +150,8 @@ async function watch(id) {
       } else {
         notify(summary);
       }
+    } else if (result.cleared) {
+      notify("Personal dictionary cleared.");
     } else if (result.optimized) {
       notify(`Saved the compact baseline for ${result.optimized}. The keyboard is ready.`);
     } else if (result.restored) {
@@ -151,32 +171,60 @@ async function watch(id) {
     showImportPlan(result.import_plan);
   } else if (result.optimization_plan) {
     showOptimizationPlan(result.optimization_plan);
+  } else if (result.cleanup) {
+    const {token, reclaimable} = result.cleanup;
+    cleanupToken = token;
+    if (result.layout_map) showFlashMap(result.layout_map, reclaimable);
+    node("journal-summary").textContent = reclaimable.length
+      ? `${number.format(reclaimable.length)} journal blocks can be released. Applying cleanup may pause typing and reboot the left half.`
+      : "No journal blocks can be reclaimed in this pass.";
+    node("compact-apply").hidden = !token;
+    node("journal-preview").hidden = false;
+    notify(token ? "Review journal cleanup." : "Journal cleanup complete. No blocks to reclaim.");
   } else if (result.layout_map) {
     showFlashMap(result.layout_map);
   }
 }
-function showFlashMap(map) {
+function formatBytes(bytes) {
+  return bytes < 1024 ? `${number.format(bytes)} B` : `${number.format(Math.round(bytes / 102.4) / 10)} KiB`;
+}
+function showFlashMap(map, reclaimable = []) {
+  node("flash-map-error").hidden = true;
   const summary = node("flash-map-summary");
   summary.textContent = map.free_segments === null
     ? "Free space is unknown. A catalog is unavailable or the store is in read-only recovery."
-    : `${map.free_segments} free segments, ${map.largest_free_run} contiguous, ${map.reserve} held in reserve.`;
-  if (map.free_segments !== null) {
-    const unavailable = map.segments.length - 3 - map.free_segments;
-    summary.textContent += ` ${unavailable} referenced data segments, plus 2 roots and 1 diagnostic segment.`;
-    if (map.staging_blocked) summary.textContent += " A retained catalog reader currently blocks publication.";
-  }
+    : map.staging_blocked ? "A retained catalog reader currently blocks publication." : "";
+  summary.hidden = !summary.textContent;
   const grid = node("flash-map-grid");
-  const labels = {c: "Catalog roots", x: "Reserved", b: "Pinned images", s: "User snapshots", h: "Latest journal",
+  const labels = {c: "Catalog roots", x: "Reserved", b: "Unidentified pinned image", s: "Unidentified user snapshot", h: "Latest journal",
     j: "Journals", f: "Forward index", r: "Reverse index", "retained-journal": "Retained-only journals",
     retained: "Retained-only extents", ".": "Unreferenced", "?": "Unknown"};
+  const palette = {b: ["#478fb9", "#658ce1", "#55a9c3"], s: ["#5cd1a3", "#7cac62", "#2db6a5"]};
+  const nextColor = {b: 0, s: 0};
+  const bySegment = new Map();
+  const candidates = new Set(reclaimable);
+  const images = (map.images ?? []).filter((image) =>
+    map.segments.slice(image.start, image.start + image.segments).every((segment) => segment.kind === image.kind)
+  );
+  for (const image of images) {
+    const names = image.dictionaries.map((row) => row.name);
+    image.label = names.includes("Lapwing Base") ? "Lapwing Base" : names[0];
+    image.color = palette[image.kind][nextColor[image.kind]++ % palette[image.kind].length];
+    for (let i = image.start; i < image.start + image.segments; i++) bySegment.set(i, image);
+  }
   grid.replaceChildren(...map.segments.map((segment) => {
     const cell = document.createElement("span");
     cell.dataset.kind = segment.kind;
-    cell.dataset.shared = segment.shared;
-    cell.title = `Segment ${segment.index} · ${segment.active} in current root · ${segment.alternate} in other root`;
+    const image = bySegment.get(segment.index);
+    cell.title = `Segment ${segment.index} · ${image?.label ?? labels[segment.kind]}`;
+    if (segment.kind === "j" && candidates.has(segment.index)) {
+      cell.dataset.reclaimable = "true";
+      cell.title += " · Can be reclaimed";
+    }
+    if (image) cell.style.backgroundColor = image.color;
     return cell;
   }));
-  const kinds = new Set(map.segments.map((segment) => segment.kind));
+  const kinds = new Set(map.segments.filter((segment) => !bySegment.has(segment.index)).map((segment) => segment.kind));
   const legend = node("flash-map-legend");
   legend.replaceChildren(...Object.entries(labels).filter(([kind]) => kinds.has(kind)).map(([kind, label]) => {
     const item = document.createElement("li");
@@ -185,18 +233,26 @@ function showFlashMap(map) {
     item.append(marker, label);
     return item;
   }));
-  if (map.segments.some((segment) => segment.shared)) {
+  for (const image of images) {
     const item = document.createElement("li");
     const marker = document.createElement("span");
-    marker.dataset.shared = true;
-    item.append(marker, "Referenced by both roots");
+    marker.style.backgroundColor = image.color;
+    item.append(marker, image.label);
+    legend.append(item);
+  }
+  if (grid.querySelector("[data-reclaimable]")) {
+    const item = document.createElement("li");
+    const marker = document.createElement("span");
+    marker.dataset.reclaimable = "true";
+    item.append(marker, "Can be reclaimed");
     legend.append(item);
   }
   node("flash-map-result").hidden = false;
   notify("Catalog layout loaded.");
 }
 function updateImportControls() {
-  const named = node("import").elements.name.value.trim() !== "";
+  const fields = node("import").elements;
+  const named = fields.name.value.trim() !== "";
   node("import-preview").textContent = named
     ? (state?.adaptive_imports ? "Preview new dictionary" : "Import new dictionary")
     : "Import into personal";
@@ -211,6 +267,7 @@ function showImportError(message = "") {
 function clearImportPlan() {
   importToApply = undefined;
   node("import-plan").hidden = true;
+  node("import-preview").hidden = false;
 }
 function selectImportFormat(plan, format, manual = false) {
   const token = plan.tokens[format];
@@ -228,19 +285,34 @@ function selectImportFormat(plan, format, manual = false) {
     importToApply.token = token;
   }
 }
-function showImportPlan(plan) {
-  node("import-entry-count").textContent = `${number.format(plan.entries)} ${plan.entries === 1 ? "entry" : "entries"} to import`;
-  const space = node("import-space");
-  space.replaceChildren();
-  for (const [label, value] of [["Free segments", plan.free_segments], ["Largest run", plan.largest_free_run], ["Reserve", plan.reserve]]) {
-    const stat = document.createElement("div");
-    const name = document.createElement("dt");
-    const count = document.createElement("dd");
-    name.textContent = label;
-    count.textContent = number.format(value);
-    stat.append(name, count);
-    space.append(stat);
+function segmentCost(imageSegments, stagingSegments, imageLabel) {
+  const blocks = document.createElement("div");
+  blocks.className = "import-segments";
+  blocks.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < Math.max(stagingSegments, imageSegments); i++) {
+    const segment = document.createElement("span");
+    segment.className = i < imageSegments ? "segment-added" : "segment-temporary";
+    blocks.append(segment);
   }
+  const caption = document.createElement("p");
+  caption.className = "import-segment-caption";
+  const image = document.createElement("span");
+  image.className = "caption-added";
+  image.textContent = `${imageSegments} ${imageLabel}`;
+  const staging = document.createElement("span");
+  staging.className = "caption-staging";
+  staging.textContent = `${stagingSegments} to stage`;
+  staging.title = "Includes the solid and striped segments";
+  caption.append(image, staging);
+  return [blocks, caption];
+}
+
+function showImportPlan(plan) {
+  if (!importToApply) {
+    notify("Preview the current dictionary file.");
+    return;
+  }
+  node("import-entry-count").textContent = `${number.format(plan.entries)} ${plan.entries === 1 ? "entry" : "entries"} to import`;
 
   const costs = node("import-plan-costs");
   costs.replaceChildren();
@@ -284,25 +356,7 @@ function showImportPlan(plan) {
     row.append(header);
 
     if (option.staging_segments != null) {
-      const blocks = document.createElement("div");
-      blocks.className = "import-segments";
-      blocks.setAttribute("aria-hidden", "true");
-      for (let i = 0; i < Math.max(option.staging_segments, option.added_segments); i++) {
-        const segment = document.createElement("span");
-        segment.className = i < option.added_segments ? "segment-added" : "segment-temporary";
-        blocks.append(segment);
-      }
-      const caption = document.createElement("p");
-      caption.className = "import-segment-caption";
-      const added = document.createElement("span");
-      added.className = "caption-added";
-      added.textContent = `${option.added_segments} added`;
-      const staging = document.createElement("span");
-      staging.className = "caption-staging";
-      staging.textContent = `${option.staging_segments} to stage`;
-      staging.title = "Includes added segments and striped temporary segments";
-      caption.append(added, staging);
-      row.append(blocks, caption);
+      row.append(...segmentCost(option.added_segments, option.staging_segments, "added"));
     }
 
     if (option.consolidation_staging_segments != null || option.reason) {
@@ -322,6 +376,7 @@ function showImportPlan(plan) {
   savings.textContent = savings.hidden ? "" : `${saved} fewer segments with a snapshot`;
   selectImportFormat(plan, plan.selected);
   node("import-plan").hidden = false;
+  node("import-preview").hidden = true;
   notify(plan.selected ? "Review the import preview." : "Import stopped.");
   if (!plan.selected) showImportError("This format cannot stage safely. USB rebuilding is unavailable in Manager.");
 }
@@ -332,32 +387,65 @@ function clearOptimizationPlan() {
 function showOptimizationPlan(plan) {
   if (optimizationToApply?.id !== plan.id || optimizationToApply.operation !== plan.operation) return;
   optimizationToApply.token = plan.token;
-  node("optimization-summary").textContent =
-    `${plan.name} · ${number.format(plan.compact_bytes)} B · ${plan.image_segments} image segments · ${plan.staging_segments} staging segments. ` +
-    `${plan.free_segments} free, ${plan.largest_free_run} contiguous, ${plan.reserve} held in reserve.`;
-  const effects = {
-    personal: "Convert the existing personal entries to a compact baseline and retain existing tombstones.",
-    consolidate: "Fold saved edits and hidden outlines into the compact dictionary."
-  };
-  node("optimization-content").textContent = effects[plan.operation];
+  node("optimization-name").textContent = plan.name;
+  const maxBytes = Math.max(plan.before_bytes, plan.after_bytes, 1);
+  for (const [id, bytes] of [["optimization-before", plan.before_bytes], ["optimization-after", plan.after_bytes]]) {
+    const size = node(id);
+    size.textContent = formatBytes(bytes);
+    size.title = `${number.format(bytes)} bytes in the image and live saved edits`;
+    size.nextElementSibling.style.width = `${bytes / maxBytes * 100}%`;
+  }
+  const saved = plan.before_bytes - plan.after_bytes;
+  const savings = node("optimization-savings");
+  savings.dataset.saves = String(saved > 0);
+  savings.textContent = saved > 0 ? `${formatBytes(saved)} saved`
+    : saved < 0 ? `${formatBytes(-saved)} larger` : "No change";
+  const blocks = Math.abs(plan.segment_delta);
+  const allocation = blocks === 0 ? "No change in allocated flash blocks"
+    : `${blocks} ${plan.segment_delta < 0 ? "fewer" : "more"} allocated flash ${blocks === 1 ? "block" : "blocks"}`;
+  node("optimization-allocation").textContent = plan.token ? `${allocation} · ${plan.staging_segments} to stage` : "No saved edits to consolidate.";
+  node("optimization-apply").hidden = !plan.token;
+  node("optimization-publish").hidden = !plan.token;
   node("optimization-plan").hidden = false;
-  notify("Review the staging cost before approving the change.");
+  notify(plan.token ? "Review before applying consolidation." : "No saved edits to consolidate.");
 }
 async function run(payload) {
   if (busy) return;
   const importing = ["import", "preview_import", "apply_import"].includes(payload.action);
+  let refreshMap = false;
   if (importing) showImportError();
   if (payload.action !== "preview_optimize") clearOptimizationPlan();
+  cleanupToken = undefined;
+  node("journal-preview").hidden = true;
+  node("flash-map-legend").querySelector("[data-reclaimable]")?.parentElement.remove();
+  for (const cell of node("flash-map-grid").querySelectorAll("[data-reclaimable]")) {
+    delete cell.dataset.reclaimable;
+    cell.title = cell.title.replace(" · Can be reclaimed", "");
+  }
   busy = true;
   controls();
-  notify("Connecting to the keyboard…");
+  notify(jobMessages[payload.action] ?? "Connecting to the keyboard…");
   try {
-    const {id} = await request("/api/job", payload);
+    const {id, existing, message} = await request("/api/job", payload);
+    if (existing) {
+      if (payload.action === "preview_import") clearImportPlan();
+      if (payload.action === "preview_optimize") clearOptimizationPlan();
+      notify(message || "Checking the current keyboard operation…");
+    }
     await watch(id);
+    refreshMap = !existing && ["import", "apply_import", "compact"].includes(payload.action);
   } catch (error) {
     if (importing) {
       notify("Import stopped.");
       showImportError(error.message);
+    } else if (payload.action === "layout_map") {
+      const failure = node("flash-map-error");
+      failure.textContent = /scan deferred/i.test(error.message)
+        ? "Pause typing and wait for any storage operation to finish, then scan again."
+        : error.message.replace(/^ERR\s+/, "");
+      failure.hidden = false;
+      notify("Layout scan stopped.", true);
+      failure.focus();
     } else {
       notify(error.message, true);
     }
@@ -365,14 +453,19 @@ async function run(payload) {
     busy = false;
     controls();
   }
+  if (refreshMap && state?.layout_map) {
+    await scanLayout();
+    if (!node("flash-map-result").hidden && node("flash-map-error").hidden) {
+      node("flash-map-panel").scrollIntoView({block: "nearest"});
+    }
+  }
 }
 for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"], ["updates", "check_updates"], ["measure", "measure"]]) {
   node(id).onclick = () => run({action});
 }
-node("compact").onclick = () => {
-  if (window.confirm("Compact the journal over USB? Typing may pause and the left half may reboot.")) {
-    run({action: "compact"});
-  }
+node("compact").onclick = () => run({action: "preview_compact"});
+node("compact-apply").onclick = () => {
+  if (cleanupToken) run({action: "compact", token: cleanupToken});
 };
 node("backup-complete").onclick = () => run({action: "backup", complete: true});
 node("optimize").onclick = () => {
@@ -385,7 +478,11 @@ node("optimization-apply").onclick = () => {
   if (optimizationToApply?.token) run({action: "apply_optimize", ...optimizationToApply});
 };
 node("optimization-cancel").onclick = clearOptimizationPlan;
-node("flash-map-scan").onclick = () => run({action: "layout_map"});
+function scanLayout() {
+  node("flash-map-error").hidden = true;
+  return run({action: "layout_map"});
+}
+node("flash-map-scan").onclick = scanLayout;
 node("apply-updates").onclick = () => {
   if (window.confirm("Download a backup before updating the pinned dictionaries. Apply the pinned revisions now? The left half will reboot after saving.")) {
     run({action: "apply_updates", approved: true});
@@ -405,6 +502,11 @@ node("rename").onclick = () => {
 };
 node("delete").onclick = () => {
   const name = selection().name;
+  if (name === "user_dictionary") {
+    const confirm = window.prompt("Type CLEAR to remove every personal entry and saved edit. Other dictionaries stay in place.");
+    if (confirm === "CLEAR") run({action: "clear_personal", id: selectedId, confirm});
+    return;
+  }
   const confirm = window.prompt(`Type ${name} to delete it and its entries from the active catalog.`);
   if (confirm === name) run({action: "delete", id: selectedId, confirm});
 };
@@ -413,7 +515,12 @@ node("edit").onsubmit = (event) => {
   const fields = new FormData(event.currentTarget);
   run({action: event.submitter.value, id: selectedId, outline: fields.get("outline").trim(), translation: fields.get("translation")});
 };
-node("import").oninput = () => {
+node("import").oninput = (event) => {
+  if (event.target.name === "file" && event.target.files.length) {
+    const stem = event.target.files[0].name.replace(/\.json$/i, "").normalize("NFKD").replace(/\p{M}/gu, "");
+    node("import").elements.name.value = stem.replace(/[^A-Za-z0-9 ._-]+/g, "-")
+      .replace(/^[^A-Za-z0-9]+/, "").slice(0, 44).trimEnd() || "Imported dictionary";
+  }
   showImportError();
   clearImportPlan();
   updateImportControls();
@@ -428,6 +535,7 @@ node("import-apply").onclick = () => {
 for (const action of ["import", "restore"]) {
   node(action).onsubmit = async (event) => {
     event.preventDefault();
+    if (busy || (action === "import" && node("import-preview").hidden)) return;
     const fields = new FormData(event.currentTarget);
     try {
       const source = await fields.get("file").text();
@@ -453,9 +561,10 @@ for (const action of ["import", "restore"]) {
 
 controls();
 request("/api/job").then(async (job) => {
-  if (job.status !== "running") return;
+  if (busy || job.status !== "running") return;
   busy = true;
   controls();
+  notify(job.message || "Working on the keyboard…");
   try {
     await watch(job.id);
   } catch (error) {

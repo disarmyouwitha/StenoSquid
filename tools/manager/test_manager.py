@@ -51,6 +51,10 @@ class Keyboard:
             return "OK SNAPSHOT2" if self.adaptive else "ERR Unsupported"
         if command == "native_install update personal-snapshot-capabilities":
             return "OK PERSONAL1"
+        if command == "native_install update snapshot-clear-capabilities":
+            return "OK CLEAR1" if self.adaptive else "ERR Unsupported"
+        if command == "reset_user_dictionary":
+            return "OK"
         if command == "native_install update layout-capabilities":
             return "OK MAP1"
         if command.startswith("native_entry "):
@@ -121,6 +125,23 @@ class ManagerTest(unittest.TestCase):
             self.assertEqual(self.run_job("measure")["usage"], usage)
             inspect.assert_called_once_with(self.keyboard)
 
+    def test_clear_personal_requires_confirmation_and_firmware_capability(self):
+        with patch.object(manager, "clear_personal", return_value=True) as clear, patch.object(manager, "wait_ready"):
+            with self.assertRaisesRegex(ValueError, "personal dictionary"):
+                self.run_job("clear_personal", id=8, confirm="CLEAR")
+            self.keyboard.name, self.keyboard.kind = "user_dictionary", "snapshot"
+            with self.assertRaisesRegex(ValueError, "type CLEAR"):
+                self.run_job("clear_personal", id=8, confirm="NO")
+            with self.assertRaisesRegex(RuntimeError, "Update the experimental left firmware"):
+                self.run_job("clear_personal", id=8, confirm="CLEAR")
+            clear.assert_not_called()
+            self.keyboard.adaptive = True
+            self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
+            clear.assert_called_once_with(self.keyboard, 8, unittest.mock.ANY)
+            self.keyboard.kind, self.keyboard.adaptive = "personal", False
+            self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
+            self.assertIn("reset_user_dictionary", self.keyboard.commands)
+
     def test_optimize_requires_matching_selection_and_preview(self):
         self.keyboard.adaptive = True
         self.keyboard.kind = "snapshot"
@@ -130,7 +151,7 @@ class ManagerTest(unittest.TestCase):
                 self.run_job("apply_optimize", id=8, operation="consolidate")
             with self.assertRaisesRegex(ValueError, "eligible"):
                 self.run_job("preview_optimize", id=8, operation="personal")
-            with self.assertRaisesRegex(ValueError, "pinned"):
+            with self.assertRaisesRegex(ValueError, "factory dictionaries"):
                 self.run_job("reset", id=8, outline="KAT")
             with self.assertRaisesRegex(ValueError, "eligible"):
                 self.run_job("preview_optimize", id=8, operation="replace", source='{"KAT":"new cat"}')

@@ -104,16 +104,18 @@ def plan_named_snapshot(snapshot, protected, name, compiled, limit=16):
     return Update(blocks, metadata, payload, 0, 0)
 
 
-def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=False, convert=False):
-    deleting = compiled is None
-    if not deleting and not (consolidate or convert):
+def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=False, convert=False, clear=False):
+    deleting = compiled is None and not clear
+    if compiled is not None and not (consolidate or convert):
         raise ValueError("Existing compact dictionaries can only be rebuilt by consolidation.")
     target = next((row for row in snapshot.rows if struct.unpack_from("<I", row)[0] == identity), None)
     if target is None or (convert and (target[11] or row_name(target) != "user_dictionary" or deleting)):
         raise ValueError("Select a journal-only personal dictionary")
-    if not convert and (target[11] != SNAPSHOT_MARKER or (deleting and row_name(target) == "user_dictionary")):
+    if clear and (target is None or row_name(target) != "user_dictionary" or compiled is not None):
+        raise ValueError("Select the built-in personal dictionary to clear")
+    if not (convert or clear) and (target[11] != SNAPSHOT_MARKER or (deleting and row_name(target) == "user_dictionary")):
         raise ValueError("Select an eligible compact user dictionary")
-    consolidate |= convert
+    consolidate |= convert or clear
     old_base = struct.unpack_from("<H", target, 8)[0]
     kept, remap = [], {}
     for i, extent in enumerate(snapshot.extents):
@@ -121,7 +123,7 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
             remap[i] = len(kept)
             kept.append(EXTENT.pack(*extent))
     blocks, added, write = stage_allocation(protected)
-    if not deleting:
+    if compiled is not None:
         remap[old_base] = len(kept)
         write(compiled, 1)
     if consolidate:
@@ -141,7 +143,9 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
             continue
         row = bytearray(original)
         base = struct.unpack_from("<H", row, 8)[0]
-        if original is target and convert:
+        if original is target and clear:
+            struct.pack_into("<HBB", row, 8, 65535, 0, 0)
+        elif original is target and convert:
             struct.pack_into("<HBB", row, 8, remap[old_base], 0, SNAPSHOT_MARKER)
         elif base != 65535:
             if base == old_base and original is not target:
@@ -170,6 +174,20 @@ def personal_baseline(snapshot, additions=None):
     return effective
 
 
+def clear_personal(console, identity, progress):
+    answer = update_command(console, f"begin snapshot-clear {identity}")
+    published = False
+    try:
+        snapshot, protected = read_snapshot(console, answer)
+        update = plan_change(snapshot, protected, identity, clear=True)
+        publish(console, update, progress)
+        published = True
+        return True
+    finally:
+        if not published:
+            abort(console)
+
+
 def change_snapshot(console, operation, name, *, source=None, stage=False, progress=print,
                     preview=False, expected=None, target_id=None):
     if operation not in {"personal", "consolidate", "delete"} or (
@@ -194,11 +212,21 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
         consolidating = operation == "consolidate"
         report = preview or expected is not None
         snapshot, protected = read_snapshot(console, answer, metadata_only=not (consolidating or converting or report))
-        if not any(row_name(row) == name and struct.unpack_from("<I", row)[0] == identity for row in snapshot.rows):
+        target = next((row for row in snapshot.rows if row_name(row) == name and
+                       struct.unpack_from("<I", row)[0] == identity), None)
+        if target is None:
             raise RuntimeError("Catalog changed before staging. Refresh and retry.")
         # Read generation under the staging lease. A textually identical plan
         # from a different generation or keyboard needs its own approval.
         generation = json.loads(console.command("user_dictionary_status"))["generation"] if report else None
+        if report:
+            base = struct.unpack_from("<H", target, 8)[0]
+            image_bytes = snapshot.extents[base][2] if base != 65535 else 0
+            edits = [entry for entry in snapshot.entries.values() if entry.identity == identity]
+            before_bytes = image_bytes + sum(entry.span for entry in edits)
+            if consolidating and not edits and preview:
+                return dict(token=None, id=identity, name=name, operation=operation, before_bytes=before_bytes,
+                            after_bytes=before_bytes, staging_segments=0, segment_delta=0)
         compiled = None
         if converting:
             compiled = compile_snapshot(name, personal_baseline(snapshot, source))
@@ -225,10 +253,15 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
             if expected is not None and expected != token:
                 raise RuntimeError("The optimization plan changed. Preview it again before staging.")
             if preview:
+                retained_bytes = sum(entry.span for entry in edits if converting and entry.operation == 1)
+                _, rows, _ = struct.unpack_from("<IHH", update.payload)
+                next_extents = EXTENT.iter_unpack(update.payload[32 + 96 * rows:])
+                segment_delta = sum(extent[1] for extent in next_extents) - sum(extent[1] for extent in snapshot.extents)
                 return dict(token=token, id=identity, name=name, operation=operation, generation=generation,
+                            before_bytes=before_bytes, after_bytes=len(compiled.data) + retained_bytes,
                             compact_bytes=len(compiled.data), image_segments=sectors,
-                            staging_segments=len(update.segments), free_segments=free, largest_free_run=largest,
-                            reserve=3)
+                            staging_segments=len(update.segments), segment_delta=segment_delta,
+                            free_segments=free, largest_free_run=largest, reserve=3)
         if stage:
             publish(console, update, progress)
             published = True

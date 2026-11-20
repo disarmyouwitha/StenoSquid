@@ -76,10 +76,23 @@ def main():
         before_file, plan_file, binary = (path / name for name in ("old.bin", "convert.bin", "test"))
         before_file.write_bytes(image)
         write_plan(plan_file, update)
+        converted_file, clear_file = (path / name for name in ("converted.bin", "clear.bin"))
+        converted_file.write_bytes(recovered)
+        clear = plan_change(current, protected | set(update.segments), current.personal, clear=True)
+        write_plan(clear_file, clear)
+        cleared_image = publish_image(recovered, clear, 7)
+        cleared = opened(cleared_image)
+        assert cleared.rows[3][:8] == before.rows[3][:8] and cleared.rows[3][8:12] == b"\xff\xff\0\0"
+        assert not effective_entries(cleared, "user_dictionary", lambda at, n: cleared_image[at:at + n])
+        assert {entry.key for entry in cleared.entries.values()} == {
+            entry.key for entry in current.entries.values() if entry.identity != current.personal}
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-DSTENO_SQUID_TEST_USER_SNAPSHOTS", "-I", str(ROOT / "tools/storage"),
                         str(ROOT / "tools/tests/test_native_personal_snapshot.cc"), "-o", str(binary)], check=True)
         subprocess.run([str(binary), str(before_file), str(plan_file)], check=True)
+        subprocess.run([str(binary), str(converted_file), str(clear_file), "clear"], check=True)
+        write_plan(clear_file, plan_change(before, protected, before.personal, clear=True))
+        subprocess.run([str(binary), str(before_file), str(clear_file), "clear"], check=True)
 
 
 if __name__ == "__main__":

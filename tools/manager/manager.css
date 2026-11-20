@@ -15,9 +15,13 @@ h1 { margin: 0; font-size: clamp(1.85rem, 5vw, 3rem); line-height: 1.1; letter-s
 h2 { margin: 0; font-size: 1.3rem; }
 p { color: var(--muted); margin: .45rem 0; }
 section { background: var(--surface); border: 1px solid var(--line); border-radius: .75rem; padding: 1.1rem; margin: 0 0 1rem; min-width: 0; }
-output { display: block; margin: 1.4rem 0 1rem; padding: .85rem 1rem; border-left: .25rem solid var(--accent); background: var(--surface); overflow-wrap: anywhere; }
-output[data-error="true"] { border-color: #ff9d9d; color: #ffb6b6; }
-#import-error { margin: .75rem 0 0; padding: .55rem .75rem; border-left: .25rem solid #ff9d9d; color: #ffb6b6; overflow-wrap: anywhere; }
+#job-status { display: flex; align-items: center; gap: .65rem; margin: 1.4rem 0 1rem; padding: .85rem 1rem; border-left: .25rem solid var(--accent); background: var(--surface); overflow-wrap: anywhere; }
+#job-status[data-busy] { position: sticky; top: .5rem; z-index: 2; border: 1px solid var(--accent); border-left-width: .25rem; border-radius: .4rem; font-weight: 650; box-shadow: 0 .25rem 1rem #0006; }
+#job-status:has(output[data-error="true"]) { border-color: #ff9d9d; color: #ffb6b6; }
+.job-spinner { flex: none; width: 1rem; height: 1rem; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: job-spin .8s linear infinite; }
+@keyframes job-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .job-spinner { animation: none; } }
+#import-error, .inline-error { margin: .75rem 0; padding: .55rem .75rem; border-left: .25rem solid #ff9d9d; color: #ffb6b6; overflow-wrap: anywhere; }
 .table-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; margin: .55rem 0; text-align: left; }
 th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); }
@@ -44,7 +48,7 @@ textarea { resize: vertical; }
 #flash-map-legend li { display: flex; align-items: center; gap: .4rem; color: var(--muted); }
 #flash-map-legend span { display: inline-block; width: .95rem; height: .8rem; border-radius: 2px; }
 #flash-map-result [data-kind="c"] { background: #b198fe; }
-#flash-map-result [data-kind="x"] { background: #9384af; }
+#flash-map-result [data-kind="x"] { background: #ff5c66; }
 #flash-map-result [data-kind="b"] { background: #478fb9; }
 #flash-map-result [data-kind="s"] { background: #5cd1a3; }
 #flash-map-result [data-kind="h"] { background: #e0aa55; }
@@ -55,14 +59,19 @@ textarea { resize: vertical; }
 #flash-map-result [data-kind="retained"] { background: #787d9c; }
 #flash-map-result [data-kind="."] { background: #3a394a; }
 #flash-map-result [data-kind="?"] { background: repeating-linear-gradient(135deg, #383547 0 3px, #5d536f 3px 6px); }
-#flash-map-result [data-shared="true"] { box-shadow: inset 0 0 0 1px #eeedf8; }
+#flash-map-result [data-reclaimable="true"] { background-image: linear-gradient(150deg, transparent 43%, #ffd596 46% 54%, transparent 57%); }
+#flash-map-legend [data-reclaimable="true"] { background-color: #ad7746; }
 
 #import-plan { margin-top: 1rem; }
 #import-entry-count { margin: 0 0 .4rem; color: inherit; font-size: .88rem; font-weight: 650; }
-#import-space { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; margin: 0; }
-#import-space div { display: flex; flex-direction: column-reverse; padding: .35rem .65rem; border-radius: .45rem; background: #191923; }
-#import-space dt { color: var(--muted); font-size: .74rem; }
-#import-space dd { margin: 0; font-size: 1.18rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+#optimization-plan { margin-top: .85rem; }
+#optimization-savings { margin-left: auto; color: var(--muted); }
+#optimization-savings[data-saves="true"] { color: #a2dfc6; }
+#optimization-comparison { display: grid; gap: .5rem; margin: .65rem 0; }
+#optimization-comparison div { display: grid; grid-template-columns: 1fr auto; gap: .2rem .65rem; }
+#optimization-comparison dd { margin: 0; font-variant-numeric: tabular-nums; }
+#optimization-comparison span { grid-column: 1 / -1; height: .45rem; border-radius: 2px; background: #9384af; }
+#optimization-comparison div:last-child span { background: #5cd1a3; }
 #import-savings { color: #a2dfc6; font-size: .84rem; }
 #import-plan-costs { display: grid; gap: .5rem; list-style: none; padding: 0; margin: .65rem 0; }
 .import-format { --segment-color: #ad7746; border: 1px solid var(--line); border-radius: .55rem; padding: .65rem .75rem; background: #191923; }

@@ -892,6 +892,8 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return "OK SNAPSHOT2";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "personal-snapshot-capabilities\n"))
         return "OK PERSONAL1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-clear-capabilities\n"))
+        return "OK CLEAR1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "recovery-capabilities\n"))
         return "OK RECOVERY1";
     if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
@@ -899,6 +901,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     uint32_t snapshot_id = 0;
+    const bool metadata_read = !std::strcmp(command, "begin metadata\n");
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
     else if (kUserSnapshotsEnabled && !std::strcmp(command, "begin snapshot-named\n"))
@@ -914,6 +917,9 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         } else if (!std::strncmp(p, "personal ", 9)) {
             p += 9;
             kind = NativeUpdateKind::SnapshotPersonal;
+        } else if (!std::strncmp(p, "clear ", 6)) {
+            p += 6;
+            kind = NativeUpdateKind::SnapshotClear;
         } else return "ERR Invalid snapshot action";
         if (!Number(p, snapshot_id) || !snapshot_id || !End(p))
             return "ERR Invalid snapshot dictionary ID";
@@ -921,7 +927,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     else if (!std::strcmp(command, "begin reorder\n")) kind = NativeUpdateKind::Reorder;
     else if (!std::strcmp(command, "begin rename\n")) kind = NativeUpdateKind::Rename;
     else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
-    else if (!std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
+    else if (metadata_read || !std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
     else if (!std::strcmp(command, "begin base\n")) kind = NativeUpdateKind::Base;
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
         if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id))
@@ -930,6 +936,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         TouchInstall();
         stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
+        if (kUserSnapshotsEnabled && !metadata_read) stage_mode = STENO_SQUID_MODE_BUSY;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();
         int length = snprintk(reply, bytes, "OK %u %u %u ", root.address, root.bytes, root.crc);
@@ -966,8 +973,16 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strncmp(command, "erase ", 6)) {
         const char *p = command + 6;
         uint32_t segment;
-        if (Number(p, segment) && End(p))
+        if (Number(p, segment) && End(p)) {
+            if (stage_mode == STENO_SQUID_MODE_BUSY && staged.Kind() != NativeUpdateKind::Backup) {
+                const auto operation = staged.Kind();
+                stage_mode = operation == NativeUpdateKind::Personal || operation == NativeUpdateKind::Named ||
+                             operation == NativeUpdateKind::Base || operation == NativeUpdateKind::SnapshotNamed
+                    ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
+                steno_squid_upload_status(stage_mode, 60000);
+            }
             result = staged.Erase(segment) ? "OK" : "ERR Native staging erase refused";
+        }
     } else if (!std::strncmp(command, "write ", 6)) {
         const char *p = command + 6;
         uint32_t address;

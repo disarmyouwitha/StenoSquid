@@ -73,27 +73,37 @@ Consolidation takes the current effective dictionary as the new baseline, then r
 ### Optimize in Manager
 
 Connect the experimental left over USB with other editor sessions closed.
-Select the personal journal for **Preview conversion**, or a user snapshot
-for **Preview consolidation**. Consolidation folds saved edits and hidden outlines
+Select the personal journal or a user snapshot and choose **Consolidate edits**.
+Consolidation folds saved edits and hidden outlines
 into the compact image. Conversion compiles the existing personal entries.
 Both keep the dictionary ID, position and enabled state. Factory revisions
 use the dedicated pinned update workflow, which preserves personal entries
 and catalog priority.
 
-The preview displays compiled image bytes, contiguous image segments and
-total staging segments, including metadata and any shared checkpoint indexes.
+The preview compares the image and live edit bytes before and after, and shows
+the change in allocated blocks and the staging cost.
 It opens a temporary staging session and aborts it without programming flash.
-**Stage approved change** rechecks the named keyboard, catalog generation,
+**Compact** rechecks the named keyboard, catalog generation,
 live journal boundary, protected segments and compiled plan before writing.
 A changed plan needs a fresh preview. Publication can pause typing and reboots
 the left. Insufficient space stops the operation before programming.
+
+**Delete** on the personal dictionary removes its compact baseline and its live edits,
+leaving an empty journal with the same personal slot, priority and enabled state
+on firmware supporting `CLEAR1`. Type `CLEAR` to confirm. The other dictionaries
+keep their entries. Journal-only firmware can use its existing personal reset.
+
+Manager uses the JSON filename to suggest a dictionary name. Clear the name to
+import into Personal. After a successful import, Manager opens a fresh flash map
+when the keyboard supports it.
 
 **Download USB rescue bundle** captures a complete version 2 bundle even when
 all user dictionaries are still journals. Verify it offline with
 `python3 tools/storage/native_recovery.py stenosquid-rescue.json`. The separate
 serial-confirmed USB rescue procedure remains the restore path for that bundle.
-**Compact journal** is shared journal cleanup. It never moves a compact image
-to make a contiguous run.
+**Compact journal** previews shared journal cleanup and marks the blocks it can
+release on the flash map. **Apply journal cleanup** rechecks the plan before
+writing. Compact images stay in place.
 
 The on-flash catalog magic remains `SQBCAT02`. Byte 11 of a user-owned row is the version-one snapshot marker. It references a single-member JSC4 extent and shares the existing ID-qualified overlay. Factory rows and existing records retain their original format. Stable firmware rejects a marked root and may see the preceding root or enter recovery. Before staging a snapshot, rollback is simply reflashing the stable left. After staging, return to an untouched spare pool or restore the pre-test backup using the existing standard Native provisioning path on your disposable fixture. That explicit operation rewrites the pool. Preserve the backup separately and keep the experimental firmware installed until you are ready for that restore.
 

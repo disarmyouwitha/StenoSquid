@@ -1,6 +1,7 @@
 """Build a copy-on-write Native update from a frozen catalog and its journals."""
 
 from dataclasses import dataclass
+import hashlib
 import re
 import struct
 import zlib
@@ -482,7 +483,8 @@ def abort(console):
         pass
 
 
-def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None):
+def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None,
+             preview_compact=False, expected_compact=None):
     """Preflight, upload and commit one update over USB HID."""
     def command(text, timeout=30):
         return update_command(console, text, timeout)
@@ -497,11 +499,32 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
         mode = "named"
     else:
         mode = "compact" if incoming is None else "import"
+    if (preview_compact or expected_compact is not None) and mode != "compact":
+        raise ValueError("A journal preview only applies to compaction")
     answer = command("begin " + mode)
     try:
         progress("Reading the current dictionary store and planning free space…")
         snapshot, protected = read_snapshot(console, answer, metadata_only=bool(move or rename or delete))
         update = plan(snapshot, protected, incoming, name=name, limit=limit, move=move, rename=rename, delete=delete)
+        if preview_compact or expected_compact is not None:
+            token = None
+            victims = []
+            if update is not None:
+                _, rows, _ = struct.unpack_from("<IHH", update.payload)
+                next_journals = {extent[0] for extent in EXTENT.iter_unpack(update.payload[32 + 96 * rows:])
+                                 if extent[4] == 2}
+                victims = sorted(extent[0] for extent in snapshot.journals if extent[0] not in next_journals)
+                digest = hashlib.sha256(console.serial.encode() + answer.encode() + snapshot.payload)
+                digest.update(struct.pack("<Q", snapshot.highwater))
+                for segment, block in sorted(update.segments.items()):
+                    digest.update(struct.pack("<II", segment, len(block)))
+                    digest.update(block)
+                token = digest.hexdigest()
+            if preview_compact:
+                command("abort")
+                return {"token": token, "reclaimable": victims}
+            if token != expected_compact:
+                raise ValueError("Journal contents or allocation changed. Preview cleanup again.")
         if update is None:
             command("abort")
             if move:

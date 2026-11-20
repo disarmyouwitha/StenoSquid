@@ -14,7 +14,10 @@
       <div><h1>Steno Squid Manager</h1><p>Onboard dictionaries and keyboard output</p></div>
       <button id="refresh" type="button">Connect over USB</button>
     </header>
-    <output id="status" aria-live="polite">Plug in your left half by USB. Close other dictionary tools before connecting.</output>
+    <div id="job-status">
+      <span class="job-spinner" aria-hidden="true" hidden></span>
+      <output id="status" aria-live="polite">Plug in your left half by USB. Close other dictionary tools before connecting.</output>
+    </div>
     <div id="workspace" hidden>
       <section aria-labelledby="catalog-title">
         <div class="section-heading">
@@ -23,7 +26,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th scope="col">Priority</th><th scope="col">Dictionary</th><th scope="col">Active</th><th scope="col">Compiled entries</th><th scope="col">Image</th><th scope="col">Saved edits</th></tr></thead>
+            <thead><tr><th scope="col">Priority</th><th scope="col">Dictionary</th><th scope="col">Active</th><th scope="col">Compiled entries</th><th scope="col">Compiled size</th><th scope="col">Saved edits</th></tr></thead>
             <tbody id="catalog"></tbody>
           </table>
         </div>
@@ -34,14 +37,20 @@
           <button type="button" id="delete" data-write>Delete</button>
           <button type="button" id="export">Export JSON</button>
           <button type="button" id="measure">Measure saved edits</button>
-          <button type="button" id="optimize" data-write hidden>Preview conversion</button>
+          <button type="button" id="optimize" data-write hidden>Consolidate edits</button>
         </div>
-        <p id="dictionary-actions-note" hidden></p>
         <div id="optimization-plan" hidden aria-live="polite">
-          <p id="optimization-summary"></p>
-          <p id="optimization-content"></p>
-          <p>Keep USB connected. Publishing can pause typing and will reboot the left half.</p>
-          <button type="button" id="optimization-apply" data-write>Stage approved change</button>
+          <p>Fold saved edits into the compact dictionary.</p>
+          <div class="import-format" data-format="snapshot">
+            <div class="import-format-heading"><strong id="optimization-name"></strong><strong id="optimization-savings"></strong></div>
+            <dl id="optimization-comparison">
+              <div><dt>Before</dt><dd id="optimization-before"></dd><span aria-hidden="true"></span></div>
+              <div><dt>After</dt><dd id="optimization-after"></dd><span aria-hidden="true"></span></div>
+            </dl>
+            <p id="optimization-allocation" class="import-format-detail"></p>
+          </div>
+          <p id="optimization-publish">Keep USB connected. Publishing can pause typing and will reboot the left half.</p>
+          <button type="button" id="optimization-apply" data-write>Compact</button>
           <button type="button" id="optimization-cancel">Cancel</button>
         </div>
       </section>
@@ -54,22 +63,23 @@
             <label>Translation <textarea name="translation" rows="3" spellcheck="false"></textarea></label>
             <div class="toolbar">
               <button value="set" data-write>Save entry</button>
-              <button value="remove" data-write>Hide outline</button>
-              <button value="reset" data-write>Restore base</button>
+              <button value="remove" data-write>Delete entry</button>
+              <button value="reset" data-write hidden>Revert to original</button>
             </div>
+            <p id="edit-note" hidden>Delete affects only this dictionary. Other dictionaries can still translate the outline.<span id="edit-revert-note" hidden> Revert undoes your changes to this outline.</span></p>
           </form>
         </section>
         <section aria-labelledby="import-title">
           <h2 id="import-title">Import JSON</h2>
           <form id="import">
             <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
-            <label>New dictionary name (optional) <input name="name" maxlength="44" placeholder="Leave blank to add to personal"></label>
+            <label>Dictionary name (optional) <input name="name" maxlength="44" aria-describedby="import-name-help"></label>
+            <p id="import-name-help">(Clear to import into your personal dictionary.)</p>
             <p id="import-help" hidden>Preview checks how much space the new dictionary needs. Nothing is written until you approve.</p>
             <button id="import-preview" data-write>Import</button>
           </form>
           <div id="import-plan" hidden aria-live="polite">
             <p id="import-entry-count"></p>
-            <dl id="import-space" aria-label="Current flash space"></dl>
             <p id="import-savings" hidden></p>
             <ul id="import-plan-costs" aria-label="Import formats"></ul>
             <button id="import-apply" data-write>Stage approved import</button>
@@ -77,6 +87,18 @@
           <div role="alert"><p id="import-error" hidden></p></div>
         </section>
       </div>
+      <section id="flash-map-panel" hidden aria-labelledby="flash-map-title">
+        <div class="section-heading">
+          <h2 id="flash-map-title">External flash map</h2>
+          <button id="flash-map-scan">Scan layout</button>
+        </div>
+        <p id="flash-map-error" class="inline-error" role="alert" tabindex="-1" hidden></p>
+        <div id="flash-map-result" hidden>
+          <p id="flash-map-summary" hidden></p>
+          <div id="flash-map-grid" role="img" aria-label="256 segment ownership map"></div>
+          <ul id="flash-map-legend"></ul>
+        </div>
+      </section>
       <section aria-labelledby="settings-title">
         <h2 id="settings-title">Keyboard and storage</h2>
         <div class="toolbar">
@@ -87,22 +109,12 @@
           <button type="button" id="apply-updates" data-write hidden>Apply pinned updates</button>
           <button type="button" id="compact" data-write>Compact journal</button>
         </div>
-        <p id="maintenance"></p>
-        <p>USB required for imports, storage changes, and backups. Journal cleanup may free segments. Compact dictionary images stay where they are.</p>
+        <div id="journal-preview" hidden>
+          <p id="journal-summary" aria-live="polite"></p>
+          <button type="button" id="compact-apply" data-write>Apply journal cleanup</button>
+        </div>
       </section>
     </div>
-    <section id="flash-map-panel" hidden aria-labelledby="flash-map-title">
-      <div class="section-heading">
-        <h2 id="flash-map-title">External flash map</h2>
-        <button id="flash-map-scan">Scan layout</button>
-      </div>
-      <p>Reads the two catalog layouts while idle. Flash contents and integrity are unchecked.</p>
-      <div id="flash-map-result" hidden>
-        <p id="flash-map-summary"></p>
-        <div id="flash-map-grid" role="img" aria-label="256 segment ownership map"></div>
-        <ul id="flash-map-legend"></ul>
-      </div>
-    </section>
     <section>
       <details>
         <summary>Restore a full backup</summary>
