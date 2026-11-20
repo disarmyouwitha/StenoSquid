@@ -17,6 +17,7 @@ p { color: var(--muted); margin: .45rem 0; }
 section { background: var(--surface); border: 1px solid var(--line); border-radius: .75rem; padding: 1.1rem; margin: 0 0 1rem; min-width: 0; }
 output { display: block; margin: 1.4rem 0 1rem; padding: .85rem 1rem; border-left: .25rem solid var(--accent); background: var(--surface); overflow-wrap: anywhere; }
 output[data-error="true"] { border-color: #ff9d9d; color: #ffb6b6; }
+#import-error { margin: .75rem 0 0; padding: .55rem .75rem; border-left: .25rem solid #ff9d9d; color: #ffb6b6; overflow-wrap: anywhere; }
 .table-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; margin: .55rem 0; text-align: left; }
 th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); }

@@ -116,7 +116,7 @@ async function watch(id) {
     await new Promise((resolve) => setTimeout(resolve, 550));
     job = await request("/api/job");
     if (job.id !== id) throw new Error("Operation status changed. Refresh the keyboard to check its saved state.");
-    if (job.message) notify(job.message, job.status === "error");
+    if (job.message && job.status === "running") notify(job.message);
   } while (job.status === "running");
   if (job.status === "error") throw new Error(job.message);
   const result = job.result;
@@ -203,6 +203,12 @@ function updateImportControls() {
     ? "Preview checks how much space the new dictionary needs. Nothing is written until you approve."
     : "Enter a name to create a separate dictionary, or leave it blank to import into your personal dictionary.";
 }
+function showImportError(message = "") {
+  const error = node("import-error");
+  error.hidden = !message;
+  error.textContent = message;
+  if (message) error.scrollIntoView({block: "nearest"});
+}
 function clearImportPlan() {
   importToApply = undefined;
   node("import-plan").hidden = true;
@@ -225,7 +231,8 @@ function showImportPlan(plan) {
   node("import-apply").textContent = `Stage ${plan.selected || ""} import`;
   node("import-plan").hidden = false;
   if (importToApply) importToApply.token = plan.token;
-  notify(plan.selected ? "Review the staging plan before importing." : "This format cannot stage safely.", !plan.selected);
+  notify(plan.selected ? "Review the staging plan before importing." : "Import stopped.");
+  if (!plan.selected) showImportError("This format cannot stage safely.");
 }
 function clearOptimizationPlan() {
   optimizationToApply = undefined;
@@ -248,6 +255,8 @@ function showOptimizationPlan(plan) {
 }
 async function run(payload) {
   if (busy) return;
+  const importing = ["import", "preview_import", "apply_import"].includes(payload.action);
+  if (importing) showImportError();
   if (payload.action !== "preview_optimize") clearOptimizationPlan();
   busy = true;
   controls();
@@ -256,7 +265,12 @@ async function run(payload) {
     const {id} = await request("/api/job", payload);
     await watch(id);
   } catch (error) {
-    notify(error.message, true);
+    if (importing) {
+      notify("Import stopped.");
+      showImportError(error.message);
+    } else {
+      notify(error.message, true);
+    }
   } finally {
     busy = false;
     controls();
@@ -324,6 +338,7 @@ node("edit").onsubmit = (event) => {
   run({action: event.submitter.value, id: selectedId, outline: fields.get("outline").trim(), translation: fields.get("translation")});
 };
 node("import").oninput = () => {
+  showImportError();
   clearImportPlan();
   updateImportControls();
 };
@@ -354,7 +369,8 @@ for (const action of ["import", "restore"]) {
         await run({action, source, ...options});
       }
     } catch (error) {
-      notify(error.message, true);
+      if (action === "import") showImportError(error.message);
+      else notify(error.message, true);
     }
   };
 }
