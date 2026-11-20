@@ -32,7 +32,7 @@ python3 tools/tests/test_native_stage.py
 
 The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengths and checks recovery, dictionary IDs/order/selections and unrelated entries. The firmware also checks staged extent CRCs and uses the normal Native dictionary adapter for forward lookup. Hardware latency and power-cut acceptance remain open. Gate A host timings do not predict typing latency.
 
-## Hardware smoke test
+## Optional named-snapshot smoke test
 
 1. Use a spare left half or a disposable QSPI fixture with the ordinary Native dictionaries installed. Record the USB serial number, save a standard `stenosquid.py --backup-all` before introducing any snapshot rows, and keep the known-good left UF2 handy. Keep the matching right firmware running.
 2. Use the matching Actions artifact, `Boardsource-Left-Snapshot-Experimental` or `NiceNano-Left-Snapshot-Experimental`. Each archive contains its own `zmk.uf2`. The new left can open an existing unmarked Native pool. Confirm normal typing and `KAT` before staging anything.
@@ -73,7 +73,7 @@ Replacement changes the compact baseline and keeps the existing override and tom
 
 The on-flash catalog magic remains `SQBCAT02`. Byte 11 of a user-owned row is the version-one snapshot marker. It references a single-member JSC4 extent and shares the existing ID-qualified overlay. Factory rows and existing records retain their original format. Stable firmware rejects a marked root and may see the preceding root or enter recovery. Before staging a snapshot, rollback is simply reflashing the stable left. After staging, return to an untouched spare pool or restore the pre-test backup using the existing standard Native provisioning path on your disposable fixture. That explicit operation rewrites the pool. Preserve the backup separately and keep the experimental firmware installed until you are ready for that restore.
 
-Bluetooth editing is follow-up work.
+Manager lifecycle and recovery commands require USB. The standard Javelin editor transport also supports Bluetooth.
 
 ## Edit churn and import preflight
 
@@ -109,9 +109,9 @@ Choose **Scan layout** in Manager while the keyboard is idle and awake. The grid
 
 The endpoint has no polling, input pause, staging lease or write path. It defers when flash is asleep, the lock is busy, input is pending, or its short metadata-read budget expires. A missing or unreadable root in recovery makes free space unknown. The physical timing and typing behavior of this button still need a board check.
 
-## Hardware acceptance checklist
+## Extended named-snapshot checks
 
-1. Complete the [initial smoke test](#hardware-smoke-test) on the matching spare left. Keep the existing right firmware. In normal typing and Javelin, check both halves and one multi-stroke translation.
+1. Complete the [initial smoke test](#optional-named-snapshot-smoke-test) on the matching spare left. Keep the existing right firmware. In normal typing and Javelin, check both halves and one multi-stroke translation.
 2. Save a version 2 backup after creating the compact dictionary and adding the three sample overlay edits. Verify it offline and export the named dictionary. Check that `KAT` is the replacement, `TAS` is present, `PWOB` is absent, and the untouched multi-stroke entry is present.
 3. Rename the snapshot in Manager, move it below an enabled factory dictionary, and toggle it off and back on. Check lookup priority, name and flags after a cold boot. Move it back above the factory dictionary for the remaining checks.
 4. Use `--replace` with `{"KAT":"second baseline cat","PWOB":"second baseline Bob","TEFT":"snapshot test"}`. Check that the original override still wins, the tombstone still hides `PWOB`, and `TEFT` appears. Export the result, run `--consolidate`, and export again. The two dictionaries should match. Click **Measure saved edits** and confirm the snapshot's overlay count is now zero. Replace, consolidate, and rename should leave the numeric ID unchanged.
@@ -119,7 +119,7 @@ The endpoint has no polling, input pause, staging lease or write path. It defers
 6. For a **test-only power cut on the spare**, use a larger throwaway named import or same-ID replacement to allow time to interrupt staging. With a verified host bundle and an exported copy of the test dictionary safely on disk, disconnect USB and switch off its battery during data staging, then reconnect. Record whether the old or complete new catalog appears and compare the effective export and priority. Repeat near the catalog publish message if the window is observable. For ambiguous acknowledgment, reconnect and inspect the ID and generation before retrying. Do not infer physical cut coverage from console progress alone.
 7. Delete the disposable snapshot through Manager. Confirm its row disappears and an unrelated dictionary and its edits survive reboot. Check that wired setup, normal Javelin WebHID, typing and Practice still work.
 
-Full Gate B still needs physical cutoff timing, dense-store and sustained high-speed typing measurements, plus USB recovery on a blank or partly written pool. Existing named journal conversion and Bluetooth editing are outside this build.
+Full Gate B still needs physical cutoff timing, dense-store and sustained high-speed typing measurements, plus USB recovery on a blank or partly written pool. Direct conversion of an existing named journal and the extended lifecycle commands over BLE are outside this build.
 
 ## Personal conversion
 
@@ -216,109 +216,120 @@ python3 tools/storage/native_repack.py build/source-bundle.json --report build/r
 
 Add `--image build/repack-simulation.bin` for a raw image used by fake-NOR tests. The planner emits no USB deployment manifest or reinstallable bundle. Use new output paths. `--convert NAME` can narrow the candidates and `--keep-representations` packs the existing formats.
 
-For the full 147,424-entry Plover personal journal, the offline target shrank from **226 to 111 used segments**. The contiguous free run grew from **29 to 144 segments**. All 438,827 per-dictionary translations and 243,093 active priority winners matched. Repacking an already lean 200,000-entry personal snapshot kept its 105 used segments and verified its contents without changing formats. The mixed fake-NOR fixture verifies preservation of a disabled personal row, a pinned override and tombstone, a relocated existing snapshot, reverse/prefix/partial lookup, and 16 selected cuts and retries. Physical USB recovery and deployment of rebuilt layouts still require qualification. [Repack capacity report](benchmarks/offline-repack-capacity.json)
+For the full 147,424-entry Plover personal journal, the offline target shrank from **226 to 111 used segments**. The contiguous free run grew from **29 to 144 segments**. All 438,827 per-dictionary translations and 243,093 active priority winners matched. Repacking an already lean 200,000-entry personal snapshot kept its 105 used segments and verified its contents without changing formats. The mixed fake-NOR fixture verifies preservation of a disabled personal row, a pinned override and tombstone, a relocated lean snapshot, SHI1 hints, and 16 selected cuts and retries. Physical USB recovery and deployment of rebuilt layouts still require qualification. [Repack capacity report](benchmarks/offline-repack-capacity.json)
 
 ## Tonight's hardware checkpoint and test sequence
 
-Use the matching `Left-Snapshot-Experimental` artifact from this branch's green
-[firmware run](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml?query=branch%3Aprototype%2Fadaptive-snapshot)
-and the scripts from the same revision. Keep the current right firmware.
-The [JSON fixtures](fixtures/adaptive-snapshot/) assume a disposable spare
-with an empty journal-only personal dictionary and Lapwing Base enabled.
+Firmware is frozen at `b9eba3fc63b3820faca00bb0834b26b7c3461dd5`. Use the
+matching experimental left UF2 below and keep the current right firmware.
+The host harness verifies the downloaded bytes. Firmware capabilities and
+the USB serial are checked separately. The running firmware does not attest
+its exact build hash over HID.
 
-### Prepare the disposable pool
-
-Flash only the spare's left controller with the matching UF2. Remove other
-StenoSquid boards from USB, close Studio and Javelin, then identify the spare
-in its normal running mode.
-
-```sh
-python3 -m pip install -r requirements.txt
-PYTHONPATH=tools/dictionaries python3 -c 'from import_personal import open_console; exec("with open_console() as c: print(c.serial)")'
-SERIAL='YOUR_SPARE_USB_SERIAL'
-python3 stenosquid.py --status --serial "$SERIAL"
-```
-
-A clean ordinary Native pool with empty personal data can be used as-is.
-An incompatible snapshot or blank pool requires explicit provisioning.
-Confirm that the serial is the disposable spare and that its external
-dictionaries may be erased. If the board holds data to keep, stop and use a
-different spare. Installing a UF2 does not erase the external pool.
-
-```sh
-python3 stenosquid.py --install --confirm-erase --serial "$SERIAL"
-python3 stenosquid.py --status --serial "$SERIAL"
-python3 stenosquid.py --list-dictionaries --serial "$SERIAL"
-```
-
-The first command replaces the shared pool with the pinned dictionaries and
-empty personal journal. After reboot, expect `NATIVE2 READY`. Verify Lapwing
-Base is enabled. The following `4e1f9a4` UF2s are rollback references.
-
-| Left half | Boot volume | SHA-256 |
+| Spare left | Boot volume | SHA-256 |
 | --- | --- | --- |
-| [Boardsource experimental UF2](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44631422014/artifacts/14582765781) | `BS_KBD` | `70e8c2535f5ad8bb76c103040f21da4bd29350582210487764c305edb9100316` |
-| [nice!nano experimental UF2](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44631422014/artifacts/14581836442) | `NICENANO` | `5ecf110179a78ef045d3e9351ed6aae6aff7b557a31d3d06ca326aecda338ad9` |
+| [Boardsource](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44644245484/artifacts/14587853339) | `BS_KBD` | `de6d5289c47e3430441a8ec0815d7cf8fdd2c5436c9ec41a094ab3c2b4056f9d` |
+| [nice!nano](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44644245484/artifacts/14587883347) | `NICENANO` | `4725d274bba60b80d7417a960745bbab1afff95e393b392a19e818e99b6c1496` |
 
-| Effect | Actions |
-| --- | --- |
-| **Read-only external flash** | Catalog and lookup queries, export, full backup, import preview without `--stage`, scanning the map, local bundle verification and offline repack. Backups and some previews hold the catalog for a consistent read. Run them idle. |
-| **Writes external flash without a pool erase** | Seeding personal entries, conversion with `--stage`, editing and removing outlines, changing dictionary priority or checkboxes, staging a named fixture, deleting it, and consolidation. |
-| **Controller firmware or settings** | Copying a UF2 programs the controller. Normal typing uses the active keyboard mode. Practice updates controller settings when its results are saved. |
-| **Can erase the external dictionary pool** | The experimental USB recovery command and the standard installer or full restore when invoked with erase confirmation. Run these only on the separately designated expendable spare. |
-
-1. **Establish the baseline.** Use the existing split pair. Verify ordinary keys from each half over USB. In Javelin, stroke `KAT` for “cat”, then `A/ROUPBD` for “around”. With display hints enabled and the pinned Lapwing entries active, the latter has the one-stroke alternative `ARPBD`. Unplug USB and repeat normal typing and Javelin over a paired Bluetooth profile. Complete one WORDS Practice round and confirm there is no text in the focused editor. Record the mode, profile, and displayed hint you actually see.
-2. **Capture before changing anything.** Connect the spare by USB and close other editor sessions. Run the following from the repo. Replace the example serial with the spare's exact HID serial. If only the spare is connected, the discovery command below returns it.
+1. **Verify the artifact and spare.** In the repository, select the downloaded
+   `zmk.uf2` and run these host-only commands. Flash the spare left yourself if
+   it needs the checkpoint. Flashing the controller leaves the external pool in
+   place. Disconnect the everyday board and close Studio and Javelin before
+   opening wired HID.
 
    ```sh
-   PYTHONPATH=tools/dictionaries python3 -c 'from import_personal import open_console; exec("with open_console() as c: print(c.serial)")'
+   python3 -m pip install -r requirements.txt
+   UF2='/path/to/downloaded/zmk.uf2'
+   python3 tools/bench/gate_b.py verify-uf2 --uf2 "$UF2"
+   ```
+
+   These commands read the USB serial and Native state. Set the serial to the
+   exact value displayed and confirm it is the spare.
+
+   ```sh
+   python3 tools/bench/gate_b.py identify
    SERIAL='YOUR_SPARE_USB_SERIAL'
-   F=docs/fixtures/adaptive-snapshot
-   OUT=$(mktemp -d)
-   python3 stenosquid.py --list-dictionaries --serial "$SERIAL" > "$OUT/before-catalog.json"
-   python3 stenosquid.py --backup-all "$OUT/before-bundle.json" --bundle --serial "$SERIAL"
+   python3 stenosquid.py --status --serial "$SERIAL"
+   ```
+
+   Expect `NATIVE2 READY`. A blank or incompatible disposable pool needs
+   separate provisioning. Confirm the physical spare and permission to erase
+   its external dictionaries before using this **pool erase** command.
+
+   ```sh
+   python3 stenosquid.py --install --confirm-erase --serial "$SERIAL"
+   ```
+
+   Recheck status. Use an empty personal journal above enabled Lapwing Base.
+   Keep any valued pool disconnected. Reflashing the left is never a pool reset.
+2. **Check the stock typing path.** With a blank editor focused, verify
+   ordinary keys from each half, Javelin `KAT` → “cat”, and `A/ROUPBD` →
+   “around” with the display hint `ARPBD` when hints are enabled. Repeat over
+   BLE with USB unplugged and both halves powered. Complete a WORDS Practice
+   round and check the editor is empty. Reconnect USB and close the editor
+   connection before the next step.
+3. **Capture and verify a read-only baseline.** Use a new output directory and
+   run idle. The backup takes a read session. Keep it separate from typing
+   latency measurements. The runner saves the catalog, capabilities, status
+   and counters, known forward hits and a miss, the flash map, a verified
+   version 2 bundle, and per-dictionary JSON exports and SHA-256 hashes.
+
+   ```sh
+   OUT="build/gate-b-$(date -u +%Y%m%dT%H%M%SZ)"
+   python3 tools/bench/gate_b.py baseline --serial "$SERIAL" --uf2 "$UF2" --out "$OUT"
    python3 tools/storage/native_recovery.py "$OUT/before-bundle.json"
    ```
 
-   Keep that recovery bundle and the known-good left UF2 outside your test outputs. For a journal-only store, a second `--backup-all` without `--bundle` saves the ordinary backup format for standard Native rollback.
-3. **Convert and inspect personal.** These commands seed a journal entry, preview conversion without writing, then stage the conversion after you have reviewed the free run. The existing `STKPWHR` translation must win over the colliding fill entry. Check the same personal ID, row order, and checkbox against the saved catalog. For these lookups, keep personal enabled above overlapping factory dictionaries.
+   Expect `$OUT/baseline.json` with `result: pass`, a verified backup, and an
+   empty personal export. A deferred map is recorded as deferred. Retry the
+   read-only map in Manager while idle. Keep this folder and bundle privately.
+4. **Convert the personal fixture.** This **writes external flash** and checks
+   the prior catalog, exact personal export, and saved backup before modifying
+   the spare. Run only after confirming the exact serial. The runner previews
+   allocation, saves the seed, then stages the small fill fixture with the
+   actual journal state. After reboot it verifies the same ID, order, flags
+   and host layout. `STKPWHR` must keep “sqcheck preserved” and `KAT/TA` must
+   resolve to “sqcheck catalog.”
 
    ```sh
-   python3 stenosquid.py --import "$F/seed-journal.json" --serial "$SERIAL"
-   python3 tools/storage/native_snapshot.py "$F/fill-personal.json" --convert-personal --serial "$SERIAL"
-   python3 tools/storage/native_snapshot.py "$F/fill-personal.json" --convert-personal --serial "$SERIAL" --stage
-   python3 stenosquid.py --list-dictionaries --serial "$SERIAL"
+   python3 tools/bench/gate_b.py convert --serial "$SERIAL" --confirm-write "$SERIAL" --out "$OUT"
    ```
-
-   Forward lookup must resolve `KAT/TA` through the lean baseline and the full
-   personal export must contain the fixture. The HID console should return
-   an unsupported-command error for exhaustive reverse, prefix and
-   partial-outline requests. Temporarily put personal below enabled Lapwing
-   Base and check that the factory `KAT` wins. Restore the order, disable
-   personal, repeat, then re-enable it. These changes write the catalog.
-
-4. **Edit and consolidate.** Set `PERSONAL_ID` to the current numeric ID. The edit file replaces `KAT/TA` and adds `KAT/KAT`; the explicit remove adds a tombstone for `PWOB`. The old “sqcheck catalog” translation and the personal “sqcheck removed” translation should disappear from forward lookup and the export. Pinned fallback for that outline can still resolve. Export before and after consolidation, compare the JSON as dictionaries, and confirm that the personal ID is stable and its overlay count is zero in Manager's **Measure saved edits**.
+5. **Edit, check priority, and consolidate.** Both commands **write external
+   flash** and run separately. The edit replaces `KAT/TA`, adds `KAT/KAT`,
+   and tombstones personal `PWOB`. The readback checks exact exports and the
+   factory fallback for `PWOB`. Between the two commands, optionally use
+   Manager to put personal below Lapwing Base and then disable it. Confirm
+   that factory `KAT` wins and restore the original order and selection before
+   consolidation. Those Manager changes also write the catalog.
 
    ```sh
-   PERSONAL_ID='NUMERIC_PERSONAL_ID'
-   python3 tools/storage/native_manage.py --serial "$SERIAL" --dictionary "$PERSONAL_ID" --import "$F/edit-personal.json"
-   python3 tools/storage/native_manage.py --serial "$SERIAL" --dictionary "$PERSONAL_ID" --remove PWOB
-   python3 stenosquid.py --backup "$OUT/edited.json" --dictionary user_dictionary --serial "$SERIAL"
-   python3 tools/storage/native_snapshot.py --consolidate --name user_dictionary --serial "$SERIAL" --stage
-   python3 stenosquid.py --backup "$OUT/consolidated.json" --dictionary user_dictionary --serial "$SERIAL"
-   python3 - "$F/expected-after.json" "$OUT/edited.json" "$OUT/consolidated.json" <<'PY'
-   import json
-   import pathlib
-   import sys
-   expected, edited, consolidated = (json.loads(pathlib.Path(p).read_text()) for p in sys.argv[1:])
-   assert edited == consolidated
-   assert all(edited.get(outline) == text for outline, text in expected.items())
-   assert "PWOB" not in edited
-   print("Exports match, expected fixture entries present and PWOB absent")
-   PY
+   python3 tools/bench/gate_b.py edit --serial "$SERIAL" --confirm-write "$SERIAL" --out "$OUT"
+   python3 tools/bench/gate_b.py consolidate --serial "$SERIAL" --confirm-write "$SERIAL" --out "$OUT"
    ```
-5. **Map, cold boot and wake.** In Manager, check **Scan layout** while idle. Start a second scan, immediately refocus a blank editor, and type several chords. Confirm the map either loads or defers, with no lost, repeated, or delayed chords. Record any observable delay. Save or photograph the free run and snapshot color. With no transaction underway, remove USB and battery power from the left, reconnect, and verify the same export, order and checkboxes. For sleep, leave the left on battery untouched for 16 minutes. Wake with a left key, give the split time to reconnect, then type from both halves and repeat a lookup. Repeat one Practice and hint check with the snapshot present.
-6. **Interrupt one ordinary copy-on-write update.** On the same disposable fixture, first save the consolidated bundle and export. Use a throwaway named dictionary so a mixed result is obvious. Generate this reproducible 50,000-entry import file and run a preview before staging.
+
+   Expect unchanged catalog identity and order, byte-identical effective
+   exports after edits and consolidation, and zero live personal overlay
+   records after consolidation.
+6. **Check map, throughput, cold boot, and wake.** Follow the
+   [physical typing plan](#physical-200-wpm-test). With no transfer active,
+   remove USB and battery power, turn the spare back on, then run this
+   **read-only** persistence check. It compares saved data and selections
+   after the operator's power cycle. It cannot observe the cycle itself.
+   Repeat the read-only checks after at least 16 minutes asleep on battery
+   and a left-key wake. Test BLE reconnect before reconnecting USB.
+
+   ```sh
+   python3 tools/bench/gate_b.py cold --serial "$SERIAL" --out "$OUT"
+   python3 tools/bench/gate_b.py inspect --serial "$SERIAL" --out "$OUT"
+   ```
+
+   The repeatable `inspect` command also records the map, catalog, counters,
+   exact forward probes and personal export without approving any write.
+7. **Optional controlled interruption.** On the same disposable spare, first
+   take a new lean bundle and use the existing named fixture so the committed
+   result is easy to distinguish. The following commands only read the pool
+   or produce a host file. Preview opens and closes a staging session
+   without writing.
 
    ```sh
    python3 stenosquid.py --backup-all "$OUT/consolidated-bundle.json" --bundle --serial "$SERIAL"
@@ -334,39 +345,102 @@ Base is enabled. The following `4e1f9a4` UF2s are rollback references.
    python3 -u tools/storage/native_snapshot.py "$OUT/cut-source.json" --name SQCut --format snapshot --serial "$SERIAL"
    ```
 
-   If preview fits, repeat with `--stage`. During the data-transfer window after an early `Staged N/M` line with `N < M`, remove USB and turn the left battery off. Reconnect and inspect before retrying. `SQCut` must be entirely absent or have all 50,000 translations. If it is present, export it with `--backup --dictionary SQCut` and compare it with `cut-source.json` as JSON dictionaries. The personal export must still match. Retry if needed after inspecting the catalog. Delete the throwaway test dictionary through Manager after checking it. A second cut near publication is optional. Record the actual cue because the console message does not prove the physical instant of a root write.
-7. **Qualify USB rescue separately.** Use a second expendable left with the checkpoint firmware, ideally with a blank or partially provisioned pool. Check its exact serial with the first spare disconnected. Use a verified bundle from the consolidated fixture, never a repack simulation image. Follow the [serial-confirmed recovery procedure](#experimental-usb-recovery-on-a-spare). Cut during erase, programming, and verification on separate attempts, then repeat explicitly with the same bundle. Check complete exports, IDs, order, enabled states, and the saved host layout after cold boot. No staged repack output is part of this test.
+   If the preview fits, repeat its final command with `--stage` **to write
+   external flash**. After an early `Staged N/M` line with `N < M`, remove USB
+   and battery power. Record the last message and the actual cut cue.
+   Reconnect and run read-only `inspect` before any retry. `SQCut` must be
+   absent or export all 50,000 translations. If present, use the **read-only**
+   command below and compare the JSON with `cut-source.json`. The personal
+   export and previously enabled dictionaries must still match.
 
-**Rollback.** Before a staged write, aborting or disconnecting leaves the selected catalog intact. After a copy-on-write cut, reconnect on the same checkpoint firmware, inspect status and exports, and keep the original bundle intact. A catalog with snapshot rows needs compatible experimental firmware. Reflashing the preserved UF2 alone keeps the external pool as it is. If the expendable test pool must be replaced, use a verified pre-test bundle and the explicitly confirmed experimental recovery path. Return to stable firmware only with an ordinary, snapshot-free pool. Leave any ambiguous or read-only catalog available for inspection before choosing an erase.
+   ```sh
+   python3 stenosquid.py --backup "$OUT/cut-export.json" --dictionary SQCut --serial "$SERIAL"
+   ```
+8. **Qualify USB rescue separately.** Use a second expendable spare with the
+   frozen checkpoint, the first spare disconnected, and a fresh verified
+   lean bundle. Follow the [serial-confirmed pool-erase procedure](#experimental-usb-recovery-on-a-spare).
+   Test a blank pool and separately cut during erase, programming, and
+   verification. After a reported success, cold-boot and capture a read-only
+   baseline to compare all exported JSON and hashes, IDs, flags, order and
+   host layout with the source. Each capture needs a different `--out`.
+   An offline repack simulation image is outside this procedure.
 
+**Stop safely.** Keep the console transcript, latest stage or failure JSON,
+verified bundle, exports and map. If a reply is lost, a stage fails, the pool
+reports read-only, or data differs, leave the board powered and use
+read-only `inspect` before any retry. A failed write may have committed in
+part or in full. The runner blocks a retry in that evidence folder. It never
+reprovisions or starts USB recovery. Before publication, the power-cut
+expectation is the previous complete catalog. After a complete publication,
+verify the new catalog and exact exports. Return to a known snapshot-free
+pool before going back to stable firmware.
 
 ### Physical 200 WPM test
 
-Use a provisioned spare with Lapwing Base active, first before and then after
-adding the lean snapshot and representative overlays. Keep the right half
-connected and include chords using both hands. Repeat over USB and over BLE
-with the left USB cable unplugged.
+Run the following before conversion and after consolidation. Capture USB and
+BLE separately with the same right half. For BLE, leave USB unplugged for
+the typing run. While wired, use the read-only forward probes in each report
+to verify factory `A/ROUPBD`, compact `KAT` and `KAT/TA`, edited
+`KAT/KAT`, `PWOB` fallback, and the four-stroke miss. Those HID console probes
+check lookup correctness and do not measure the physical typing path.
 
-- Pace the five-word line “the cat is the cat” every **1.50 seconds** for
-  60 seconds using `-T/KAT/S/-T/KAT`. Count **40 lines**, or 200 intended words.
-  Then pace 20 lines every **1.00 second** for a 300 WPM burst. Add a separate
-  pass alternating those outlines with `A/ROUPBD`, overlay hits, and misses.
-  Record the actual achieved pace and compare the full editor output with
-  the expected text, allowing normal capitalization and implicit spaces.
-- Repeat during a read-only map scan and while an existing maintenance job is
-  active. Test deliberate import/Verify separately with a throwaway fixture
-  and record its blocking window and what happens to strokes entered during it.
-  Watch for lost, reordered or replayed chords, pauses and split disconnects.
-- For end-to-end latency, record chord releases and host output on one
-  timebase. Use a synchronized instrumented trace if available. Slow-motion
-  video can flag visible stalls but has limited resolution. Save the samples
-  for p50, p95, p99 and worst-case calculations. Report console round-trip
-  times separately from typing and separately from firmware-internal lookup
-  time. Capture first correct key/chord and split-ready latency after cold
-  power-up and 16 minutes asleep.
-- Capture the CI linker RAM/flash allocation and, if a separately qualified
-  diagnostic build is available, runtime stack/heap high-water marks. The
-  checkpoint firmware has no per-stroke lookup timing or runtime stack
-  telemetry for this test. Keep those measurements pending when there is no
-  suitable capture. Compare the same cadence and setup with the rollback
-  reference to separate board and transport effects from dictionary changes.
+- On the stock pool, repeat “the cat is the cat” with `-T, KAT, S, -T, KAT`.
+  Pace 40 five-word lines in 60 seconds, one line every 1.50 seconds.
+  Then pace 20 lines every 1.00 second for a short 300 WPM burst. Repeat a
+  mixed pass with “when the cat is around” using
+  `WHEPB, -T, KAT, S, A, ROUPBD`. Rehearse once and check the expected
+  capitalization and spaces. After conversion, use the same chord sequences
+  for comparison and account for any intentional fixture substitutions.
+  Record actual elapsed time, intended and produced words, and whether any
+  output was missing, late, repeated or reordered.
+- Test the map on USB while another person types or with a second app
+  window. Capture whether it completed or deferred and save any abnormal
+  output. For background maintenance, bracket a typing pass with read-only
+  `inspect` reports. Record `auto_checkpoints`, `auto_reclaimed`,
+  `work_steps`, `input_overflows` and `max_replay_delay_ms`. If no maintenance
+  occurred, record that test as pending. Intentional imports and full Verify
+  are separate foreground operations.
+- Film key release and host output on the same clock if possible. Record
+  the capture resolution, p95, p99 and worst observed end-to-end latency only
+  if the clock resolves the events. Record first correct output and
+  both-half availability after cold power-up and deep sleep separately.
+  The checkpoint has no per-stroke lookup timer. The script does not infer
+  latency from USB command timing, or claim a 200 WPM pass from host output.
+- For each pass record board model and serial, UF2 hash, transport, active
+  dictionary configuration, expected and actual output, timing method, and
+  any split disconnect, stall, or reconnect. Link the corresponding
+  `baseline.json`, stage or `inspect-*.json`. Runtime stack high-water marks
+  require separate diagnostic firmware and are outside this checkpoint.
+
+### HID editor capability audit
+
+| Editor operation | Journal-only store and lean snapshots |
+| --- | --- |
+| Active Dictionaries | List, enable, disable and toggle over USB/BLE HID. Host layout get/set is also allowed when built in. |
+| Personal entry edit and view | Add/remove personal edits and read the effective personal JSON. A personal snapshot routes the edits into its journal overlay. Personal bulk clear on compact personal is refused. |
+| Forward lookup | `lookup_stroke` returns the winning translation, including overlays and priority. |
+| Arbitrary snapshot or named edits, export and lifecycle | Manager and the project CLI use Native commands over USB. The standard HID allowlist only exposes `print_dictionary user_dictionary`, so Manager reads selected dictionary extents through the Native backup session. |
+| Exact reverse, text prefix and partial outline | `lookup`, `lookup_prefix` and `lookup_partial_outline` were already outside the HID allowlist before the indexed experiment and return `ERR Command unavailable on this keyboard` on both transports. Native still uses journal search internally, and SHI1 gives typing hints. |
+
+The transport error is explicit. How the unmodified Javelin website presents
+it remains a browser check on hardware. Manager does not call these commands.
+The previous test notes assumed the generic Javelin console bindings were
+reachable through HID. The allowlist and its tests show that they were not.
+
+### Recovery readiness
+
+The recovery CLI reconstructs and validates the complete bundle before USB
+is opened. It requires the exact serial twice and rechecks the connected
+device before erasure and after reconnecting. The device verifies the staged
+image before either root is committed. The host checks the recovered catalog
+and host layout. If publication acknowledgment is uncertain, it requires
+the physical pool checksum to match. A mismatched checksum stops the
+attempt without an automatic second erase. An explicit retry on a still
+matching raw pool skips erase. Later maintenance can change the raw checksum
+while leaving exported contents equivalent, so inspect before choosing a
+retry.
+
+Version 2 USB rescue restores the bundle's recorded layout. Offline repack
+relocates data and returns a simulation image with no provisioning manifest.
+Keep that output off hardware. The physical test still needs to qualify a
+real first install, intentional interruptions and exact cold readback.

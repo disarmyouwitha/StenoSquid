@@ -76,7 +76,9 @@ class Console:
                 self.data[root + 28:root + 32] = b"TMOC"
             assert zlib.crc32(self.data) == self.final_crc
             self.ready = True
-            if self.interrupt == "ack":
+            if self.interrupt in ("ack", "ack-mismatch"):
+                if self.interrupt == "ack-mismatch":
+                    self.data[2 * SEGMENT] ^= 1
                 self.interrupt = None
                 raise OSError("Lost publication reply")
             return "OK Rebooting"
@@ -141,6 +143,27 @@ def main():
             else:
                 raise AssertionError("Unconfirmed or unsupported recovery proceeded")
             assert usb.begin_count == 0
+        wrong_device = Console(b"\xff" * LIMIT, rows)
+        wrong_device.serial = "different-physical-device"
+        with patch("native_install.open_console", return_value=nullcontext(wrong_device)):
+            try:
+                recover_usb(bundle, Console.serial, Console.serial)
+            except RuntimeError as exc:
+                assert "differs" in str(exc)
+            else:
+                raise AssertionError("Wrong observed HID serial reached recovery")
+            assert not wrong_device.begin_count and not wrong_device.erasures
+
+        uncertain = Console(b"\xff" * LIMIT, rows)
+        uncertain.interrupt = "ack-mismatch"
+        try:
+            attempt(uncertain)
+        except RuntimeError as exc:
+            assert "Publication could not be confirmed" in str(exc)
+        else:
+            raise AssertionError("Mismatched pool CRC accepted after an uncertain acknowledgement")
+        assert uncertain.begin_count == 1 and uncertain.layout == "Mac U.S."
+
         with patch("native_install.open_console") as connect:
             corrupt = dict(bundle, sha256="corrupt")
             try:
