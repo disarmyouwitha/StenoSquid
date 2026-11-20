@@ -32,7 +32,6 @@
 #include "chord_delivery.h"
 #include "dictionary_benchmark.h"
 #include "javelin_hid_transport.h"
-#include "lapwing_dictionary.h"
 #ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
 #include "steno_squid/native_store_runtime.h"
 #include "steno_squid/native_input.h"
@@ -106,31 +105,6 @@ static_assert(STENO_ID_NUM12 == int(StenoKey::NUM12));
 
 static atomic_t initialized;
 
-// Dictionary selections are stored separately from base images and personal
-// snapshots. A fresh keyboard starts with Lapwing. Personal=1, Lapwing=2,
-// Plover=4, then the Lapwing extras from bit 3 up.
-#ifndef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
-#define EXTRAS_SELECTION_SHIFT 3
-static constexpr uint8_t PERSONAL_SELECTION = 1;
-static constexpr uint8_t LAPWING_SELECTION = 2;
-static constexpr uint8_t PLOVER_SELECTION = 4;
-static_assert(EXTRAS_SELECTION_SHIFT + EXTRAS_DICTIONARY_COUNT <= 7);
-#define EXTRAS_SELECTION_BIT(index) (uint8_t(1) << (EXTRAS_SELECTION_SHIFT + (index)))
-// Commands, numbers and proper nouns start on. UK additions start off.
-#define EXTRAS_SELECTION_DEFAULT                                                                   \
-  (EXTRAS_SELECTION_BIT(EXTRAS_COMMANDS) | EXTRAS_SELECTION_BIT(EXTRAS_NUMBERS) |                  \
-   EXTRAS_SELECTION_BIT(EXTRAS_PROPER_NOUNS))
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-static constexpr uint8_t DICTIONARY_SELECTION_VERSION = 2;
-static uint8_t dictionary_selection = 3 | EXTRAS_SELECTION_DEFAULT;
-static bool dictionary_enabled(uint8_t bit, bool) { return dictionary_selection & bit; }
-#else
-// Without the browser tool nothing can change the selection.
-static bool dictionary_enabled(uint8_t, bool fallback) { return fallback; }
-#endif
-
-#endif
-
 #ifdef CONFIG_ZMK_STENO_SQUID_PRACTICE
 bool steno_squid_engine_cancel_strokes(StenoKeyState &held) {
 #ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
@@ -203,55 +177,16 @@ static void select_dictionary(void *, const char *line) {
     return;
   }
   ++name;
-#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
-  bool enabled=false;
-  const int operation=!strncmp(line,"enable_dictionary ",18)?0:!strncmp(line,"disable_dictionary ",19)?1:2;
-  if(!steno_squid_native_select(name,operation,&enabled)) {
-    Console::Printf("ERR Unable to save native dictionary selection\n\n");return;
-  }
-#else
-  uint8_t bit = 0;
-  if (strcmp(name, "user_dictionary") == 0) {
-    bit = PERSONAL_SELECTION;
-  } else if (strcmp(name, "Lapwing Base") == 0) {
-    bit = LAPWING_SELECTION;
-  } else if (strcmp(name, "Plover Base") == 0 && plover_dictionary()) {
-    bit = PLOVER_SELECTION;
-  }
-  for (size_t i = 0; !bit && i < EXTRAS_DICTIONARY_COUNT; i++) {
-    if (extras_dictionary(i) && strcmp(name, extras_dictionary_name(i)) == 0) {
-      bit = EXTRAS_SELECTION_BIT(i);
-    }
-  }
-  if (!bit) {
-    Console::Printf("ERR Unknown dictionary\n\n");
+  bool enabled = false;
+  const int operation = !strncmp(line, "enable_dictionary ", 18) ? 0
+                      : !strncmp(line, "disable_dictionary ", 19) ? 1 : 2;
+  if (!steno_squid_native_select(name, operation, &enabled)) {
+    Console::Printf("ERR Unable to save native dictionary selection\n\n");
     return;
   }
-  uint8_t selected = dictionary_selection;
-  if (strncmp(line, "enable_dictionary ", 18) == 0) {
-    selected |= bit;
-  } else if (strncmp(line, "disable_dictionary ", 19) == 0) {
-    selected &= ~bit;
-  } else {
-    selected ^= bit;
-  }
-  // Persist before acknowledging or changing the active engine. On failure the
-  // previous selection remains active and the browser receives an error.
-  const uint8_t record[] = {DICTIONARY_SELECTION_VERSION, selected};
-  if (selected != dictionary_selection &&
-      settings_save_one("javelin/dictionaries", record, sizeof(record)) != 0) {
-    Console::Printf("ERR Unable to save dictionary selection\n\n");
-    return;
-  }
-  dictionary_selection = selected;
-#endif
   BufferWriter events;
   ConsoleWriter::Push(&events);
-#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
   if (enabled) {
-#else
-  if (selected & bit) {
-#endif
     StenoEngine::container.value.EnableDictionary(name);
   } else {
     StenoEngine::container.value.DisableDictionary(name);
@@ -267,30 +202,10 @@ static void select_dictionary(void *, const char *line) {
 
 static bool load_dictionary_collection() {
   List<StenoDictionaryListEntry> entries;
-#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
-  for(size_t i=0;i<steno_squid_native_dictionary_count();++i)
-    entries.Add(StenoDictionaryListEntry(steno_squid_native_dictionary(i),steno_squid_native_dictionary_enabled(i)));
-#else
-#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-  auto *personal = steno_squid_user_dictionary_open();
-  if (personal) {
-    entries.Add(StenoDictionaryListEntry(personal, dictionary_selection & PERSONAL_SELECTION));
+  for (size_t i = 0; i < steno_squid_native_dictionary_count(); ++i) {
+    entries.Add(StenoDictionaryListEntry(steno_squid_native_dictionary(i),
+                                        steno_squid_native_dictionary_enabled(i)));
   }
-#endif
-  // The Lapwing extras rank above the bases, in the order Plover gives them.
-  for (size_t i = 0; i < EXTRAS_DICTIONARY_COUNT; i++) {
-    if (auto *extra = extras_dictionary(i)) {
-      entries.Add(StenoDictionaryListEntry(
-          extra, dictionary_enabled(EXTRAS_SELECTION_BIT(i), i != EXTRAS_UK_ADDITIONS)));
-    }
-  }
-  entries.Add(StenoDictionaryListEntry(lapwing_dictionary(), dictionary_enabled(LAPWING_SELECTION, true)));
-  if (auto *plover = plover_dictionary()) {
-    // Personal overrides remain first. Fresh settings default to Lapwing.
-    entries.Add(StenoDictionaryListEntry(plover, dictionary_enabled(PLOVER_SELECTION, false)));
-  }
-
-#endif
 
   new (dictionaryList)
       StenoDictionaryList(static_cast<List<StenoDictionaryListEntry> &&>(entries));
@@ -330,13 +245,8 @@ void zmk_javelin_steno_init(void) {
   if (!lock || atomic_get(&initialized)) {
     return;
   }
-#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
   if (!steno_squid_native_dictionary_ready()) {
     LOG_WRN("Native dictionary catalog is unavailable");
-#else
-  if (!lapwing_dictionary()) {
-    LOG_WRN("External Lapwing dictionary is unavailable");
-#endif
     return;
   }
 
