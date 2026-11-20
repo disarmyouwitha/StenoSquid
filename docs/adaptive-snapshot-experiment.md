@@ -2,7 +2,7 @@
 
 This branch adds opt-in named snapshots and explicit personal conversion over USB. Existing journal dictionaries continue to open in their original format. Keep using the known-good Native release on your everyday board.
 
-Start with the [hardware checkpoint and test sequence](#tonights-hardware-checkpoint-and-test-sequence) for the corrected build, fixture commands, and the preserved `4e1f9a4` rollback.
+Start with the [hardware checkpoint and test sequence](#tonights-hardware-checkpoint-and-test-sequence) for the pinned `b9eba3f` build, fixture commands, and recovery procedures.
 
 ## Gate A results
 

@@ -125,7 +125,7 @@ def main():
         manifest = directory / "manifest.json"
         manifest.write_text(json.dumps(dict(commit="test", artifacts={"Fake": dict(url="offline",
             sha256=hashlib.sha256(uf2.read_bytes()).hexdigest(), bytes=uf2.stat().st_size)})))
-        out = directory / "session"
+        out = directory / "build" / "session"
         with patch("gate_b.CHECKPOINT", manifest), patch("gate_b.open_console", return_value=nullcontext(spare)) as connect, \
                 patch("native_snapshot.publish", side_effect=lambda console, update, progress: console.publish(update, progress)), \
                 patch("gate_b.wait_ready") as reboot:

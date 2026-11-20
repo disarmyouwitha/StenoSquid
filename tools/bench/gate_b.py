@@ -111,12 +111,13 @@ def inspect(console, report):
     report["layout"] = layout(console)
 
 
-def baseline(console, out, report):
+def baseline(console, out, report, progress):
     report["capabilities"] = {name: console.command(f"native_install update {name}") for name in CAPABILITIES}
     require(report["capabilities"] == CAPABILITIES, "The matching experimental capabilities are required.")
     report["hello"] = console.command("hello")
     inspect(console, report)
     before = report["device"]
+    progress("Reading the complete dictionary pool view over USB. Keep the spare idle and connected.")
     backup = backup_all(console, complete=True)
     require(backup["format"] == FORMAT, "Complete backup version 2 required.")
     path = out / "before-bundle.json"
@@ -131,6 +132,7 @@ def baseline(console, out, report):
             backup["host_layout"] == before["host_layout"] == after["host_layout"] and
             before["status"]["generation"] == after["status"]["generation"],
             "Catalog or host layout changed around backup. Keep the bundle and capture a fresh baseline.")
+    progress("Bundle verified offline. Saving the effective dictionary exports and hashes.")
     exports = report["exports"] = {}
     for identity, name, _ in rows:
         entries = effective_entries(view, name, lambda at, n: image[at:at + n])
@@ -215,6 +217,7 @@ def run(stage, serial, out, uf2=None, confirmation=None):
             "A write stage requires the exact USB serial and matching confirmation.")
     reports = out / (stage + ".json")
     if stage == "baseline":
+        out.parent.mkdir(parents=True, exist_ok=True)
         out.mkdir(mode=0o700)
     else:
         require(out.is_dir(), "Use the baseline output directory for later stages.")
@@ -246,7 +249,7 @@ def run(stage, serial, out, uf2=None, confirmation=None):
         with open_console(serial) as console:
             assert_serial(console, serial)
             if stage == "baseline":
-                baseline(console, out, report)
+                baseline(console, out, report, progress)
             elif stage == "inspect":
                 inspect(console, report)
                 actual = export_dictionary(console, PERSONAL)
