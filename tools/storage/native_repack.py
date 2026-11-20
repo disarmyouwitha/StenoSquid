@@ -2,7 +2,7 @@
 """Offline-only repacking planner for a verified StenoSquid recovery bundle.
 
 Emit a verified version 2 recovery bundle and a layout report. USB deployment
-is limited to explicitly authorized recovery on an unprovisioned spare.
+requires explicit approval and a matching guarded live pool or a spare.
 """
 import argparse
 import hashlib
@@ -417,19 +417,26 @@ def check_live(console, bundle, *, target=False):
     return report
 
 
-def restore_spare(source_path, target_path, serial, confirmation, progress=print):
+def restore_repack(source_path, target_path, serial, confirmation, progress=print, *, live=False):
     if source_path.samefile(target_path):
         raise ValueError("Provide the original and optimized bundles as separate files.")
     source, source_file_hash = read_bundle(source_path, durable=True)
     target, file_hash = read_bundle(target_path, durable=True)
     if not serial or confirmation != f"{serial}:{file_hash}":
-        raise ValueError("Confirm erase with the exact spare USB serial and optimized file SHA-256.")
-    validate_pair(source, target, reconstruct(source), reconstruct(target))
-    if source.get("capture", {}).get("serial") == serial:
-        raise ValueError("The capture device cannot be used as the expendable recovery spare.")
-    progress(f"Confirmed spare {serial}. Original file SHA-256 {source_file_hash}. "
+        raise ValueError("Confirm erase with the exact USB serial and optimized file SHA-256.")
+    original = reconstruct(source)
+    validate_pair(source, target, original, reconstruct(target))
+    captured_serial = source.get("capture", {}).get("serial")
+    if live and captured_serial != serial:
+        raise ValueError("Live repack requires a fresh backup from the selected keyboard.")
+    if not live and captured_serial == serial:
+        raise ValueError("Use guarded live repack for the capture device.")
+    progress(f"Confirmed device {serial}. Original file SHA-256 {source_file_hash}. "
              f"Optimized file SHA-256 {file_hash}. Recovery erases the entire external dictionary pool.")
-    recover_usb(target, serial, serial, progress, repack_spare=True)
+    if live:
+        recover_usb(target, serial, serial, progress, live_source=(source, original[1]))
+    else:
+        recover_usb(target, serial, serial, progress, repack_spare=True)
 
 
 def main():
@@ -443,22 +450,24 @@ def main():
     mode.add_argument("--check-live-source", action="store_true", help="Read-only check against a live source")
     mode.add_argument("--check-live-target", type=Path, help="Verify a restored optimized spare after cold boot")
     mode.add_argument("--restore-spare", type=Path, help="Erase and recover an unprovisioned expendable spare")
+    mode.add_argument("--restore-live", type=Path, help="Replace the captured live pool with guarded erase")
     parser.add_argument("--serial", help="Exact physical USB serial")
     parser.add_argument("--confirm-erase", metavar="SERIAL:SHA256", help="Repeat the spare serial and optimized file hash")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--convert", action="append", metavar="NAME", help="Consider only named candidates")
     selection.add_argument("--keep-representations", action="store_true", help="Pack without conversion")
     args = parser.parse_args()
-    comparing = args.verify_target or args.check_live_source or args.check_live_target or args.restore_spare
-    live = args.check_live_source or args.check_live_target or args.restore_spare
-    if bool(live) != bool(args.serial) or bool(args.restore_spare) != bool(args.confirm_erase):
-        parser.error("USB modes require --serial. Only --restore-spare requires --confirm-erase.")
+    restore = args.restore_live or args.restore_spare
+    comparing = args.verify_target or args.check_live_source or args.check_live_target or restore
+    live = args.check_live_source or args.check_live_target or restore
+    if bool(live) != bool(args.serial) or bool(restore) != bool(args.confirm_erase):
+        parser.error("USB modes require --serial. Restore modes require --confirm-erase.")
     if comparing and (args.bundle_out or args.image or args.report or args.convert or args.keep_representations):
         parser.error("Planning options require offline repack mode.")
     if not comparing and not args.report:
         parser.error("Offline repack requires --report.")
-    if args.restore_spare:
-        restore_spare(args.bundle, args.restore_spare, args.serial, args.confirm_erase)
+    if restore:
+        restore_repack(args.bundle, restore, args.serial, args.confirm_erase, live=bool(args.restore_live))
         return
 
     backup, source_file_hash = read_bundle(args.bundle)

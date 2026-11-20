@@ -206,11 +206,11 @@ def recovery_images(image):
     return bytes(staged), zlib.crc32(staged), zlib.crc32(image)
 
 
-def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=False):
+def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=False, live_source=None):
     if not serial or confirmation != serial:
         raise ValueError("Recovery needs an explicit USB serial and identical erase confirmation.")
-    if ("repack" in backup) != repack_spare:
-        raise ValueError("Optimized bundles require the separate repack spare workflow with both backup files.")
+    if ("repack" in backup) != (repack_spare or live_source is not None) or (repack_spare and live_source is not None):
+        raise ValueError("Optimized bundles require the repack workflow with both backup files.")
     image, snapshot = reconstruct(backup)
     staged, staged_crc, final_crc = recovery_images(image)
     from native_install import command, open_console, wait_ready, write_pool
@@ -236,7 +236,24 @@ def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=Fa
             if repack_spare and state[1] != "UNPROVISIONED":
                 raise RuntimeError("Optimized recovery requires an unprovisioned expendable spare. "
                                    "A live or busy pool cannot be replaced.")
-            command(console, f"begin RECOVERY {staged_crc} {final_crc}")
+            if live_source is None:
+                begin = f"begin RECOVERY {staged_crc} {final_crc}"
+            else:
+                source, view = live_source
+                if state[1] != "READY" or console.command(
+                        "native_install update repack-capabilities") != "OK REPACK1":
+                    raise RuntimeError("The live pool must be READY and running firmware with guarded repack support.")
+                from native_repack import check_live
+
+                progress("Comparing the live catalog and all referenced bytes with the original backup…")
+                check_live(console, source)
+                generation = source["capture"]["generation"]
+                sequence = view.highwater
+                layout = LAYOUTS.index(source["host_layout"])
+                begin = (f"begin REPACK {staged_crc} {final_crc} "
+                         f"{generation & 0xffffffff} {generation >> 32} {zlib.crc32(view.payload)} "
+                         f"{sequence & 0xffffffff} {sequence >> 32} {layout}")
+            command(console, begin)
             try:
                 write_pool(console, staged, progress, finish=False)
             except BaseException:

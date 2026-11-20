@@ -31,10 +31,18 @@ class Console:
         self.interrupt = None
         self.erasures = set()
         self.status_override = None
+        self.repack_guard = None
 
     def command(self, line, timeout=30):
         if line == "native_install update recovery-capabilities":
             return "OK RECOVERY1" if self.supported else "ERR Unknown"
+        if line == "native_install update repack-capabilities":
+            return "OK REPACK1"
+        if line.startswith("native_install begin REPACK "):
+            _, _, _, staged, final, *guard = line.split()
+            if guard != self.repack_guard:
+                return "ERR Repack source changed or unavailable; no erase started"
+            line = f"native_install begin RECOVERY {staged} {final}"
         if line == "native_install status":
             return self.status_override or ("NATIVE2 READY 2" if self.ready else "NATIVE2 UNPROVISIONED 0")
         if line.startswith("native_install match RECOVERY "):
@@ -181,6 +189,25 @@ def main():
             recover_usb(optimized, spare.serial, spare.serial, lambda _: None, repack_spare=True)
             recover_usb(optimized, spare.serial, spare.serial, lambda _: None, repack_spare=True)
             assert spare.begin_count == 1 and spare.data == expected
+
+        live = Console(b"\xab" * LIMIT, rows)
+        live.ready = True
+        source = dict(bundle, capture=dict(serial=live.serial, generation=7, timestamp="2026-11-20T01:00:00Z"))
+        view = reconstruct(bundle)[1]
+        guard = ["7", "0", str(zlib.crc32(view.payload)), str(view.highwater), "0", "1"]
+        live.repack_guard = guard.copy()
+        live.repack_guard[3] = str(view.highwater + 1)
+        with patch("native_install.open_console", return_value=nullcontext(live)), patch("native_install.wait_ready", live.wait), patch("native_repack.check_live", return_value={}):
+            try:
+                recover_usb(optimized, live.serial, live.serial, lambda _: None, live_source=(source, view))
+            except RuntimeError as error:
+                assert "source changed" in str(error)
+            else:
+                raise AssertionError("A journal edit between host validation and guarded begin was accepted")
+            assert not live.erasures and live.begin_count == 0
+            live.repack_guard = guard
+            recover_usb(optimized, live.serial, live.serial, lambda _: None, live_source=(source, view))
+            assert live.data == expected and live.begin_count == 1
 
         usb = Console(b"\xff" * LIMIT, rows)
         for supported, serial in ((True, "wrong-device"), (False, Console.serial)):

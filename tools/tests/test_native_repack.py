@@ -17,7 +17,7 @@ from build_native_image import SEGMENT, SOURCES, build
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import digest, reconstruct, save_atomic
-from native_repack import check_live, pack_layout, repack, restore_spare, validate_pair
+from native_repack import check_live, pack_layout, repack, restore_repack, validate_pair
 from native_snapshot import compile_snapshot, plan_named_snapshot
 from native_update import backup_all, row_name
 
@@ -158,10 +158,10 @@ def main():
 
         confirmation = "spare:" + saved["target_file_sha256"]
         with patch("native_repack.recover_usb") as recover:
-            refuse(restore_spare, bundle, optimized, "spare", "spare")
-            refuse(restore_spare, bundle, bundle, "spare", confirmation)
+            refuse(restore_repack, bundle, optimized, "spare", "spare")
+            refuse(restore_repack, bundle, bundle, "spare", confirmation)
             recover.assert_not_called()
-            restore_spare(bundle, optimized, "spare", confirmation, lambda _: None)
+            restore_repack(bundle, optimized, "spare", confirmation, lambda _: None)
             assert recover.call_args.kwargs == {"repack_spare": True}
         originals = bundle.read_bytes(), optimized.read_bytes()
         refuse(save_atomic, bundle, {"bad": True})

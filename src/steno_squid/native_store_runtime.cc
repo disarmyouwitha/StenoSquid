@@ -904,6 +904,10 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return "OK CLEAR1";
     if (!std::strcmp(command, "recovery-capabilities\n"))
         return "OK RECOVERY1";
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
+    if (!std::strcmp(command, "repack-capabilities\n"))
+        return "OK REPACK1";
+#endif
     if (!std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
     if (!std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
@@ -1048,13 +1052,41 @@ const char *Install(const char *command,char *reply,size_t bytes) {
         flash_device.mapped = mapped;
         return match ? "OK MATCH" : "ERR Recovery contents differ";
     }
-    const bool recovering = !std::strncmp(command,"begin RECOVERY ",15);
+    const bool ordinary_recovery = !std::strncmp(command,"begin RECOVERY ",15);
+    const bool guarded_recovery = !std::strncmp(command,"begin REPACK ",13);
+    const bool recovering = ordinary_recovery || guarded_recovery;
     if (recovering || !std::strncmp(command,"begin CLEAR ",12)) {
-        const char *p=command+(recovering ? 15 : 12);
+        const char *p = command + (ordinary_recovery ? 15 : guarded_recovery ? 13 : 12);
         uint32_t crc, final_crc = 0;
-        if (!Number(p, crc) || (recovering && (*p++ != ' ' || !Number(p, final_crc))) || !End(p))
+        if (!Number(p, crc) || (recovering && (*p++ != ' ' || !Number(p, final_crc))))
             return "ERR Invalid manifest CRC";
-        if(transfer.Active() || staged.Active() || exporting || store.work!=NativeStore<FlashDevice>::Work::None)return "ERR Native store busy";
+        if (transfer.Active() || staged.Active() || exporting ||
+            store.work != NativeStore<FlashDevice>::Work::None) return "ERR Native store busy";
+        if (guarded_recovery) {
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
+            uint32_t generation_low, generation_high, catalog_crc, sequence_low, sequence_high, layout;
+            if (*p++ != ' ' || !Number(p, generation_low) ||
+                *p++ != ' ' || !Number(p, generation_high) ||
+                *p++ != ' ' || !Number(p, catalog_crc) ||
+                *p++ != ' ' || !Number(p, sequence_low) ||
+                *p++ != ' ' || !Number(p, sequence_high) ||
+                *p++ != ' ' || !Number(p, layout) || !End(p) || layout > 1)
+                return "ERR Invalid repack source identity";
+            // Called under flash_lock, the same lock that protects edits,
+            // catalog publication and host layout changes. BeginRecovery below
+            // closes Native access before releasing it.
+            const uint64_t generation = (uint64_t(generation_high) << 32) | generation_low;
+            const uint64_t sequence = (uint64_t(sequence_high) << 32) | sequence_low;
+            if (!healthy || !store.opened || store.selected.quarantine ||
+                store.selected.root.generation != generation || store.selected.root.crc != catalog_crc ||
+                store.live.Highwater() != sequence || steno_squid_host_layout_index() != layout)
+                return "ERR Repack source changed or unavailable; no erase started";
+#else
+            return "ERR Guarded repack unavailable";
+#endif
+        } else if (!End(p)) {
+            return "ERR Invalid manifest CRC";
+        }
         if(lf_suspended || !lf_provisioning_ready || !squid_qspi_reactivate())return "ERR Flash unavailable";
         if(!ForgetBaseTrust())return "ERR Cannot invalidate native base trust; no flash changed";
         healthy=store.opened=false;flash_device.mapped=false;flash_device.Invalidate();store.catalog.Invalidate();atomic_clear(&lf_mapped_ready);

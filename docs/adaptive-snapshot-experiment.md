@@ -290,33 +290,37 @@ All 438,827 effective per-dictionary entries and 243,093 active priority winners
 matched. An already lean 200,000-entry personal snapshot kept its 105 used
 segments. [Repack capacity report](benchmarks/offline-repack-capacity.json)
 
-#### Optimized USB recovery on an expendable spare
+#### Guarded USB repack and spare recovery
 
-This path is awaiting physical qualification. It accepts an unprovisioned
-spare, or a spare already matching the exact optimized image for an
-idempotent retry. The source check can prove equality at capture time. The
-current firmware releases that freeze before opening an erase session, so
-a live pool cannot be safely replaced by this tool. Manager and Automatic
-import keep their existing staging refusal.
+The captured keyboard can be tested directly with firmware that reports
+`REPACK1`. The tool compares the current catalog, every referenced extent,
+journal high-water mark and host layout with the verified source. The firmware
+rechecks the catalog generation and CRC, journal sequence and host layout
+under the same lock that starts recovery. A difference aborts before erase.
+Use an unprovisioned spare only when testing disaster recovery independently
+of the captured device. Manager and Automatic import keep their existing
+staging refusal.
 
 1. **Offline verification.** Save the original and optimized bundles as
    separate files and verify both with the commands above. Record both file
    digests and the expected free run. Keep both files throughout testing.
-2. **Identify the spare.** Disconnect the source half and close other editor
-   connections. Connect only the expendable left by USB. Confirm the serial
-   and `NATIVE2 UNPROVISIONED` using `python3 stenosquid.py --status --serial
-   SPARE_USB_SERIAL`. Stop if it reports READY for an unrelated pool. The
-   optimized restore is deliberately refused in that state.
-3. **Explicit pool erase.** On that spare only, repeat the exact serial and
-   the optimized **file** SHA-256 shown by offline verification. The next
-   command erases the entire external dictionary pool, leaving the reserved
-   final segment outside the transfer.
+2. **Identify the target.** Close other editor connections. For a live repack,
+   connect the captured keyboard and confirm its exact USB serial and
+   `NATIVE2 READY` status. An unprovisioned spare is also eligible for the
+   separate `--restore-spare` mode.
+3. **Explicit pool erase.** Repeat the target USB serial and optimized
+   **file** SHA-256 shown by offline verification. The next command erases
+   the entire external dictionary pool while leaving the final reserved
+   segment outside the transfer.
 
    ```sh
    python3 tools/storage/native_repack.py /path/to/original.json \
-     --restore-spare /path/to/optimized.json --serial SPARE_USB_SERIAL \
-     --confirm-erase SPARE_USB_SERIAL:OPTIMIZED_FILE_SHA256
+     --restore-live /path/to/optimized.json --serial TARGET_USB_SERIAL \
+     --confirm-erase TARGET_USB_SERIAL:OPTIMIZED_FILE_SHA256
    ```
+
+   For an unprovisioned spare, use `--restore-spare` with its serial. A
+   matching completed image can be checked with an explicit repeat.
 
 4. **Cold boot and readback.** After the command confirms the full-pool CRC
    and catalog, disconnect USB and turn off the spare battery. Power it back
@@ -324,7 +328,7 @@ import keep their existing staging refusal.
 
    ```sh
    python3 tools/storage/native_repack.py /path/to/original.json \
-     --check-live-target /path/to/optimized.json --serial SPARE_USB_SERIAL
+     --check-live-target /path/to/optimized.json --serial TARGET_USB_SERIAL
    ```
 
    Expect READY, a byte-for-byte match for the active catalog and every
@@ -339,18 +343,17 @@ import keep their existing staging refusal.
    attempts. Record which phase you actually hit. A missing reply calls for
    reconnect and inspection, never automatic erase. If the board matches
    the optimized target, an explicit repeat verifies and skips erase.
-   An unprovisioned board can receive a deliberate retry. A partial root
-   publication can leave READY with a mismatched full-pool CRC. Stop there.
-   To recover the original layout on the spare in that case, independently
-   verify `original.json` and explicitly authorize the separate disaster
+   If the original catalog is gone, or a partial publication leaves READY
+   with a mismatched full-pool CRC, stop. To recover the original layout,
+   independently verify `original.json` and explicitly authorize the separate disaster
    recovery command:
 
    ```sh
    python3 tools/storage/native_recovery.py /path/to/original.json \
-     --restore --serial SPARE_USB_SERIAL --confirm-erase SPARE_USB_SERIAL
+     --restore --serial TARGET_USB_SERIAL --confirm-erase TARGET_USB_SERIAL
    ```
 
-   Reboot and capture a new backup from the spare. Compare the original
+   Reboot and capture a new backup from the target. Compare the original
    `catalog`, `extents` and `host_layout` fields with that readback.
    The capture serial and timestamp will differ. Reflashing a UF2 alone does
    not reset the QSPI pool.
