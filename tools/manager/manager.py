@@ -20,7 +20,7 @@ from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
 from native_restore import restore_all
-from native_snapshot import change_snapshot, compile_snapshot
+from native_snapshot import change_snapshot
 from native_import_plan import named_import
 from native_layout import read_layout
 
@@ -142,16 +142,9 @@ def run_job(serial, request, progress):
             if applying and (not isinstance(expected, str) or len(expected) != 64):
                 raise ValueError("Preview the optimization before staging.")
             operation = request.get("operation")
-            if selected["kind"] == "personal" and operation == "personal":
-                source = None
-            elif selected["kind"] == "snapshot" and operation == "consolidate":
-                source = None
-            elif selected["kind"] == "snapshot" and operation == "replace":
-                entries, _ = read_import(request["source"])
-                source = compile_snapshot(name, entries)
-            else:
+            if (selected["kind"], operation) not in {("personal", "personal"), ("snapshot", "consolidate")}:
                 raise ValueError("Choose an eligible personal journal or user snapshot.")
-            outcome = change_snapshot(console, operation, name, source=source, stage=applying,
+            outcome = change_snapshot(console, operation, name, stage=applying,
                                       preview=not applying, expected=expected if applying else None,
                                       target_id=selected["id"], progress=progress)
             if not applying:

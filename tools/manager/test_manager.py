@@ -132,6 +132,8 @@ class ManagerTest(unittest.TestCase):
                 self.run_job("preview_optimize", id=8, operation="personal")
             with self.assertRaisesRegex(ValueError, "pinned"):
                 self.run_job("reset", id=8, outline="KAT")
+            with self.assertRaisesRegex(ValueError, "eligible"):
+                self.run_job("preview_optimize", id=8, operation="replace", source='{"KAT":"new cat"}')
             change.assert_not_called()
             plan = {"id": 8, "operation": "consolidate", "token": "a" * 64}
             change.return_value = plan
@@ -140,12 +142,10 @@ class ManagerTest(unittest.TestCase):
             self.assertFalse(change.call_args.kwargs["stage"])
             wait.assert_not_called()
             change.return_value = True
-            reply = self.run_job("apply_optimize", id=8, operation="replace", token=plan["token"],
-                                 source='{"KAT":"replacement"}')
+            reply = self.run_job("apply_optimize", id=8, operation="consolidate", token=plan["token"])
             self.assertEqual(reply["optimized"], "Medical")
             self.assertEqual(change.call_args.kwargs["target_id"], 8)
             self.assertEqual(change.call_args.kwargs["expected"], plan["token"])
-            self.assertEqual(change.call_args.kwargs["source"].data[-12:-8], b"SHI1")
             wait.assert_called_once_with("smoke-board")
 
     def test_import_explains_empty_and_invalid_files(self):
@@ -154,7 +154,6 @@ class ManagerTest(unittest.TestCase):
             for action, fields in (
                 ("preview_import", {"name": "Abby"}),
                 ("import", {}),
-                ("preview_optimize", {"id": 8, "operation": "replace"}),
             ):
                 with self.assertRaisesRegex(ValueError, "zero entries"):
                     self.run_job(action, source="{}\n", **fields)

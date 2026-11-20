@@ -905,10 +905,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         kind = NativeUpdateKind::SnapshotNamed;
     else if (kUserSnapshotsEnabled && !std::strncmp(command, "begin snapshot-", 15)) {
         const char *p = command + 15;
-        if (!std::strncmp(p, "replace ", 8)) {
-            p += 8;
-            kind = NativeUpdateKind::SnapshotReplace;
-        } else if (!std::strncmp(p, "consolidate ", 12)) {
+        if (!std::strncmp(p, "consolidate ", 12)) {
             p += 12;
             kind = NativeUpdateKind::SnapshotConsolidate;
         } else if (!std::strncmp(p, "delete ", 7)) {
@@ -931,7 +928,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();
-        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed || kind == NativeUpdateKind::SnapshotReplace)
+        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();

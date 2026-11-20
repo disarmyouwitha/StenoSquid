@@ -57,7 +57,9 @@ def main():
                 assert not set(update.segments) & protected
                 assert report["options"][mode]["staging_segments"] == len(update.segments)
                 assert report["options"][mode]["free_after_commit"] >= 3
-            assert report["options"]["snapshot"]["eligibility"] == "copy-on-write"
+            compact = report["options"]["snapshot"]
+            assert compact["eligibility"] == "copy-on-write"
+            assert compact["consolidation_staging_segments"] == compact["staging_segments"] + 2
         report, _ = compare(view, protected, "Unrepresentable", {(1 << 24,): b"value"}, 16,
                             None, "24-bit JSC4 limitation")
         assert report["recommended"] == "journal" and not report["options"]["snapshot"]["eligible"]

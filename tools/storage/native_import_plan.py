@@ -57,20 +57,19 @@ def compare(snapshot, protected, name, entries, limit, compiled, compile_problem
         if key == "snapshot":
             after = metadata(update.payload)
             options[key]["contiguous_segments"] = (logical + SEGMENT - 1) // SEGMENT
-            after_free, after_run = inspect_free(owned(after))
-            options[key]["replacement_free_segments"] = after_free
-            options[key]["replacement_largest_run"] = after_run
+            # A new named snapshot adds no journal records. Model consolidation
+            # of its initial contents with the existing shared edit indexes.
+            after.entries = snapshot.entries
+            after.highwater = snapshot.highwater
             try:
-                second = plan_change(after, owned(after), snapshot.next_id, compiled)
+                second = plan_change(after, owned(after), snapshot.next_id, compiled, consolidate=True)
             except NoSpace as error:
                 options[key].update(eligible=False, eligibility="usb-rebuild-unqualified",
-                                    replacement_refusal=str(error), reason=(
-                    "The initial snapshot fits. A same-size replacement cannot stage in the current layout. "
-                    "It may need an explicit USB-backed rebuild that erases and reinstalls the shared pool from a verified bundle. "
-                    "This choice stays gated until the rebuild path is qualified on hardware."))
+                                    reason=f"The snapshot fits today, but same-size consolidation cannot stage. {error} "
+                                           "USB rebuilding is unavailable in Manager.")
             else:
                 options[key]["eligibility"] = "copy-on-write"
-                options[key]["replacement_staging_segments"] = len(second.segments)
+                options[key]["consolidation_staging_segments"] = len(second.segments)
     journal, compact = options["journal"], options["snapshot"]
     if compact["eligible"] and not journal["eligible"]:
         report.update(recommended="snapshot", rationale="Only the compact plan meets the staging and reserve checks.")
@@ -81,10 +80,10 @@ def compare(snapshot, protected, name, entries, limit, compiled, compile_problem
             segment_saving = journal["steady_segments"] - compact["steady_segments"]
             if segment_saving > 0 and (byte_saving >= 1024 * 1024 or
                                       (byte_saving >= SEGMENT and byte_saving * 4 >= journal_bytes)):
-                report.update(recommended="snapshot", rationale="The compact image saves material space and a same-size replacement fits.")
+                report.update(recommended="snapshot", rationale="The compact image saves material space and a same-size consolidation fits.")
     else:
         report["rationale"] = ("Neither format has a qualified copy-on-write plan. Nothing can be staged. "
-                               "A USB-backed rebuild may eventually be needed.")
+                               "USB rebuilding is unavailable in Manager.")
     return report, updates
 
 

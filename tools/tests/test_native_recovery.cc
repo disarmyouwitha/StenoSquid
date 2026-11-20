@@ -69,13 +69,12 @@ void CheckCuts(const std::vector<uint8_t> &contents, const Plan &plan, NativeUpd
 }
 
 int main(int argc, char **argv) {
-    assert(argc == 7);
+    assert(argc == 6);
     std::ifstream input(argv[1], std::ios::binary);
     std::vector<uint8_t> contents(std::istreambuf_iterator<char>(input), {});
     contents.resize(256 * kSegmentBytes, 255);
     CheckCuts(contents, ReadPlan(argv[2]), NativeUpdateKind::Rename, false);
     CheckCuts(contents, ReadPlan(argv[3]), NativeUpdateKind::SnapshotDelete, false);
-    CheckCuts(contents, ReadPlan(argv[4]), NativeUpdateKind::SnapshotReplace, false);
-    CheckCuts(contents, ReadPlan(argv[5]), NativeUpdateKind::SnapshotConsolidate, false);
-    CheckCuts(contents, ReadPlan(argv[6]), NativeUpdateKind::SnapshotConsolidate, true);
+    CheckCuts(contents, ReadPlan(argv[4]), NativeUpdateKind::SnapshotConsolidate, false);
+    CheckCuts(contents, ReadPlan(argv[5]), NativeUpdateKind::SnapshotConsolidate, true);
 }

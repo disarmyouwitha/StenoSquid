@@ -37,11 +37,6 @@
           <button type="button" id="optimize" data-write hidden>Preview conversion</button>
         </div>
         <p id="dictionary-actions-note" hidden></p>
-        <form id="replace-snapshot" hidden>
-          <label>New base entries (.json) <input name="file" type="file" accept=".json,application/json" required></label>
-          <p>Replace the imported entries in this dictionary. Saved edits and hidden outlines still take precedence.</p>
-          <button data-write>Preview replacement</button>
-        </form>
         <div id="optimization-plan" hidden aria-live="polite">
           <p id="optimization-summary"></p>
           <p id="optimization-content"></p>
@@ -75,7 +70,7 @@
                 <option value="auto">Automatic</option><option value="journal">Journal</option><option value="snapshot">Compact snapshot</option>
               </select></label>
             </details>
-            <p id="import-help">Enter a name to create a separate dictionary, or leave it blank to import into your personal dictionary.</p>
+            <p id="import-help" hidden>Preview checks how much space the new dictionary needs. Nothing is written until you approve.</p>
             <button id="import-preview" data-write>Import</button>
           </form>
           <div id="import-plan" hidden aria-live="polite">

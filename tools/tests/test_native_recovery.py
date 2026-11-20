@@ -126,11 +126,9 @@ def main():
         for segment, count, *_ in restored.extents:
             protected.update(range(segment, segment + count))
         identity = snapshot.next_id
-        newer = compile_snapshot("Smoke", {kat: b"new baseline", bob: b"new Bob", parse_outline("TEFT"): b"new outline"})
         effective = compile_snapshot("Smoke", {parse_outline(outline): text.encode() for outline, text in exported.items()})
         rename = plan(restored, protected, rename=("Smoke", "Renamed"))
         deletion = plan_change(restored, protected, identity)
-        replacement = plan_change(restored, protected, identity, newer)
         consolidated = plan_change(restored, protected, identity, effective, consolidate=True)
         missing = deepcopy(restored)
         del missing.entries[2, (6,)]
@@ -149,8 +147,6 @@ def main():
 
         assert export_dictionary(cold(rename), "Renamed") == exported
         reject(export_dictionary, cold(deletion), "Smoke")
-        switched = export_dictionary(cold(replacement), "Smoke")
-        assert switched["KAT"] == "new cat" and "PWOB" not in switched and switched["TEFT"] == "new outline"
         merged = cold(consolidated)
         assert export_dictionary(merged, "Smoke") == exported
         assert overlay_usage(merged)[identity]["count"] == 0
@@ -164,7 +160,7 @@ def main():
         binary_image = path / "offline.bin"
         binary_image.write_bytes(decoded)
         files = []
-        for name, candidate in (("rename", rename), ("delete", deletion), ("replace", replacement),
+        for name, candidate in (("rename", rename), ("delete", deletion),
                                 ("consolidate", consolidated), ("unsafe", unsafe)):
             file = path / f"{name}.stage"
             write_plan(file, candidate)

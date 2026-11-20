@@ -6,7 +6,7 @@ namespace candidate_b {
 
 enum class NativeUpdateKind {
     Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base,
-    SnapshotNamed, SnapshotReplace, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal
+    SnapshotNamed, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal
 };
 
 // Exclusive USB staging session. The active catalog and both retained roots
@@ -442,7 +442,7 @@ public:
 
     bool Begin(NativeUpdateKind operation, uint16_t limit = 64, uint32_t id = 0) {
         if (limit > 64 || (operation >= NativeUpdateKind::SnapshotNamed && !kUserSnapshotsEnabled) ||
-            (bool(id) != (operation >= NativeUpdateKind::SnapshotReplace))) return false;
+            (bool(id) != (operation >= NativeUpdateKind::SnapshotConsolidate))) return false;
         if (active || !store.opened || store.work != NativeStore<Device>::Work::None)
             return false;
         const auto &root = store.selected.root;
@@ -529,7 +529,7 @@ public:
         if (!store.device.Checksum(candidate.address, bytes, checksum)) return CatalogResult::IoError;
         const bool replacing_base = kind == NativeUpdateKind::Base;
         const bool adding_snapshot = kind == NativeUpdateKind::SnapshotNamed;
-        const bool changing_snapshot = kind >= NativeUpdateKind::SnapshotReplace;
+        const bool changing_snapshot = kind >= NativeUpdateKind::SnapshotConsolidate;
         if (checksum != crc) return CatalogResult::Corrupt;
         const bool layout_ok = adding_snapshot ? CheckNewSnapshot(candidate, segment, probe) :
             changing_snapshot ? CheckSnapshotChange(candidate, segment, probe) :

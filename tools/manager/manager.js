@@ -39,7 +39,6 @@ function controls() {
   node("optimize").hidden = !snapshot && !personal;
   node("optimize").disabled = !editable;
   node("optimize").textContent = snapshot ? "Preview consolidation" : "Preview conversion";
-  node("replace-snapshot").hidden = !snapshot;
   node("export").disabled = busy || !row;
   node("target").textContent = row ? `Editing ${row.name}` : "Select a dictionary first.";
   for (const el of node("edit").querySelectorAll("button")) {
@@ -199,9 +198,7 @@ function updateImportControls() {
   node("import-preview").textContent = named
     ? (state?.adaptive_imports ? "Preview new dictionary" : "Import new dictionary")
     : "Import into personal";
-  node("import-help").textContent = named && state?.adaptive_imports
-    ? "Preview checks how much space the new dictionary needs. Nothing is written until you approve."
-    : "Enter a name to create a separate dictionary, or leave it blank to import into your personal dictionary.";
+  node("import-help").hidden = !(named && state?.adaptive_imports);
 }
 function showImportError(message = "") {
   const error = node("import-error");
@@ -279,11 +276,11 @@ function showImportPlan(plan) {
       row.append(blocks, caption);
     }
 
-    if (option.replacement_staging_segments != null || option.reason) {
+    if (option.consolidation_staging_segments != null || option.reason) {
       const detail = document.createElement("p");
       detail.className = "import-format-detail";
       detail.textContent = option.eligible
-        ? `Same-size replacement fits · ${option.replacement_staging_segments} to stage`
+        ? `Same-size consolidation fits · ${option.consolidation_staging_segments} to stage`
         : option.reason;
       row.append(detail);
     }
@@ -299,7 +296,7 @@ function showImportPlan(plan) {
   node("import-plan").hidden = false;
   if (importToApply) importToApply.token = plan.token;
   notify(plan.selected ? "Review the import preview." : "Import stopped.");
-  if (!plan.selected) showImportError("This format cannot stage safely.");
+  if (!plan.selected) showImportError("This format cannot stage safely. USB rebuilding is unavailable in Manager.");
 }
 function clearOptimizationPlan() {
   optimizationToApply = undefined;
@@ -313,8 +310,7 @@ function showOptimizationPlan(plan) {
     `${plan.free_segments} free, ${plan.largest_free_run} contiguous, ${plan.reserve} held in reserve.`;
   const effects = {
     personal: "Convert the existing personal entries to a compact baseline and retain existing tombstones.",
-    consolidate: "Fold the current edits and removals into the compact baseline.",
-    replace: "Replace the baseline from this file. Saved edits and tombstones still take precedence."
+    consolidate: "Fold saved edits and hidden outlines into the compact dictionary."
   };
   node("optimization-content").textContent = effects[plan.operation];
   node("optimization-plan").hidden = false;
@@ -358,27 +354,13 @@ node("optimize").onclick = () => {
   optimizationToApply = {id: row.id, operation: row.kind === "personal" ? "personal" : "consolidate"};
   run({action: "preview_optimize", ...optimizationToApply});
 };
-node("replace-snapshot").onchange = clearOptimizationPlan;
-node("replace-snapshot").onsubmit = async (event) => {
-  event.preventDefault();
-  const row = selection();
-  clearOptimizationPlan();
-  try {
-    const source = await new FormData(event.currentTarget).get("file").text();
-    if (selection()?.id !== row.id || busy) return;
-    optimizationToApply = {id: row.id, operation: "replace", source};
-    await run({action: "preview_optimize", ...optimizationToApply});
-  } catch (error) {
-    notify(error.message, true);
-  }
-};
 node("optimization-apply").onclick = () => {
   if (optimizationToApply?.token) run({action: "apply_optimize", ...optimizationToApply});
 };
 node("optimization-cancel").onclick = clearOptimizationPlan;
 node("flash-map-scan").onclick = () => run({action: "layout_map"});
 node("apply-updates").onclick = () => {
-  if (window.confirm("Apply the pinned base revisions? The left half will reboot after saving.")) {
+  if (window.confirm("Download a backup before updating the pinned dictionaries. Apply the pinned revisions now? The left half will reboot after saving.")) {
     run({action: "apply_updates", approved: true});
   }
 };
