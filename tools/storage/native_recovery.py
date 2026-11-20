@@ -172,6 +172,17 @@ def reconstruct(backup):
     return bytes(image), snapshot
 
 
+def sync_directory(path):
+    """Flush the directory entry where directory file descriptors are supported."""
+    if os.name != "posix":
+        return
+    directory = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def save_atomic(path, document, dump=json.dump):
     """Publish only a flushed, complete file and refuse to replace any backup."""
     path = Path(path)
@@ -183,11 +194,7 @@ def save_atomic(path, document, dump=json.dump):
             output.flush()
             os.fsync(output.fileno())
             os.link(temporary, path)
-            directory = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            sync_directory(path.parent)
         finally:
             temporary.unlink(missing_ok=True)
 

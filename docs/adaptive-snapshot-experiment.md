@@ -350,8 +350,10 @@ import keep their existing staging refusal.
      --restore --serial SPARE_USB_SERIAL --confirm-erase SPARE_USB_SERIAL
    ```
 
-   Reboot and compare the restored spare against the original backup before
-   any new write test. Reflashing a UF2 alone does not reset the QSPI pool.
+   Reboot and capture a new backup from the spare. Compare the original
+   `catalog`, `extents` and `host_layout` fields with that readback.
+   The capture serial and timestamp will differ. Reflashing a UF2 alone does
+   not reset the QSPI pool.
 
 ## Tonight's hardware checkpoint and test sequence
 

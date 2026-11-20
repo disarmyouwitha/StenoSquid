@@ -16,7 +16,7 @@ from build_native_image import LIMIT, SEGMENT, XIP, catalog_header, overlay_reco
 from compile_dict import parse_outline
 from hybrid import compact_entries
 from native_layout import compact_member_sizes
-from native_recovery import capture, digest, reconstruct, recover_usb, save_atomic
+from native_recovery import capture, digest, reconstruct, recover_usb, save_atomic, sync_directory
 from native_snapshot import CompactImage, compile_snapshot, inspect_free, plan_change
 from native_update import EXTENT, NoSpace, Snapshot, effective_entries, row_name
 
@@ -379,14 +379,11 @@ def repack(backup, names=None):
 
 
 def read_bundle(path, *, durable=False):
+    path = path.resolve(strict=True)
     with path.open("rb") as stream:
         if durable:
             os.fsync(stream.fileno())
-            directory = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            sync_directory(path.parent)
         raw = stream.read()
     return json.loads(raw), hashlib.sha256(raw).hexdigest()
 
