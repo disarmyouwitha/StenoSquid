@@ -1,0 +1,27 @@
+{
+  "personal_snapshot": {"PARBG": "garden", "KAT": "cat", "HOEPL": "cabin"},
+  "personal_overlay": {"KAT": "dog", "HOEPL": null},
+  "probes": [
+    ["WAOE", "we", 6],
+    ["A/ROUPBD", "around", 6],
+    ["PARBG", "garden", 1],
+    ["KAT", "dog", 1],
+    ["HOEPL", "home", 6],
+    ["KWHRAEUFZ", null, 0]
+  ],
+  "passages": [
+    [
+      ["WAOE", "we"], ["WAUBG", "walk"], ["A/ROUPBD", "around", "a"], ["-T", "the"],
+      ["PARBG", "garden"], ["SKP", "and"], ["SAOE", "see"], ["AEU", "a"], ["SPHAUL", "small"],
+      ["KAT", "dog"], ["TPHAOER", "near"], ["-T", "the"], ["WAURT", "water"], ["TP-PL", "."],
+      ["THEPB", "then"], ["WAOE", "we"], ["TKPWOE", "go"], ["HOEPL", "home"], ["TP-PL", "."]
+    ],
+    [
+      ["EUT", "it"], ["S", "is"], ["KWAO*EUT", "quiet"], ["AF/TER", "after", "after"], ["-T", "the"],
+      ["RAEUPB", "rain"], ["TP-PL", "."], ["WHEPB", "when"], ["-T", "the"], ["SUPB", "sun"],
+      ["S", "is"], ["PWRAOEUT", "bright"], ["WAOE", "we"], ["KROS", "cross"], ["-T", "the"],
+      ["RAOD", "road"], ["SKP", "and"], ["TPOL", "follow"], ["-T", "the"], ["PA*T", "path"], ["TP-PL", "."]
+    ]
+  ],
+  "miss_with_undo": "KWHRAEUFZ"
+}

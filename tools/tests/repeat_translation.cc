@@ -4,7 +4,7 @@
 #include "button_script_manager.h"
 #include "dictionary/dictionary.h"
 #include "dictionary/dictionary_list.h"
-#include "key.h"
+#include "host_key_output.h"
 #include "clock.h"
 #include "native_input_queue.h"
 #include "native_collection_sync.h"
@@ -38,19 +38,9 @@ public:
   }
 };
 std::string output() {
-  std::string result;uint32_t mods=0;
-  for(const auto &event:Key::history) {
-    auto code=event.code.value;
-    if(code>=KeyCode::L_CTRL && code<=KeyCode::R_META) {
-      if(event.isPress)mods|=1u<<(8+code-KeyCode::L_CTRL);else mods&=~(1u<<(8+code-KeyCode::L_CTRL));
-      continue;
-    }
-    if(!event.isPress)continue;
-    if(code==KeyCode::BACKSPACE){if(!result.empty())result.pop_back();continue;}
-    auto c=KeyCode::ConvertToUnicode(code|mods);
-    if(c && c<128)result+=char(c);
-  }
-  return result;
+  HostKeyOutput editor;
+  editor.Consume();
+  return editor.text;
 }
 void check(const char *name,std::vector<const char*> sequence,const char *expected) {
  Fixture dictionary;StenoCompiledOrthography orthography(StenoOrthography::emptyOrthography);

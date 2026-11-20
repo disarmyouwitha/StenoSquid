@@ -336,7 +336,7 @@ its exact build hash over HID.
    exports after edits and consolidation, and zero live personal overlay
    records after consolidation.
 6. **Check map, throughput, cold boot, and wake.** Follow the
-   [physical typing plan](#physical-200-wpm-test). With no transfer active,
+   [physical checklist](#physical-gate-b-checklist). With no transfer active,
    remove USB and battery power, turn the spare back on, then run this
    **read-only** persistence check. It compares saved data and selections
    after the operator's power cycle. It cannot observe the cycle itself.
@@ -400,45 +400,87 @@ expectation is the previous complete catalog. After a complete publication,
 verify the new catalog and exact exports. Return to a known snapshot-free
 pool before going back to stable firmware.
 
-### Physical 200 WPM test
+### Automated 200 WPM replay
 
-Run the following before conversion and after consolidation. Capture USB and
-BLE separately with the same right half. For BLE, leave USB unplugged for
-the typing run. While wired, use the read-only forward probes in each report
-to verify factory `A/ROUPBD`, compact `KAT` and `KAT/TA`, edited
-`KAT/KAT`, `PWOB` fallback, and the four-stroke miss. Those HID console probes
-check lookup correctness and do not measure the physical typing path.
+No manual speed target is needed. Prepare the pinned data and replay the
+passage on the host:
 
-- On the stock pool, repeat “the cat is the cat” with `-T, KAT, S, -T, KAT`.
-  Pace 40 five-word lines in 60 seconds, one line every 1.50 seconds.
-  Then pace 20 lines every 1.00 second for a short 300 WPM burst. Repeat a
-  mixed pass with “when the cat is around” using
-  `WHEPB, -T, KAT, S, A, ROUPBD`. Rehearse once and check the expected
-  capitalization and spaces. After conversion, use the same chord sequences
-  for comparison and account for any intentional fixture substitutions.
-  Add a separate short mixed pass with a physically reachable outline that
-  `lookup_stroke` reports as a miss for the current catalog. Record how
-  Javelin renders the fallback. Record actual elapsed time, intended and
-  produced words, and whether any output was missing, late, repeated or
-  reordered.
-- Test the map on USB while another person types or with a second app
-  window. Capture whether it completed or deferred and save any abnormal
-  output. For background maintenance, bracket a typing pass with read-only
-  `inspect` reports. Record `auto_checkpoints`, `auto_reclaimed`,
-  `work_steps`, `input_overflows` and `max_replay_delay_ms`. If no maintenance
-  occurred, record that test as pending. Intentional imports and full Verify
-  are separate foreground operations.
-- Film key release and host output on the same clock if possible. Record
-  the capture resolution, p95, p99 and worst observed end-to-end latency only
-  if the clock resolves the events. Record first correct output and
-  both-half availability after cold power-up and deep sleep separately.
-  The checkpoint has no per-stroke lookup timer. The script does not infer
-  latency from USB command timing, or claim a 200 WPM pass from host output.
-- For each pass record board model and serial, UF2 hash, transport, active
-  dictionary configuration, expected and actual output, timing method, and
-  any split disconnect, stall, or reconnect. Link the corresponding
-  `baseline.json`, stage or `inspect-*.json`. Runtime stack high-water marks
-  require separate diagnostic firmware and are outside this checkpoint.
+```sh
+python3 tools/dictionaries/prepare.py
+python3 tools/bench/run_typing_replay.py /path/to/west-workspace/javelin-steno --out build/typing-replay
+```
+
+The runner checks the Javelin revision from `config/west.yml` and builds its
+real engine with the Native overlay adapter. It reads the actual compiled
+JSC4 maps and journal from a simulated NOR image. The corpus contains two
+everyday passages totaling 36 words, multi-stroke outlines, a compact personal
+override, a journal replacement, a tombstone with factory fallback, and a
+deliberate miss followed by undo. Independent lookup probes confirm the
+translation and winning dictionary before and after a Native checkpoint.
+The replay checks the resulting editor text after **every stroke**, including
+intermediate output, backspaces, punctuation and the final output.
+
+Rate is based on the words in the finished passage. Each full passage cycle
+also contains its actual number of strokes, including a deliberate miss and
+undo. Those consume chord slots without adding any words. At each target,
+the runner spaces strokes uniformly over the word-derived duration. It
+holds 100, 150 and 200 WPM for at least 60 seconds per target, then plays
+300 WPM bursts with at least 20 seconds of active replay and two-second gaps
+between passage cycles. The achieved burst rate excludes those planned gaps. Use `--virtual` for a fast one-cycle
+correctness check at each target. That mode advances the engine clock without
+sleeping and does not report achieved wall-clock WPM.
+
+`report.json` records the exact corpus hash, phase counts, achieved WPM,
+mismatches and p50/p95/p99/max for `StenoEngine::Process`. The host uses an
+absolute monotonic deadline for each stroke and separately reports when it
+actually entered the engine. Engine samples exclude tape parsing, pacing
+sleep, validation, and sample output. `corpus.json`, `probes.tsv`, `tape.tsv`,
+and `samples.tsv` preserve the inputs and raw timing. Firmware and device
+memory are unaffected. The simulated pool exists for the native harness.
+
+This exercises host translation and captured key events. Physical scanning,
+split synchronization, USB/BLE delivery, QSPI timing, firmware scheduling and
+maintenance contention need separate evidence. The frozen firmware has no
+per-stroke profiler. The older `run_dictionary_benchmark.py` diagnostic
+samples a different build and transport. The replay reuses its percentile
+calculation, and keeps diagnostic device measurements separate.
+
+### Physical Gate B checklist
+
+Use a comfortable pace. For each run, record board, transport, expected and
+actual output, and any disconnect, dropped stroke, replay or stall.
+
+1. Type normal keys from both halves over USB and unplugged BLE. Try
+   `KAT`, a two-stroke translation, a Practice round, and an enabled hint.
+2. On the spare, edit and consolidate using the earlier fixture steps.
+   Exercise the overlay hit before consolidation, then compare exports and
+   check the dictionary ID, order and enabled state afterward.
+3. Type during a Manager layout scan and during USB idle maintenance. Check
+   the map completes or defers cleanly. Bracket the session with read-only
+   `inspect` reports for `auto_checkpoints`, `auto_reclaimed`, `work_steps`,
+   `input_overflows` and `max_replay_delay_ms`. If maintenance did not run,
+   leave that part pending. Keep full Verify and explicit imports separate.
+4. Test sleep, left-key wake, USB disconnect, BLE reconnect and split
+   reconnect. Record the first correct stroke after wake. Check persisted
+   contents after a deliberate cold reboot with the read-only `cold` stage.
+5. Exercise a controlled publication interruption on the test spare. Separately
+   qualify the serial-confirmed USB rescue path on expendable hardware and
+   compare the cold-boot export, dictionary settings and host layout.
+
+### Default-off merge criteria
+
+The regular firmware must build with snapshots disabled and continue opening
+standard Native pools. The opt-in artifacts must build, both exact-byte
+capacity gates must pass, and the host tests must cover editing, publication,
+recovery and the replay. Failures in the default path or regression suite
+block the merge. A successful opt-in draft is ready for review after those
+checks. Owner approval is required to merge.
+
+Full experimental qualification remains separate. It includes a wired
+readback after cold boot, sleep/wake and maintenance behavior, physical
+USB/radio delivery and split behavior at demanding rates, dense-store
+contention, and interrupted publication and USB rescue. Finish those before
+enabling snapshots by default or offering destructive rebuilding in Manager.
 
 ### HID editor capability audit
 
