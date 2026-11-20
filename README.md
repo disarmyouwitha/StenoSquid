@@ -5,7 +5,7 @@
 ✅Javelin onboard steno\
 🤌🍇 Wireless dictionary updates\
 🦑 Practice with just your keyboard!\
-📚 Shared 16 MiB onboard dictionary storage
+📚 Tested: 440,000+ total stored entries on 16 MiB!
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
 (But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
