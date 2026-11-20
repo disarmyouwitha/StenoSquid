@@ -12,32 +12,20 @@ The split uses the [default keymap](../../README.md#default-keymap). The outer r
 
 For GitHub firmware artifacts, follow [Provision a new keyboard](../../README.md#provision-a-new-keyboard). For a local build, use a west workspace initialized from [config/west.yml](../west.yml) and a compatible Zephyr SDK. Run from the repository root with `ws` set to the absolute path of the workspace.
 
-### Prepare the base images
-
-```sh
-repo="$PWD"
-mkdir -p "$repo/build/lapwing"
-curl --fail --location \
-  https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/4ac5d53cf039a2b1f4c484456663c85e7df4e859/plover_lapwing/dictionaries/lapwing-base.json \
-  -o "$repo/build/lapwing/lapwing-base.json"
-python3 "$repo/tools/dict_compiler/compile_dict.py" "$repo/build/lapwing/lapwing-base.json" \
-  --name lapwing-base --base-addr 0x12000000 -o "$repo/build/lapwing/lapwing-base.bin"
-python3 "$repo/tools/dictionaries/prepare_plover.py"
-python3 "$repo/tools/dictionaries/prepare_extras.py"
-```
-
 ### Build the split firmware
 
 ```sh
+repo="$PWD"
 # This workspace keeps a separate manifest copy.
 cp "$repo/config/west.yml" "$ws/config/west.yml"
 export ZEPHYR_BASE="$ws/zephyr"
 cd "$ws"
 west update
-west build -s zmk/app -d "$repo/build/split-left" -b nice_nano//zmk -S zmk-usb-logging -- \
+west build -s zmk/app -d "$repo/build/split-left" -b nice_nano//zmk -S studio-rpc-usb-uart -- \
   -DSHIELD=corne_left "-DZMK_CONFIG=$repo/config/nicenano-wireless-corne" "-DZMK_EXTRA_MODULES=$repo" \
-  "-DZMK_JAVELIN_LAPWING_IMAGE=$repo/build/lapwing/lapwing-base.bin" \
-  "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin"   "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin" \
+  "-DZephyr_DIR=$ZEPHYR_BASE/share/zephyr-package/cmake"
+west build -s zmk/app -d "$repo/build/split-left-diagnostic" -b nice_nano//zmk -S zmk-usb-logging -- \
+  -DSHIELD=corne_left "-DZMK_CONFIG=$repo/config/nicenano-wireless-corne" "-DZMK_EXTRA_MODULES=$repo" \
   "-DEXTRA_CONF_FILE=$repo/config/nicenano-wireless-corne/logging.conf" \
   "-DEXTRA_DTC_OVERLAY_FILE=$repo/config/nicenano-wireless-corne/logging.overlay" \
   "-DZephyr_DIR=$ZEPHYR_BASE/share/zephyr-package/cmake"
@@ -47,30 +35,27 @@ west build -s zmk/app -d "$repo/build/split-right" -b nice_nano//zmk -- \
 ```
 
 The Left-Diagnostic build combines `-S zmk-usb-logging` with `logging.conf` for
-diagnostics and battery logging. Both left builds use wired HID for
-dictionary maintenance. Send `W` to the diagnostics port for the last flash
-check path (`CHECK_QUICK` or `CHECK_FULL`) and its time in milliseconds.
+diagnostics and battery logging. Both left builds use the Native pool and wired USB HID
+for [provisioning](../../README.md#provision-a-new-keyboard) and dictionary maintenance.
 
 On a Left-Diagnostic build, `python3 stenosquid.py --diag` detects the USB serial port and runs the status, boot log, rail test, and wake bench in one report. Use `--diag status`, `--diag log`, `--diag rail`, `--diag bench`, or `--diag clear` to run a single command. To select a port, put its path before `--diag`.
 
-- `S` (`--diag status`) prints the build commit and time, uptime, reset cause, whether USB is powering the board and the battery level, the flash state (mapped, checked, suspended, idle power-down, steno hold), the chip ID, the last check path and time, whether the saved verification record is present, each image's verified state, the counters below, and wake timing.
+- `S` (`--diag status`) prints the build commit and time, uptime, reset cause, whether USB is powering the board and the battery level, the flash state (mapped, checked, suspended, idle power-down, steno hold), the chip ID, the last Native open time, the counters below, and wake timing.
 - `D` (`--diag log`) prints the boot log kept in RAM, about 1 KiB of the flash lifecycle lines with boot number and uptime. It survives a soft reset, so a line printed before you opened the port is still there. It is empty after a power loss.
 - `Z` (`--diag clear`) clears that log and the counters.
 - `R` (`--diag rail`) is the switched-rail test. It takes the flash down, drives the configured rail-control pin low and then high while reading one sense pin, and reports which physical level raises the rail, whether that matches the devicetree polarity, how many microseconds the sense pin takes to read high after switch-on, and how long it takes to read low after switch-off. Timing works for either enable polarity; the Boardsource left rail was measured as active-low on P0.31. The pin is chip select (P0.07 by default, `CONFIG_ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN`), which the Steno Squid's 10 k pull-up ties to the switched rail, so **R1 must be fitted or wired** for it to see anything. It is a digital threshold, roughly 1 V to 2 V on a 3.3 V rail, not a scope trace. USB serial diagnostics require USB connected. Check battery-powered rail voltage and discharge separately with the multimeter, or capture battery-only behavior with suitable external instrumentation. If the fall takes well under a second, leave R2 and C2 off. If it is slow or the pin never falls, see the rail notes in the Steno Squid repo. The test takes about ten seconds and holds the flash lock, so dictionary lookups wait. It then starts the flash again.
-- `T` (`--diag bench`) powers the flash off and on ten times through the same start-up path a wake uses, with the same 500 ms off time as a retry. It prints each cycle's result and time, then the number mapped, the mean and maximum time, and how many start-up retries and quick-to-full fallbacks happened. It is the way to get real numbers on the retry logic before relying on it. The retry counters it raises are saved; clear them with `Z` afterwards if you want a clean count.
+- `T` (`--diag bench`) powers the flash off and on ten times through the same start-up path a wake uses, with the same 500 ms off time as a retry. It prints each cycle's result and time, then the number mapped, the mean and maximum time, and how many start-up retries happened. It is the way to get real numbers on the retry logic before relying on it. The retry counters it raises are saved; clear them with `Z` afterwards if you want a clean count.
 
-Counters saved across reboots, with this boot's count in brackets: boots, start-up retries, rail power cycles, quick checks that fell back to a full check, bring-ups with no dictionaries, base erases and base writes. They are written to settings five seconds or more after boot, at most every two seconds, and only when something changed, so they do not wear the settings flash. Wake timing is since boot only: for each idle or resume wake it records how long passed from the request to a mapped flash, with the check path and time. A line `Wake from idle: ready N ms after the request` also goes to the log.
+Counters saved across reboots, with this boot's count in brackets: boots, start-up retries, rail power cycles, and bring-ups with no dictionaries. They are written to settings five seconds or more after boot, at most every two seconds, and only when something changed, so they do not wear the settings flash. Wake timing is since boot only: for each idle or resume wake it records how long passed from the request to a mapped flash, with the check path and time. A line `Wake from idle: ready N ms after the request` also goes to the log.
 
 If `retries` and `power cycles` stay at 0 after days of use, the retry logic never ran. A non-zero `bring-ups with no dictionaries` means the flash failed to start even after the retries.
 
-The dictionary flash powers down while idle. To compare battery life with it always on, uncomment `CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_OFF=n` in `corne_left.conf`. `CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS` on the next line sets the idle period, 30 seconds by default. The flash stays on while the steno layer is selected, including during practice, and the idle period counts from leaving it. Selecting the steno layer starts the flash. An editor command on another layer waits for it to start; the `W` reply shows how long that took.
+The dictionary flash powers down while idle. To compare battery life with it always on, uncomment `CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_OFF=n` in `corne_left.conf`. `CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS` on the next line sets the idle period, 30 seconds by default. The flash stays on while the steno layer is selected, including during practice, and the idle period counts from leaving it. Selecting the steno layer starts the flash. An editor command on another layer waits for it to start.
 
 The right half enters deep sleep after 15 idle minutes on battery. Wake it
 with one of its own keys. The [battery logger](../../tools/battery/README.md)
 is part of the diagnostic left build only. The everyday build keeps the full
 code partition.
-
-The Plover image argument is optional for older Lapwing-only builds. The preparation script downloads a pinned official Plover `main.json`, checks its source checksum, compiles it for address `0x12200000`, and verifies every outline against the compiled image. Numeric outlines include the number bar and corresponding physical keys, matching the pinned engine's stroke parser.
 
 ### Right-half nice!view
 

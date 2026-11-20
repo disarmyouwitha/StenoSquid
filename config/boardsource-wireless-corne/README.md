@@ -33,7 +33,7 @@ The Adafruit #5634 schematic routes IO2 and IO3 to separate pads. Check continui
 
 ## Build
 
-Use the repository's [pinned west manifest](../west.yml) and Zephyr SDK 0.16.9. The [Lapwing preparation commands](../nicenano-wireless-corne/README.md#build-and-provision) produce `build/lapwing/lapwing-base.bin`. The left builds use the external images' size and CRC. The UF2s carry the firmware, and the dictionary files are transferred separately when provisioning.
+Use the repository's [pinned west manifest](../west.yml) and Zephyr SDK 0.16.9. After flashing either left build, follow the [Native provisioning instructions](../../README.md#provision-a-new-keyboard) if the external flash does not already have a Native pool.
 
 Run from this repository's root in a shell with west and the Zephyr SDK available. Set `ws` to the absolute path of the pinned west workspace.
 
@@ -46,8 +46,6 @@ vendor="$repo/build/boardsource-upstream"
 
 git clone https://github.com/boardsource/wireless-corne_zmk_config "$vendor"
 git -C "$vendor" checkout --detach 2158104902e164c317e35f53dfa0ca1e36e1a751
-python3 "$repo/tools/dictionaries/prepare_plover.py"
-python3 "$repo/tools/dictionaries/prepare_extras.py"
 export ZEPHYR_BASE="$ws/zephyr"
 zephyr_cmake="$ZEPHYR_BASE/share/zephyr-package/cmake"
 cd "$ws"
@@ -63,10 +61,7 @@ build_left() {
   west build -s zmk/app -d "$repo/build/$output" -b blecorne_left -S "$snippet" -- \
     "-DBOARD_ROOT=$vendor" "-DZephyr_DIR=$zephyr_cmake" \
     "-DZMK_CONFIG=$target" "-DZMK_EXTRA_MODULES=$repo" \
-    "-DEXTRA_CONF_FILE=$conf" "$@" \
-    "-DZMK_JAVELIN_LAPWING_IMAGE=$repo/build/lapwing/lapwing-base.bin" \
-    "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin" \
-    "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin"
+    "-DEXTRA_CONF_FILE=$conf" "$@"
 }
 build_left Boardsource-Left-Default studio-rpc-usb-uart
 build_left Boardsource-Left-Diagnostic zmk-usb-logging \
@@ -107,7 +102,7 @@ The factory application partition is `0x1000–0xD3FFF`. The settings partition 
 3. **Read the flash ID and sample.** With power off, attach the flash to the left header. Reboot, open the probe's serial port, and expect `JEDEC ID: EF 40 18` followed by a 16-byte `FASTREAD` at address zero. Compare against known bytes when available. An erased chip normally reads all `FF`. The first probe issues neither write-enable nor program/erase commands.
 4. **Check quad reads.** Use the separate quad probe only after the rail and JEDEC checks. It compares standard SPI and quad reads over the first 64 KiB. Use a spare, independently preloaded reference chip with data exercising both bit states on all four lanes and look for a pass with lane mask `0xf`. An all-`FF` comparison is inconclusive. This build may temporarily set and restore the flash's volatile Quad Enable bit. It leaves the flash array alone.
 5. **Test mapped reads and the split.** A reference flash with a provisioned Native store lets you test Javelin before any provisioning through the keyboard. Flash the matching right and everyday left UF2s. Use [stenosquid.py](../../stenosquid.py) over USB HID with `--status` for a read-only status query and look for `NATIVE2 READY`. Confirm ordinary typing on both halves, onboard `KAT` → “cat” with host Plover closed, raw Plover HID strokes, and nice!view mode and Practice updates. If you have only a blank flash, complete the electrical checks first and return to dictionary-dependent checks after initial provisioning.
-6. **Test wireless and sleep.** Pair **Steno Squid** and unplug USB. Test ordinary typing, Plover HID, onboard Javelin, and Javelin Steno Tools **Connect via HID**. Let both halves reach deep sleep. Check that the left rail turns off, wake each half with one of its own keys, and check display and split reconnection, flash verification, and onboard output. On a diagnostic build, use `stenosquid.py <port> --diag status` after USB reconnection to inspect the last check path. Check right display rail behavior and battery readings independently.
+6. **Test wireless and sleep.** Pair **Steno Squid** and unplug USB. Test ordinary typing, Plover HID, onboard Javelin, and Javelin Steno Tools **Connect via HID**. Let both halves reach deep sleep. Check that the left rail turns off, wake each half with one of its own keys, and check display and split reconnection, flash verification, and onboard output. On a diagnostic build, use `stenosquid.py <port> --diag status` after USB reconnection to inspect the last Native open and wake timing. Check right display rail behavior and battery readings independently.
 7. **Provision and test persistence.** Once power and patterned read checks pass,
    flash the everyday Boardsource left UF2 and run `python3 stenosquid.py --install --confirm-erase`
    over USB HID. It installs the packed Lapwing collection and Plover Base.
@@ -139,7 +134,7 @@ Use the Boardsource artifacts from one successful workflow run:
 4. `Boardsource-Left-Default` for everyday use. Connect the left half over USB and
    run `python3 stenosquid.py --install --confirm-erase` to provision the dictionaries. Use
    `Boardsource-Left-No-Display` when using the right build without nice!view.
-   For an existing board, follow the [backup and update instructions](../../README.md#update-a-board-using-the-previous-dictionary-layout).
+   For an existing board, follow the [backup and update instructions](../../README.md#update-firmware).
 
 The corrected everyday pair and wired Adafruit breakout passed the functional
 checks recorded above. Higher QSPI speeds and the populated daughterboard need
