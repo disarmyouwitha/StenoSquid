@@ -71,7 +71,7 @@ From the Javelin or Plover layer, tap the outer right thumb
    This prepares the pinned dictionaries, replaces the external dictionary pool, and verifies the result. If a fresh install is interrupted, reconnect USB and rerun the same command. On a provisioned board, use `--install` without `--confirm-erase` to check that it is already installed.
 
 
-## Steno Squid Manager
+## StenoSquid Manager
 
 StenoSquid Manager offers full dictionary management! You can Import/Export, Edit, Rename and Delete dictionaries 
 
@@ -79,7 +79,7 @@ Connect the left half over USB and Run
 `python3 stenosquid.py --manager` from the repository. The local Manager opens in
 your browser. Select **Connect over USB** to view Active dictionaries and their priorities. You can Import/Export and Edit any dictionary installed!
 
-<sub>We still offer compatibility with [Javelin Steno Tools](https://github.com/disarmyouwitha/StenoSquid#javelin-steno-tools) for basic dictionary tools. </sub>
+<sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools. </sub>
 
 ## Default Keymap 
 Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-studio)
@@ -96,8 +96,6 @@ Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-s
 
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](assets/keymap/javelin-68ed47c7832b.svg)
 
-![Plover layer](assets/keymap/plover-hid-fe80dff10661.svg)
-
 ## ZMK Studio
 ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
 
@@ -106,16 +104,6 @@ Javelin and Plover HID bindings have separate parameters for the visible key lab
 Saved Studio keymaps take precedence over the source keymap. To load updated defaults, use **Restore stock settings**, which replaces saved keymap edits. Renamed layers appear on the nice!view after a layer change. Only the first nine characters are sent across the split, and only plain ASCII.
 
 https://zmk.studio/
-
-## Javelin Steno Tools
-1. Connect the left half by USB or Bluetooth!
-2. Open Javelin Steno Tools in **Chrome**, choose **Connect via HID**, and select the keyboard.
-3. Use **Active Dictionaries** to change selections and **Dictionary Management → View** to add, replace, remove, or export personal entries.
-4. Use **Host Layout** to select **Mac U.S.** or **Windows U.S. (plain text)**. The keyboard remembers the choice.
-
-**Windows U.S. (plain text)** is the default for a standard U.S. input layout. It uses ordinary U.S. keystrokes and converts accented Latin letters to plain equivalents, such as **ç → c**. (On a Mac, select **Mac U.S.** with the U.S. or ABC input source to type **aççents**.)
-
-https://lim.au/#/software/javelin-steno-tools
 
 ## External Memory Map
 Lapwing Base, Commands, Numbers, UK Additions, and Proper Nouns share one compact image and keep their own checkboxes. Plover has its own image. The personal dictionary and indexes grow in the shared QSPI pool. A fresh install leaves 180 free 64 KiB segments, including the three-segment maintenance reserve.
