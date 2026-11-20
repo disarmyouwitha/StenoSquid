@@ -5,6 +5,9 @@
 #ifdef __cplusplus
 class Console;
 class StenoDictionary;
+#ifdef CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS
+uint8_t steno_squid_host_layout_index();
+#endif
 StenoDictionary *steno_squid_native_dictionary(size_t index);
 size_t steno_squid_native_dictionary_count();
 bool steno_squid_native_dictionary_ready();

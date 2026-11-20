@@ -63,7 +63,21 @@ def main():
         path = Path(directory)
         image, snapshot, protected = fixture(path)
         prior = backup_all(Console(image, snapshot.payload))
-        assert prior["format"] == "stenosquid-backup-2"
+        assert prior["format"] == "stenosquid-backup-2" and "capture" not in prior
+
+        class IdentifiedConsole(Console):
+            serial = "test-left"
+
+            def command(self, command, timeout=30):
+                if command == "native_install status":
+                    assert self.active
+                    return "NATIVE2 READY 7"
+                return super().command(command, timeout)
+
+        identified = backup_all(IdentifiedConsole(image, snapshot.payload))
+        assert identified["capture"]["serial"] == "test-left"
+        assert identified["capture"]["generation"] == 7 and identified["capture"]["timestamp"].endswith("+00:00")
+        assert reconstruct(identified)[1].payload == snapshot.payload
         kat, bob, tas = (parse_outline(word) for word in ("KAT", "PWOB", "TAS"))
         compiled = compile_snapshot("Smoke", {kat: b"snapshot cat", bob: b"Bob", (8, 16): "bêta".encode()})
         update = plan_named_snapshot(snapshot, protected, "Smoke", compiled)

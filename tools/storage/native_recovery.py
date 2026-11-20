@@ -120,10 +120,15 @@ def validate_rows(snapshot, image):
         if marker:
             require_snapshot_hint(blob, XIP + address)
         # Walk the compiled data using the same host reader as export.
-        lookup = reader(blob, XIP + address, member, count)
-        entries = dict(compact_entries(blob, XIP + address, member, count))
-        if any(lookup(outline) != text for outline, text in entries.items()):
-            raise ValueError("Compact recovery image failed lookup verification")
+        try:
+            lookup = reader(blob, XIP + address, member, count)
+            seen = set()
+            for outline, text in compact_entries(blob, XIP + address, member, count):
+                if outline in seen or lookup(outline) != text:
+                    raise ValueError("Compact recovery image failed lookup verification")
+                seen.add(outline)
+        except (AssertionError, IndexError, struct.error) as error:
+            raise ValueError("Malformed compact recovery image") from error
     if not (factory.keys() <= ids and "user_dictionary" in names):
         raise ValueError("Recovery bundle is missing a pinned or personal dictionary")
     if any(members != set(range(counts[base])) for base, members in references.items()):
@@ -137,6 +142,12 @@ def reconstruct(backup):
     if (not isinstance(backup, dict) or backup.get("format") != FORMAT
             or backup.get("host_layout") not in LAYOUTS or backup.get("sha256") != digest(backup)):
         raise ValueError("Recovery bundle version, host layout or checksum is invalid")
+    if "capture" in backup:
+        source = backup["capture"]
+        if (not isinstance(source, dict) or not isinstance(source.get("serial"), str) or not source["serial"]
+                or type(source.get("generation")) is not int or source["generation"] < 1
+                or not isinstance(source.get("timestamp"), str) or not source["timestamp"]):
+            raise ValueError("Invalid recovery capture identity")
     payload = unpack(backup.get("catalog"))
     extents = descriptors(payload)
     chunks = backup.get("extents")
@@ -161,6 +172,17 @@ def reconstruct(backup):
     return bytes(image), snapshot
 
 
+def sync_directory(path):
+    """Flush the directory entry where directory file descriptors are supported."""
+    if os.name != "posix":
+        return
+    directory = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def save_atomic(path, document, dump=json.dump):
     """Publish only a flushed, complete file and refuse to replace any backup."""
     path = Path(path)
@@ -172,6 +194,7 @@ def save_atomic(path, document, dump=json.dump):
             output.flush()
             os.fsync(output.fileno())
             os.link(temporary, path)
+            sync_directory(path.parent)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -183,29 +206,54 @@ def recovery_images(image):
     return bytes(staged), zlib.crc32(staged), zlib.crc32(image)
 
 
-def recover_usb(backup, serial, confirmation, progress=print):
+def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=False, live_source=None):
     if not serial or confirmation != serial:
         raise ValueError("Recovery needs an explicit USB serial and identical erase confirmation.")
+    if ("repack" in backup) != (repack_spare or live_source is not None) or (repack_spare and live_source is not None):
+        raise ValueError("Optimized bundles require the repack workflow with both backup files.")
     image, snapshot = reconstruct(backup)
     staged, staged_crc, final_crc = recovery_images(image)
     from native_install import command, open_console, wait_ready, write_pool
     from native_manage import checked
 
     def matches(console):
-        return console.command(f"native_install match RECOVERY {final_crc}", timeout=180) == "OK MATCH"
+        result = console.command(f"native_install match RECOVERY {final_crc}", timeout=180)
+        if result not in ("OK MATCH", "ERR Recovery contents differ"):
+            raise RuntimeError(f"Full-pool verification unavailable: {result}. No erase was retried.")
+        return result == "OK MATCH"
 
-    uncertain = False
     with open_console(serial) as console:
         if console.serial != serial:
             raise RuntimeError("The connected USB serial differs from the confirmed recovery target.")
         if console.command("native_install update recovery-capabilities") != "OK RECOVERY1":
-            raise RuntimeError("Flash the matching experimental USB recovery firmware first.")
+            raise RuntimeError("Flash firmware with Native USB recovery support first.")
         status = console.command("native_install status")
-        if not status.startswith("NATIVE2 "):
-            raise RuntimeError("Native recovery transport unavailable.")
-        already_installed = status.startswith("NATIVE2 READY ") and matches(console)
+        state = status.split()[:2]
+        if state not in (["NATIVE2", "READY"], ["NATIVE2", "UNPROVISIONED"]):
+            raise RuntimeError("Native recovery transport is unavailable or busy. No erase was started.")
+        already_installed = state[1] == "READY" and matches(console)
         if not already_installed:
-            command(console, f"begin RECOVERY {staged_crc} {final_crc}")
+            if repack_spare and state[1] != "UNPROVISIONED":
+                raise RuntimeError("Optimized recovery requires an unprovisioned expendable spare. "
+                                   "A live or busy pool cannot be replaced.")
+            if live_source is None:
+                begin = f"begin RECOVERY {staged_crc} {final_crc}"
+            else:
+                source, view = live_source
+                if state[1] != "READY" or console.command(
+                        "native_install update repack-capabilities") != "OK REPACK1":
+                    raise RuntimeError("The live pool must be READY and running firmware with guarded repack support.")
+                from native_repack import check_live
+
+                progress("Comparing the live catalog and all referenced bytes with the original backup…")
+                check_live(console, source)
+                generation = source["capture"]["generation"]
+                sequence = view.highwater
+                layout = LAYOUTS.index(source["host_layout"])
+                begin = (f"begin REPACK {staged_crc} {final_crc} "
+                         f"{generation & 0xffffffff} {generation >> 32} {zlib.crc32(view.payload)} "
+                         f"{sequence & 0xffffffff} {sequence >> 32} {layout}")
+            command(console, begin)
             try:
                 write_pool(console, staged, progress, finish=False)
             except BaseException:
@@ -218,7 +266,7 @@ def recover_usb(backup, serial, confirmation, progress=print):
             try:
                 command(console, "finish", timeout=240)
             except (OSError, RuntimeError, TimeoutError):
-                uncertain = True
+                progress("Publication was not acknowledged. Reconnecting to verify the full pool…")
         else:
             progress("The confirmed keyboard already matches this recovery image.")
 
@@ -230,8 +278,9 @@ def recover_usb(backup, serial, confirmation, progress=print):
     with open_console(serial) as console:
         if console.serial != serial:
             raise RuntimeError("The recovered USB serial differs from the confirmed target.")
-        if uncertain and not matches(console):
-            raise RuntimeError("Publication could not be confirmed. Nothing was erased again. Inspect the board before retrying.")
+        if not matches(console):
+            raise RuntimeError("Publication could not be confirmed by full-pool CRC. "
+                               "Nothing was erased again. Inspect the board before retrying.")
         actual = json.loads(console.command("native_catalog"))
         wanted = [(struct.unpack_from("<I", row)[0], row_name(row), bool(row[4])) for row in snapshot.rows]
         if [(row["id"], row["name"], row["enabled"]) for row in actual] != wanted:
@@ -239,7 +288,7 @@ def recover_usb(backup, serial, confirmation, progress=print):
         checked(console, "set_host_layout " + backup["host_layout"])
         if console.command("get_parameter host_layout") != backup["host_layout"]:
             raise RuntimeError("The dictionaries recovered, but the host layout could not be restored.")
-    progress("Recovery complete. Dictionary catalog and host layout match the bundle.")
+    progress("Recovery complete. Full-pool CRC, dictionary catalog and host layout match the bundle.")
 
 
 def main():
@@ -263,4 +312,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SystemExit(f"Error: {error}") from error

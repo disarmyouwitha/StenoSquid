@@ -372,7 +372,7 @@ def read_flash(console, start, size):
 
 def backup_all(console):
     """Export the catalog and exact referenced extents from one frozen view."""
-    from native_recovery import capture
+    from native_recovery import capture, digest
 
     layout = console.command("get_parameter host_layout")
     answer = update_command(console, "begin backup")
@@ -381,6 +381,15 @@ def backup_all(console):
         result = capture(lambda start, size: read_flash(console, start, size), snapshot, layout)
         if console.command("get_parameter host_layout") != layout:
             raise RuntimeError("Host layout changed during backup. Retry the backup.")
+        if serial := getattr(console, "serial", None):
+            from datetime import datetime, timezone
+
+            status = console.command("native_install status").split()
+            if len(status) != 3 or status[:2] != ["NATIVE2", "READY"] or not status[2].isdigit():
+                raise RuntimeError("Could not read the captured catalog generation.")
+            result["capture"] = dict(serial=serial, generation=int(status[2]),
+                                     timestamp=datetime.now(timezone.utc).isoformat())
+            result["sha256"] = digest(result)
         return result
     finally:
         update_command(console, "abort", timeout=5)

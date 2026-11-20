@@ -127,6 +127,8 @@ static constexpr uint8_t HOST_PROFILE_WINDOWS = 1;
 static constexpr const char *host_profiles[] = {"Mac U.S.", "Windows U.S. (plain text)"};
 static uint8_t host_profile = HOST_PROFILE_WINDOWS;
 
+uint8_t steno_squid_host_layout_index() { return host_profile; }
+
 static void apply_host_profile() {
   HostLayouts::SetActiveLayout(host_profile == HOST_PROFILE_MAC ? zmk_javelin_macos_us_layout()
                                                                : zmk_javelin_windows_us_layout());

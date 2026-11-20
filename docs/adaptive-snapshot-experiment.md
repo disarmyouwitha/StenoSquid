@@ -242,18 +242,121 @@ fallback. See the checklist below for the expected editor search differences.
 
 ### Offline repacking
 
-The repacker takes a verified version 2 bundle and plans a compact physical layout on the computer. Existing lean compact images keep their contents and SHI1 hints. The planner relocates their absolute JSC4 pointers, regenerates the journal and both checkpoint indexes, and keeps three free segments in reserve. It considers journal-only user dictionaries in catalog order and converts each only if it saves packed segments. It leaves that dictionary's tombstones and all other dictionaries' live edits in the shared overlay. Unsupported outlines and candidates that would save no space are reported.
+Repacking is a host operation. It relocates lean JSC4 images and their SHI1
+hints, rebuilds the shared Native journal and both indexes, and leaves three
+free segments for maintenance. Journal-only user dictionaries are converted
+only when the packed plan uses fewer segments. Other overlays and all live
+tombstones keep their semantics. The new pool contains two fresh copies of
+the optimized catalog. Superseded journal records, the old alternate catalog
+and unreferenced flash data are omitted from the new layout. Keep the original
+complete backup as your recovery copy.
 
-A journal-only store can be captured as a complete bundle with `--backup-all`. This reads flash and writes a host file. It holds the existing backup lease, so run it while idle. The repack step itself stays offline.
+Run these commands from the repository root with the keyboard idle during
+capture. Use a private directory that will survive a reboot. The commands
+require new output paths.
 
 ```sh
-python3 stenosquid.py --backup-all build/source-bundle.json --serial SPARE_USB_SERIAL
-python3 tools/storage/native_repack.py build/source-bundle.json --report build/repack-report.json
+# Read external flash. Write the original bundle to the computer.
+python3 stenosquid.py --backup-all /path/to/original.json --serial SOURCE_USB_SERIAL
+python3 tools/storage/native_recovery.py /path/to/original.json
+
+# Offline. Build a separate, self-contained version 2 bundle and layout report.
+python3 tools/storage/native_repack.py /path/to/original.json \
+  --bundle-out /path/to/optimized.json --report /path/to/repack-report.json
+python3 tools/storage/native_repack.py /path/to/original.json \
+  --verify-target /path/to/optimized.json
+
+# Optional. Read-only check that the source keyboard still matches its backup.
+python3 tools/storage/native_repack.py /path/to/original.json \
+  --check-live-source --serial SOURCE_USB_SERIAL
 ```
 
-Add `--image build/repack-simulation.bin` for a raw image used by fake-NOR tests. The planner emits no USB deployment manifest or reinstallable bundle. Use new output paths. `--convert NAME` can narrow the candidates and `--keep-representations` packs the existing formats.
+The report includes both file hashes, the target pool SHA-256, source capture
+identity and time when available, every dictionary's export hash and entry
+count, and the number of verified active priority winners. Source layout
+figures in the offline report describe the selected catalog saved in the
+backup. The live check also reports free space across both retained roots.
+The report distinguishes storage savings, a larger contiguous run with the
+same usage, and a recommendation of no operation. Its staging figures come
+from running the current allocator against each target snapshot at its
+current image size. Future edits, retained roots and image growth can change
+those results. Use `--keep-representations` to keep all current formats, or
+`--convert NAME` to restrict candidates. `--image` produces a raw fake-NOR
+test fixture only.
 
-For the full 147,424-entry Plover personal journal, the offline target shrank from **226 to 111 used segments**. The contiguous free run grew from **29 to 144 segments**. All 438,827 per-dictionary translations and 243,093 active priority winners matched. Repacking an already lean 200,000-entry personal snapshot kept its 105 used segments and verified its contents without changing formats. The mixed fake-NOR fixture verifies preservation of a disabled personal row, a pinned override and tombstone, a relocated lean snapshot, SHI1 hints, and 16 selected cuts and retries. Physical USB recovery and deployment of rebuilt layouts still require qualification. [Repack capacity report](benchmarks/offline-repack-capacity.json)
+For the 147,424-entry Plover personal journal, repacking used 111 segments
+instead of 226 and expanded the largest free run from 29 to 144 segments.
+All 438,827 effective per-dictionary entries and 243,093 active priority winners
+matched. An already lean 200,000-entry personal snapshot kept its 105 used
+segments. [Repack capacity report](benchmarks/offline-repack-capacity.json)
+
+#### Guarded USB repack and spare recovery
+
+The captured keyboard can be tested directly with firmware that reports
+`REPACK1`. The tool compares the current catalog, every referenced extent,
+journal high-water mark and host layout with the verified source. The firmware
+rechecks the catalog generation and CRC, journal sequence and host layout
+under the same lock that starts recovery. A difference aborts before erase.
+Use an unprovisioned spare only when testing disaster recovery independently
+of the captured device. Manager and Automatic import keep their existing
+staging refusal.
+
+1. **Offline verification.** Save the original and optimized bundles as
+   separate files and verify both with the commands above. Record both file
+   digests and the expected free run. Keep both files throughout testing.
+2. **Identify the target.** Close other editor connections. For a live repack,
+   connect the captured keyboard and confirm its exact USB serial and
+   `NATIVE2 READY` status. An unprovisioned spare is also eligible for the
+   separate `--restore-spare` mode.
+3. **Explicit pool erase.** Repeat the target USB serial and optimized
+   **file** SHA-256 shown by offline verification. The next command erases
+   the entire external dictionary pool while leaving the final reserved
+   segment outside the transfer.
+
+   ```sh
+   python3 tools/storage/native_repack.py /path/to/original.json \
+     --restore-live /path/to/optimized.json --serial TARGET_USB_SERIAL \
+     --confirm-erase TARGET_USB_SERIAL:OPTIMIZED_FILE_SHA256
+   ```
+
+   For an unprovisioned spare, use `--restore-spare` with its serial. A
+   matching completed image can be checked with an explicit repeat.
+
+4. **Cold boot and readback.** After the command confirms the full-pool CRC
+   and catalog, disconnect USB and turn off the spare battery. Power it back
+   on and reconnect USB. Before editing or requesting maintenance, run:
+
+   ```sh
+   python3 tools/storage/native_repack.py /path/to/original.json \
+     --check-live-target /path/to/optimized.json --serial TARGET_USB_SERIAL
+   ```
+
+   Expect READY, a byte-for-byte match for the active catalog and every
+   referenced extent, matching host layout, full-pool CRC and the planned
+   free-run geometry with two valid roots. Then type a known factory
+   translation, a personal override, a multi-stroke entry, and a previously
+   tombstoned outline that should fall back to a lower-priority dictionary.
+   Record actual output and confirm a known one-stroke hint on the right half.
+5. **Repeat on a disposable pool for interruption qualification.** Capture
+   the command output and cut power once during erasure, once during transfer,
+   and once during publication or immediately afterward. Use separate
+   attempts. Record which phase you actually hit. A missing reply calls for
+   reconnect and inspection, never automatic erase. If the board matches
+   the optimized target, an explicit repeat verifies and skips erase.
+   If the original catalog is gone, or a partial publication leaves READY
+   with a mismatched full-pool CRC, stop. To recover the original layout,
+   independently verify `original.json` and explicitly authorize the separate disaster
+   recovery command:
+
+   ```sh
+   python3 tools/storage/native_recovery.py /path/to/original.json \
+     --restore --serial TARGET_USB_SERIAL --confirm-erase TARGET_USB_SERIAL
+   ```
+
+   Reboot and capture a new backup from the target. Compare the original
+   `catalog`, `extents` and `host_layout` fields with that readback.
+   The capture serial and timestamp will differ. Reflashing a UF2 alone does
+   not reset the QSPI pool.
 
 ## Tonight's hardware checkpoint and test sequence
 
@@ -509,15 +612,14 @@ reachable through HID. The allowlist and its tests show that they were not.
 The recovery CLI reconstructs and validates the complete bundle before USB
 is opened. It requires the exact serial twice and rechecks the connected
 device before erasure and after reconnecting. The device verifies the staged
-image before either root is committed. The host checks the recovered catalog
-and host layout. If publication acknowledgment is uncertain, it requires
-the physical pool checksum to match. A mismatched checksum stops the
+image before either root is committed. The host always checks the full physical pool CRC after reconnect, then
+checks the recovered catalog and host layout. A mismatched checksum stops the
 attempt without an automatic second erase. An explicit retry on a still
 matching raw pool skips erase. Later maintenance can change the raw checksum
 while leaving exported contents equivalent, so inspect before choosing a
 retry.
 
-Version 2 USB rescue restores the bundle's recorded layout. Offline repack
-relocates data and returns a simulation image with no provisioning manifest.
-Keep that output off hardware. The physical test still needs to qualify a
-real first install, intentional interruptions and exact cold readback.
+Version 2 USB rescue restores the bundle's recorded layout. The optimized
+bundle uses the separate [offline repack and spare recovery](#offline-repacking)
+procedure. Physical qualification requires first install, intentional
+interruptions, cold readback and typing on the spare.
