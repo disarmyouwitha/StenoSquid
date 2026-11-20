@@ -79,8 +79,10 @@
             <button id="import-preview" data-write>Import</button>
           </form>
           <div id="import-plan" hidden aria-live="polite">
-            <p id="import-plan-summary"></p>
-            <ul id="import-plan-costs"></ul>
+            <p id="import-entry-count"></p>
+            <dl id="import-space" aria-label="Current flash space"></dl>
+            <p id="import-savings" hidden></p>
+            <ul id="import-plan-costs" aria-label="Import formats"></ul>
             <button id="import-apply" data-write>Stage approved import</button>
           </div>
           <div role="alert"><p id="import-error" hidden></p></div>

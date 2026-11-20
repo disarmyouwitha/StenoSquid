@@ -56,3 +56,27 @@ textarea { resize: vertical; }
 #flash-map-result [data-kind="."] { background: #3a394a; }
 #flash-map-result [data-kind="?"] { background: repeating-linear-gradient(135deg, #383547 0 3px, #5d536f 3px 6px); }
 #flash-map-result [data-shared="true"] { box-shadow: inset 0 0 0 1px #eeedf8; }
+
+#import-plan { margin-top: 1rem; }
+#import-entry-count { margin: 0 0 .4rem; color: inherit; font-size: .88rem; font-weight: 650; }
+#import-space { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; margin: 0; }
+#import-space div { display: flex; flex-direction: column-reverse; padding: .35rem .65rem; border-radius: .45rem; background: #191923; }
+#import-space dt { color: var(--muted); font-size: .74rem; }
+#import-space dd { margin: 0; font-size: 1.18rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+#import-savings { color: #a2dfc6; font-size: .84rem; }
+#import-plan-costs { display: grid; gap: .5rem; list-style: none; padding: 0; margin: .65rem 0; }
+.import-format { --segment-color: #ad7746; border: 1px solid var(--line); border-radius: .55rem; padding: .65rem .75rem; background: #191923; }
+.import-format[data-format="snapshot"] { --segment-color: #5cd1a3; }
+.import-format[data-selected] { border-color: var(--segment-color); }
+.import-format-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .45rem; font-size: .86rem; }
+.import-choice { border-radius: .25rem; padding: .08rem .3rem; background: #303043; color: #eeedf8; font-size: .7rem; }
+.import-bytes { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+.import-segments { display: grid; grid-template-columns: repeat(auto-fill, .7rem); gap: 3px; margin-top: .45rem; }
+.import-segments span { height: .62rem; border-radius: 2px; }
+.segment-added, .caption-added::before { background: var(--segment-color); }
+.segment-temporary, .caption-staging::before { border: 1px solid #9384af; background: repeating-linear-gradient(135deg, #9384af 0 1px, transparent 1px 3px); }
+.import-segment-caption { display: flex; flex-wrap: wrap; gap: .15rem .85rem; font-size: .74rem; }
+.import-segment-caption span { display: inline-flex; align-items: center; gap: .3rem; }
+.import-segment-caption span::before { content: ""; width: .55rem; height: .55rem; border-radius: 2px; }
+.import-format-detail { font-size: .78rem; margin-bottom: 0; }
+#import-apply:not(:disabled) { border-color: var(--accent); background: var(--accent); color: #24163e; font-weight: 650; }

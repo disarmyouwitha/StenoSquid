@@ -214,24 +214,91 @@ function clearImportPlan() {
   node("import-plan").hidden = true;
 }
 function showImportPlan(plan) {
-  node("import-plan-summary").textContent = `${plan.rationale} ${plan.free_segments} free segments, ${plan.largest_free_run} contiguous, ${plan.reserve} reserved.`;
+  node("import-entry-count").textContent = `${number.format(plan.entries)} ${plan.entries === 1 ? "entry" : "entries"} to import`;
+  const space = node("import-space");
+  space.replaceChildren();
+  for (const [label, value] of [["Free segments", plan.free_segments], ["Largest run", plan.largest_free_run], ["Reserve", plan.reserve]]) {
+    const stat = document.createElement("div");
+    const name = document.createElement("dt");
+    const count = document.createElement("dd");
+    name.textContent = label;
+    count.textContent = number.format(value);
+    stat.append(name, count);
+    space.append(stat);
+  }
+
   const costs = node("import-plan-costs");
   costs.replaceChildren();
   for (const [format, option] of Object.entries(plan.options)) {
     const row = document.createElement("li");
-    const size = option.logical_bytes === null ? "" : ` ${number.format(option.logical_bytes)} B.`;
-    const staging = option.staging_segments === undefined ? "" : ` ${option.added_segments} added and ${option.staging_segments} staging segments.`;
-    const replacement = option.replacement_staging_segments === undefined ? "" :
-      ` A same-size replacement fits with ${option.replacement_staging_segments} staging segments.`;
-    const refusal = option.eligible ? "" : ` ${option.reason}`;
-    row.textContent = `${format}.${size}${staging}${replacement}${refusal}`;
+    row.className = "import-format";
+    row.dataset.format = format;
+    if (format === plan.selected) row.dataset.selected = "";
+
+    const header = document.createElement("div");
+    header.className = "import-format-heading";
+    const name = document.createElement("strong");
+    name.textContent = format === "snapshot" ? "Compact snapshot" : "Journal";
+    header.append(name);
+    if (format === plan.selected || format === plan.recommended) {
+      const label = document.createElement("span");
+      label.className = "import-choice";
+      label.textContent = format === plan.recommended ? "Recommended" : "Selected";
+      header.append(label);
+    }
+    if (option.logical_bytes != null) {
+      const size = document.createElement("span");
+      size.className = "import-bytes";
+      size.textContent = option.logical_bytes < 1024
+        ? `${number.format(option.logical_bytes)} B`
+        : `${number.format(Math.round(option.logical_bytes / 1024))} KiB`;
+      size.title = `${number.format(option.logical_bytes)} bytes`;
+      header.append(size);
+    }
+    row.append(header);
+
+    if (option.staging_segments != null) {
+      const blocks = document.createElement("div");
+      blocks.className = "import-segments";
+      blocks.setAttribute("aria-hidden", "true");
+      for (let i = 0; i < Math.max(option.staging_segments, option.added_segments); i++) {
+        const segment = document.createElement("span");
+        segment.className = i < option.added_segments ? "segment-added" : "segment-temporary";
+        blocks.append(segment);
+      }
+      const caption = document.createElement("p");
+      caption.className = "import-segment-caption";
+      const added = document.createElement("span");
+      added.className = "caption-added";
+      added.textContent = `${option.added_segments} added`;
+      const staging = document.createElement("span");
+      staging.className = "caption-staging";
+      staging.textContent = `${option.staging_segments} to stage`;
+      staging.title = "Includes added segments and striped temporary segments";
+      caption.append(added, staging);
+      row.append(blocks, caption);
+    }
+
+    if (option.replacement_staging_segments != null || option.reason) {
+      const detail = document.createElement("p");
+      detail.className = "import-format-detail";
+      detail.textContent = option.eligible
+        ? `Same-size replacement fits · ${option.replacement_staging_segments} to stage`
+        : option.reason;
+      row.append(detail);
+    }
     costs.append(row);
   }
+
+  const savings = node("import-savings");
+  const saved = plan.options.journal.added_segments - plan.options.snapshot.added_segments;
+  savings.hidden = !(saved > 0 && plan.options.journal.eligible && plan.options.snapshot.eligible);
+  savings.textContent = savings.hidden ? "" : `${saved} fewer segments with a snapshot`;
   node("import-apply").hidden = !plan.selected || !importToApply;
-  node("import-apply").textContent = `Stage ${plan.selected || ""} import`;
+  node("import-apply").textContent = plan.selected === "snapshot" ? "Import compact snapshot" : "Import as journal";
   node("import-plan").hidden = false;
   if (importToApply) importToApply.token = plan.token;
-  notify(plan.selected ? "Review the staging plan before importing." : "Import stopped.");
+  notify(plan.selected ? "Review the import preview." : "Import stopped.");
   if (!plan.selected) showImportError("This format cannot stage safely.");
 }
 function clearOptimizationPlan() {
