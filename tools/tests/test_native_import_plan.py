@@ -90,7 +90,17 @@ def main():
 
             native = named_import(console, "Preview", small, preference="snapshot")
             assert native["selected"] == "snapshot"
-            named_import(console, "Preview", small, preference="snapshot", stage=True, expected=native["token"])
+            assert preview["tokens"]["snapshot"] == native["token"]
+            assert preview["tokens"]["journal"] == preview["token"]
+            try:
+                named_import(console, "Preview", small, preference="snapshot", stage=True, expected=preview["token"])
+            except RuntimeError as exc:
+                assert "plan changed" in str(exc)
+            else:
+                raise AssertionError("Journal approval was accepted for a snapshot")
+            publish.assert_not_called()
+            named_import(console, "Preview", small, preference="snapshot", stage=True,
+                         expected=preview["tokens"]["snapshot"])
             snapshot_update = publish.call_args.args[1]
             assert next(iter(snapshot_update.segments.values()))[-12:-8] == b"SHI1"
             console.active = False  # The real publish closes this simulated session.

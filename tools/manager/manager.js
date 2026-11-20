@@ -19,6 +19,9 @@ function controls() {
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
   for (const id of ["refresh", "backup", "backup-complete", "updates", "export", "restore-submit", "measure"]) node(id).disabled = busy;
   node("flash-map-scan").disabled = busy;
+  for (const radio of node("import-plan-costs").querySelectorAll("input")) {
+    radio.disabled = busy || !!state?.read_only || radio.dataset.eligible !== "true";
+  }
   if (!state) return;
   const row = selection();
   const rank = state.catalog.indexOf(row);
@@ -51,7 +54,6 @@ function render(newState, usage = {}) {
   clearOptimizationPlan();
   node("flash-map-panel").hidden = !state.layout_map;
   node("flash-map-result").hidden = true;
-  node("import-advanced").hidden = !state.adaptive_imports;
   updateImportControls();
   if (!selection()) selectedId = state.catalog[0]?.id;
   node("catalog").replaceChildren();
@@ -210,6 +212,22 @@ function clearImportPlan() {
   importToApply = undefined;
   node("import-plan").hidden = true;
 }
+function selectImportFormat(plan, format, manual = false) {
+  const token = plan.tokens[format];
+  if (manual && (busy || !importToApply || !token)) return;
+  for (const row of node("import-plan-costs").children) {
+    const selected = row.dataset.format === format;
+    row.toggleAttribute("data-selected", selected);
+    row.querySelector("input").checked = selected;
+  }
+  const apply = node("import-apply");
+  apply.hidden = !importToApply || !token;
+  apply.textContent = format === "snapshot" ? "Import compact snapshot" : "Import as journal";
+  if (importToApply) {
+    importToApply.preference = manual ? format : "auto";
+    importToApply.token = token;
+  }
+}
 function showImportPlan(plan) {
   node("import-entry-count").textContent = `${number.format(plan.entries)} ${plan.entries === 1 ? "entry" : "entries"} to import`;
   const space = node("import-space");
@@ -230,17 +248,28 @@ function showImportPlan(plan) {
     const row = document.createElement("li");
     row.className = "import-format";
     row.dataset.format = format;
-    if (format === plan.selected) row.dataset.selected = "";
 
     const header = document.createElement("div");
     header.className = "import-format-heading";
-    const name = document.createElement("strong");
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "import-format";
+    radio.id = `import-format-${format}`;
+    radio.dataset.eligible = String(option.eligible);
+    radio.onchange = () => selectImportFormat(plan, format, true);
+    const name = document.createElement("label");
+    name.htmlFor = radio.id;
     name.textContent = format === "snapshot" ? "Compact snapshot" : "Journal";
-    header.append(name);
-    if (format === plan.selected || format === plan.recommended) {
+    row.onclick = (event) => {
+      if (event.target.closest("input, label") || radio.disabled) return;
+      radio.focus({preventScroll: true});
+      selectImportFormat(plan, format, true);
+    };
+    header.append(radio, name);
+    if (format === plan.recommended) {
       const label = document.createElement("span");
       label.className = "import-choice";
-      label.textContent = format === plan.recommended ? "Recommended" : "Selected";
+      label.textContent = "Recommended";
       header.append(label);
     }
     if (option.logical_bytes != null) {
@@ -291,10 +320,8 @@ function showImportPlan(plan) {
   const saved = plan.options.journal.added_segments - plan.options.snapshot.added_segments;
   savings.hidden = !(saved > 0 && plan.options.journal.eligible && plan.options.snapshot.eligible);
   savings.textContent = savings.hidden ? "" : `${saved} fewer segments with a snapshot`;
-  node("import-apply").hidden = !plan.selected || !importToApply;
-  node("import-apply").textContent = plan.selected === "snapshot" ? "Import compact snapshot" : "Import as journal";
+  selectImportFormat(plan, plan.selected);
   node("import-plan").hidden = false;
-  if (importToApply) importToApply.token = plan.token;
   notify(plan.selected ? "Review the import preview." : "Import stopped.");
   if (!plan.selected) showImportError("This format cannot stage safely. USB rebuilding is unavailable in Manager.");
 }
@@ -409,7 +436,7 @@ for (const action of ["import", "restore"]) {
         : {confirm: fields.get("confirm")};
       if (action === "import" && state?.adaptive_imports && options.name) {
         clearImportPlan();
-        importToApply = {source, ...options, preference: fields.get("preference") ?? "auto"};
+        importToApply = {source, ...options};
         await run({action: "preview_import", ...importToApply});
       } else {
         if (action === "import" && !options.name && !window.confirm(

@@ -60,16 +60,10 @@
           </form>
         </section>
         <section aria-labelledby="import-title">
-          <h2 id="import-title">Import Plover JSON</h2>
+          <h2 id="import-title">Import JSON</h2>
           <form id="import">
             <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
             <label>New dictionary name (optional) <input name="name" maxlength="44" placeholder="Leave blank to add to personal"></label>
-            <details id="import-advanced" hidden>
-              <summary>Advanced format</summary>
-              <label>Format <select name="preference" data-write>
-                <option value="auto">Automatic</option><option value="journal">Journal</option><option value="snapshot">Compact snapshot</option>
-              </select></label>
-            </details>
             <p id="import-help" hidden>Preview checks how much space the new dictionary needs. Nothing is written until you approve.</p>
             <button id="import-preview" data-write>Import</button>
           </form>

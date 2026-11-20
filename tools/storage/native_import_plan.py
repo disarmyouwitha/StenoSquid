@@ -121,9 +121,10 @@ def named_import(console, name, entries, *, preference="auto", stage=False, expe
         selected = report["recommended"] if preference == "auto" else preference
         report["selected"] = selected if selected and report["options"][selected]["eligible"] else None
         token = fingerprint(snapshot, protected, report)
-        report["token"] = token
         if not stage:
-            return report
+            tokens = {mode: fingerprint(snapshot, protected, {**report, "selected": mode})
+                      for mode, option in report["options"].items() if option["eligible"]}
+            return {**report, "token": token, "tokens": tokens}
         if expected is not None and expected != token:
             raise RuntimeError("The import plan changed. Preview it again before staging.")
         if report["selected"] is None:
@@ -139,13 +140,12 @@ def named_import(console, name, entries, *, preference="auto", stage=False, expe
             check, check_protected = read_snapshot(console, answer)
             # Only differences in protected allocation, catalog or append
             # highwater can invalidate a plan prepared in the first session.
-            expected_report = {key: value for key, value in report.items() if key != "token"}
-            if fingerprint(check, check_protected, expected_report) != token:
+            if fingerprint(check, check_protected, report) != token:
                 raise RuntimeError("The import plan changed. Preview it again before staging.")
         progress(f"Staging the {selected} plan for {name}.")
         publish(console, updates[selected], progress)
         published = True
-        return report
+        return {**report, "token": token}
     finally:
         if active and not published:
             abort(console)
