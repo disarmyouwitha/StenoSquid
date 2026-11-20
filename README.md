@@ -70,65 +70,16 @@ From the Javelin or Plover layer, tap the outer right thumb
 
    This prepares the pinned dictionaries, replaces the external dictionary pool, and verifies the result. If a fresh install is interrupted, reconnect USB and rerun the same command. On a provisioned board, use `--install` without `--confirm-erase` to check that it is already installed.
 
-### Update firmware
 
-Boards on the current Native QSPI layout keep their dictionaries when you flash
-the new Left UF2. For a board with an older QSPI layout, flash the new firmware
-and run the clean provisioning command above. Provisioning replaces the dictionary pool.
+## Steno Squid Manager
 
-### Steno Squid Manager
+StenoSquid Manager offers full dictionary management! You can Import/Export, Edit, Rename and Delete dictionaries 
 
-Connect the left half over USB and close any Javelin Steno Tools connection. Run
+Connect the left half over USB and Run
 `python3 stenosquid.py --manager` from the repository. The local Manager opens in
-your browser. Select **Connect over USB** to view priority and checkboxes, edit
-a specific dictionary, import Plover JSON, export an individual dictionary or
-download a full backup. The Manager can rename or delete independent dictionaries
-and switch the keyboard’s host layout.
-**Check pinned updates** compares the installed revisions against this checkout.
-Updates keep local edits and report any outlines where upstream also changed.
+your browser. Select **Connect over USB** to view Active dictionaries and their priorities. You can Import/Export and Edit any dictionary installed!
 
-**Consolidate edits** folds saved edits into a user-owned compact dictionary.
-Named imports preview Journal and Compact formats and recommend a fit.
-**Download full backup** saves the entire dictionary store, including compact
-images and edits, for the separate [USB recovery procedure](docs/adaptive-snapshot-experiment.md#usb-recovery-on-a-spare).
-
-After 64 pending edits, the firmware can rebuild its indexes and reclaim
-stale journals while the keyboard is idle on USB power. It can copy up to
-4 KiB of live entries to free mostly stale journals and cancels unpublished
-work when you resume typing. **Compact now** runs a larger cleanup pass.
-
-
-### Import a personal Plover dictionary
-
-With the current **Left** firmware connected by USB, close the Javelin browser connection and run:
-
-```sh
-python3 stenosquid.py --import user.json
-```
-
-The file's translations win for matching outlines. Other personal entries stay in the dictionary. Use a plain Plover JSON export. Plover-only formatting commands and plugins may behave differently in onboard Javelin.
-
-To keep a file separate and give it its own checkbox and lookup priority:
-
-```sh
-python3 stenosquid.py --import medical.json --as "Medical"
-python3 stenosquid.py --move "Medical" --position 1
-```
-
-New named dictionaries start enabled, just below the personal dictionary.
-Position 1 has highest priority. Both commands publish over USB and reboot the
-left half when done. Use `--status` to see the current order. The firmware
-supports 16 dictionaries in total by default.
-
-### Back up your dictionary
-
-Keep a copy of your personal dictionary on your computer. With the current **Left** firmware connected by USB, close the Javelin browser connection and run:
-
-```sh
-python3 stenosquid.py --backup dictionary.json
-```
-
-It writes a Plover JSON file and refuses to overwrite an existing one. Restore it later with `--import`.
+<sub>We still offer compatibility with [Javelin Steno Tools](https://github.com/disarmyouwitha/StenoSquid#javelin-steno-tools) for basic dictionary tools. </sub>
 
 ## Default Keymap 
 Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-studio)
@@ -156,7 +107,7 @@ Saved Studio keymaps take precedence over the source keymap. To load updated def
 
 https://zmk.studio/
 
-## Javelin Wireless Dictionary Management
+## Javelin Steno Tools
 1. Connect the left half by USB or Bluetooth!
 2. Open Javelin Steno Tools in **Chrome**, choose **Connect via HID**, and select the keyboard.
 3. Use **Active Dictionaries** to change selections and **Dictionary Management → View** to add, replace, remove, or export personal entries.
