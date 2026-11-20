@@ -63,6 +63,16 @@ def safe_name(value):
     return value
 
 
+def read_import(source):
+    try:
+        entries, names = parse_named(source)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"The dictionary file is not valid JSON (line {error.lineno}, column {error.colno}).") from error
+    if not entries:
+        raise ValueError("This JSON dictionary contains zero entries. Choose a file with outline-to-translation entries.")
+    return entries, names
+
+
 def run_job(serial, request, progress):
     action = request["action"]
     if action == "restore":
@@ -137,7 +147,7 @@ def run_job(serial, request, progress):
             elif selected["kind"] == "snapshot" and operation == "consolidate":
                 source = None
             elif selected["kind"] == "snapshot" and operation == "replace":
-                entries, _ = parse_named(request["source"])
+                entries, _ = read_import(request["source"])
                 source = compile_snapshot(name, entries)
             else:
                 raise ValueError("Choose an eligible personal journal or user snapshot.")
@@ -149,7 +159,7 @@ def run_job(serial, request, progress):
             published = outcome
             report = {"optimized": name}
         elif action in {"preview_import", "apply_import"}:
-            entries, _ = parse_named(request["source"])
+            entries, _ = read_import(request["source"])
             staging = action == "apply_import"
             expected = request.get("token")
             if staging and (not isinstance(expected, str) or len(expected) != 64):
@@ -176,7 +186,7 @@ def run_job(serial, request, progress):
                     raise ValueError("Confirm the name of the dictionary to delete.")
                 options["delete"] = name
             elif action == "import":
-                entries, _ = parse_named(request["source"])
+                entries, _ = read_import(request["source"])
                 label = request.get("name", "")
                 if label:
                     options["name"] = safe_name(label)

@@ -345,7 +345,7 @@ for (const action of ["import", "restore"]) {
         : {confirm: fields.get("confirm")};
       if (action === "import" && state?.adaptive_imports && options.name) {
         clearImportPlan();
-        importToApply = {source, ...options, preference: fields.get("preference")};
+        importToApply = {source, ...options, preference: fields.get("preference") ?? "auto"};
         await run({action: "preview_import", ...importToApply});
       } else {
         if (action === "import" && !options.name && !window.confirm(

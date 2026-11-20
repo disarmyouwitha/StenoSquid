@@ -148,6 +148,24 @@ class ManagerTest(unittest.TestCase):
             self.assertEqual(change.call_args.kwargs["source"].data[-12:-8], b"SHI1")
             wait.assert_called_once_with("smoke-board")
 
+    def test_import_explains_empty_and_invalid_files(self):
+        self.keyboard.kind = "snapshot"
+        with patch.object(manager, "named_import") as named, patch.object(manager, "transfer") as transfer:
+            for action, fields in (
+                ("preview_import", {"name": "Abby"}),
+                ("import", {}),
+                ("preview_optimize", {"id": 8, "operation": "replace"}),
+            ):
+                with self.assertRaisesRegex(ValueError, "zero entries"):
+                    self.run_job(action, source="{}\n", **fields)
+            with self.assertRaisesRegex(ValueError, "not valid JSON"):
+                self.run_job("preview_import", name="Abby", source="{")
+            named.assert_not_called()
+            transfer.assert_not_called()
+        with patch.object(manager, "named_import", return_value={}) as named:
+            self.run_job("preview_import", name="Medical", source='{"KAT":"cat"}')
+            self.assertEqual(named.call_args.kwargs["preference"], "auto")
+
     def test_complete_backup_has_separate_action(self):
         with patch.object(manager, "backup_all", return_value={"format": "stenosquid-backup-2"}) as backup:
             self.assertEqual(self.run_job("backup")["filename"], "stenosquid-backup.json")

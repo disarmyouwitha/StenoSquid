@@ -96,8 +96,10 @@ def fingerprint(snapshot, protected, report):
 
 def named_import(console, name, entries, *, preference="auto", stage=False, expected=None, progress=print):
     validate_name(name)
-    if not entries or preference not in ("auto", "journal", "snapshot"):
-        raise ValueError("Choose a format and a nonempty dictionary")
+    if not entries:
+        raise ValueError("This dictionary has zero entries.")
+    if preference not in ("auto", "journal", "snapshot"):
+        raise ValueError("Choose Automatic, Journal, or Compact snapshot.")
     version = update_command(console, "snapshot-capabilities")
     if version != "OK SNAPSHOT2":
         raise RuntimeError("This preflight requires the experimental snapshot lifecycle firmware.")
