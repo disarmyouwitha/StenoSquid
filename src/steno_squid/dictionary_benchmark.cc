@@ -45,7 +45,7 @@ uint32_t cycles() {
 StenoDictionary *target(const char *name) {
     if (!strcmp(name,"lapwing")) return lapwing_dictionary();
     if (!strcmp(name,"plover")) return plover_dictionary();
-    if (!strcmp(name,"personal")) return steno_squid_user_dictionary_current();
+    if (!strcmp(name,"personal")) return steno_squid_user_dictionary_open();
     if (!strcmp(name,"stack")) return &StenoEngine::container.value.GetDictionary();
     for (unsigned i=0;i<EXTRAS_DICTIONARY_COUNT;i++) {
         const char *names[]={"commands","numbers","uk","proper"};

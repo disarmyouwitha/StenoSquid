@@ -35,7 +35,7 @@ def main():
         def command(self,text,timeout=30):
             self.commands.append(text)
             if text=='dictionary_benchmark meta':return '{"version":1,"timer_hz":64000000}'
-            if text=='base_install status':return '2 READY'
+            if text=='native_install status':return 'NATIVE2 READY 1'
             if text=='list_dictionaries':return '[]'
             if text=='user_dictionary_status':return '{"entries":1}'
             if text=='print_dictionary user_dictionary':return '{"KAT":"cat"}'
@@ -63,7 +63,7 @@ def main():
             trace=json.loads((root/'trace/raw.json').read_text())
             assert trace['trace_summary']['dropped_chords']==1
             assert 'dictionary_benchmark capture stop' in FakeConsole.commands
-        assert not any(c.startswith(('add_user_entry','reset_user_dictionary','user_dictionary_import','remove_user_entry','base_install begin','base_install repair')) for c in FakeConsole.commands)
+        assert not any(c.startswith(('add_user_entry','reset_user_dictionary','remove_user_entry','native_install begin')) for c in FakeConsole.commands)
     print('Phase-0 host: estimate accounting, identity, deterministic cases, raw/CSV reports, personal hits and read-only capture passed')
 
 

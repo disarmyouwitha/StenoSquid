@@ -98,20 +98,7 @@ config ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     depends on USB_DEVICE_STACK && USB_HID_DEVICE_COUNT >= 3
 
 config ZMK_STENO_SQUID_NATIVE_STORE
-    bool "Use the Native dictionary store"
-    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
-    depends on !ZMK_JAVELIN_SERIAL_CONSOLE && !ZMK_JAVELIN_DICTIONARY_BENCHMARK
-    default y
-    help
-      Use the shared QSPI dictionary pool. Provision it using the USB installer.
-      The diagnostic build uses fixed-layout tools for bench compatibility.
-
-config ZMK_STENO_SQUID_USER_SNAPSHOTS
-    bool "Experimental user-owned compact dictionary snapshots"
-    depends on ZMK_STENO_SQUID_NATIVE_STORE && ZMK_JAVELIN_STENO_HID_PROVISIONING
-    default n
-    help
-      Test-only. Accept the version-one user snapshot catalog row extension.
+    def_bool ZMK_JAVELIN_STENO_EXTERNAL_FLASH
 
 config ZMK_STENO_SQUID_NATIVE_DICTIONARIES
     int "Maximum resident native dictionary wrappers"

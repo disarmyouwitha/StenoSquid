@@ -113,12 +113,7 @@ def compact_member_sizes(read, start, size):
 
 def read_images(console):
     """Use the catalog and bounded image metadata reads, without walking entries."""
-    try:
-        answer = update_command(console, "begin metadata")
-    except RuntimeError as error:
-        if str(error) != "ERR No native update active":
-            raise
-        answer = update_command(console, "begin backup")
+    answer = update_command(console, "begin metadata")
     try:
         snapshot, _ = read_snapshot(console, answer, metadata_only=True)
         images = {}

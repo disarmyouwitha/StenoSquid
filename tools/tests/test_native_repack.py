@@ -49,9 +49,7 @@ def main():
         old = opened(data)
         layout = lambda view: {0, 1, 255} | {i for start, count, *_ in view.extents
                                                    for i in range(start, start + count)}
-        legacy = backup_all(Console(data, old.payload))
-        complete = backup_all(Console(data, old.payload), complete=True)
-        assert legacy["format"] == "stenosquid-backup-1"
+        complete = backup_all(Console(data, old.payload))
         assert complete["format"] == "stenosquid-backup-2"
         # A packed snapshot appears after the large source journal/indexes, so
         # rebuilding must move it and rebase its absolute fields.
@@ -59,7 +57,7 @@ def main():
         update = plan_named_snapshot(old, layout(old), "Keep Compact", existing)
         data = publish_image(data, update, 3)
         old = opened(data)
-        complete = backup_all(Console(data, old.payload), complete=True)
+        complete = backup_all(Console(data, old.payload))
         complete["host_layout"] = "Windows U.S. (plain text)"
         complete["sha256"] = digest(complete)
 
@@ -107,7 +105,7 @@ def main():
         original = directory / "source.bin"
         original.write_bytes(data)
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "-DSTENO_SQUID_TEST_USER_SNAPSHOTS", "-I", str(ROOT / "tools/storage"),
+                        "-I", str(ROOT / "tools/storage"),
                         "-I", str(ROOT / "src/steno_squid"), str(ROOT / "tools/tests/test_native_repack.cc"),
                         "-o", str(binary)], check=True)
         subprocess.run([str(binary), str(original), str(raw)], check=True)

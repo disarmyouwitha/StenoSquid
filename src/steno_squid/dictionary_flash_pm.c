@@ -17,7 +17,7 @@ K_CONDVAR_DEFINE(lf_restart_done);
 int64_t lf_last_restart = -5000;
 
 void lf_request_restart(void) {
-    if (lf_suspended && atomic_get(&lf_checked) && !lf_trusted && k_uptime_get() - lf_last_restart < 5000) {
+    if (lf_suspended && atomic_get(&lf_checked) && !lf_last_open_ok && k_uptime_get() - lf_last_restart < 5000) {
         return;
     }
     if (lf_suspended) {
@@ -61,7 +61,6 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
     if (action == PM_DEVICE_ACTION_RESUME) {
         // ZMK aborted power-off and rolled back device suspension. Let the
         // worker restore the same mapping before allowing new flash access.
-        lf_forget_wake_trust();
         lf_request_restart();
         return 0;
     }
@@ -72,13 +71,6 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
         // ZMK retries on its next idle check. Let any read or save finish.
         return -EBUSY;
     }
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
-    /* Let the worker finish mapping a newly installed dictionary first. */
-    if (lf_provisioning_recheck) {
-        k_mutex_unlock(&flash_lock);
-        return -EBUSY;
-    }
-#endif
     if (atomic_get(&lf_read_sessions)) {
         k_mutex_unlock(&flash_lock);
         return -EBUSY;
@@ -107,8 +99,6 @@ static int flash_pm_action(const struct device *dev, enum pm_device_action actio
     if (rc != 0) {
         // A failing suspend is not on ZMK's resume list.
         lf_request_restart();
-    } else if (lf_trusted) {
-        lf_leave_wake_trust();
     }
     k_mutex_unlock(&flash_lock);
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG

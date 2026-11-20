@@ -2,10 +2,7 @@
 #include "javelin_hid_transport.h"
 #include "console_commands.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
-#include "dictionary_flash_provision.h"
-#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
 #include "native_store_runtime.h"
-#endif
 #endif
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"
@@ -142,19 +139,10 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
 #endif
 
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
-#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
     constexpr char install_prefix[] = "native_install ";
-#else
-    constexpr char install_prefix[] = "base_install ";
-#endif
     if (writer.IsUsb() && strncmp(command, install_prefix, sizeof(install_prefix) - 1) == 0) {
-#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
         static char reply[704]; // Only the HID worker calls dispatch.
         steno_squid_native_install_command(command + sizeof(install_prefix) - 1, reply, sizeof(reply));
-#else
-        char reply[160];
-        lf_provision_command(command + sizeof(install_prefix) - 1, reply, sizeof(reply));
-#endif
         if (channel) {
             writer.Write(line, 4);
         }

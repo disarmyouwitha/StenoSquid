@@ -370,34 +370,18 @@ def read_flash(console, start, size):
     return bytes(result)
 
 
-def backup_all(console, *, complete=False):
-    """Export exact live overlay operations and the catalog from one frozen view."""
+def backup_all(console):
+    """Export the catalog and exact referenced extents from one frozen view."""
+    from native_recovery import capture
+
     layout = console.command("get_parameter host_layout")
     answer = update_command(console, "begin backup")
     try:
         snapshot, _ = read_snapshot(console, answer, metadata_only=True)
-        if complete or any(row[11] for row in snapshot.rows):
-            from native_recovery import capture
-            result = capture(lambda start, size: read_flash(console, start, size), snapshot, layout)
-            if console.command("get_parameter host_layout") != layout:
-                raise RuntimeError("Host layout changed during backup. Retry the backup.")
-            return result
-        snapshot, _ = read_snapshot(console, answer)
-        dictionaries = []
-        for row in snapshot.rows:
-            identity, enabled, base, member = struct.unpack_from("<IIHB", row)
-            item = dict(id=identity, name=row_name(row), enabled=bool(enabled), entries=[])
-            if base != 65535:
-                item.update(source_sha256=row[64:96].hex(), image_member=member)
-            dictionaries.append(item)
-        by_id = {item["id"]: item for item in dictionaries}
-        for entry in sorted(snapshot.entries.values(), key=lambda item: item.key):
-            item = dict(strokes=entry.strokes, operation="remove" if entry.operation else "set")
-            if not entry.operation:
-                item["text"] = entry.text.decode("utf-8")
-            by_id[entry.identity]["entries"].append(item)
-        return dict(format="stenosquid-backup-1", host_layout=layout, next_id=snapshot.next_id,
-                    dictionaries=dictionaries)
+        result = capture(lambda start, size: read_flash(console, start, size), snapshot, layout)
+        if console.command("get_parameter host_layout") != layout:
+            raise RuntimeError("Host layout changed during backup. Retry the backup.")
+        return result
     finally:
         update_command(console, "abort", timeout=5)
 

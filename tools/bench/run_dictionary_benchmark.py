@@ -93,7 +93,7 @@ def main():
                 return json.loads(reply)
             report['device']=command('meta')
             if report['device'].get('version')!=1:raise RuntimeError('Unsupported diagnostic benchmark protocol')
-            report['base_status']=console.command('base_install status')
+            report['base_status']=console.command('native_install status')
             report['selection']=console.command('list_dictionaries')
             report['personal_status']=json.loads(console.command('user_dictionary_status'))
             hz=report['device']['timer_hz']

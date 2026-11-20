@@ -19,7 +19,6 @@ from native_update import backup_all, export_dictionary, overlay_usage, transfer
 from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
-from native_restore import restore_all
 from native_snapshot import change_snapshot, clear_personal
 from native_import_plan import named_import
 from native_layout import read_images, read_layout
@@ -86,12 +85,6 @@ def read_import(source):
 
 def run_job(serial, request, progress):
     action = request["action"]
-    if action == "restore":
-        if request.get("confirm") != "RESTORE":
-            raise ValueError("Type RESTORE to confirm replacing this keyboard’s dictionaries.")
-        serial = restore_all(serial, json.loads(request["source"]), progress)
-        with open_console(serial) as console:
-            return {"state": read_state(console), "restored": True}
     published = False
     report = {}
     with open_console(serial) as console:
@@ -150,9 +143,7 @@ def run_job(serial, request, progress):
         elif action in {"backup", "measure"}:
             if action == "backup":
                 progress("Reading saved edits, dictionary order and checkboxes…")
-                complete = request.get("complete") is True
-                return {"download": backup_all(console, complete=complete),
-                        "filename": "stenosquid-rescue.json" if complete else "stenosquid-backup.json"}
+                return {"download": backup_all(console), "filename": "stenosquid-backup.json"}
             progress("Counting saved edits across dictionaries…")
             return {"state": read_state(console), "usage": overlay_usage(console)}
         elif action == "check_updates":
@@ -167,12 +158,7 @@ def run_job(serial, request, progress):
             if request.get("confirm") != "CLEAR" or not selected or name != "user_dictionary":
                 raise ValueError("Select your personal dictionary and type CLEAR to confirm.")
             progress("Clearing personal entries…")
-            if console.command("native_install update snapshot-clear-capabilities") == "OK CLEAR1":
-                published = clear_personal(console, selected["id"], progress)
-            elif selected["kind"] == "personal":
-                checked(console, "reset_user_dictionary")
-            else:
-                raise RuntimeError("Update the experimental left firmware to clear a compact personal dictionary.")
+            published = clear_personal(console, selected["id"], progress)
             report = {"cleared": True}
         elif action in {"preview_optimize", "apply_optimize"}:
             applying = action == "apply_optimize"

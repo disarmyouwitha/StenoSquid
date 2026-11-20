@@ -2,12 +2,11 @@
 
 /* Shared by the dictionary_flash_*.c files. The public API is dictionary_flash.h.
  *
- * dictionary_flash.c        worker loop, public API, base image table
+ * dictionary_flash.c        worker loop, public API
  * dictionary_flash_power.c  flash rail and QSPI pins
  * dictionary_flash_pm.c     sleep, idle power-down and the flash lock (ZMK_SLEEP)
  * dictionary_flash_qspi.c   QSPI start-up, retry, CRC checks and mapping
- * dictionary_flash_trust.c  records that allow a quick check
- * serial_console.c serial provisioning (SERIAL_CONSOLE)
+ * serial_console.c USB serial diagnostics (SERIAL_CONSOLE)
  * dictionary_flash_diag.c   status and bench commands (diag builds)
  */
 
@@ -33,35 +32,14 @@
 #define IDLE_OFF_MS (CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS * 1000U)
 #endif
 
-struct base_image {
-    const char *name;
-    uint32_t offset;
-    uint32_t bytes;
-    uint32_t crc;
-    bool verified;
-};
-
-#if PLOVER_BYTES > 0 && EXTRAS_BYTES > 0
-#define IMAGE_COUNT 3
-#elif PLOVER_BYTES > 0 || EXTRAS_BYTES > 0
-#define IMAGE_COUNT 2
-#else
-#define IMAGE_COUNT 1
-#endif
-
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
 /* All accesses are under flash_lock. */
 extern bool lf_provisioning_ready;
-extern bool lf_provisioning_recheck;
-#endif
 
 /* dictionary_flash.c */
-extern struct base_image lf_images[IMAGE_COUNT];
 extern atomic_t lf_mapped_ready;
 /* Set once a bring-up attempt has finished, whatever its result. */
 extern atomic_t lf_checked;
-/* Both bases passed a full CRC since this controller last lost power. */
-extern bool lf_trusted;
+extern bool lf_last_open_ok;
 #if IDLE_OFF
 /* Set while the idle timer, and not ZMK's sleep, has the flash powered down. */
 extern atomic_t lf_idle_off;
@@ -94,33 +72,15 @@ void lf_request_restart(void);
 bool lf_flash_is_idle(bool initialized);
 
 /* dictionary_flash_qspi.c */
-extern uint8_t lf_readback[CHUNK_BYTES];
 extern uint8_t lf_last_jedec[3];
 #if SERIAL_CONSOLE
-extern bool lf_last_check_quick;
 extern uint32_t lf_last_check_ms;
 #endif
-bool lf_all_verified(void);
-bool lf_image_crc(const struct base_image *image, bool mapped, uint32_t *crc_out,
-                  uint32_t *failed_at);
-bool lf_read_image_crc(const struct base_image *image);
-bool lf_enable_verified_mapping(nrfx_qspi_config_t *config);
 bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed);
 
 /* Opportunistic CRC scrub; all calls hold flash_lock. */
-void lf_scrub_verified(void);
-void lf_scrub_invalidated(void);
 void lf_scrub_step(void);
 int32_t lf_scrub_wait_ms(void);
-
-/* dictionary_flash_trust.c */
-uint8_t lf_trust_marker(void);
-void lf_forget_wake_trust(void);
-void lf_leave_wake_trust(void);
-bool lf_stored_trust(void);
-void lf_store_trust(void);
-bool lf_clear_trust(void);
-bool lf_take_wake_trust(void);
 
 /* serial_console.c */
 #if SERIAL_CONSOLE

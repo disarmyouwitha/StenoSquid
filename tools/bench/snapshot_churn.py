@@ -133,7 +133,7 @@ def main():
         binary = directory / "churn"
         compiler_args = compiler()
         subprocess.run([*compiler_args, "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "-DSTENO_SQUID_TEST_USER_SNAPSHOTS", "-I", str(ROOT / "tools/tests"),
+                        "-I", str(ROOT / "tools/tests"),
                         "-I", str(ROOT / "tools/storage"), str(ROOT / "tools/bench/snapshot_churn.cc"), "-o", str(binary)],
                        check=True)
         comp_version = subprocess.run([compiler_args[0], "--version"], check=True, capture_output=True, text=True).stdout.splitlines()[0]

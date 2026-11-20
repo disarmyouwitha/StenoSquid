@@ -64,7 +64,7 @@ cases have one. Reporting and counter collection happen outside the timed loop.
 
 `xip_word_loads` counts software word loads through the protected XIP helpers in
 `0x12000000..0x12FFFFFF`, **not** measured SPI transactions or cache misses.
-`personal_read_calls/bytes` count requests to the personal-store adapter; they
+`personal_read_calls/bytes` count reads through the shared Native journal adapter; they
 are a separate layer and must not be added to XIP counts. Counts are from one
 additional untimed query. The compiled counter branches still have a small
 instruction overhead when disabled. No cold-cache or isolated thread-CPU claim

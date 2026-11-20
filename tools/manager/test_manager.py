@@ -186,12 +186,10 @@ class ManagerTest(unittest.TestCase):
             self.run_job("preview_import", name="Medical", source='{"KAT":"cat"}')
             self.assertEqual(named.call_args.kwargs["preference"], "auto")
 
-    def test_complete_backup_has_separate_action(self):
+    def test_backup_always_returns_a_complete_bundle(self):
         with patch.object(manager, "backup_all", return_value={"format": "stenosquid-backup-2"}) as backup:
             self.assertEqual(self.run_job("backup")["filename"], "stenosquid-backup.json")
-            backup.assert_called_with(self.keyboard, complete=False)
-            self.assertEqual(self.run_job("backup", complete=True)["filename"], "stenosquid-rescue.json")
-            backup.assert_called_with(self.keyboard, complete=True)
+            backup.assert_called_with(self.keyboard)
 
     def test_local_http_routes_require_session_and_origin(self):
         started = Queue()

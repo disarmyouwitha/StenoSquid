@@ -3,21 +3,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// The personal dictionary's segments occupy 500000..FEFFFF.
-#define PLOVER_FLASH_OFFSET 0x200000U
-// One image holding the smaller Lapwing dictionaries, each with its own
-// checkbox in the browser.
-#define EXTRAS_FLASH_OFFSET 0x480000U
-#define BASE_DICTIONARY_LIMIT 0x500000U
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 uintptr_t dictionary_flash_mapped_address(void);
-bool lapwing_verify_native_dictionary(uintptr_t address);
-bool plover_verify_native_dictionary(uintptr_t address);
-bool extras_verify_native_dictionary(uintptr_t address);
 
 enum dictionary_flash_state {
     DICTIONARY_FLASH_LOADING,     /* Still being checked after a boot or wake. */

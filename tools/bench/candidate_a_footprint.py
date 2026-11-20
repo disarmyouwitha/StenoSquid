@@ -21,13 +21,19 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT/'tools/dictionaries'),str(ROOT/'tools/dict_compiler')]
 from manifest import BASES
 from compile_dict import parse_outline
-from segment_image import hash_bytes
 
 SEGMENT=65536
 HEADER=16
 SLOTS=(SEGMENT-HEADER)//4
 CAPACITY=255*SEGMENT
 EMPTY=0xffffffff
+
+
+def hash_bytes(data):
+    value = 2166136261
+    for byte in data:
+        value = ((value ^ byte) * 16777619) & 0xffffffff
+    return value
 
 
 def pack_records(dictionaries):

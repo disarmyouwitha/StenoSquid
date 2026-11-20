@@ -87,7 +87,7 @@ def main():
         assert {entry.key for entry in cleared.entries.values()} == {
             entry.key for entry in current.entries.values() if entry.identity != current.personal}
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "-DSTENO_SQUID_TEST_USER_SNAPSHOTS", "-I", str(ROOT / "tools/storage"),
+                        "-I", str(ROOT / "tools/storage"),
                         str(ROOT / "tools/tests/test_native_personal_snapshot.cc"), "-o", str(binary)], check=True)
         subprocess.run([str(binary), str(before_file), str(plan_file)], check=True)
         subprocess.run([str(binary), str(converted_file), str(clear_file), "clear"], check=True)

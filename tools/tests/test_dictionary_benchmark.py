@@ -69,7 +69,7 @@ HARNESS=r'''
 StenoDictionary *lapwing_dictionary(){return &dict;}
 StenoDictionary *plover_dictionary(){return &dict;}
 StenoDictionary *extras_dictionary(size_t){return &dict;}
-StenoDictionary *steno_squid_user_dictionary_current(){return &dict;}
+StenoDictionary *steno_squid_user_dictionary_open(){return &dict;}
 uint32_t steno_squid_benchmark_jedec(){return 0xef4018;}
 StenoDictionaryLookupResult StenoDictionary::Lookup(const StenoDictionaryLookup &q)const {
  if(squid_bench_count_reads){squid_bench_xip_words+=7;squid_bench_personal_reads++;squid_bench_personal_bytes+=8;}

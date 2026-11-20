@@ -20,7 +20,6 @@ from build_native_image import SEGMENT, catalog_header
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import FORMAT, digest, pack, reconstruct, save_atomic, unpack
-from native_restore import restore_all
 from native_snapshot import CompactImage, compile_snapshot, plan_change, plan_named_snapshot
 from native_update import backup_all, effective_entries, encode_record, Edit, export_dictionary, overlay_usage, plan, row_name
 
@@ -64,7 +63,7 @@ def main():
         path = Path(directory)
         image, snapshot, protected = fixture(path)
         prior = backup_all(Console(image, snapshot.payload))
-        assert prior["format"] == "stenosquid-backup-1"
+        assert prior["format"] == "stenosquid-backup-2"
         kat, bob, tas = (parse_outline(word) for word in ("KAT", "PWOB", "TAS"))
         compiled = compile_snapshot("Smoke", {kat: b"snapshot cat", bob: b"Bob", (8, 16): "bêta".encode()})
         update = plan_named_snapshot(snapshot, protected, "Smoke", compiled)
@@ -167,7 +166,7 @@ def main():
             files.append(file)
         binary = path / "validate"
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "-DSTENO_SQUID_TEST_USER_SNAPSHOTS=1", "-I", str(ROOT / "tools/storage"),
+                        "-I", str(ROOT / "tools/storage"),
                         str(ROOT / "tools/tests/test_native_recovery.cc"), "-o", str(binary)], check=True)
         subprocess.run([str(binary), str(binary_image), *map(str, files)], check=True)
 
@@ -188,9 +187,6 @@ def main():
         corrupted["catalog"] = base64.b64encode(payload).decode()
         corrupted["sha256"] = digest(corrupted)
         reject(reconstruct, corrupted)
-        with patch("native_restore.open_console") as open_console:
-            reject(restore_all, None, backup)
-            open_console.assert_not_called()
         manifest = dict(format="SQBCAT02", crc32=zlib.crc32(decoded), sha256=hashlib.sha256(decoded).hexdigest())
         reject(check_image, decoded, manifest)
 

@@ -104,7 +104,6 @@
         <div class="toolbar">
           <label>Host layout <select id="layout" data-write></select></label>
           <button type="button" id="backup">Download full backup</button>
-          <button type="button" id="backup-complete" hidden>Download USB rescue bundle</button>
           <button type="button" id="updates">Check pinned updates</button>
           <button type="button" id="apply-updates" data-write hidden>Apply pinned updates</button>
           <button type="button" id="compact" data-write>Compact journal</button>
@@ -115,17 +114,6 @@
         </div>
       </section>
     </div>
-    <section>
-      <details>
-        <summary>Restore a full backup</summary>
-        <p>This replaces the external dictionary pool and restores saved priority, local edits and host layout. Experimental USB rescue bundles use the separate rescue command.</p>
-        <form id="restore">
-          <label>Steno Squid backup <input name="file" type="file" accept=".json,application/json" required></label>
-          <label>Type RESTORE to confirm <input name="confirm" pattern="RESTORE" required></label>
-          <button id="restore-submit">Restore backup</button>
-        </form>
-      </details>
-    </section>
   </main>
 </body>
 </html>

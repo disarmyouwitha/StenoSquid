@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision the experimental native engine over USB HID from one firmware.
+"""Provision the Native dictionary store over USB HID from one firmware.
 
 --install --confirm-erase explicitly replaces all 255 shared-pool segments.
 The reserved final 64 KiB, pairings, keymap and Practice settings are untouched.
@@ -50,8 +50,7 @@ def command(console, text, timeout=30):
 def provision(console, image, manifest, progress=print):
     check_image(image, manifest)
     status = console.command("native_install status")
-    versions = ("NATIVE1 ", "NATIVE2 ") if manifest.get("schema") == 1 else ("NATIVE2 ",)
-    if not status.startswith(versions):
+    if not status.startswith("NATIVE2 "):
         raise RuntimeError("Flash the matching Native firmware before installing: " + status)
     command(console, f"begin CLEAR {manifest['crc32']}")
     try:
@@ -136,7 +135,7 @@ def wait_ready(serial=None):
         try:
             with open_console(serial) as console:
                 status = console.command("native_install status", timeout=2)
-                if (status.startswith(("NATIVE1 READY ", "NATIVE2 READY ")) and
+                if (status.startswith("NATIVE2 READY ") and
                         console.command("list_dictionaries", timeout=2).lstrip().startswith("[")):
                     print(
                         "Native engine ready. Test KAT, multi-stroke, Practice and browser edits."

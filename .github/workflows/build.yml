@@ -110,21 +110,13 @@ jobs:
           - name: NiceNano-Left-Diagnostic
             shield: corne_left
             snippet: zmk-usb-logging
-            dictionaries: true
             diagnostics: true
           - name: NiceNano-Left-Default
             shield: corne_left
             snippet: studio-rpc-usb-uart
-            dictionaries: true
-          - name: NiceNano-Left-Snapshot-Experimental
-            shield: corne_left
-            snippet: studio-rpc-usb-uart
-            dictionaries: true
-            snapshots: true
           - name: NiceNano-Left-No-Display
             shield: corne_left
             snippet: studio-rpc-usb-uart
-            dictionaries: true
             extra: "-DEXTRA_CONF_FILE=$repo/config/nicenano-wireless-corne/left-no-display.conf"
           - name: NiceNano-Right-No-Display
             shield: corne_right
@@ -135,23 +127,15 @@ jobs:
           - name: Boardsource-Left-Diagnostic
             boardsource: left
             snippet: zmk-usb-logging
-            dictionaries: true
             diagnostics: true
           - name: Boardsource-Left-Default
             boardsource: left
             snippet: studio-rpc-usb-uart
-            dictionaries: true
-          - name: Boardsource-Left-Snapshot-Experimental
-            boardsource: left
-            snippet: studio-rpc-usb-uart
-            dictionaries: true
-            snapshots: true
           - name: Boardsource-Right-Default
             boardsource: right
           - name: Boardsource-Left-No-Display
             boardsource: left
             snippet: studio-rpc-usb-uart
-            dictionaries: true
             no_display: true
           - name: Boardsource-Right-No-Display
             boardsource: right
@@ -213,13 +197,6 @@ jobs:
           git init vendor
           git -C vendor fetch --depth 1 https://github.com/boardsource/wireless-corne_zmk_config 2158104902e164c317e35f53dfa0ca1e36e1a751
           git -C vendor checkout --detach FETCH_HEAD
-      - name: Download verified dictionary images
-        if: matrix.dictionaries
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: dictionary-images
-          path: repo/build
-
       - name: Build
         working-directory: ws
         shell: bash
@@ -282,14 +259,6 @@ jobs:
               fi
               ;;
           esac
-          if [ "${{ matrix.dictionaries }}" = "true" ]; then
-            args+=("-DZMK_JAVELIN_LAPWING_IMAGE=$repo/build/lapwing/lapwing-base.bin"
-                   "-DZMK_JAVELIN_PLOVER_IMAGE=$repo/build/plover/plover-main.bin"
-                   "-DZMK_JAVELIN_EXTRAS_IMAGE=$repo/build/extras/lapwing-extras.bin")
-          fi
-          if [ "${{ matrix.snapshots }}" = "true" ]; then
-            args+=("-DCONFIG_ZMK_STENO_SQUID_USER_SNAPSHOTS=y")
-          fi
           snippet=()
           if [ -n "${{ matrix.snippet }}" ]; then
             snippet=(-S "${{ matrix.snippet }}")
@@ -298,18 +267,11 @@ jobs:
           west build -s "$source" -d "$GITHUB_WORKSPACE/out" -b "$board" "${snippet[@]}" -- "${args[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
 
           case "${{ matrix.name }}" in
-            *-Left-Snapshot-Experimental)
-              grep -qx 'CONFIG_ZMK_STENO_SQUID_USER_SNAPSHOTS=y' "$GITHUB_WORKSPACE/out/zephyr/.config"
-              ;;
-            *-Left-Default|*-Left-No-Display)
+            *-Left-Default|*-Left-No-Display|*-Left-Diagnostic)
               config="$GITHUB_WORKSPACE/out/zephyr/.config"
               expected='CONFIG_ZMK_STENO_SQUID_NATIVE_STORE=y'
               if ! awk -v expected="$expected" '$0 == expected { found = 1 } END { exit !found }' "$config"; then
-                echo "::error::Default left firmware must use the Native dictionary store"
-                exit 1
-              fi
-              if grep -qx 'CONFIG_ZMK_STENO_SQUID_USER_SNAPSHOTS=y' "$config"; then
-                echo "::error::Default left firmware must keep experimental snapshots disabled"
+                echo "::error::Left firmware must use the Native dictionary store"
                 exit 1
               fi
               ;;

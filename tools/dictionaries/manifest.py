@@ -3,10 +3,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 XIP_BASE = 0x12000000
-PERSONAL_START = 0x500000
-PERSONAL_SEGMENTS = 175
-SEGMENT_BYTES = 0x10000
-CHUNK_BYTES = 512
 LAPWING_COMMIT = "4ac5d53cf039a2b1f4c484456663c85e7df4e859"
 LAPWING_URL = f"https://raw.githubusercontent.com/aerickt/plover-lapwing-aio/{LAPWING_COMMIT}/plover_lapwing/dictionaries/"
 PLOVER_COMMIT = "8a52c5296c502507f9a46820a4a947ca25f998e6"

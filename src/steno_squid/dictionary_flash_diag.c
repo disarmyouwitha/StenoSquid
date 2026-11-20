@@ -19,19 +19,13 @@ void lf_print_flash_status(void) {
                 suspended, idle, holding);
     squid_flash_diag_printf(lf_console, "FLASH jedec=%02x %02x %02x (expected ef 40 18)", lf_last_jedec[0],
                 lf_last_jedec[1], lf_last_jedec[2]);
-    squid_flash_diag_printf(lf_console, "FLASH last check %s %u ms, trusted since power loss=%d, saved record=%d",
-                lf_last_check_quick ? "quick" : "full", lf_last_check_ms, (int)lf_trusted,
-                (int)lf_stored_trust());
+    squid_flash_diag_printf(lf_console, "FLASH last Native open %u ms", lf_last_check_ms);
 #if IDLE_OFF
     squid_flash_diag_printf(lf_console, "FLASH idle power-down on, after %u s",
                 (uint32_t)CONFIG_ZMK_JAVELIN_STENO_FLASH_IDLE_SECONDS);
 #else
     squid_flash_diag_printf(lf_console, "FLASH idle power-down off");
 #endif
-    for (size_t i = 0; i < ARRAY_SIZE(lf_images); i++) {
-        squid_flash_diag_printf(lf_console, "IMAGE %s verified=%d bytes=%u crc=%08x", lf_images[i].name,
-                    (int)lf_images[i].verified, lf_images[i].bytes, lf_images[i].crc);
-    }
     squid_flash_diag_print_power(lf_console);
     squid_flash_diag_print_status(lf_console);
     squid_flash_diag_printf(lf_console, "END");
@@ -153,7 +147,6 @@ static void power_cycle_bench(nrfx_qspi_config_t *config, bool *qspi_ok, bool *m
     uint32_t max_ms = 0;
     uint32_t total_ms = 0;
     const uint32_t retries = squid_flash_diag_session_count(DIAG_RETRY);
-    const uint32_t fallbacks = squid_flash_diag_session_count(DIAG_QUICK_FALLBACK);
 
     for (uint32_t cycle = 1; cycle <= BENCH_CYCLES; cycle++) {
         take_flash_down();
@@ -163,17 +156,16 @@ static void power_cycle_bench(nrfx_qspi_config_t *config, bool *qspi_ok, bool *m
         const uint32_t ms = (uint32_t)(k_uptime_get() - started);
         const bool mapped = atomic_get(&lf_mapped_ready) != 0;
 
-        squid_flash_diag_printf(lf_console, "BENCH %u of %u: %s, %s check, %u ms", cycle, BENCH_CYCLES,
-                    mapped ? "mapped" : "FAILED", lf_last_check_quick ? "quick" : "full", ms);
+        squid_flash_diag_printf(lf_console, "BENCH %u of %u: %s, Native open in %u ms", cycle, BENCH_CYCLES,
+                    mapped ? "mapped" : "FAILED", ms);
         good += mapped;
         total_ms += ms;
         max_ms = MAX(max_ms, ms);
     }
     squid_flash_diag_printf(lf_console, "BENCH %u of %u mapped, mean %u ms, max %u ms", good, BENCH_CYCLES,
                 total_ms / BENCH_CYCLES, max_ms);
-    squid_flash_diag_printf(lf_console, "BENCH start-up retries %u, quick checks that fell back to full %u",
-                squid_flash_diag_session_count(DIAG_RETRY) - retries,
-                squid_flash_diag_session_count(DIAG_QUICK_FALLBACK) - fallbacks);
+    squid_flash_diag_printf(lf_console, "BENCH start-up retries %u",
+                squid_flash_diag_session_count(DIAG_RETRY) - retries);
     squid_flash_diag_printf(lf_console, "BENCH END");
 }
 

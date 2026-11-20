@@ -1,17 +1,3 @@
-# Sets <prefix>_BYTES and <prefix>_CRC in the caller's scope from a dictionary
-# image, and reconfigures when the image changes.
-function(javelin_image_size_crc prefix image)
-  file(SIZE "${image}" bytes)
-  execute_process(
-    COMMAND ${PYTHON_EXECUTABLE} -c
-      "import pathlib,sys,zlib; print(hex(zlib.crc32(pathlib.Path(sys.argv[1]).read_bytes())))"
-      "${image}"
-    OUTPUT_VARIABLE crc OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY)
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${image}")
-  set(${prefix}_BYTES "${bytes}" PARENT_SCOPE)
-  set(${prefix}_CRC "${crc}" PARENT_SCOPE)
-endfunction()
 # Layer handling on the left half: dictionary hold and Practice. It does not
 # depend on the right half having a display.
 if(CONFIG_ZMK_JAVELIN_STENO AND CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
@@ -61,24 +47,16 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     zephyr_include_directories(${JAVELIN_SRC_DIR})
 
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
-      if(NOT EXISTS "${ZMK_JAVELIN_LAPWING_IMAGE}")
-        message(FATAL_ERROR "Set ZMK_JAVELIN_LAPWING_IMAGE to the mapped Lapwing JSC4 image")
-      endif()
       set(SQUID_SRC "${CMAKE_CURRENT_LIST_DIR}/src/steno_squid")
-      javelin_image_size_crc(LAPWING "${ZMK_JAVELIN_LAPWING_IMAGE}")
       target_sources(app PRIVATE
         "${SQUID_SRC}/dictionary_flash.c"
         "${SQUID_SRC}/dictionary_flash_power.c"
         "${SQUID_SRC}/dictionary_flash_pm.c"
         "${SQUID_SRC}/dictionary_flash_qspi.c"
-        "${SQUID_SRC}/dictionary_flash_trust.c"
         "${SQUID_SRC}/dictionary_flash_scrub.c"
         "${SQUID_SRC}/w25q_quad.c")
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_SERIAL_CONSOLE app PRIVATE
         "${SQUID_SRC}/serial_console.c")
-      if(CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING AND NOT CONFIG_ZMK_STENO_SQUID_NATIVE_STORE)
-        target_sources(app PRIVATE "${SQUID_SRC}/dictionary_flash_provision.c")
-      endif()
       if(CONFIG_ZMK_JAVELIN_DIAG)
         # Build id shown by the S command: the CI commit, else git describe.
         set(JAVELIN_BUILD_ID "unknown")
@@ -100,22 +78,6 @@ if(CONFIG_ZMK_JAVELIN_STENO)
       endif()
       target_sources_ifdef(CONFIG_ZMK_JAVELIN_BATTERY_LOG app PRIVATE "${SQUID_SRC}/battery_log.c")
       target_include_directories(app PRIVATE "${SQUID_SRC}")
-      target_compile_definitions(app PRIVATE LAPWING_BYTES=${LAPWING_BYTES} LAPWING_CRC=${LAPWING_CRC})
-      # Optional second base, provisioned separately without rewriting Lapwing.
-      set(PLOVER_BYTES 0)
-      set(PLOVER_CRC 0)
-      if(ZMK_JAVELIN_PLOVER_IMAGE)
-        javelin_image_size_crc(PLOVER "${ZMK_JAVELIN_PLOVER_IMAGE}")
-      endif()
-      target_compile_definitions(app PRIVATE PLOVER_BYTES=${PLOVER_BYTES} PLOVER_CRC=${PLOVER_CRC})
-      # Optional image of the smaller Lapwing dictionaries. Once a build names
-      # it, the firmware needs it in flash before onboard Javelin starts.
-      set(EXTRAS_BYTES 0)
-      set(EXTRAS_CRC 0)
-      if(ZMK_JAVELIN_EXTRAS_IMAGE)
-        javelin_image_size_crc(EXTRAS "${ZMK_JAVELIN_EXTRAS_IMAGE}")
-      endif()
-      target_compile_definitions(app PRIVATE EXTRAS_BYTES=${EXTRAS_BYTES} EXTRAS_CRC=${EXTRAS_CRC})
     endif()
 
     # Core engine sources
@@ -299,23 +261,13 @@ if(CONFIG_ZMK_JAVELIN_STENO)
     set(ZEPHYR_CURRENT_LIBRARY steno_squid_engine)
     target_include_directories(javelin_steno PRIVATE "${SQUID_SRC}")
     if(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
-      if(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE)
-        zephyr_library_sources("${SQUID_SRC}/native_store_runtime.cc" "${SQUID_SRC}/native_input.cc")
-        target_sources(app PRIVATE "${SQUID_SRC}/native_input_layers.c")
-      else()
-        zephyr_library_sources("${SQUID_SRC}/lapwing_dictionary.cc")
-      endif()
+      zephyr_library_sources("${SQUID_SRC}/native_store_runtime.cc" "${SQUID_SRC}/native_input.cc")
+      target_sources(app PRIVATE "${SQUID_SRC}/native_input_layers.c")
       zephyr_library_include_directories(
         "${JAVELIN_SRC_DIR}/dictionary" "${SQUID_SRC}")
-      zephyr_library_compile_definitions(LAPWING_BYTES=${LAPWING_BYTES} PLOVER_BYTES=${PLOVER_BYTES}
-        EXTRAS_BYTES=${EXTRAS_BYTES})
       if(CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY)
         target_sources(app PRIVATE "${SQUID_SRC}/javelin_usb.c")
-        if(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE)
-          zephyr_library_sources("${SQUID_SRC}/javelin_web_hid.cc")
-        else()
-          zephyr_library_sources("${SQUID_SRC}/user_dictionary_store.cc" "${SQUID_SRC}/javelin_web_hid.cc")
-        endif()
+        zephyr_library_sources("${SQUID_SRC}/javelin_web_hid.cc")
         if(CONFIG_ZMK_JAVELIN_STENO_BLE_HID)
           target_sources(app PRIVATE "${SQUID_SRC}/javelin_ble_hid.c"
             "${SQUID_SRC}/javelin_ble_tx.c")

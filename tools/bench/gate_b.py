@@ -118,7 +118,7 @@ def baseline(console, out, report, progress):
     inspect(console, report)
     before = report["device"]
     progress("Reading the complete dictionary pool view over USB. Keep the spare idle and connected.")
-    backup = backup_all(console, complete=True)
+    backup = backup_all(console)
     require(backup["format"] == FORMAT, "Complete backup version 2 required.")
     path = out / "before-bundle.json"
     save_atomic(path, backup)

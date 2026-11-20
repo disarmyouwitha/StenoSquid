@@ -75,12 +75,13 @@ HARNESS = r'''
 #define CONFIG_ZMK_JAVELIN_STENO_BLE_HID 1
 #define CONFIG_ZMK_JAVELIN_STENO_HOST_LAYOUTS 1
 #define CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING 1
+#define CONFIG_ZMK_STENO_SQUID_NATIVE_STORE 1
 #include "stubs.h"
 extern "C" bool steno_squid_usb_hid_ready() { return usb_ready; }
 std::vector<std::string> commands;
 bool console_ready = true;
 std::string provision_command;
-extern "C" void lf_provision_command(const char *command, char *reply, size_t size) {
+extern "C" void steno_squid_native_install_command(const char *command, char *reply, size_t size) {
     provision_command = command;
     std::snprintf(reply, size, "2 INSTALL");
 }
@@ -149,10 +150,10 @@ int main() {
 
 
     reset();
-    const std::string import_line = "user_dictionary_import data 0 " + std::string(512, 'a') + "\n";
+    const std::string import_line = "native_entry data 0 " + std::string(512, 'a') + "\n";
     for (size_t off=0; off<import_line.size(); off+=59)
         usb("c14 " + import_line.substr(off, 59));
-    ble("c15 user_dictionary_import commit\n");
+    ble("c15 native_entry commit\n");
     run();
     assert(commands == std::vector<std::string>{
         "c14 " + import_line});
@@ -175,8 +176,8 @@ int main() {
     assert(usb_error == "c10 ERR Dictionary flash is not ready\n\n");
 
     reset();console_ready = false;
-    usb("c15 base_install status\n");
-    ble("c15 base_install begin LAPWING\n");
+    usb("c15 native_install status\n");
+    ble("c15 native_install begin CLEAR 0\n");
     run();
     assert(provision_command == "status\n" && commands.empty());
     usb_error.clear();ble_error.clear();

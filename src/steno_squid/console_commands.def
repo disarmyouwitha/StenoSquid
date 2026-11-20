@@ -12,7 +12,6 @@ USER_COMMAND("lookup_stroke", "Look up an outline in the dictionaries", lookup_o
 USER_COMMAND("user_dictionary_status", "Read personal dictionary usage", store_status, false)
 USER_COMMAND("user_dictionary_verify", "Check every personal dictionary record", store_verify, false)
 USER_COMMAND("user_dictionary_rebuild", "Rebuild personal dictionary lookup tables", store_rebuild, false)
-USER_COMMAND("user_dictionary_import", "Import personal dictionary segments", bulk_import, true)
 USER_COMMAND("add_user_entry", "Save a personal translation", add_entry, false)
 USER_COMMAND("remove_user_entry", "Remove a personal translation", remove_entry, false)
 USER_COMMAND("reset_user_dictionary", "Clear personal translations", reset_entries, false)

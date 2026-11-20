@@ -17,7 +17,6 @@ from manifest import BASES, XIP_BASE, LAPWING_COMMIT, PLOVER_COMMIT
 from prepare import fetch
 from compile_dict import DictionaryCollectionBuilder, parse_outline
 from verify_mapped_dict import verify
-from segment_image import Image
 
 SEGMENT = 65536
 DATA_BYTES = 255 * SEGMENT
@@ -81,14 +80,11 @@ def measure(output):
             verify(entries, blob, XIP_BASE)
             image_path = output / (filename.removesuffix('.json') + '.bin')
             image_path.write_bytes(blob)
-            baseline = Image({key: text.encode('utf-8') for key, text in canonical.items()})
             record_bytes = sum(8 + 4*len(key) + ((len(text.encode('utf-8'))+3)&~3)
                                for key, text in canonical.items())
             row = dict(compiled_base_address=hex(XIP_BASE),name=name, entries=len(canonical), unique_texts=len(set(canonical.values())),
                        compiled_bytes=len(blob), compiled_crc32=f'{zlib.crc32(blob):08x}',
                        current_log_record_bytes=record_bytes,
-                       current_log_image_segments=baseline.total_segments,
-                       current_log_image_bytes=baseline.total_segments*SEGMENT,
                        contiguous_extent_bytes=math.ceil(len(blob)/SEGMENT)*SEGMENT,
                        source_sha256=sha, source=str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path))
             rows.append(row); sources.append(dict(url=url,sha256=sha,file=filename)); dictionaries.append(entries)

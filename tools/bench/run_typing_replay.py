@@ -172,7 +172,7 @@ def main():
         report["engine_commit"] = checked_engine
         report["image"] = pool(corpus, out)
         binary = build_engine(args.engine, out / "native", Path(__file__).with_name("typing_replay.cc"), compiler(),
-                              optimization="-O2", flags=("-DSTENO_SQUID_TEST_USER_SNAPSHOTS",))
+                              optimization="-O2")
         execute(binary, out, corpus, phases, args.virtual, verify_negative=args.virtual)
         report.update(phases=phases, exact_lookup_probes=2 * len(corpus["probes"]), result="pass")
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:

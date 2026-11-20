@@ -1,6 +1,6 @@
 # Adaptive dictionary snapshots experiment
 
-This branch adds opt-in named snapshots and explicit personal conversion over USB. Existing journal dictionaries continue to open in their original format. Keep using the known-good Native release on your everyday board.
+Default Left firmware supports compact named snapshots and explicit personal conversion over USB. Compact images and journals use the same Native catalog and allocator. Existing pools using that layout open directly.
 
 Start with the [hardware checkpoint and test sequence](#tonights-hardware-checkpoint-and-test-sequence) for the pinned `b9eba3f` build, fixture commands, and recovery procedures.
 
@@ -34,8 +34,8 @@ The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengt
 
 ## Optional named-snapshot smoke test
 
-1. Use a spare left half or a disposable QSPI fixture with the ordinary Native dictionaries installed. Record the USB serial number, save a standard `stenosquid.py --backup-all` before introducing any snapshot rows, and keep the known-good left UF2 handy. Keep the matching right firmware running.
-2. Use the matching Actions artifact, `Boardsource-Left-Snapshot-Experimental` or `NiceNano-Left-Snapshot-Experimental`. Each archive contains its own `zmk.uf2`. The new left can open an existing unmarked Native pool. Confirm normal typing and `KAT` before staging anything.
+1. Use a spare left half or a disposable QSPI fixture with the ordinary Native dictionaries installed. Record the USB serial number, save a complete `stenosquid.py --backup-all` before introducing any snapshot rows, and keep the known-good left UF2 handy. Keep the matching right firmware running.
+2. Use the matching Actions artifact, `Boardsource-Left-Default` or `NiceNano-Left-Default`. Each archive contains its own `zmk.uf2`. The new left can open an existing unmarked Native pool. Confirm normal typing and `KAT` before staging anything.
 3. Connect by USB, close Studio/Javelin connections and run the preflight with a Plover JSON dictionary. The planner opens a staging session to account for both catalog roots. It reads metadata and releases the session without writing unless you add `--stage`. Do this while idle.
 
    ```sh
@@ -51,13 +51,13 @@ The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengt
    ```
 
    The new outline and replacement should win, and the removal should fall through to the next enabled dictionary. Move or toggle the dictionary to exercise priority, then cold boot and repeat the checks. After a test-only interrupted transfer, reboot and confirm that either the old catalog or the complete new catalog is visible.
-5. Use `stenosquid.py --backup smoke-export.json --dictionary 'Snapshot Smoke'` to export the effective named dictionary. Once a snapshot row exists, `stenosquid.py --backup-all experiment.json` creates a self-contained recovery bundle. Verify it offline with `python3 tools/storage/native_recovery.py experiment.json`.
+5. Use `stenosquid.py --backup smoke-export.json --dictionary 'Snapshot Smoke'` to export the effective named dictionary. `stenosquid.py --backup-all snapshot-backup.json` creates a self-contained recovery bundle. Verify it offline with `python3 tools/storage/native_recovery.py snapshot-backup.json`.
 
-## Complete experimental backups
+## Complete backups
 
 Version 2 records the selected binary catalog, the checked host layout, and the exact referenced extents with a SHA-256 checksum. This preserves compact snapshot and pinned image contents, pinned source digests, logical IDs, priority, checkboxes, and every live override and tombstone. It includes raw journal bytes, which can contain old translations that no longer appear in a dictionary export. Treat it as private. The CLI publishes the file only after validation and flush.
 
-Offline reconstruction verifies catalog ownership, compact lookup parity, journal records and both indexes, then produces two valid roots in memory. It needs no downloads. The version 1 backup and restore format remains available for ordinary journal-backed stores. Manager and the ordinary installer refuse version 2 recovery.
+Offline reconstruction verifies catalog ownership, compact lookup parity, journal records and both indexes, then produces two valid roots in memory. It needs no downloads. The version 2 bundle is the full backup format. Restore it using the separate, explicitly confirmed USB recovery utility.
 
 ## Snapshot lifecycle
 
@@ -91,21 +91,24 @@ the left. Insufficient space stops the operation before programming.
 **Delete** on the personal dictionary removes its compact baseline and its live edits,
 leaving an empty journal with the same personal slot, priority and enabled state
 on firmware supporting `CLEAR1`. Type `CLEAR` to confirm. The other dictionaries
-keep their entries. Journal-only firmware can use its existing personal reset.
+keep their entries.
 
 Manager uses the JSON filename to suggest a dictionary name. Clear the name to
 import into Personal. After a successful import, Manager opens a fresh flash map
 when the keyboard supports it.
 
-**Download USB rescue bundle** captures a complete version 2 bundle even when
+**Download full backup** captures a complete version 2 bundle even when
 all user dictionaries are still journals. Verify it offline with
-`python3 tools/storage/native_recovery.py stenosquid-rescue.json`. The separate
+`python3 tools/storage/native_recovery.py stenosquid-backup.json`. The separate
 serial-confirmed USB rescue procedure remains the restore path for that bundle.
 **Compact journal** previews shared journal cleanup and marks the blocks it can
 release on the flash map. **Apply journal cleanup** rechecks the plan before
 writing. Compact images stay in place.
 
-The on-flash catalog magic remains `SQBCAT02`. Byte 11 of a user-owned row is the version-one snapshot marker. It references a single-member JSC4 extent and shares the existing ID-qualified overlay. Factory rows and existing records retain their original format. Stable firmware rejects a marked root and may see the preceding root or enter recovery. Before staging a snapshot, rollback is simply reflashing the stable left. After staging, return to an untouched spare pool or restore the pre-test backup using the existing standard Native provisioning path on your disposable fixture. That explicit operation rewrites the pool. Preserve the backup separately and keep the experimental firmware installed until you are ready for that restore.
+The on-flash catalog is `SQBCAT02`. Compact user rows reference a single-member
+JSC4 extent and share the ID-qualified journal. A board on an older flash layout
+needs a fresh install after flashing the new Left UF2. Clean provisioning
+requires explicit erase confirmation.
 
 Manager lifecycle and recovery commands require USB. The standard Javelin editor transport also supports Bluetooth.
 
@@ -216,7 +219,7 @@ python3 tools/tests/test_native_compact_capacity.py
 
 [Capacity gate output](benchmarks/lean-snapshot-capacity.json)
 
-## Experimental USB recovery on a spare
+## USB recovery on a spare
 
 Verify the bundle offline with `python3 tools/storage/native_recovery.py experiment.json` first. On an expendable spare running the matching experimental firmware, close the editor, connect over USB, and confirm its serial. Recovery erases the spare's shared dictionary pool when it differs from the bundle. It leaves the reserved final segment outside the transfer. Use the same serial twice so a mismatched target cannot start.
 
@@ -241,10 +244,10 @@ fallback. See the checklist below for the expected editor search differences.
 
 The repacker takes a verified version 2 bundle and plans a compact physical layout on the computer. Existing lean compact images keep their contents and SHI1 hints. The planner relocates their absolute JSC4 pointers, regenerates the journal and both checkpoint indexes, and keeps three free segments in reserve. It considers journal-only user dictionaries in catalog order and converts each only if it saves packed segments. It leaves that dictionary's tombstones and all other dictionaries' live edits in the shared overlay. Unsupported outlines and candidates that would save no space are reported.
 
-A journal-only store can be captured as a complete bundle with `--backup-all --bundle`. This reads flash and writes a host file. It holds the existing backup lease, so run it while idle. The repack step itself stays offline.
+A journal-only store can be captured as a complete bundle with `--backup-all`. This reads flash and writes a host file. It holds the existing backup lease, so run it while idle. The repack step itself stays offline.
 
 ```sh
-python3 stenosquid.py --backup-all build/source-bundle.json --bundle --serial SPARE_USB_SERIAL
+python3 stenosquid.py --backup-all build/source-bundle.json --serial SPARE_USB_SERIAL
 python3 tools/storage/native_repack.py build/source-bundle.json --report build/repack-report.json
 ```
 
@@ -367,7 +370,7 @@ its exact build hash over HID.
    without writing.
 
    ```sh
-   python3 stenosquid.py --backup-all "$OUT/consolidated-bundle.json" --bundle --serial "$SERIAL"
+   python3 stenosquid.py --backup-all "$OUT/consolidated-bundle.json" --serial "$SERIAL"
    python3 tools/storage/native_recovery.py "$OUT/consolidated-bundle.json"
    PYTHONPATH=tools/bench python3 - "$OUT/cut-source.json" <<'PY'
    import json
@@ -393,7 +396,7 @@ its exact build hash over HID.
    ```
 8. **Qualify USB rescue separately.** Use a second expendable spare with the
    frozen checkpoint, the first spare disconnected, and a fresh verified
-   lean bundle. Follow the [serial-confirmed pool-erase procedure](#experimental-usb-recovery-on-a-spare).
+   lean bundle. Follow the [serial-confirmed pool-erase procedure](#usb-recovery-on-a-spare).
    Test a blank pool and separately cut during erase, programming, and
    verification. After a reported success, cold-boot and capture a read-only
    baseline to compare all exported JSON and hashes, IDs, flags, order and
@@ -477,27 +480,21 @@ actual output, and any disconnect, dropped stroke, replay or stall.
    qualify the serial-confirmed USB rescue path on expendable hardware and
    compare the cold-boot export, dictionary settings and host layout.
 
-### Default-off merge criteria
+### Firmware and hardware qualification
 
-The regular firmware must build with snapshots disabled and continue opening
-standard Native pools. The opt-in artifacts must build, both exact-byte
-capacity gates must pass, and the host tests must cover editing, publication,
-recovery and the replay. Failures in the default path or regression suite
-block the merge. A successful opt-in draft is ready for review after those
-checks. Owner approval is required to merge.
-
-Full experimental qualification remains separate. It includes a wired
-readback after cold boot, sleep/wake and maintenance behavior, physical
-USB/radio delivery and split behavior at demanding rates, dense-store
-contention, and interrupted publication and USB rescue. Finish those before
-enabling snapshots by default or offering destructive rebuilding in Manager.
+CI runs the same compact snapshot, recovery, and exact-byte capacity tests for
+the default Native firmware. Physical Gate B verified Boardsource USB and BLE
+typing, Practice, battery sleep/wake, a cut during staging, and cold readback of
+the committed 100,000-entry fixture. USB recovery from a partial transfer
+matched the full backup on a nice!nano spare. Physical timing during an
+in-flight catalog-root write and demanding on-device typing rates remain open.
 
 ### HID editor capability audit
 
 | Editor operation | Journal-only store and lean snapshots |
 | --- | --- |
 | Active Dictionaries | List, enable, disable and toggle over USB/BLE HID. Host layout get/set is also allowed when built in. |
-| Personal entry edit and view | Add/remove personal edits and read the effective personal JSON. A personal snapshot routes the edits into its journal overlay. Personal bulk clear on compact personal is refused. |
+| Personal entry edit and view | Add/remove personal edits and read the effective personal JSON. A personal snapshot routes the edits into its journal overlay. Manager can clear the personal dictionary over USB. |
 | Forward lookup | `lookup_stroke` returns the winning translation, including overlays and priority. |
 | Arbitrary snapshot or named edits, export and lifecycle | Manager and the project CLI use Native commands over USB. The standard HID allowlist only exposes `print_dictionary user_dictionary`, so Manager reads selected dictionary extents through the Native backup session. |
 | Exact reverse, text prefix and partial outline | `lookup`, `lookup_prefix` and `lookup_partial_outline` were already outside the HID allowlist before the indexed experiment and return `ERR Command unavailable on this keyboard` on both transports. Native still uses journal search internally, and SHI1 gives typing hints. |

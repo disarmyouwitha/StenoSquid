@@ -70,21 +70,11 @@ From the Javelin or Plover layer, tap the outer right thumb
 
    This prepares the pinned dictionaries, replaces the external dictionary pool, and verifies the result. If a fresh install is interrupted, reconnect USB and rerun the same command. On a provisioned board, use `--install` without `--confirm-erase` to check that it is already installed.
 
-### Update a board using the previous dictionary layout
+### Update firmware
 
-Before flashing the new Left UF2, keep the old firmware running and save your personal entries:
-
-```sh
-python3 stenosquid.py --backup personal.json
-```
-
-After flashing, provision the shared pool and restore the backup:
-
-```sh
-python3 stenosquid.py --install --confirm-erase --restore personal.json
-```
-
-The clean install uses the default dictionary selections. Restore your preferred checkboxes in Javelin Steno Tools. A board already running Native with a ready store can keep its dictionaries across the firmware update.
+Boards on the current Native QSPI layout keep their dictionaries when you flash
+the new Left UF2. For a board with an older QSPI layout, flash the new firmware
+and run the clean provisioning command above. Provisioning replaces the dictionary pool.
 
 ### Steno Squid Manager
 
@@ -97,18 +87,10 @@ and switch the keyboard’s host layout.
 **Check pinned updates** compares the installed revisions against this checkout.
 Updates keep local edits and report any outlines where upstream also changed.
 
-To move your dictionaries to a fresh board:
-
-1. Connect the original board and choose **Download full backup**. Keep the JSON
-   file with the repository version you used to make it.
-2. Flash matching Left firmware on the new board and connect it over USB.
-3. Open **Restore a full backup**, select the file, and type `RESTORE`. Wait for
-   the left half to reconnect, then verify your dictionary order and a personal
-   translation. Restore replaces the target board’s external dictionary pool.
-
-The backup includes personal and named entries, local base edits, dictionary
-order, checkboxes, and host layout. The Manager rebuilds the pinned bases from
-their sources.
+**Consolidate edits** folds saved edits into a user-owned compact dictionary.
+Named imports preview Journal and Compact formats and recommend a fit.
+**Download full backup** saves the entire dictionary store, including compact
+images and edits, for the separate [USB recovery procedure](docs/adaptive-snapshot-experiment.md#usb-recovery-on-a-spare).
 
 After 64 pending edits, the firmware can rebuild its indexes and reclaim
 stale journals while the keyboard is idle on USB power. It can copy up to

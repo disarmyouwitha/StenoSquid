@@ -48,10 +48,6 @@ def main():
         run([*host_compiler(language), *flags, '-O2', '-Wall', '-Wextra', '-Werror',
              ROOT / 'tools/tests/test_stroke_feed.c', '-o', binary])
         run([binary])
-    binary = build / 'user-dictionary-log'
-    run([*host_compiler(), '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
-         '-I', ROOT / 'src/steno_squid', ROOT / 'tools/tests/test_user_dictionary_log.cc', '-o', binary])
-    run([binary, *([] if args.full else ['--quick'])])
     run([sys.executable, ROOT / 'tools/tests/run_repeat_translation.py', engine])
     with tempfile.TemporaryDirectory(prefix="stenosquid-replay-") as folder:
         run([sys.executable, ROOT / 'tools/bench/run_typing_replay.py', engine,

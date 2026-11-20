@@ -1,11 +1,13 @@
 // Native dictionary engine and QSPI command handlers.
 #include "native_store_runtime.h"
+#include "storage_probe.h"
 #include "native_input.h"
 #include "native_warm_resume.h"
 #include "clock.h"
 #include "../../tools/storage/native_work_slice.h"
 #include "native_collection_sync.h"
 #include "native_dictionary_adapter.h"
+#include "dictionary_benchmark.h"
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
 #include "../../tools/storage/native_validator.h"
@@ -64,6 +66,12 @@ struct FlashDevice {
     void Dirty(uint32_t at,uint32_t n){for(auto &c:cached)if(c.bytes && at<c.at+c.bytes && c.at<at+n)c.bytes=0;}
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
         if(at>0x1000000 || n>0x1000000-at)return false;
+#ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
+        if (squid_bench_count_reads) {
+            ++squid_bench_personal_reads;
+            squid_bench_personal_bytes += n;
+        }
+#endif
         if(mapped){copy_xip_bytes(out,reinterpret_cast<const void *>(Xip+at),n);return true;}
         while(n) {
             uint32_t skip=at%4,count=n<256-skip?n:256-skip;
@@ -459,7 +467,7 @@ void Cell::PrintDictionary(PrintDictionaryContext &context)const {
 }
 void Cell::PrintEntriesWithPrefix(PrintPrefixContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
-    if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
+    if (user_snapshot && !enabled) return;
     if (!SeekOverlay(identity)) return;
     while(!context.IsDone() && !steno_squid_javelin_response_cancelled() && Next(record,identity)) {
         if(record.text_bytes<=context.prefixLength)continue;
@@ -467,25 +475,25 @@ void Cell::PrintEntriesWithPrefix(PrintPrefixContext &context)const {
         export_text[record.text_bytes]=0;
         if(std::strncmp(export_text,context.prefix,context.prefixLength))continue;
         StenoStroke outline[16];for(unsigned i=0;i<record.count;++i)outline[i]=StenoStroke(record.strokes[i]);
-        if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
+        if (user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         context.Add(outline,record.count,export_text,this);
     }
 }
 void Cell::PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
-    if (!context.length || (kUserSnapshotsEnabled && user_snapshot && !enabled)) return;
+    if (!context.length || (user_snapshot && !enabled)) return;
     if (!SeekOverlay(identity)) return;
     while(!context.IsDone() && !steno_squid_javelin_response_cancelled() && Next(record,identity)) {
         if(record.count<=context.length)continue;
         StenoStroke outline[16];for(unsigned i=0;i<record.count;++i)outline[i]=StenoStroke(record.strokes[i]);
         if(!StenoStroke::HasPartialOutline(outline,context.strokes,context.length,record.count-context.length))continue;
         if(!flash_device.Read(record.text_address,reinterpret_cast<uint8_t *>(export_text),record.text_bytes)){base_provider.Fault();return;}
-        if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
+        if (user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         export_text[record.text_bytes]=0;context.Add(outline,record.count,export_text,this);
     }
 }
 void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
-    if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
+    if (user_snapshot && !enabled) return;
     ExportGuard guard;if(!guard.ok || lookup.definitionLength>2047)return;
     auto matches=[&](uint32_t address) {
         MergeRecord record;if(!iter_ops.Record(address,record))return -1;
@@ -638,7 +646,6 @@ void reset_entries(void *,const char *) {
     if(result!=CatalogResult::Ok){if(!store.opened)base_provider.Fault();Console::Printf("ERR Native reset refused\n\n");return;}
     cell->identity=replacement;cell->Bind();if(parent)parent->OnLookupDataChanged();Console::SendOk();
 }
-void bulk_import(void *,const char *) {Console::Printf("ERR Native store requires native import tooling\n\n");}
 bool Number(const char *&p,uint32_t &out);
 NativeEntryStager entry_transfer;
 alignas(4) uint8_t entry_chunk[512];
@@ -889,25 +896,25 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return nullptr;
     }
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
-    if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-capabilities\n"))
+    if (!std::strcmp(command, "snapshot-capabilities\n"))
         return "OK SNAPSHOT2";
-    if (kUserSnapshotsEnabled && !std::strcmp(command, "personal-snapshot-capabilities\n"))
+    if (!std::strcmp(command, "personal-snapshot-capabilities\n"))
         return "OK PERSONAL1";
-    if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-clear-capabilities\n"))
+    if (!std::strcmp(command, "snapshot-clear-capabilities\n"))
         return "OK CLEAR1";
-    if (kUserSnapshotsEnabled && !std::strcmp(command, "recovery-capabilities\n"))
+    if (!std::strcmp(command, "recovery-capabilities\n"))
         return "OK RECOVERY1";
-    if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
-    if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
+    if (!std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
+    if (!std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     uint32_t snapshot_id = 0;
     const bool metadata_read = !std::strcmp(command, "begin metadata\n");
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
-    else if (kUserSnapshotsEnabled && !std::strcmp(command, "begin snapshot-named\n"))
+    else if (!std::strcmp(command, "begin snapshot-named\n"))
         kind = NativeUpdateKind::SnapshotNamed;
-    else if (kUserSnapshotsEnabled && !std::strncmp(command, "begin snapshot-", 15)) {
+    else if (!std::strncmp(command, "begin snapshot-", 15)) {
         const char *p = command + 15;
         if (!std::strncmp(p, "consolidate ", 12)) {
             p += 12;
@@ -937,7 +944,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         TouchInstall();
         stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
-        if (kUserSnapshotsEnabled && !metadata_read) stage_mode = STENO_SQUID_MODE_BUSY;
+        if (!metadata_read) stage_mode = STENO_SQUID_MODE_BUSY;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();
         int length = snprintk(reply, bytes, "OK %u %u %u ", root.address, root.bytes, root.crc);
@@ -1027,7 +1034,7 @@ const char *Install(const char *command,char *reply,size_t bytes) {
                  unsigned(store.selected.root.generation),detail);
         return nullptr;
     }
-    if (kUserSnapshotsEnabled && !std::strncmp(command, "match RECOVERY ", 15)) {
+    if (!std::strncmp(command, "match RECOVERY ", 15)) {
         const char *p = command + 15;
         uint32_t expected, actual;
         if (!Number(p, expected) || !End(p)) return "ERR Invalid recovery CRC";
@@ -1041,7 +1048,7 @@ const char *Install(const char *command,char *reply,size_t bytes) {
         flash_device.mapped = mapped;
         return match ? "OK MATCH" : "ERR Recovery contents differ";
     }
-    const bool recovering = kUserSnapshotsEnabled && !std::strncmp(command,"begin RECOVERY ",15);
+    const bool recovering = !std::strncmp(command,"begin RECOVERY ",15);
     if (recovering || !std::strncmp(command,"begin CLEAR ",12)) {
         const char *p=command+(recovering ? 15 : 12);
         uint32_t crc, final_crc = 0;
@@ -1086,7 +1093,7 @@ const char *Install(const char *command,char *reply,size_t bytes) {
 }
 }
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes) {
-    if (kUserSnapshotsEnabled && !std::strcmp(command, "update layout-map\n")) {
+    if (!std::strcmp(command, "update layout-map\n")) {
         if (k_mutex_lock(&flash_lock, K_NO_WAIT)) {
             snprintk(reply, bytes, "ERR Layout scan deferred until the flash and input are idle");
             return;

@@ -48,7 +48,7 @@ class NativeStage {
 
     static bool EditableRow(const uint8_t *row, bool rename) {
         const bool journal = row[8] == 255 && row[9] == 255;
-        return (journal || (rename && kUserSnapshotsEnabled && row[11] == kUserSnapshot)) &&
+        return (journal || (rename && row[11] == kUserSnapshot)) &&
                !(row[12] == 15 && !std::memcmp(row + 16, "user_dictionary", 15));
     }
 
@@ -281,7 +281,7 @@ class NativeStage {
     }
 
     bool CheckNewSnapshot(const CatalogRoot &candidate, uint32_t metadata, BaseProbe probe) {
-        if (!kUserSnapshotsEnabled || !probe || candidate.bytes != original.root.bytes + 96 + 24)
+        if (!probe || candidate.bytes != original.root.bytes + 96 + 24)
             return false;
         uint8_t before[32], after[32];
         if (!store.device.Read(original.root.address, before, 32) ||
@@ -446,7 +446,7 @@ public:
     const CatalogRoot &Root() const { return original.root; }
 
     bool Begin(NativeUpdateKind operation, uint16_t limit = 64, uint32_t id = 0) {
-        if (limit > 64 || (operation >= NativeUpdateKind::SnapshotNamed && !kUserSnapshotsEnabled) ||
+        if (limit > 64 ||
             (bool(id) != (operation >= NativeUpdateKind::SnapshotConsolidate))) return false;
         if (active || !store.opened || store.work != NativeStore<Device>::Work::None)
             return false;

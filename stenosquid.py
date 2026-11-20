@@ -1,20 +1,15 @@
 """Install the base dictionaries, or import or back up a personal Plover JSON file over USB.
 
-Use --install to provision the firmware's dictionaries. On the fixed layout,
---base selects an image for status, repair or verification. Native provisioning
-requires explicit permission to erase the pool and can seed a personal backup.
+Use --install to provision the Native dictionary pool. Provisioning requires
+explicit permission to erase the pool and can seed a personal JSON export.
 """
 
 import argparse
-import base64
 import json
 from pathlib import Path
-import re
 import subprocess
 import sys
-from tempfile import TemporaryDirectory
 import time
-import zlib
 
 
 def Serial(*args, **kwargs):
@@ -25,173 +20,9 @@ def Serial(*args, **kwargs):
     return open_port(*args, **kwargs)
 
 
-CHUNK_BYTES = 512
 REPO = Path(__file__).resolve().parent
 DICTIONARY_TOOLS = REPO / "tools" / "dictionaries"
 sys.path.insert(0, str(DICTIONARY_TOOLS))
-# Where the prepare scripts and the Lapwing build instructions write each image.
-DEFAULT_IMAGES = {
-    "LAPWING": REPO / "build" / "lapwing" / "lapwing-base.bin",
-    "PLOVER": REPO / "build" / "plover" / "plover-main.bin",
-    "EXTRAS": REPO / "build" / "extras" / "lapwing-extras.bin",
-}
-def read_image(path):
-    """A JSC4 image file, or an error that says how to build it."""
-    if not path.is_file():
-        raise SystemExit(f"{path} not found. Build it with the matching prepare script first.")
-    image = path.read_bytes()
-    if image[:4] != b"JSC4" or len(image) % 4:
-        raise SystemExit(f"{path} is not a word-aligned JSC4 image")
-    return image
-
-
-def check_matches_firmware(image, name, size, crc, path):
-    if len(image) != size or zlib.crc32(image) != crc:
-        raise SystemExit(
-            f"{path} is not the {name} image this firmware was built for. It expects "
-            f"{size:,} bytes with CRC32 {crc:08x}; the file has {len(image):,} bytes with "
-            f"CRC32 {zlib.crc32(image):08x}. Rebuild the image, or flash the firmware that "
-            "was built with it.")
-
-
-def prepare_base(name, expected=None, output_path=None):
-    path = output_path or DEFAULT_IMAGES[name]
-    from prepare import prepare
-    prepared = prepare(name, path.parent)
-    if prepared != path:
-        prepared.replace(path)
-
-
-def hid_install_status(console):
-    deadline = time.monotonic() + 120
-    while time.monotonic() < deadline:
-        reply = console.command("base_install status", timeout=120)
-        header, *rows = reply.splitlines()
-        if header == "2 LOADING":
-            time.sleep(0.25)
-            continue
-        if header == "2 ERROR":
-            raise RuntimeError("The keyboard could not bring up dictionary flash. Check its connection and power.")
-        if header not in ("2 INSTALL", "2 READY") or not rows:
-            raise RuntimeError(f"Base installer protocol mismatch. Update both firmware and stenosquid.py together. {header}")
-        images = {}
-        for row in rows:
-            name, size, crc, verified = row.split()
-            if name not in DEFAULT_IMAGES or name in images or verified not in ("0", "1"):
-                raise RuntimeError(f"Invalid base metadata: {row}")
-            images[name] = (int(size), int(crc), verified == "1")
-        return header == "2 READY", images
-    raise TimeoutError("The keyboard did not finish checking dictionary flash.")
-
-
-def install_hid(console, repair_base=None):
-    def send(command, timeout=30):
-        reply = console.command("base_install " + command, timeout=timeout)
-        if reply != "OK":
-            raise RuntimeError(reply)
-
-    _, images = hid_install_status(console)
-    if repair_base not in (None, "ALL") and repair_base not in images:
-        raise RuntimeError(f"{repair_base} is not configured in this firmware.")
-    missing = {}
-    for name, (size, crc, verified) in images.items():
-        if repair_base not in (None, "ALL", name):
-            continue
-        if verified and (not repair_base or read_hid_crc(console, name) == crc):
-            print(f"{name}: already installed")
-            continue
-        path = DEFAULT_IMAGES[name]
-        if not path.exists():
-            print(f"Preparing {name} from the pinned dictionary sources…", flush=True)
-            prepare_base(name, (size, crc))
-        image = read_image(path)
-        if (len(image), zlib.crc32(image)) != (size, crc):
-            # Keep custom and older build files intact. Try the pinned sources
-            # in a separate directory before asking the keyboard to write.
-            print(f"Preparing the firmware's {name} image from the pinned sources…", flush=True)
-            with TemporaryDirectory() as directory:
-                prepared = Path(directory) / path.name
-                prepare_base(name, (size, crc), prepared)
-                image = read_image(prepared)
-        check_matches_firmware(image, name, size, crc, path)
-        missing[name] = image
-
-    for name, image in missing.items():
-        print(f"{'Repairing' if repair_base else 'Installing'} {name}…", flush=True)
-        operation = 'repair' if repair_base else 'begin'
-        reply = console.command(f"base_install {operation} {name}", timeout=600 if repair_base else 30)
-        if not reply.startswith('OK ') or not reply[3:].isdigit():
-            raise RuntimeError(reply)
-        start = int(reply[3:])
-        if start > len(image) or (start != len(image) and start % CHUNK_BYTES):
-            raise RuntimeError('Invalid resume offset from keyboard')
-        try:
-            for offset in range(start, len(image), CHUNK_BYTES):
-                chunk = image[offset:offset + CHUNK_BYTES]
-                end = offset + len(chunk)
-                encoded = base64.b64encode(chunk).decode('ascii')
-                for attempt in range(3):
-                    try:
-                        reply = console.command(f"base_install data {offset} {encoded}", timeout=30)
-                        break
-                    except TimeoutError:
-                        if attempt == 2: raise
-                if reply != f"OK {end}": raise RuntimeError(reply)
-                if end == len(image) or end % (64 * 1024) == 0:
-                    print(f"Write and read back: {end:,}/{len(image):,} bytes", flush=True)
-            send("commit", timeout=120)
-        except (Exception, KeyboardInterrupt) as error:
-            try:
-                send("abort", timeout=2)
-            except Exception:
-                pass
-            if (not repair_base and isinstance(error, RuntimeError) and
-                    str(error).startswith("ERR Base region holds different data")):
-                raise RuntimeError(f"{name} conflicts with the image in flash. To replace just this base, "
-                                   f"run: python3 stenosquid.py --repair --base {name.lower()}") from None
-            raise
-
-    ready, images = hid_install_status(console)
-    if repair_base not in (None, "ALL") and images[repair_base][2] and not ready:
-        print(f"{repair_base} verified. Run python3 stenosquid.py --install for the remaining bases.")
-        return
-    if not ready or not all(verified for _, _, verified in images.values()):
-        raise RuntimeError("The keyboard did not map all verified base dictionaries.")
-    print("Base dictionaries are installed and ready. You can start using Javelin.")
-
-
-def read_hid_crc(console, name):
-    reply = console.command(f"base_install verify {name}", timeout=120)
-    state, _, value = reply.partition(" ")
-    if state not in ("OK", "MISMATCH"):
-        raise RuntimeError(f"{name}: {reply}. Check that Left-Default supports USB HID verification.")
-    return int(value)
-
-
-def inspect_hid(console, base, verify=False):
-    ready, images = hid_install_status(console)
-    names = list(images) if base == "ALL" else [base]
-    if base != "ALL" and base not in images:
-        raise RuntimeError(f"{base} is not configured in this firmware.")
-    if not verify:
-        for name in names:
-            size, crc, verified = images[name]
-            state = ("MAPPED" if ready else "VERIFIED") if verified else "UNPROVISIONED"
-            print(f"{name}: {state}, {size:,} bytes, expected CRC32 {crc:08x}")
-        return
-
-    failed = False
-    for name in names:
-        crc = read_hid_crc(console, name)
-        if crc == images[name][1]:
-            print(f"{name}: OK, CRC32 {crc:08x}")
-        else:
-            print(f"{name}: FAILED, flash CRC32 {crc:08x}, expected {images[name][1]:08x}")
-            failed = True
-    if failed:
-        raise SystemExit(1)
-
-
 from serial_tools import find_port, LineReader
 
 
@@ -233,14 +64,12 @@ def handle_native(console, args, status):
     """Handle non-install Native operations on the existing USB connection."""
     from import_personal import parse_named, write_json
 
-    if args.base or args.repair:
-        raise ValueError("Native uses a shared pool. Base-specific repair is unavailable.")
     if args.status:
         print(status)
-        if status.startswith(("NATIVE1 READY ", "NATIVE2 READY ")):
+        if status.startswith("NATIVE2 READY "):
             print(console.command("list_dictionaries"))
         return
-    if not status.startswith(("NATIVE1 READY ", "NATIVE2 READY ")):
+    if not status.startswith("NATIVE2 READY "):
         raise RuntimeError("Native dictionaries are unavailable. Run --install --confirm-erase to provision.")
     if args.verify:
         print("Verifying the full dictionary store. Wait for verification before typing.", flush=True)
@@ -268,7 +97,7 @@ def handle_native(console, args, status):
         from native_update import backup_all
         from native_recovery import save_atomic
 
-        backup = backup_all(console, complete=args.bundle)
+        backup = backup_all(console)
         save_atomic(args.backup_all, backup)
         print(f"Saved full dictionary backup to {args.backup_all}.")
     elif args.backup:
@@ -290,6 +119,13 @@ def handle_native(console, args, status):
         sys.path.insert(0, str(REPO / "tools/storage"))
         from native_update import transfer
 
+        if args.delete:
+            from native_snapshot import change_snapshot
+
+            catalog = json.loads(console.command("native_catalog"))
+            selected = next((row for row in catalog if row["name"] == args.delete), None)
+            if selected and selected["kind"] == "snapshot":
+                return change_snapshot(console, "delete", args.delete, stage=True)
         return transfer(console, rename=args.rename, delete=args.delete)
     elif args.personal or args.compact or args.move:
         sys.path.insert(0, str(REPO / "tools/storage"))
@@ -300,12 +136,13 @@ def handle_native(console, args, status):
         state = json.loads(console.command("user_dictionary_status"))
         if not state.get("ready") or state.get("read_only") or not state.get("personal_id"):
             raise RuntimeError("Native dictionary is unavailable for writing")
-        if args.name is not None or args.move:
-            capabilities = console.command("native_install update named-capabilities").split()
-            if len(capabilities) != 3 or capabilities[:2] != ["OK", "NAMED1"]:
-                raise RuntimeError("Flash firmware with named dictionary support before using this command.")
-            return transfer(console, entries, name=args.name, limit=int(capabilities[2]),
-                            move=(args.move, args.position) if args.move else None)
+        if args.name is not None:
+            from native_import_plan import named_import
+
+            named_import(console, args.name, entries, stage=True)
+            return True
+        if args.move:
+            return transfer(console, move=(args.move, args.position))
         if args.compact or len(entries) >= 256:
             if console.command("native_install update capabilities") != "OK BULK1":
                 raise RuntimeError("Flash Native firmware with staged updates before running this command.")
@@ -326,39 +163,33 @@ def main():
     parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
     parser.add_argument("--update", action="store_true", help="Update installed bases to the pinned revisions")
     parser.add_argument("--list-dictionaries", action="store_true", help="Show the Native dictionary catalog")
-    parser.add_argument("--backup-all", type=Path, metavar="FILE.JSON", help="Save the Native catalog settings and overlays")
-    parser.add_argument("--bundle", action="store_true", help="Include exact flash extents with --backup-all")
+    parser.add_argument("--backup-all", type=Path, metavar="FILE.JSON", help="Save a complete Native recovery bundle")
     parser.add_argument("--dictionary", metavar="NAME", help="Select a dictionary for --backup")
     parser.add_argument("--backup", type=Path, metavar="FILE.JSON", help="Export the personal dictionary over USB HID")
     parser.add_argument("--confirm-erase", action="store_true", help="Explicitly replace the Native dictionary pool")
-    parser.add_argument("--restore-all", type=Path, metavar="FILE.JSON", help="Restore a full backup; replaces the dictionary pool")
     parser.add_argument("--restore", type=Path, metavar="BACKUP.JSON", help="Seed personal entries when provisioning Native")
     parser.add_argument("--serial", help="USB keyboard serial number (not a serial-port path)")
-    parser.add_argument("--base", choices=("lapwing", "plover", "extras", "all"))
-    parser.add_argument("--repair", action="store_true", help="Check and repair all bases, or select one with --base")
     parser.add_argument("--verify", action="store_true", help="Read and verify base dictionaries without writing")
     parser.add_argument("--status", action="store_true", help="Read dictionary status")
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
-    actions = (args.install, args.personal, args.backup, args.repair, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update, args.restore_all)
+    actions = (args.install, args.personal, args.backup, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update)
     if sum(map(bool, actions)) != 1:
         parser.error("Choose exactly one action (see --help)")
     if args.dictionary is not None and not args.backup:
         parser.error("--dictionary goes with --backup")
-    if args.bundle and not args.backup_all:
-        parser.error("--bundle goes with --backup-all")
     if args.name is not None and not args.personal:
         parser.error("--as requires --import")
     if bool(args.move) != (args.position is not None) or (args.position is not None and args.position < 1):
         parser.error("--move requires --position with a positive position")
     if args.port and not args.diag:
         parser.error("Serial provisioning is retired. Omit the port to use USB HID; ports are only for --diag")
-    if args.confirm_erase and not (args.install or args.restore_all):
-        parser.error("--confirm-erase goes with --install or --restore-all")
+    if args.confirm_erase and not args.install:
+        parser.error("--confirm-erase goes with --install")
     if args.restore and not args.install:
         parser.error("--restore goes with --install")
     if args.diag:
-        if args.base or args.serial:
+        if args.serial:
             parser.error("--diag stands alone")
         with Serial(args.port or find_port(), 115200, timeout=0.25, write_timeout=5, exclusive=True) as port:
             sections = ("status", "log", "rail", "bench") if args.diag == "report" else (args.diag,)
@@ -367,18 +198,8 @@ def main():
                     print(f"\n[{section}]", flush=True)
                 diag(port, section)
         return
-    if args.base and not (args.repair or args.verify or args.status):
-        parser.error("--base goes with --repair, --verify or --status")
     if args.restore and not args.confirm_erase:
         parser.error("--restore requires --confirm-erase")
-    if args.restore_all:
-        if not args.confirm_erase:
-            parser.error("--restore-all requires --confirm-erase")
-        sys.path.insert(0, str(REPO / "tools/storage"))
-        from native_restore import restore_all
-
-        restore_all(args.serial, json.loads(args.restore_all.read_text(encoding="utf-8")))
-        return
     if args.manager:
         sys.path.insert(0, str(REPO / "tools/manager"))
         from manager import serve
@@ -387,55 +208,28 @@ def main():
         return
     from import_personal import open_console
 
-    reboot = False
     with open_console(args.serial) as console:
         native = console.command("native_install status")
-        if native.startswith(("NATIVE1 ", "NATIVE2 ")):
-            if not args.install:
-                reboot = handle_native(console, args, native)
-                if not reboot:
-                    return
-            else:
-                if not args.confirm_erase:
-                    if native.startswith(("NATIVE1 READY ", "NATIVE2 READY ")):
-                        print("Native dictionaries are already installed.")
-                        return
-                    raise RuntimeError("Provisioning replaces the dictionary pool. Back up existing data first, "
-                                       "then run --install --confirm-erase (optionally with --restore BACKUP.JSON).")
-                if not native.startswith("NATIVE2 "):
-                    raise RuntimeError("Flash the matching Native firmware before installing this image.")
-        elif native == "ERR Command unavailable on this keyboard":
-            if any((args.compact, args.move, args.rename, args.delete, args.name, args.dictionary, args.backup_all, args.list_dictionaries, args.update)):
-                raise ValueError("This dictionary operation requires Native firmware.")
-            if args.confirm_erase or args.restore:
-                raise ValueError("These install options require Native firmware.")
-            if not (args.backup or args.personal):
-                base = (args.base or "all").upper()
-                if args.verify or args.status:
-                    inspect_hid(console, base, verify=args.verify)
-                else:
-                    install_hid(console, base if args.repair else None)
+        if not native.startswith("NATIVE2 "):
+            raise RuntimeError("Flash the matching Native firmware before using dictionary commands.")
+        if not args.install:
+            reboot = handle_native(console, args, native)
+        elif not args.confirm_erase:
+            if native.startswith("NATIVE2 READY "):
+                print("Native dictionaries are already installed.")
                 return
-        else:
-            raise RuntimeError(f"Unrecognized dictionary installer response: {native}")
+            raise RuntimeError("Provisioning replaces the dictionary pool. Back up existing data first, "
+                               "then run --install --confirm-erase (optionally with --restore BACKUP.JSON).")
 
-    if reboot:
-        from native_install import wait_ready
-
-        wait_ready(args.serial)
-    elif args.install:
-        sys.path.insert(0, str(REPO / "tools/storage"))
+    sys.path.insert(0, str(REPO / "tools/storage"))
+    if args.install:
         from native_install import install
 
         install(args.serial, restore=args.restore)
-    elif args.backup:
-        from import_personal import backup_file
+    elif reboot:
+        from native_install import wait_ready
 
-        backup_file(args.backup, args.serial)
-    elif args.personal:
-        from import_personal import import_file
-
-        import_file(args.personal, args.serial)
+        wait_ready(args.serial)
 
 
 if __name__ == "__main__":

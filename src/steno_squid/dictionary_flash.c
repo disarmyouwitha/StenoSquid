@@ -4,40 +4,9 @@
 
 #include <zephyr/sys/printk.h>
 
-BUILD_ASSERT(LAPWING_BYTES % sizeof(uint32_t) == 0);
-BUILD_ASSERT(LAPWING_BYTES <= BASE_DICTIONARY_LIMIT);
-#if PLOVER_BYTES > 0
-BUILD_ASSERT(LAPWING_BYTES <= PLOVER_FLASH_OFFSET);
-BUILD_ASSERT(PLOVER_BYTES % sizeof(uint32_t) == 0);
-BUILD_ASSERT(PLOVER_FLASH_OFFSET + PLOVER_BYTES <= BASE_DICTIONARY_LIMIT);
-#endif
-#if EXTRAS_BYTES > 0
-BUILD_ASSERT(LAPWING_BYTES <= EXTRAS_FLASH_OFFSET);
-BUILD_ASSERT(PLOVER_BYTES == 0 || PLOVER_FLASH_OFFSET + PLOVER_BYTES <= EXTRAS_FLASH_OFFSET);
-BUILD_ASSERT(EXTRAS_BYTES % sizeof(uint32_t) == 0);
-BUILD_ASSERT(EXTRAS_FLASH_OFFSET + EXTRAS_BYTES <= BASE_DICTIONARY_LIMIT);
-#endif
-
-struct base_image lf_images[IMAGE_COUNT] = {
-    {"LAPWING", 0, LAPWING_BYTES, LAPWING_CRC},
-#if PLOVER_BYTES > 0
-    {"PLOVER", PLOVER_FLASH_OFFSET, PLOVER_BYTES, PLOVER_CRC},
-#endif
-#if EXTRAS_BYTES > 0
-    {"EXTRAS", EXTRAS_FLASH_OFFSET, EXTRAS_BYTES, EXTRAS_CRC},
-#endif
-};
-
-/* A repair erases a base in 4 KiB sectors, the last one whole. Each region
- * starts and ends on a sector boundary, so an erase stays inside its base.
- */
-BUILD_ASSERT(PLOVER_FLASH_OFFSET % SECTOR_BYTES == 0);
-BUILD_ASSERT(EXTRAS_FLASH_OFFSET % SECTOR_BYTES == 0);
-BUILD_ASSERT(BASE_DICTIONARY_LIMIT % SECTOR_BYTES == 0);
-
 atomic_t lf_mapped_ready;
 atomic_t lf_checked;
-bool lf_trusted;
+bool lf_last_open_ok;
 #if IDLE_OFF
 atomic_t lf_idle_off;
 atomic_t lf_held;
@@ -92,10 +61,7 @@ void dictionary_flash_hold(bool hold) {
 #endif
 }
 
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
 bool lf_provisioning_ready;
-bool lf_provisioning_recheck;
-#endif
 
 static void dictionary_flash_worker(void *a, void *b, void *c) {
     ARG_UNUSED(a);
@@ -124,21 +90,6 @@ static void dictionary_flash_worker(void *a, void *b, void *c) {
     for (;;) {
         if (atomic_get(&lf_restart_requested)) {
             k_mutex_lock(&flash_lock, K_FOREVER);
-#ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
-            if (lf_provisioning_recheck) {
-                lf_provisioning_recheck = false;
-                /* Each image already passed a raw CRC. Check the mapped bytes
-                 * and native lookups before publishing the new mapping. */
-                mapping_failed = !lf_enable_verified_mapping(&config);
-                lf_provisioning_ready = qspi_ok;
-                if (!mapping_failed) {
-                    lf_store_trust();
-                }
-                atomic_set(&lf_checked, 1);
-                steno_squid_upload_status(STENO_SQUID_MODE_UNKNOWN, 0);
-                dictionary_flash_ready_changed();
-            }
-#endif
             /* Several callers may ask for one wake. Only a powered-down flash
              * is brought up; a request that arrives late is already served.
              */
@@ -146,7 +97,7 @@ static void dictionary_flash_worker(void *a, void *b, void *c) {
                 lf_last_restart = k_uptime_get();
                 qspi_ok = lf_bring_up_flash(&config, &mapping_failed);
 #if SERIAL_CONSOLE
-                squid_flash_diag_wake_ready(atomic_get(&lf_mapped_ready) != 0, lf_last_check_quick,
+                squid_flash_diag_wake_ready(atomic_get(&lf_mapped_ready) != 0, false,
                                 lf_last_check_ms);
 #endif
             }

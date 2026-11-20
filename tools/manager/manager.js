@@ -12,7 +12,7 @@ const jobMessages = {
   measure: "Measuring saved edits…", preview_optimize: "Calculating compact storage…",
   apply_optimize: "Saving compact dictionary…", layout_map: "Reading flash layout…",
   preview_import: "Calculating import size…", apply_import: "Importing dictionary…", import: "Importing dictionary…",
-  backup: "Preparing backup…", export: "Exporting dictionary…", restore: "Restoring backup…",
+  backup: "Preparing backup…", export: "Exporting dictionary…",
   preview_compact: "Checking journal space…", compact: "Compacting journal…", clear_personal: "Clearing personal dictionary…"
 };
 
@@ -27,7 +27,7 @@ function controls() {
   node("job-status").toggleAttribute("data-busy", busy);
   node("job-status").querySelector(".job-spinner").hidden = !busy;
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
-  for (const id of ["refresh", "backup", "backup-complete", "updates", "export", "restore-submit", "measure"]) node(id).disabled = busy;
+  for (const id of ["refresh", "backup", "updates", "export", "measure"]) node(id).disabled = busy;
   node("flash-map-scan").disabled = busy;
   for (const radio of node("import-plan-costs").querySelectorAll("input")) {
     radio.disabled = busy || !!state?.read_only || radio.dataset.eligible !== "true";
@@ -103,7 +103,6 @@ function render(newState, usage = {}) {
   node("layout").value = state.layout;
   node("refresh").textContent = "Refresh connection";
   node("workspace").hidden = false;
-  node("backup-complete").hidden = !state.adaptive_imports;
 }
 async function request(path, payload) {
   const options = {headers: {"X-StenoSquid-Token": token}};
@@ -154,8 +153,6 @@ async function watch(id) {
       notify("Personal dictionary cleared.");
     } else if (result.optimized) {
       notify(`Saved the compact baseline for ${result.optimized}. The keyboard is ready.`);
-    } else if (result.restored) {
-      notify("Backup restored. The keyboard is ready.");
     } else {
       notify(state.read_only ? "Connected. The keyboard is in read-only recovery." : "Keyboard ready.");
     }
@@ -467,7 +464,6 @@ node("compact").onclick = () => run({action: "preview_compact"});
 node("compact-apply").onclick = () => {
   if (cleanupToken) run({action: "compact", token: cleanupToken});
 };
-node("backup-complete").onclick = () => run({action: "backup", complete: true});
 node("optimize").onclick = () => {
   const row = selection();
   clearOptimizationPlan();
@@ -532,32 +528,27 @@ node("import-apply").onclick = () => {
     run({action: "apply_import", ...approved});
   }
 };
-for (const action of ["import", "restore"]) {
-  node(action).onsubmit = async (event) => {
-    event.preventDefault();
-    if (busy || (action === "import" && node("import-preview").hidden)) return;
-    const fields = new FormData(event.currentTarget);
-    try {
-      const source = await fields.get("file").text();
-      const options = action === "import"
-        ? {name: fields.get("name").trim()}
-        : {confirm: fields.get("confirm")};
-      if (action === "import" && state?.adaptive_imports && options.name) {
-        clearImportPlan();
-        importToApply = {source, ...options};
-        await run({action: "preview_import", ...importToApply});
-      } else {
-        if (action === "import" && !options.name && !window.confirm(
-          "Import this file into your personal dictionary? Entries with matching outlines will be replaced."
-        )) return;
-        await run({action, source, ...options});
-      }
-    } catch (error) {
-      if (action === "import") showImportError(error.message);
-      else notify(error.message, true);
+node("import").onsubmit = async (event) => {
+  event.preventDefault();
+  if (busy || node("import-preview").hidden) return;
+  const fields = new FormData(event.currentTarget);
+  try {
+    const source = await fields.get("file").text();
+    const name = fields.get("name").trim();
+    if (state?.adaptive_imports && name) {
+      clearImportPlan();
+      importToApply = {source, name};
+      await run({action: "preview_import", ...importToApply});
+    } else {
+      if (!name && !window.confirm(
+        "Import this file into your personal dictionary? Entries with matching outlines will be replaced."
+      )) return;
+      await run({action: "import", source, name});
     }
-  };
-}
+  } catch (error) {
+    showImportError(error.message);
+  }
+};
 
 controls();
 request("/api/job").then(async (job) => {

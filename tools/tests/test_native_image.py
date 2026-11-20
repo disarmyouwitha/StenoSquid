@@ -18,7 +18,6 @@ from build_native_image import build, SOURCES, SEGMENT, XIP
 from compile_dict import parse_outline
 from jsc4 import reader
 from native_install import check_image
-from native_restore import parse_backup
 from native_update import Snapshot, row_name
 
 
@@ -70,37 +69,18 @@ def main():
         image, report = build(path, personal)
         assert report["personal_entries"] == len(personal)
         assert validate(image, report, path) == 18
-        pins = {}
-        rows = []
-        for identity, name, enabled, source in SOURCES:
-            row = dict(id=identity, name=name, enabled=enabled, entries=[])
-            if source:
-                digest = hashlib.sha256((path / source).read_bytes()).hexdigest()
-                pins[name] = (None, None, digest)
-                row["source_sha256"] = digest
-            rows.append(row)
-        rows[0]["id"] = 10
-        rows[0]["entries"] = [dict(strokes=[1], operation="set", text="ça")]
-        rows[1]["enabled"] = False
-        rows[1]["entries"] = [dict(strokes=[2], operation="remove")]
-        rows.insert(0, dict(id=8, name="Medical", enabled=True,
-                            entries=[dict(strokes=[1], operation="set", text="named")]))
-        backup = dict(format="stenosquid-backup-1", host_layout="Mac U.S.", next_id=12, dictionaries=rows)
-        restored, manifest = build(path, collection=parse_backup(backup, 16, pins))
+        rows = [(8, "Medical", True)] + [(10 if identity == 1 else identity, name, enabled and identity != 2)
+                                          for identity, name, enabled, _ in SOURCES]
+        entries = {(8, (1,)): (0, b"named"), (10, (1,)): (0, "ça".encode()), (2, (2,)): (1, b"")}
+        restored, manifest = build(path, collection=(rows, entries, 12))
         root = SEGMENT + 32
         snapshot = Snapshot(lambda at, n: restored[at:at+n], root, manifest["catalog_bytes"],
                             struct.unpack_from("<I", restored, root - 12)[0])
-        assert [row_name(row) for row in snapshot.rows] == [row["name"] for row in rows]
+        assert [row_name(row) for row in snapshot.rows] == [name for _, name, _ in rows]
         assert snapshot.personal == 10 and snapshot.next_id == 12
         assert snapshot.entries[8, (1,)].text == b"named"
         assert snapshot.entries[10, (1,)].text == "ça".encode()
         assert snapshot.entries[2, (2,)].operation == 1
-        try:
-            parse_backup(backup, 7, pins)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("Full restore accepted a backup outside the dictionary limit")
         restored_path = path / "restored.bin"
         restored_path.write_bytes(restored)
         image_path = path / "native.bin"
