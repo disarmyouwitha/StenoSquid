@@ -12,7 +12,7 @@ import zlib
 from hostlib import compiler
 from test_native_stage import ROOT, fixture
 from build_native_image import LIMIT, SEGMENT
-from native_recovery import capture, recover_usb, reconstruct, unpack
+from native_recovery import capture, digest, recover_usb, reconstruct, unpack
 from native_snapshot import compile_snapshot, plan_change
 from native_update import row_name
 from test_native_personal_snapshot import opened, publish_image
@@ -30,15 +30,18 @@ class Console:
         self.supported = True
         self.interrupt = None
         self.erasures = set()
+        self.status_override = None
 
     def command(self, line, timeout=30):
         if line == "native_install update recovery-capabilities":
             return "OK RECOVERY1" if self.supported else "ERR Unknown"
         if line == "native_install status":
-            return "NATIVE2 READY 2" if self.ready else "NATIVE2 UNPROVISIONED 0"
+            return self.status_override or ("NATIVE2 READY 2" if self.ready else "NATIVE2 UNPROVISIONED 0")
         if line.startswith("native_install match RECOVERY "):
-            return "OK MATCH" if self.ready and zlib.crc32(self.data) == int(line.split()[-1]) else "ERR No match"
+            return "OK MATCH" if self.ready and zlib.crc32(self.data) == int(line.split()[-1]) else "ERR Recovery contents differ"
         if line.startswith("native_install begin RECOVERY "):
+            if self.interrupt == "before-erase":
+                raise OSError("Disconnected before erase")
             self.staged_crc, self.final_crc = map(int, line.split()[-2:])
             self.begin_count += 1
             self.erasures.clear()
@@ -72,7 +75,11 @@ class Console:
             if self.interrupt == "verify":
                 self.interrupt = None
                 raise OSError("Disconnected while verifying")
-            for root in (0, SEGMENT):
+            for i, root in enumerate((0, SEGMENT)):
+                if self.interrupt == f"root-{i + 1}":
+                    self.data[root + 28:root + 30] = b"TM"
+                    self.ready = i == 1
+                    raise OSError("Torn publication")
                 self.data[root + 28:root + 32] = b"TMOC"
             assert zlib.crc32(self.data) == self.final_crc
             self.ready = True
@@ -81,6 +88,8 @@ class Console:
                     self.data[2 * SEGMENT] ^= 1
                 self.interrupt = None
                 raise OSError("Lost publication reply")
+            if self.interrupt == "acknowledged-mismatch":
+                self.data[2 * SEGMENT] ^= 1
             return "OK Rebooting"
         if line == "native_catalog":
             assert self.ready
@@ -95,7 +104,7 @@ class Console:
     def wait(self, serial):
         assert serial == self.serial
         self.reset_count += 1
-        if not self.ready:
+        if not self.ready or self.interrupt == "reconnect":
             raise RuntimeError("not ready")
 
 
@@ -132,6 +141,46 @@ def main():
             assert usb.data == expected and usb.layout == bundle["host_layout"]
             attempt(usb)
             assert usb.begin_count == before
+
+        for interruption, erased in (("before-erase", False), ("root-1", True), ("root-2", True),
+                                     ("acknowledged-mismatch", True), ("reconnect", True)):
+            usb = Console(b"\xff" * LIMIT, rows)
+            usb.interrupt = interruption
+            try:
+                attempt(usb)
+            except (OSError, RuntimeError):
+                pass
+            else:
+                raise AssertionError(f"Interrupted recovery claimed success at {interruption}")
+            assert bool(usb.erasures) == erased and usb.begin_count == int(erased)
+            if interruption == "reconnect":
+                usb.interrupt = None
+                attempt(usb)
+                assert usb.begin_count == 1 and usb.data == expected
+
+        optimized = dict(bundle, repack={})
+        optimized["sha256"] = digest(optimized)
+        spare = Console(b"\xff" * LIMIT, rows)
+        with patch("native_install.open_console", return_value=nullcontext(spare)), patch("native_install.wait_ready", spare.wait):
+            try:
+                recover_usb(optimized, spare.serial, spare.serial, lambda _: None)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Generic recovery accepted an optimized bundle")
+            for status in ("NATIVE2 READY 65", "NATIVE2 INSTALL 65"):
+                spare.status_override = status
+                try:
+                    recover_usb(optimized, spare.serial, spare.serial, lambda _: None, repack_spare=True)
+                except RuntimeError:
+                    pass
+                else:
+                    raise AssertionError("Optimized recovery tried to replace a live or busy pool")
+                assert not spare.erasures
+            spare.status_override = None
+            recover_usb(optimized, spare.serial, spare.serial, lambda _: None, repack_spare=True)
+            recover_usb(optimized, spare.serial, spare.serial, lambda _: None, repack_spare=True)
+            assert spare.begin_count == 1 and spare.data == expected
 
         usb = Console(b"\xff" * LIMIT, rows)
         for supported, serial in ((True, "wrong-device"), (False, Console.serial)):
