@@ -132,15 +132,16 @@ class ManagerTest(unittest.TestCase):
             self.keyboard.name, self.keyboard.kind = "user_dictionary", "snapshot"
             with self.assertRaisesRegex(ValueError, "type CLEAR"):
                 self.run_job("clear_personal", id=8, confirm="NO")
-            with self.assertRaisesRegex(RuntimeError, "Update the experimental left firmware"):
+            with self.assertRaisesRegex(RuntimeError, "Flash the current left firmware"):
                 self.run_job("clear_personal", id=8, confirm="CLEAR")
             clear.assert_not_called()
             self.keyboard.adaptive = True
             self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
             clear.assert_called_once_with(self.keyboard, 8, unittest.mock.ANY)
-            self.keyboard.kind, self.keyboard.adaptive = "personal", False
+            self.keyboard.kind = "personal"
+            clear.reset_mock()
             self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
-            self.assertIn("reset_user_dictionary", self.keyboard.commands)
+            clear.assert_called_once_with(self.keyboard, 8, unittest.mock.ANY)
 
     def test_optimize_requires_matching_selection_and_preview(self):
         self.keyboard.adaptive = True

@@ -157,6 +157,8 @@ def run_job(serial, request, progress):
         elif action == "clear_personal":
             if request.get("confirm") != "CLEAR" or not selected or name != "user_dictionary":
                 raise ValueError("Select your personal dictionary and type CLEAR to confirm.")
+            if console.command("native_install update snapshot-clear-capabilities") != "OK CLEAR1":
+                raise RuntimeError("Flash the current left firmware before clearing the personal dictionary.")
             progress("Clearing personal entries…")
             published = clear_personal(console, selected["id"], progress)
             report = {"cleared": True}
