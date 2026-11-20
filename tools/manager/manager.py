@@ -3,9 +3,11 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+from queue import Empty, Queue
 import secrets
+import signal
 import sys
-from threading import Lock, Thread
+from threading import Lock, Thread, current_thread, main_thread
 import webbrowser
 
 HERE = Path(__file__).resolve().parent
@@ -13,11 +15,14 @@ TOOLS = HERE.parent
 sys.path.insert(0, str(TOOLS / "storage"))
 from native_install import wait_ready
 from native_manage import checked, import_entries
-from native_update import backup_all, export_dictionary, transfer
+from native_update import backup_all, export_dictionary, overlay_usage, transfer
 from import_personal import open_console, parse_named
 from compile_dict import parse_outline
 from native_base_update import changed_pins, replace_pinned
 from native_restore import restore_all
+from native_snapshot import change_snapshot, clear_personal
+from native_import_plan import named_import
+from native_layout import read_images, read_layout
 
 MAX_REQUEST = 48 * 1024 * 1024
 
@@ -29,19 +34,37 @@ def read_catalog(console):
     return value
 
 
+def image_details(console):
+    try:
+        return read_images(console)
+    except (RuntimeError, OSError, ValueError):
+        return None
+
+
 def read_state(console):
     status = json.loads(console.command("user_dictionary_status"))
     if status.get("format") != "SQBCAT02" or not status.get("ready"):
         raise RuntimeError("The dictionary store is unavailable. Check USB and firmware.")
     layouts = json.loads(console.command("get_parameter available_host_layouts"))
+    adaptive = console.command("native_install update snapshot-capabilities") == "OK SNAPSHOT2"
+    catalog = read_catalog(console)
     return {
-        "catalog": read_catalog(console),
+        "catalog": catalog,
+        "images": image_details(console) if any(row.get("image_bytes") for row in catalog) else [],
         "layouts": layouts,
         "layout": console.command("get_parameter host_layout"),
         "read_only": status["read_only"],
         "auto_checkpoints": status.get("auto_checkpoints", 0),
         "auto_reclaimed": status.get("auto_reclaimed", 0),
         "tail": status["tail"],
+        "generation": status.get("generation"),
+        "maintenance_active": bool(status.get("maintenance")),
+        "personal_conversion": adaptive and console.command(
+            "native_install update personal-snapshot-capabilities") == "OK PERSONAL1",
+        "personal_clear": adaptive and console.command(
+            "native_install update snapshot-clear-capabilities") == "OK CLEAR1",
+        "adaptive_imports": adaptive,
+        "layout_map": adaptive and console.command("native_install update layout-capabilities") == "OK MAP1",
     }
 
 
@@ -49,6 +72,16 @@ def safe_name(value):
     if not isinstance(value, str) or not value or any(c in value for c in "\n\r\0"):
         raise ValueError("Invalid dictionary name")
     return value
+
+
+def read_import(source):
+    try:
+        entries, names = parse_named(source)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"The dictionary file is not valid JSON (line {error.lineno}, column {error.colno}).") from error
+    if not entries:
+        raise ValueError("This JSON dictionary contains zero entries. Choose a file with outline-to-translation entries.")
+    return entries, names
 
 
 def run_job(serial, request, progress):
@@ -65,10 +98,27 @@ def run_job(serial, request, progress):
         serial = console.serial
         if action == "refresh":
             return {"state": read_state(console)}
+        if action == "layout_map":
+            layout = read_layout(console)
+            layout["images"] = image_details(console)
+            return {"layout_map": layout}
+        if action == "preview_compact":
+            layout = None
+            if console.command("native_install update layout-capabilities") == "OK MAP1":
+                try:
+                    generation = json.loads(console.command("user_dictionary_status"))["generation"]
+                    layout = read_layout(console)
+                    layout["images"] = image_details(console)
+                except RuntimeError:
+                    pass
+            cleanup = transfer(console, progress=progress, preview_compact=True)
+            if layout and generation != json.loads(console.command("user_dictionary_status"))["generation"]:
+                layout = None
+            return {"cleanup": cleanup, "layout_map": layout}
         catalog = read_catalog(console)
         by_id = {row["id"]: row for row in catalog}
         selected = by_id.get(request.get("id"))
-        if action in {"enable", "move", "rename", "delete", "export", "set", "remove", "reset"} and selected is None:
+        if action in {"enable", "move", "rename", "delete", "export", "set", "remove", "reset", "preview_optimize", "apply_optimize"} and selected is None:
             raise ValueError("Select a dictionary from the current catalog.")
         name = safe_name(selected["name"]) if selected else None
         if action == "enable":
@@ -85,6 +135,8 @@ def run_job(serial, request, progress):
             outline = request["outline"]
             if not isinstance(outline, str) or not 1 <= len(parse_outline(outline)) <= 16:
                 raise ValueError("Enter an outline of up to 16 strokes.")
+            if action == "reset" and selected["kind"] != "base":
+                raise ValueError("Revert to original is available for factory dictionaries.")
             if action == "set":
                 entries, names = parse_named(json.dumps({outline: request["translation"]}))
                 import_entries(console, selected["id"], entries, names, progress)
@@ -96,19 +148,13 @@ def run_job(serial, request, progress):
             entries = export_dictionary(console, name)
             return {"download": entries, "filename": name + ".json", "count": len(entries)}
         elif action in {"backup", "measure"}:
-            progress("Reading saved edits, dictionary order and checkboxes…")
-            backup = backup_all(console)
             if action == "backup":
-                return {"download": backup, "filename": "stenosquid-backup.json"}
-            usage = {}
-            for row in backup["dictionaries"]:
-                entries = row["entries"]
-                live_bytes = sum(
-                    (43 + 4 * len(entry["strokes"]) + len(entry.get("text", "").encode("utf-8"))) & ~3
-                    for entry in entries
-                )
-                usage[row["id"]] = {"count": len(entries), "bytes": live_bytes}
-            return {"state": read_state(console), "usage": usage}
+                progress("Reading saved edits, dictionary order and checkboxes…")
+                complete = request.get("complete") is True
+                return {"download": backup_all(console, complete=complete),
+                        "filename": "stenosquid-rescue.json" if complete else "stenosquid-backup.json"}
+            progress("Counting saved edits across dictionaries…")
+            return {"state": read_state(console), "usage": overlay_usage(console)}
         elif action == "check_updates":
             return {"updates": changed_pins(catalog)}
         elif action == "apply_updates":
@@ -117,12 +163,58 @@ def run_job(serial, request, progress):
             changed, conflicts = replace_pinned(console, catalog, progress)
             published = bool(changed)
             report = {"updated": changed, "conflicts": conflicts}
+        elif action == "clear_personal":
+            if request.get("confirm") != "CLEAR" or not selected or name != "user_dictionary":
+                raise ValueError("Select your personal dictionary and type CLEAR to confirm.")
+            progress("Clearing personal entries…")
+            if console.command("native_install update snapshot-clear-capabilities") == "OK CLEAR1":
+                published = clear_personal(console, selected["id"], progress)
+            elif selected["kind"] == "personal":
+                checked(console, "reset_user_dictionary")
+            else:
+                raise RuntimeError("Update the experimental left firmware to clear a compact personal dictionary.")
+            report = {"cleared": True}
+        elif action in {"preview_optimize", "apply_optimize"}:
+            applying = action == "apply_optimize"
+            expected = request.get("token")
+            if applying and (not isinstance(expected, str) or len(expected) != 64):
+                raise ValueError("Preview the optimization before staging.")
+            operation = request.get("operation")
+            if (selected["kind"], operation) not in {("personal", "personal"), ("snapshot", "consolidate")}:
+                raise ValueError("Choose an eligible personal journal or user snapshot.")
+            progress(f"Reading {name} and calculating staging space…")
+            outcome = change_snapshot(console, operation, name, stage=applying,
+                                      preview=not applying, expected=expected if applying else None,
+                                      target_id=selected["id"], progress=progress)
+            if not applying:
+                return {"optimization_plan": outcome}
+            published = outcome
+            report = {"optimized": name}
+        elif action in {"preview_import", "apply_import"}:
+            entries, _ = read_import(request["source"])
+            staging = action == "apply_import"
+            expected = request.get("token")
+            if staging and (not isinstance(expected, str) or len(expected) != 64):
+                raise ValueError("Preview the import before staging.")
+            import_report = named_import(console, safe_name(request["name"]), entries,
+                                         preference=request.get("preference", "auto"), stage=staging,
+                                         expected=expected, progress=progress)
+            if not staging:
+                return {"import_plan": import_report}
+            published = True
         elif action in {"move", "rename", "delete", "import", "compact"}:
+            if action in {"rename", "delete"} and (name == "user_dictionary" or selected["kind"] not in {"named", "snapshot"}):
+                raise ValueError("Rename and delete are available for added dictionaries.")
             if console.command("native_install update manage-capabilities") != "OK MANAGE1":
                 raise RuntimeError("Flash the matching Manager firmware before writing.")
             options = {}
             entries = None
-            if action == "move":
+            if action == "compact":
+                token = request.get("token")
+                if not isinstance(token, str) or len(token) != 64:
+                    raise ValueError("Preview journal cleanup before compacting.")
+                options["expected_compact"] = token
+            elif action == "move":
                 options["move"] = (name, int(request["position"]))
             elif action == "rename":
                 options["rename"] = (name, safe_name(request["name"]))
@@ -131,7 +223,7 @@ def run_job(serial, request, progress):
                     raise ValueError("Confirm the name of the dictionary to delete.")
                 options["delete"] = name
             elif action == "import":
-                entries, _ = parse_named(request["source"])
+                entries, _ = read_import(request["source"])
                 label = request.get("name", "")
                 if label:
                     options["name"] = safe_name(label)
@@ -139,7 +231,10 @@ def run_job(serial, request, progress):
                     if len(reply) != 3 or reply[:2] != ["OK", "NAMED1"]:
                         raise RuntimeError("This firmware cannot create a named dictionary.")
                     options["limit"] = int(reply[2])
-            published = transfer(console, entries, progress, **options)
+            if action == "delete" and selected["kind"] == "snapshot":
+                published = change_snapshot(console, "delete", name, stage=True, progress=progress)
+            else:
+                published = transfer(console, entries, progress, **options)
         else:
             raise ValueError("Unknown Manager operation")
 
@@ -148,7 +243,8 @@ def run_job(serial, request, progress):
         try:
             wait_ready(serial)
         except RuntimeError as exc:
-            raise RuntimeError("The keyboard acknowledged the commit but has not reconnected. Refresh when it is back.") from exc
+            raise RuntimeError("The keyboard acknowledged the commit, but USB did not reconnect in time. "
+                               "Refresh and check the catalog before retrying.") from exc
     with open_console(serial) as console:
         state = read_state(console)
     return {"state": state, **report}
@@ -158,15 +254,19 @@ class Jobs:
     def __init__(self, serial):
         self.serial = serial
         self.lock = Lock()
+        self.pending = Queue()
+        self.stopping = False
         self.current = {"id": "", "status": "idle"}
 
     def start(self, request):
         with self.lock:
+            if self.stopping:
+                raise ValueError("Manager is shutting down.")
             if self.current["status"] == "running":
                 raise ValueError("A keyboard operation is already running.")
             identity = secrets.token_hex(8)
             self.current = {"id": identity, "status": "running", "message": "Connecting over USB HID…"}
-        Thread(target=self.run, args=(request,), daemon=False).start()
+            self.pending.put_nowait(request)
         return identity
 
     def update(self, **values):
@@ -176,6 +276,16 @@ class Jobs:
     def snapshot(self):
         with self.lock:
             return dict(self.current)
+
+    def serve(self):
+        # macOS HIDAPI enumerates devices through the current CoreFoundation
+        # run loop. Keep every HID session on the process main thread.
+        while not self.stopping:
+            try:
+                request = self.pending.get(timeout=0.2)
+            except Empty:
+                continue
+            self.run(request)
 
     def run(self, request):
         try:
@@ -264,10 +374,26 @@ def serve(serial=None):
     with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
         host = f"127.0.0.1:{server.server_port}"
         url = "http://" + host
-        print(f"Steno Squid Manager is running at {url}", flush=True)
-        webbrowser.open(url)
+
+        def stop(*_):
+            jobs.stopping = True
+
+        def serve_http():
+            try:
+                server.serve_forever()
+            finally:
+                stop()
+
+        # Finish a pending flash transaction before exiting on Ctrl-C.
+        previous = signal.signal(signal.SIGINT, stop) if current_thread() is main_thread() else None
+        http = Thread(target=serve_http)
+        http.start()
         try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            if jobs.snapshot()["status"] == "running":
-                print("Waiting for the active keyboard operation before exiting.", flush=True)
+            print(f"Steno Squid Manager is running at {url}", flush=True)
+            webbrowser.open(url)
+            jobs.serve()
+        finally:
+            server.shutdown()
+            http.join()
+            if previous is not None:
+                signal.signal(signal.SIGINT, previous)

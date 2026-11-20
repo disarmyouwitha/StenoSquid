@@ -106,6 +106,13 @@ config ZMK_STENO_SQUID_NATIVE_STORE
       Use the shared QSPI dictionary pool. Provision it using the USB installer.
       The diagnostic build uses fixed-layout tools for bench compatibility.
 
+config ZMK_STENO_SQUID_USER_SNAPSHOTS
+    bool "Experimental user-owned compact dictionary snapshots"
+    depends on ZMK_STENO_SQUID_NATIVE_STORE && ZMK_JAVELIN_STENO_HID_PROVISIONING
+    default n
+    help
+      Test-only. Accept the version-one user snapshot catalog row extension.
+
 config ZMK_STENO_SQUID_NATIVE_DICTIONARIES
     int "Maximum resident native dictionary wrappers"
     depends on ZMK_STENO_SQUID_NATIVE_STORE

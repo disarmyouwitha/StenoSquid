@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 from hostlib import compiler as host_compiler
 
@@ -52,6 +53,10 @@ def main():
          '-I', ROOT / 'src/steno_squid', ROOT / 'tools/tests/test_user_dictionary_log.cc', '-o', binary])
     run([binary, *([] if args.full else ['--quick'])])
     run([sys.executable, ROOT / 'tools/tests/run_repeat_translation.py', engine])
+    with tempfile.TemporaryDirectory(prefix="stenosquid-replay-") as folder:
+        run([sys.executable, ROOT / 'tools/bench/run_typing_replay.py', engine,
+             '--virtual', '--out', Path(folder) / 'report'])
+
     run([sys.executable, ROOT / 'tools/tests/run_display_preview.py', lvgl])
     print('PASS: all native checks')
 

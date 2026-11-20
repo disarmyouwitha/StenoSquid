@@ -1,0 +1,56 @@
+{
+  "pinned-plover": {
+    "entries": 147424,
+    "original_bytes": 2339624,
+    "lean_bytes": 2339624,
+    "image_segments": 36,
+    "added_snapshot_metadata_bytes": 0,
+    "shared_journal": {
+      "bytes": 65536,
+      "segments": 1
+    },
+    "native_forward_index": {
+      "bytes": 0,
+      "segments": 0
+    },
+    "native_reverse_index": {
+      "bytes": 0,
+      "segments": 0
+    },
+    "catalog_payload_bytes": 800,
+    "catalog_root_segments": 2,
+    "metadata_staging_segments": 1,
+    "conversion_staging_segments": 37,
+    "consolidation_staging_segments": 37,
+    "maintenance_reserve_segments": 3,
+    "verified_forward_lookups": 147424,
+    "verified_exports": 147424
+  },
+  "legal-200k": {
+    "entries": 200000,
+    "original_bytes": 1931932,
+    "lean_bytes": 1931932,
+    "image_segments": 30,
+    "added_snapshot_metadata_bytes": 0,
+    "shared_journal": {
+      "bytes": 65536,
+      "segments": 1
+    },
+    "native_forward_index": {
+      "bytes": 0,
+      "segments": 0
+    },
+    "native_reverse_index": {
+      "bytes": 0,
+      "segments": 0
+    },
+    "catalog_payload_bytes": 800,
+    "catalog_root_segments": 2,
+    "metadata_staging_segments": 1,
+    "conversion_staging_segments": 31,
+    "consolidation_staging_segments": 31,
+    "maintenance_reserve_segments": 3,
+    "verified_forward_lookups": 200000,
+    "verified_exports": 200000
+  }
+}

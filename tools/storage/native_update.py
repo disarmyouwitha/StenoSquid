@@ -1,6 +1,7 @@
 """Build a copy-on-write Native update from a frozen catalog and its journals."""
 
 from dataclasses import dataclass
+import hashlib
 import re
 import struct
 import zlib
@@ -64,7 +65,7 @@ def encode_record(edit, sequence):
 
 
 class Snapshot:
-    def __init__(self, read, catalog_address, catalog_bytes, crc, *, metadata_only=False):
+    def __init__(self, read, catalog_address, catalog_bytes, crc, *, metadata_only=False, strict=False):
         payload = read(catalog_address, catalog_bytes)
         if len(payload) != catalog_bytes or zlib.crc32(payload) != crc:
             raise ValueError("Catalog changed or failed its checksum")
@@ -77,8 +78,8 @@ class Snapshot:
         self.extents = list(EXTENT.iter_unpack(payload[rows_end:]))
         identities = {struct.unpack_from("<I", row)[0] for row in self.rows}
         personal = [row for row in self.rows if row[16:16 + row[12]] == b"user_dictionary"]
-        if len(personal) != 1 or personal[0][8:10] != b"\xff\xff":
-            raise ValueError("Expected one overlay-only personal dictionary")
+        if len(personal) != 1 or (personal[0][8:10] != b"\xff\xff" and personal[0][11] != 1):
+            raise ValueError("Expected one personal dictionary")
         self.personal = struct.unpack_from("<I", personal[0])[0]
         if metadata_only:
             return
@@ -87,7 +88,13 @@ class Snapshot:
         self.anchor = None
         self.used = {}
         records, tail = {}, []
+        epochs = 0
+        boundary = not through
+        sequences = {}
         for segment, _, _, _, _, epoch in self.journals:
+            if strict and epoch <= epochs:
+                raise ValueError("Recovery journal epochs are out of order")
+            epochs = epoch
             start = segment * SEGMENT
             data = read(start, SEGMENT)
             if len(data) != SEGMENT or data[:16] != struct.pack("<8sQ", b"SQJSEG01", epoch):
@@ -105,6 +112,9 @@ class Snapshot:
                 if sequence > through:
                     tail.append(entry)
                 records[entry.address] = entry
+                if strict:
+                    sequences[entry.address] = sequence
+                    boundary |= sequence == through
                 offset += entry.span
             self.used[segment] = offset - 256
 
@@ -112,18 +122,33 @@ class Snapshot:
         # checkpointed away along with its journal, so replaying all history
         # from retained segments could wrongly resurrect an old Set.
         self.entries = {}
+        if strict and not boundary:
+            raise ValueError("Recovery checkpoint boundary is missing")
+        indexed = {}
         for start, _, length, expected, kind, _ in self.extents:
-            if kind != 3:
+            if kind != 3 and (not strict or kind != 4):
                 continue
             data = read(start * SEGMENT, length)
             if len(data) != length or zlib.crc32(data) != expected:
                 raise ValueError("Source forward index failed checksum")
+            previous = None
             for (address,) in struct.iter_unpack("<I", data):
                 entry = records.get(address)
                 if not entry or entry.operation == 2:
-                    raise ValueError("Invalid source forward index record")
-                if entry.identity in identities:
+                    raise ValueError("Invalid source index record")
+                if strict:
+                    sequence = sequences[address]
+                    if entry.identity >= self.next_id or sequence > through or (kind == 4 and entry.operation):
+                        raise ValueError("Invalid recovery index record")
+                    key = entry.key if kind == 3 else (entry.text, entry.key)
+                    if previous is not None and key <= previous:
+                        raise ValueError("Recovery index is out of order")
+                    previous = key
+                    indexed.setdefault(kind, set()).add(address)
+                if kind == 3 and entry.identity in identities:
                     self.entries[entry.key] = entry
+        if strict and {address for address in indexed.get(3, ()) if not records[address].operation} != indexed.get(4, set()):
+            raise ValueError("Recovery indexes disagree")
         for entry in tail:
             if entry.identity not in identities:
                 continue
@@ -169,7 +194,7 @@ def metadata_payload(snapshot, *, move=None, rename=None, delete=None):
             return None
         rows.insert(position, rows.pop(index))
     else:
-        if target == "user_dictionary" or rows[index][8:10] != b"\xff\xff":
+        if target == "user_dictionary" or (rows[index][8:10] != b"\xff\xff" and not (rename and rows[index][11] == 1)):
             raise ValueError("Only independent named dictionaries can be renamed or deleted")
         if rename:
             label = validate_name(rename[1])
@@ -345,11 +370,18 @@ def read_flash(console, start, size):
     return bytes(result)
 
 
-def backup_all(console):
+def backup_all(console, *, complete=False):
     """Export exact live overlay operations and the catalog from one frozen view."""
     layout = console.command("get_parameter host_layout")
     answer = update_command(console, "begin backup")
     try:
+        snapshot, _ = read_snapshot(console, answer, metadata_only=True)
+        if complete or any(row[11] for row in snapshot.rows):
+            from native_recovery import capture
+            result = capture(lambda start, size: read_flash(console, start, size), snapshot, layout)
+            if console.command("get_parameter host_layout") != layout:
+                raise RuntimeError("Host layout changed during backup. Retry the backup.")
+            return result
         snapshot, _ = read_snapshot(console, answer)
         dictionaries = []
         for row in snapshot.rows:
@@ -370,38 +402,58 @@ def backup_all(console):
         update_command(console, "abort", timeout=5)
 
 
-def export_dictionary(console, name):
-    """Read one logical dictionary, including overrides on a packed base."""
-    from build_native_image import XIP
-    from hybrid import compact_entries, format_stroke
-
+def overlay_usage(console):
     answer = update_command(console, "begin backup")
     try:
         snapshot, _ = read_snapshot(console, answer)
-        row = next((row for row in snapshot.rows if row_name(row) == name), None)
-        if row is None:
-            raise ValueError(f"No installed dictionary named {name!r}")
-        identity, _, base, member = struct.unpack_from("<IIHB", row)
-        entries = {}
-        if base != 65535:
-            segment, _, size, checksum, _, _ = snapshot.extents[base]
-            address = segment * SEGMENT
-            blob = read_flash(console, address, size)
-            if zlib.crc32(blob) != checksum:
-                raise ValueError("Compiled dictionary checksum failed during export.")
-            count = struct.unpack_from("<H", blob, 4)[0]
-            entries.update(compact_entries(blob, XIP + address, member, count))
+        usage = {struct.unpack_from("<I", row)[0]: {"count": 0, "bytes": 0} for row in snapshot.rows}
         for entry in snapshot.entries.values():
-            if entry.identity != identity:
-                continue
-            outline = "/".join(map(format_stroke, entry.strokes))
-            if entry.operation:
-                entries.pop(outline, None)
-            else:
-                entries[outline] = entry.text.decode("utf-8")
-        return entries
+            usage[entry.identity]["count"] += 1
+            usage[entry.identity]["bytes"] += entry.span
+        return usage
     finally:
         update_command(console, "abort", timeout=5)
+
+
+def export_dictionary(console, name):
+    """Read one logical dictionary, including overrides on a packed base."""
+    answer = update_command(console, "begin backup")
+    try:
+        snapshot, _ = read_snapshot(console, answer)
+        return effective_entries(snapshot, name, lambda at, n: read_flash(console, at, n))
+    finally:
+        update_command(console, "abort", timeout=5)
+
+
+def effective_entries(snapshot, name, read):
+    from build_native_image import XIP
+    from hybrid import compact_entries, format_stroke
+    from jsc4 import require_snapshot_hint
+
+    row = next((row for row in snapshot.rows if row_name(row) == name), None)
+    if row is None:
+        raise ValueError(f"No installed dictionary named {name!r}")
+    identity, _, base, member = struct.unpack_from("<IIHB", row)
+    entries = {}
+    if base != 65535:
+        segment, _, size, checksum, _, _ = snapshot.extents[base]
+        address = segment * SEGMENT
+        blob = read(address, size)
+        if zlib.crc32(blob) != checksum:
+            raise ValueError("Compiled dictionary checksum failed during export.")
+        if row[11]:
+            require_snapshot_hint(blob, XIP + address)
+        count = struct.unpack_from("<H", blob, 4)[0]
+        entries.update(compact_entries(blob, XIP + address, member, count))
+    for entry in snapshot.entries.values():
+        if entry.identity != identity:
+            continue
+        outline = "/".join(map(format_stroke, entry.strokes))
+        if entry.operation:
+            entries.pop(outline, None)
+        else:
+            entries[outline] = entry.text.decode("utf-8")
+    return entries
 
 
 def publish(console, update, progress):
@@ -431,7 +483,8 @@ def abort(console):
         pass
 
 
-def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None):
+def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None,
+             preview_compact=False, expected_compact=None):
     """Preflight, upload and commit one update over USB HID."""
     def command(text, timeout=30):
         return update_command(console, text, timeout)
@@ -446,11 +499,32 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
         mode = "named"
     else:
         mode = "compact" if incoming is None else "import"
+    if (preview_compact or expected_compact is not None) and mode != "compact":
+        raise ValueError("A journal preview only applies to compaction")
     answer = command("begin " + mode)
     try:
         progress("Reading the current dictionary store and planning free space…")
         snapshot, protected = read_snapshot(console, answer, metadata_only=bool(move or rename or delete))
         update = plan(snapshot, protected, incoming, name=name, limit=limit, move=move, rename=rename, delete=delete)
+        if preview_compact or expected_compact is not None:
+            token = None
+            victims = []
+            if update is not None:
+                _, rows, _ = struct.unpack_from("<IHH", update.payload)
+                next_journals = {extent[0] for extent in EXTENT.iter_unpack(update.payload[32 + 96 * rows:])
+                                 if extent[4] == 2}
+                victims = sorted(extent[0] for extent in snapshot.journals if extent[0] not in next_journals)
+                digest = hashlib.sha256(console.serial.encode() + answer.encode() + snapshot.payload)
+                digest.update(struct.pack("<Q", snapshot.highwater))
+                for segment, block in sorted(update.segments.items()):
+                    digest.update(struct.pack("<II", segment, len(block)))
+                    digest.update(block)
+                token = digest.hexdigest()
+            if preview_compact:
+                command("abort")
+                return {"token": token, "reclaimable": victims}
+            if token != expected_compact:
+                raise ValueError("Journal contents or allocation changed. Preview cleanup again.")
         if update is None:
             command("abort")
             if move:

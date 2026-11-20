@@ -1,0 +1,16 @@
+{
+  "commit": "b9eba3fc63b3820faca00bb0834b26b7c3461dd5",
+  "ci": "https://github.com/disarmyouwitha/StenoSquid/actions/runs/44644245484",
+  "artifacts": {
+    "Boardsource-Left-Snapshot-Experimental": {
+      "url": "https://github.com/disarmyouwitha/StenoSquid/actions/runs/44644245484/artifacts/14587853339",
+      "sha256": "de6d5289c47e3430441a8ec0815d7cf8fdd2c5436c9ec41a094ab3c2b4056f9d",
+      "bytes": 981504
+    },
+    "NiceNano-Left-Snapshot-Experimental": {
+      "url": "https://github.com/disarmyouwitha/StenoSquid/actions/runs/44644245484/artifacts/14587883347",
+      "sha256": "4725d274bba60b80d7417a960745bbab1afff95e393b392a19e818e99b6c1496",
+      "bytes": 984064
+    }
+  }
+}

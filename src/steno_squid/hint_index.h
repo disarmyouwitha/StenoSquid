@@ -39,6 +39,8 @@ public:
     count = entries;
   }
 
+  bool Available() const { return records != 0; }
+
   bool Find(const char *translation, uint32_t &stroke) const {
     size_t left = 0, right = count;
     while (left < right) {

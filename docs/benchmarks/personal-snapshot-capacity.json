@@ -1,0 +1,53 @@
+{
+  "pinned-plover": {
+    "entries": 147424,
+    "compact_bytes": 2339624,
+    "contiguous_required": 36,
+    "fill_existing_personal": {
+      "free": 180,
+      "largest_run": 180,
+      "reserve": 3,
+      "staged": true,
+      "staging_segments": 37,
+      "verified": 147424
+    },
+    "fragmented": {
+      "free": 158,
+      "largest_run": 7,
+      "reserve": 3,
+      "staged": false,
+      "reason": "Not enough contiguous staging space"
+    },
+    "full_journal": {
+      "free": 29,
+      "largest_run": 29,
+      "reserve": 3,
+      "staged": false,
+      "reason": "Too little free space after protecting the three-segment reserve"
+    }
+  },
+  "legal-200k": {
+    "entries": 200000,
+    "compact_bytes": 1931932,
+    "contiguous_required": 30,
+    "fill_existing_personal": {
+      "free": 180,
+      "largest_run": 180,
+      "reserve": 3,
+      "staged": true,
+      "staging_segments": 31,
+      "verified": 200000
+    },
+    "fragmented": {
+      "free": 158,
+      "largest_run": 7,
+      "reserve": 3,
+      "staged": false,
+      "reason": "Not enough contiguous staging space"
+    },
+    "full_journal": {
+      "staged": false,
+      "reason": "Saved dictionary entries exhaust the three-segment reserve"
+    }
+  }
+}

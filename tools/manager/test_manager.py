@@ -4,7 +4,8 @@ from contextlib import nullcontext
 import json
 from queue import Queue
 import re
-from threading import Thread
+import time
+from threading import Thread, current_thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import unittest
@@ -20,11 +21,16 @@ class Keyboard:
         self.commands = []
         self.enabled = True
         self.layout = "Windows U.S. (plain text)"
+        self.kind = "named"
+        self.adaptive = False
+        self.name = "Medical"
+        self.command_threads = []
 
     def command(self, command, timeout=30):
         self.commands.append(command)
+        self.command_threads.append(current_thread())
         if command == "native_catalog":
-            return json.dumps([{"id": 8, "name": "Medical", "enabled": self.enabled, "kind": "named"}])
+            return json.dumps([{"id": 8, "name": self.name, "enabled": self.enabled, "kind": self.kind}])
         if command == "user_dictionary_status":
             return '{"format":"SQBCAT02","ready":true,"read_only":false,"tail":64,"auto_checkpoints":2}'
         if command == "get_parameter host_layout":
@@ -41,6 +47,16 @@ class Keyboard:
             return '{"KAT":"ça"}'
         if command == "native_install update manage-capabilities":
             return "OK MANAGE1"
+        if command == "native_install update snapshot-capabilities":
+            return "OK SNAPSHOT2" if self.adaptive else "ERR Unsupported"
+        if command == "native_install update personal-snapshot-capabilities":
+            return "OK PERSONAL1"
+        if command == "native_install update snapshot-clear-capabilities":
+            return "OK CLEAR1" if self.adaptive else "ERR Unsupported"
+        if command == "reset_user_dictionary":
+            return "OK"
+        if command == "native_install update layout-capabilities":
+            return "OK MAP1"
         if command.startswith("native_entry "):
             return "OK"
         raise AssertionError(command)
@@ -83,13 +99,99 @@ class ManagerTest(unittest.TestCase):
             wait.assert_called_once_with("smoke-board")
 
 
+    def test_rename_and_delete_named_and_protect_builtin_rows(self):
+        with patch.object(manager, "transfer", return_value=True) as transfer, \
+                patch.object(manager, "change_snapshot", return_value=True) as change, \
+                patch.object(manager, "wait_ready"):
+            self.run_job("rename", id=8, name="Anatomy")
+            self.assertEqual(transfer.call_args.kwargs, {"rename": ("Medical", "Anatomy")})
+            self.keyboard.kind = "snapshot"
+            self.run_job("delete", id=8, confirm="Medical")
+            change.assert_called_once_with(self.keyboard, "delete", "Medical", stage=True, progress=unittest.mock.ANY)
+            transfer.reset_mock()
+            change.reset_mock()
+            for name, kind in (("Lapwing Base", "base"), ("user_dictionary", "snapshot")):
+                self.keyboard.name, self.keyboard.kind = name, kind
+                with self.assertRaisesRegex(ValueError, "added dictionaries"):
+                    self.run_job("rename", id=8, name="Anatomy")
+                with self.assertRaisesRegex(ValueError, "added dictionaries"):
+                    self.run_job("delete", id=8, confirm=name)
+            transfer.assert_not_called()
+            change.assert_not_called()
+
     def test_measure_counts_saved_edits(self):
-        backup = {"dictionaries": [{"id": 8, "entries": [
-            {"strokes": [1], "operation": "set", "text": "ç"},
-            {"strokes": [2], "operation": "remove"},
-        ]}]}
-        with patch.object(manager, "backup_all", return_value=backup):
-            self.assertEqual(self.run_job("measure")["usage"], {8: {"count": 2, "bytes": 92}})
+        usage = {8: {"count": 2, "bytes": 92}}
+        with patch.object(manager, "overlay_usage", return_value=usage) as inspect:
+            self.assertEqual(self.run_job("measure")["usage"], usage)
+            inspect.assert_called_once_with(self.keyboard)
+
+    def test_clear_personal_requires_confirmation_and_firmware_capability(self):
+        with patch.object(manager, "clear_personal", return_value=True) as clear, patch.object(manager, "wait_ready"):
+            with self.assertRaisesRegex(ValueError, "personal dictionary"):
+                self.run_job("clear_personal", id=8, confirm="CLEAR")
+            self.keyboard.name, self.keyboard.kind = "user_dictionary", "snapshot"
+            with self.assertRaisesRegex(ValueError, "type CLEAR"):
+                self.run_job("clear_personal", id=8, confirm="NO")
+            with self.assertRaisesRegex(RuntimeError, "Update the experimental left firmware"):
+                self.run_job("clear_personal", id=8, confirm="CLEAR")
+            clear.assert_not_called()
+            self.keyboard.adaptive = True
+            self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
+            clear.assert_called_once_with(self.keyboard, 8, unittest.mock.ANY)
+            self.keyboard.kind, self.keyboard.adaptive = "personal", False
+            self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
+            self.assertIn("reset_user_dictionary", self.keyboard.commands)
+
+    def test_optimize_requires_matching_selection_and_preview(self):
+        self.keyboard.adaptive = True
+        self.keyboard.kind = "snapshot"
+        self.assertTrue(self.run_job("refresh")["state"]["personal_conversion"])
+        with patch.object(manager, "change_snapshot") as change, patch.object(manager, "wait_ready") as wait:
+            with self.assertRaisesRegex(ValueError, "Preview"):
+                self.run_job("apply_optimize", id=8, operation="consolidate")
+            with self.assertRaisesRegex(ValueError, "eligible"):
+                self.run_job("preview_optimize", id=8, operation="personal")
+            with self.assertRaisesRegex(ValueError, "factory dictionaries"):
+                self.run_job("reset", id=8, outline="KAT")
+            with self.assertRaisesRegex(ValueError, "eligible"):
+                self.run_job("preview_optimize", id=8, operation="replace", source='{"KAT":"new cat"}')
+            change.assert_not_called()
+            plan = {"id": 8, "operation": "consolidate", "token": "a" * 64}
+            change.return_value = plan
+            self.assertEqual(self.run_job("preview_optimize", id=8, operation="consolidate")["optimization_plan"], plan)
+            self.assertTrue(change.call_args.kwargs["preview"])
+            self.assertFalse(change.call_args.kwargs["stage"])
+            wait.assert_not_called()
+            change.return_value = True
+            reply = self.run_job("apply_optimize", id=8, operation="consolidate", token=plan["token"])
+            self.assertEqual(reply["optimized"], "Medical")
+            self.assertEqual(change.call_args.kwargs["target_id"], 8)
+            self.assertEqual(change.call_args.kwargs["expected"], plan["token"])
+            wait.assert_called_once_with("smoke-board")
+
+    def test_import_explains_empty_and_invalid_files(self):
+        self.keyboard.kind = "snapshot"
+        with patch.object(manager, "named_import") as named, patch.object(manager, "transfer") as transfer:
+            for action, fields in (
+                ("preview_import", {"name": "Abby"}),
+                ("import", {}),
+            ):
+                with self.assertRaisesRegex(ValueError, "zero entries"):
+                    self.run_job(action, source="{}\n", **fields)
+            with self.assertRaisesRegex(ValueError, "not valid JSON"):
+                self.run_job("preview_import", name="Abby", source="{")
+            named.assert_not_called()
+            transfer.assert_not_called()
+        with patch.object(manager, "named_import", return_value={}) as named:
+            self.run_job("preview_import", name="Medical", source='{"KAT":"cat"}')
+            self.assertEqual(named.call_args.kwargs["preference"], "auto")
+
+    def test_complete_backup_has_separate_action(self):
+        with patch.object(manager, "backup_all", return_value={"format": "stenosquid-backup-2"}) as backup:
+            self.assertEqual(self.run_job("backup")["filename"], "stenosquid-backup.json")
+            backup.assert_called_with(self.keyboard, complete=False)
+            self.assertEqual(self.run_job("backup", complete=True)["filename"], "stenosquid-rescue.json")
+            backup.assert_called_with(self.keyboard, complete=True)
 
     def test_local_http_routes_require_session_and_origin(self):
         started = Queue()
@@ -115,7 +217,19 @@ class ManagerTest(unittest.TestCase):
                 self.assertEqual(wrong_origin.exception.code, 403)
                 with urlopen(Request(url + "/api/job", data=task, headers={**headers, "Origin": url}), timeout=2) as response:
                     self.assertEqual(response.status, 202)
-                    self.assertIn("id", json.load(response))
+                    identity = json.load(response)["id"]
+                headers["Origin"] = url
+                deadline = time.monotonic() + 2
+                while True:
+                    with urlopen(Request(url + "/api/job", headers=headers), timeout=2) as response:
+                        job = json.load(response)
+                    self.assertEqual(job["id"], identity)
+                    if job["status"] != "running" or time.monotonic() >= deadline:
+                        break
+                    time.sleep(0.01)
+                self.assertEqual(job["status"], "done")
+                self.assertTrue(self.keyboard.command_threads)
+                self.assertEqual(set(self.keyboard.command_threads), {server_thread})
             finally:
                 server.shutdown()
                 server_thread.join(timeout=2)

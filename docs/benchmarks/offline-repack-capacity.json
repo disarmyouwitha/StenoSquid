@@ -1,0 +1,59 @@
+{
+  "plover_sha256": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+  "full_147424_entry_personal_journal": {
+    "format": "stenosquid-offline-repack-1",
+    "source_bundle_sha256": "b7925cb2ab26ea90e7b60ba51104f6799637fcb188f32ac55ead7964c976d0aa",
+    "target_image_sha256": "03edf155867704d759e1fbc9e4f69f68c4cca3e38b3963a2c274483b02da16f6",
+    "host_layout": "Mac U.S.",
+    "maintenance_reserve": 3,
+    "source_layout": {
+      "used_segments": 226,
+      "free_segments": 29,
+      "largest_free_run": 29,
+      "free_after_reserve": 26
+    },
+    "target_layout": {
+      "used_segments": 111,
+      "free_segments": 144,
+      "largest_free_run": 144,
+      "free_after_reserve": 141
+    },
+    "saved_segments": 115,
+    "converted": [
+      "user_dictionary"
+    ],
+    "refused": {},
+    "verification": {
+      "per_dictionary_entries": 438827,
+      "active_lookup_winners": 243093,
+      "retained_overlay_records": 0
+    }
+  },
+  "existing_200000_entry_personal_snapshot": {
+    "format": "stenosquid-offline-repack-1",
+    "source_bundle_sha256": "e0129a494326114d30d2fb51ed8c00fe1ca1c5800f476f9f38dcd7cea9df2b11",
+    "target_image_sha256": "54df7b15cc70761c6d4fb1f7c324dc89a92ee4cdcb7243ce50e104417f45fd67",
+    "host_layout": "Mac U.S.",
+    "maintenance_reserve": 3,
+    "source_layout": {
+      "used_segments": 105,
+      "free_segments": 150,
+      "largest_free_run": 150,
+      "free_after_reserve": 147
+    },
+    "target_layout": {
+      "used_segments": 105,
+      "free_segments": 150,
+      "largest_free_run": 150,
+      "free_after_reserve": 147
+    },
+    "saved_segments": 0,
+    "converted": [],
+    "refused": {},
+    "verification": {
+      "per_dictionary_entries": 491403,
+      "active_lookup_winners": 330930,
+      "retained_overlay_records": 0
+    }
+  }
+}

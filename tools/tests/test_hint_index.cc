@@ -32,6 +32,7 @@ int main(int argc, char **argv) {
     const uintptr_t text = image + word(data.data() + definition + 8) - base;
     StenoSquidHintIndex hints(image, data.size(), index, dictionaries, text,
                              word(data.data() + 8), word, byte);
+    assert(hints.Available());
     std::string query;
     while (std::getline(std::cin, query) && query != "--NEXT--") {
       const size_t tab = query.find('\t');
@@ -47,10 +48,17 @@ int main(int argc, char **argv) {
     }
     uint32_t mask;
     StenoSquidHintIndex legacy(image, 48, index, dictionaries, image, 4, word, byte);
-    assert(!legacy.Find("hello", mask));
+    assert(!legacy.Available() && !legacy.Find("hello", mask));
     StenoSquidHintIndex badText(image, data.size(), index, dictionaries,
                               image + data.size(), 4, word, byte);
     assert(!badText.Find("hello", mask));
   }
-  printf("PASS: %zu indexed hint lookups; legacy and invalid images rejected\n", checks);
+  auto extended = data;
+  extended.resize(data.size() + 20, 0);
+  const auto extended_image = reinterpret_cast<uintptr_t>(extended.data());
+  const auto text = extended_image + word(extended.data() + 12) - base;
+  StenoSquidHintIndex extra(extended_image, extended.size(), 0, dictionaries, text,
+                            word(extended.data() + 8), word, byte);
+  assert(!extra.Available());
+  printf("PASS: %zu SHI1 hint lookups; invalid bounds and trailing data rejected\n", checks);
 }

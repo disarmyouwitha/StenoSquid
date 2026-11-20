@@ -12,6 +12,7 @@
 #include "../../tools/storage/native_provisioner.h"
 #include "../../tools/storage/native_stage.h"
 #include "../../tools/storage/native_entry_stager.h"
+#include "../../tools/storage/native_layout_map.h"
 #include "../../tools/storage/reverse_cursor.h"
 #include "dictionary/compact_map_dictionary.h"
 #include "dictionary/dictionary_definition.h"
@@ -113,6 +114,7 @@ struct FlashDevice {
 NativeStore<FlashDevice> store(flash_device);
 NativeValidator<FlashDevice> validator(flash_device,store.catalog);
 bool healthy=false,loaded=false,exporting=false,maintenance_hold=false;
+bool snapshot_format_rejected=false;
 uint32_t maintenance_steps=0,warm_resumes=0,full_opens=0;
 uint32_t maintenance_max_slice_us=0;
 using Maintenance = NativeStore<FlashDevice>::Work;
@@ -138,7 +140,7 @@ NativeEngineBackend<FlashDevice> backend(store,base_provider);
 class Cell final : public StenoDictionary {
 public:
     uint32_t identity=0,base_offset=0,base_bytes=0,base_crc=0;
-    bool enabled=false;
+    bool enabled=false, user_snapshot=false;
     uint8_t base_member = 0;
     char name[45]{};
     StenoCompactMapDictionaryDefinition definition{};
@@ -176,7 +178,8 @@ public:
         if (bytes < pointers || xip_load_word(collection) != STENO_MAP_DICTIONARY_COLLECTION_MAGIC)
             return false;
         const uint32_t count = xip_load_word(collection + offsetof(StenoDictionaryCollection, dictionaryCount));
-        if (count > 64 || member >= count || count > (bytes - pointers) / sizeof(uint32_t))
+        if (count > 64 || member >= count || count > (bytes - pointers) / sizeof(uint32_t) ||
+            (user_snapshot && count != 1))
             return false;
         const uintptr_t map = xip_load_word(collection + pointers + member * sizeof(uint32_t));
         if(map%4 || !in(map,sizeof(definition)))return false;
@@ -192,17 +195,18 @@ public:
             if(!in(data,1) || hash%4 || mask<127 || (mask&(mask+1)) || mask>0x7fffff || !in(hash,(uint64_t(mask)+1+127)/128*sizeof(StenoCompactHashMapEntryBlock)))return false;
         }
         if(!in(reinterpret_cast<uintptr_t>(definition.textBlock),1))return false;
-        definition.strokes=strokes;definition.name=name;
-        base=new (definition) StenoCompactMapDictionary(definition);
-        if(!base)return false;
         const uint32_t text_bytes=xip_load_word(collection+offsetof(StenoDictionaryCollection,textBlock));
         hint=new (hint_storage) StenoSquidHintIndex(address,bytes,member,count,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
-        return true;
+        if (user_snapshot && !hint->Available()) return false;
+        definition.strokes=strokes;definition.name=name;
+        base=new (definition) StenoCompactMapDictionary(definition);
+        return base!=nullptr;
     }
     uint32_t GroupEntries(const StenoCompactMapDictionaryStrokesDefinition &group) const {
         const auto last = reinterpret_cast<uintptr_t>(group.offsets) +
             (group.hashMapMask / 128) * sizeof(StenoCompactHashMapEntryBlock);
-        uint32_t count = xip_load_word(reinterpret_cast<const void *>(last + 16));
+        // Compact hash blocks store the preceding entry's zero-based index.
+        uint32_t count = xip_load_word(reinterpret_cast<const void *>(last + 16)) + 1u;
         for (unsigned offset = 0; offset < 16; offset += 4)
             count += __builtin_popcount(xip_load_word(reinterpret_cast<const void *>(last + offset)));
         return count;
@@ -345,7 +349,8 @@ void StepWork(k_work *) {
     FinishMaintenance();
 }
 LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t count,const char *text,size_t bytes) {
-    if(!healthy || !count || count>16 || bytes>2047)return LiveResult::Invalid;
+    if(!healthy || !count || count>16 || bytes>2047 ||
+       (cell.user_snapshot && operation==uint8_t(Operation::Reset)))return LiveResult::Invalid;
     if(steno_squid_native_input_pending())return LiveResult::Busy;
     const NativeInputPause input_pause;
     uint32_t strokes[16];for(size_t i=0;i<count;++i)strokes[i]=outline[i].GetKeyState();
@@ -370,20 +375,43 @@ struct ExportGuard {
 // Iteration scratch stays off the HID stack.
 IndexSink<FlashDevice> iter_f(flash_device),iter_r(flash_device);
 NativeMergeOps<FlashDevice> iter_ops(flash_device,export_view,iter_f,iter_r);
-bool Next(MergeRecord &record) {
+bool SeekOverlay(uint32_t identity) {
+    uint32_t first = 0, last = export_view.forward_count;
+    while (first < last) {
+        const uint32_t mid = first + (last - first) / 2;
+        MergeRecord record;
+        uint32_t address;
+        if (!iter_ops.ReadIndex(false, mid, address) || !iter_ops.Record(address, record)) {
+            base_provider.Fault(); return false;
+        }
+        if (record.identity < identity) first = mid + 1;
+        else last = mid;
+    }
+    export_cursor.indexed = first;
+    return true;
+}
+bool Next(MergeRecord &record, uint32_t identity = 0) {
     for(;;) {
         uint32_t address;
-        if(export_cursor.indexed<export_view.forward_count) {
+        const bool indexed = export_cursor.indexed < export_view.forward_count;
+        if(indexed) {
             uint8_t word[4];if(!flash_device.Read(export_view.forward_address+export_cursor.indexed++*4,word,4)){base_provider.Fault();return false;}
             address=Word(word);
         } else if(export_cursor.recent<export_view.tail.count)address=export_view.tail.addresses[export_cursor.recent++];
         else return false;
-        if(!iter_ops.Record(address,record,true)){base_provider.Fault();return false;}
+        if(!iter_ops.Record(address,record)){base_provider.Fault();return false;}
+        if (identity && record.identity != identity) {
+            if (indexed && record.identity > identity) export_cursor.indexed = export_view.forward_count;
+            continue;
+        }
         if(!iter_ops.Active(record.identity))continue;
         RecordView newest;
         const auto result=store.live.FindSnapshot(export_view,record.identity,record.strokes,record.count,newest);
         if(result!=LiveResult::Ok && result!=LiveResult::Missing){base_provider.Fault();return false;}
-        if(result==LiveResult::Ok && newest.operation==Operation::Set && newest.text_address==record.text_address)return true;
+        if(result==LiveResult::Ok && newest.operation==Operation::Set && newest.text_address==record.text_address) {
+            if (!iter_ops.Record(address, record, true)) { base_provider.Fault(); return false; }
+            return true;
+        }
     }
 }
 void Cell::PrintDictionary(PrintDictionaryContext &context)const {
@@ -431,26 +459,33 @@ void Cell::PrintDictionary(PrintDictionaryContext &context)const {
 }
 void Cell::PrintEntriesWithPrefix(PrintPrefixContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
-    while(!context.IsDone() && Next(record)) {
-        if(record.identity!=identity || record.text_bytes<=context.prefixLength)continue;
+    if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
+    if (!SeekOverlay(identity)) return;
+    while(!context.IsDone() && !steno_squid_javelin_response_cancelled() && Next(record,identity)) {
+        if(record.text_bytes<=context.prefixLength)continue;
         if(!flash_device.Read(record.text_address,reinterpret_cast<uint8_t *>(export_text),record.text_bytes)){base_provider.Fault();return;}
         export_text[record.text_bytes]=0;
         if(std::strncmp(export_text,context.prefix,context.prefixLength))continue;
         StenoStroke outline[16];for(unsigned i=0;i<record.count;++i)outline[i]=StenoStroke(record.strokes[i]);
+        if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         context.Add(outline,record.count,export_text,this);
     }
 }
 void Cell::PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
-    while(!context.IsDone() && Next(record)) {
-        if(record.identity!=identity || record.count<=context.length)continue;
+    if (!context.length || (kUserSnapshotsEnabled && user_snapshot && !enabled)) return;
+    if (!SeekOverlay(identity)) return;
+    while(!context.IsDone() && !steno_squid_javelin_response_cancelled() && Next(record,identity)) {
+        if(record.count<=context.length)continue;
         StenoStroke outline[16];for(unsigned i=0;i<record.count;++i)outline[i]=StenoStroke(record.strokes[i]);
         if(!StenoStroke::HasPartialOutline(outline,context.strokes,context.length,record.count-context.length))continue;
         if(!flash_device.Read(record.text_address,reinterpret_cast<uint8_t *>(export_text),record.text_bytes)){base_provider.Fault();return;}
+        if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         export_text[record.text_bytes]=0;context.Add(outline,record.count,export_text,this);
     }
 }
 void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
+    if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
     ExportGuard guard;if(!guard.ok || lookup.definitionLength>2047)return;
     auto matches=[&](uint32_t address) {
         MergeRecord record;if(!iter_ops.Record(address,record))return -1;
@@ -499,12 +534,11 @@ void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
     }
     uint32_t mask;
     if(healthy && hint && lookup.ignoreStrokeThreshold>1 && hint->Find(lookup.definition,mask)) {
-        RecordView overlay;const auto state=store.live.FindSnapshot(export_view,identity,&mask,1,overlay);
-        if(state!=LiveResult::Missing && state!=LiveResult::Ok){base_provider.Fault();return;}
-        if(state==LiveResult::Missing || overlay.operation==Operation::Reset) {
-            StenoStroke stroke(mask);
-            if(!parent || parent->GetDictionaryForOutline(&stroke,1)==this)lookup.AddResult(&stroke,1,this);
-        }
+        const StenoStroke stroke(mask);
+        if (NativeBaselineVisible(store.live, export_view, identity, &mask, 1, enabled,
+                [&] { return !parent || parent->GetDictionaryForOutline(&stroke,1)==this; },
+                [] { base_provider.Fault(); }))
+            lookup.AddResult(&stroke,1,this);
     }
 }
 void ReplyEdit(LiveResult result) {
@@ -541,7 +575,8 @@ void native_catalog(void *, const char *) {
         Console::Printf("%s{\"id\":%u,\"name\":\"%s\",\"enabled\":%s,\"kind\":\"%s\","
                         "\"base_entries\":%u,\"image_bytes\":%u,\"image_crc\":%u,\"source_sha256\":\"%s\"}",
                         i ? "," : "", cell.identity, cell.name, cell.enabled ? "true" : "false",
-                        cell.base ? "base" : !std::strcmp(cell.name, "user_dictionary") ? "personal" : "named",
+                        cell.user_snapshot ? "snapshot" : cell.base ? "base" :
+                            !std::strcmp(cell.name, "user_dictionary") ? "personal" : "named",
                         base_entries, cell.base_bytes, cell.base_crc, digest);
     }
     Console::Printf("]\n\n");
@@ -686,7 +721,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         NoteIdleMaintenance();
         ++warm_resumes;return true;
     }
-    healthy=false;++full_opens;
+    healthy=false;snapshot_format_rejected=false;++full_opens;
     LoadNativeTrust();
     const auto result=store.Open([](const CatalogRoot &root){
         const uint32_t fingerprint=BaseFingerprint(root);
@@ -701,12 +736,17 @@ extern "C" bool steno_squid_native_flash_open(void) {
         uint8_t row[96];if(!store.Row(i,row))return false;
         auto &cell=cells[i];const uint32_t id=Word(row);
         if(loaded && id!=cell.identity)return false;
-        cell.identity=id;cell.enabled=Word(row+4);std::memcpy(cell.name,row+16,row[12]);cell.name[row[12]]=0;
+        cell.identity=id;cell.user_snapshot=row[11]==kUserSnapshot;cell.enabled=Word(row+4);std::memcpy(cell.name,row+16,row[12]);cell.name[row[12]]=0;
         const uint16_t base=uint16_t(row[8]) | uint16_t(row[9])<<8;
         if(base!=kNoExtent) {
             uint8_t extent[24];
-            if(!flash_device.Read(store.selected.root.address+32+count*96+base*24,extent,24) ||
-               !cell.LoadBase((uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes,Word(extent+4),Word(extent+8),row[10]))return false;
+            if(!flash_device.Read(store.selected.root.address+32+count*96+base*24,extent,24))return false;
+            if (!cell.LoadBase((uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes,
+                               Word(extent+4),Word(extent+8),row[10])) {
+                snapshot_format_rejected=cell.user_snapshot;
+                store.opened=false;
+                return false;
+            }
         } else if(cell.base)return false;
         cell.Bind();
     }
@@ -798,6 +838,7 @@ bool Number(const char *&p,uint32_t &out) {
 bool End(const char *p){return !*p || (*p=='\n' && !p[1]);}
 bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
     Cell probe;
+    probe.user_snapshot = row[11] == kUserSnapshot;
     std::memcpy(probe.name, row + 16, row[12]);
     const uint32_t start = uint16_t(extent[0]) | uint16_t(extent[1]) << 8;
     if (!probe.LoadBase(start * kSegmentBytes, Word(extent + 4), Word(extent + 8), row[10]))
@@ -811,6 +852,36 @@ bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
     }
     return true;
 }
+const char *LayoutMap(char *reply, size_t bytes) {
+    if (lf_suspended || !healthy || !store.opened || exporting || transfer.Active() || staged.Active() ||
+        store.work != NativeStore<FlashDevice>::Work::None || steno_squid_native_input_pending())
+        return "ERR Layout scan deferred until the flash and input are idle";
+    const auto deadline = k_uptime_get() + 25;
+    const auto stop = [&] { return steno_squid_native_input_pending() || k_uptime_get() >= deadline; };
+    const bool writable = store.catalog.CanWrite(store.selected.root);
+    const char access = !writable ? 'r' : store.catalog.DestinationPinned(store.selected) ? 'p' : 'w';
+    const int prefix = snprintk(reply, bytes, "OK MAP1 %u %c -- ", unsigned(store.selected.slot), access);
+    if (prefix < 3 || size_t(prefix) + 514 > bytes) return "ERR Layout reply too small";
+    for (unsigned slot = 0; slot < 2; ++slot) {
+        char *map = reply + prefix + slot * 257;
+        const auto root = store.catalog.TrustedRoot(slot);
+        char state = 'e';
+        if (root.generation) {
+            state = ReadLayout(flash_device, root, map, stop) ? 'v' : '?';
+            if (stop()) return "ERR Layout scan deferred until the flash and input are idle";
+        } else if (!writable) {
+            state = '?';
+        }
+        if (state != 'v') {
+            std::memset(map, state == 'e' ? '.' : '?', 256);
+            map[0] = map[1] = 'c';
+            map[255] = 'x';
+        }
+        reply[prefix - 3 + slot] = state;
+        map[256] = slot == 0 ? ' ' : 0;
+    }
+    return nullptr;
+}
 const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "capabilities\n")) return "OK BULK1";
     if (!std::strcmp(command, "named-capabilities\n")) {
@@ -818,22 +889,55 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return nullptr;
     }
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-capabilities\n"))
+        return "OK SNAPSHOT2";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "personal-snapshot-capabilities\n"))
+        return "OK PERSONAL1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "snapshot-clear-capabilities\n"))
+        return "OK CLEAR1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "recovery-capabilities\n"))
+        return "OK RECOVERY1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
+    uint32_t snapshot_id = 0;
+    const bool metadata_read = !std::strcmp(command, "begin metadata\n");
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
+    else if (kUserSnapshotsEnabled && !std::strcmp(command, "begin snapshot-named\n"))
+        kind = NativeUpdateKind::SnapshotNamed;
+    else if (kUserSnapshotsEnabled && !std::strncmp(command, "begin snapshot-", 15)) {
+        const char *p = command + 15;
+        if (!std::strncmp(p, "consolidate ", 12)) {
+            p += 12;
+            kind = NativeUpdateKind::SnapshotConsolidate;
+        } else if (!std::strncmp(p, "delete ", 7)) {
+            p += 7;
+            kind = NativeUpdateKind::SnapshotDelete;
+        } else if (!std::strncmp(p, "personal ", 9)) {
+            p += 9;
+            kind = NativeUpdateKind::SnapshotPersonal;
+        } else if (!std::strncmp(p, "clear ", 6)) {
+            p += 6;
+            kind = NativeUpdateKind::SnapshotClear;
+        } else return "ERR Invalid snapshot action";
+        if (!Number(p, snapshot_id) || !snapshot_id || !End(p))
+            return "ERR Invalid snapshot dictionary ID";
+    }
     else if (!std::strcmp(command, "begin reorder\n")) kind = NativeUpdateKind::Reorder;
     else if (!std::strcmp(command, "begin rename\n")) kind = NativeUpdateKind::Rename;
     else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
-    else if (!std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
+    else if (metadata_read || !std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
     else if (!std::strcmp(command, "begin base\n")) kind = NativeUpdateKind::Base;
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
-        if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries))
+        if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id))
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();
-        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base)
+        stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed)
                          ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
+        if (kUserSnapshotsEnabled && !metadata_read) stage_mode = STENO_SQUID_MODE_BUSY;
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();
         int length = snprintk(reply, bytes, "OK %u %u %u ", root.address, root.bytes, root.crc);
@@ -870,8 +974,16 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strncmp(command, "erase ", 6)) {
         const char *p = command + 6;
         uint32_t segment;
-        if (Number(p, segment) && End(p))
+        if (Number(p, segment) && End(p)) {
+            if (stage_mode == STENO_SQUID_MODE_BUSY && staged.Kind() != NativeUpdateKind::Backup) {
+                const auto operation = staged.Kind();
+                stage_mode = operation == NativeUpdateKind::Personal || operation == NativeUpdateKind::Named ||
+                             operation == NativeUpdateKind::Base || operation == NativeUpdateKind::SnapshotNamed
+                    ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
+                steno_squid_upload_status(stage_mode, 60000);
+            }
             result = staged.Erase(segment) ? "OK" : "ERR Native staging erase refused";
+        }
     } else if (!std::strncmp(command, "write ", 6)) {
         const char *p = command + 6;
         uint32_t address;
@@ -908,16 +1020,39 @@ const char *Update(const char *command, char *reply, size_t bytes) {
 const char *Install(const char *command,char *reply,size_t bytes) {
     if (!std::strncmp(command, "update ", 7)) return Update(command + 7, reply, bytes);
     if(!std::strcmp(command,"status\n")) {
-        snprintk(reply,bytes,"NATIVE2 %s %u",healthy?"READY":transfer.Active()?"INSTALL":"UNPROVISIONED",unsigned(store.selected.root.generation));return nullptr;
+        const bool installing=transfer.Active();
+        const char *detail = snapshot_format_rejected && !installing ?
+            " Incompatible compact snapshot. Reprovision a disposable pool with --install --confirm-erase." : "";
+        snprintk(reply,bytes,"NATIVE2 %s %u%s",healthy?"READY":installing?"INSTALL":"UNPROVISIONED",
+                 unsigned(store.selected.root.generation),detail);
+        return nullptr;
     }
-    if(!std::strncmp(command,"begin CLEAR ",12)) {
-        const char *p=command+12;uint32_t crc;
-        if(!Number(p,crc) || !End(p))return "ERR Invalid manifest CRC";
+    if (kUserSnapshotsEnabled && !std::strncmp(command, "match RECOVERY ", 15)) {
+        const char *p = command + 15;
+        uint32_t expected, actual;
+        if (!Number(p, expected) || !End(p)) return "ERR Invalid recovery CRC";
+        if (!healthy || lf_suspended || transfer.Active() || staged.Active() || exporting ||
+            store.work != NativeStore<FlashDevice>::Work::None)
+            return "ERR Recovery verification unavailable";
+        const NativeInputPause pause(true);
+        const bool mapped = flash_device.mapped;
+        flash_device.mapped = false;
+        const bool match = flash_device.Checksum(0, Limit, actual) && actual == expected;
+        flash_device.mapped = mapped;
+        return match ? "OK MATCH" : "ERR Recovery contents differ";
+    }
+    const bool recovering = kUserSnapshotsEnabled && !std::strncmp(command,"begin RECOVERY ",15);
+    if (recovering || !std::strncmp(command,"begin CLEAR ",12)) {
+        const char *p=command+(recovering ? 15 : 12);
+        uint32_t crc, final_crc = 0;
+        if (!Number(p, crc) || (recovering && (*p++ != ' ' || !Number(p, final_crc))) || !End(p))
+            return "ERR Invalid manifest CRC";
         if(transfer.Active() || staged.Active() || exporting || store.work!=NativeStore<FlashDevice>::Work::None)return "ERR Native store busy";
         if(lf_suspended || !lf_provisioning_ready || !squid_qspi_reactivate())return "ERR Flash unavailable";
         if(!ForgetBaseTrust())return "ERR Cannot invalidate native base trust; no flash changed";
         healthy=store.opened=false;flash_device.mapped=false;flash_device.Invalidate();store.catalog.Invalidate();atomic_clear(&lf_mapped_ready);
-        if(transfer.Begin(crc)!=ProvisionResult::Ok)return "ERR Native installer busy";
+        const auto result = recovering ? transfer.BeginRecovery(crc, final_crc) : transfer.Begin(crc);
+        if(result!=ProvisionResult::Ok)return "ERR Native installer busy";
         dictionary_flash_read_session(true);TouchInstall();
         steno_squid_upload_status(STENO_SQUID_MODE_INSTALL,30000);return "OK";
     }
@@ -951,7 +1086,14 @@ const char *Install(const char *command,char *reply,size_t bytes) {
 }
 }
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes) {
-    if(!dictionary_flash_acquire())k_mutex_lock(&flash_lock,K_FOREVER);
+    if (kUserSnapshotsEnabled && !std::strcmp(command, "update layout-map\n")) {
+        if (k_mutex_lock(&flash_lock, K_NO_WAIT)) {
+            snprintk(reply, bytes, "ERR Layout scan deferred until the flash and input are idle");
+            return;
+        }
+    } else if (!dictionary_flash_acquire()) {
+        k_mutex_lock(&flash_lock, K_FOREVER);
+    }
     const char *result=Install(command,reply,bytes);if(result)snprintk(reply,bytes,"%s",result);
     k_mutex_unlock(&flash_lock);
 }

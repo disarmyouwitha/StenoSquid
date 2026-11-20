@@ -1,0 +1,9 @@
+{
+  "KAT": "sqcheck cat",
+  "KAT/TA": "sqcheck revised",
+  "TA/KAT": "sqcheck inside",
+  "KAT/KAT/TA": "sqcheck repeated",
+  "KAT/KAT": "sqcheck added",
+  "TEFT": "sqcheck level",
+  "STKPWHR": "sqcheck preserved"
+}

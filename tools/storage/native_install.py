@@ -11,6 +11,7 @@ import hashlib
 import json
 from itertools import chain
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import time
@@ -30,6 +31,13 @@ def check_image(image, manifest):
         or hashlib.sha256(image).hexdigest() != manifest["sha256"]
     ):
         raise ValueError("Native image checksum differs from its manifest")
+    for root in (0, SEGMENT):
+        payload_bytes = struct.unpack_from("<I", image, root + 16)[0]
+        rows = struct.unpack_from("<H", image, root + 36)[0]
+        if image[root:root + 8] != b"SQBCAT02" or rows > 64 or 32 + rows * 96 > payload_bytes:
+            raise ValueError("Invalid Native image catalog")
+        if any(image[root + 64 + index * 96 + 11] for index in range(rows)):
+            raise ValueError("Experimental snapshot images cannot be provisioned over USB.")
 
 
 def command(console, text, timeout=30):
@@ -56,7 +64,7 @@ def provision(console, image, manifest, progress=print):
         raise
 
 
-def write_pool(console, image, progress):
+def write_pool(console, image, progress, *, finish=True):
     for segment in range(255):
         command(console, f"erase {segment}")
         if segment % 16 == 0:
@@ -73,8 +81,9 @@ def write_pool(console, image, progress):
         sent += len(data)
         if sent % (128 * 1024) == 0:
             progress(f"Writing native image: {sent // 1024} KiB")
-    progress("Verifying the complete shared pool; the left will reboot afterward")
-    command(console, "finish", timeout=180)
+    if finish:
+        progress("Verifying the complete shared pool; the left will reboot afterward")
+        command(console, "finish", timeout=180)
 
 
 def main():
