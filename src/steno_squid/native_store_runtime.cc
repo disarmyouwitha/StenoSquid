@@ -205,7 +205,8 @@ public:
     uint32_t GroupEntries(const StenoCompactMapDictionaryStrokesDefinition &group) const {
         const auto last = reinterpret_cast<uintptr_t>(group.offsets) +
             (group.hashMapMask / 128) * sizeof(StenoCompactHashMapEntryBlock);
-        uint32_t count = xip_load_word(reinterpret_cast<const void *>(last + 16));
+        // Compact hash blocks store the preceding entry's zero-based index.
+        uint32_t count = xip_load_word(reinterpret_cast<const void *>(last + 16)) + 1u;
         for (unsigned offset = 0; offset < 16; offset += 4)
             count += __builtin_popcount(xip_load_word(reinterpret_cast<const void *>(last + offset)));
         return count;
