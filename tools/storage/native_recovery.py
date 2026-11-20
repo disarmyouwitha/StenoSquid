@@ -15,8 +15,8 @@ import tempfile
 import zlib
 
 from build_native_image import LIMIT, SEGMENT, SOURCES, XIP, catalog_header
-from compact_search_index import validate_search_index
 from hybrid import compact_entries
+from jsc4 import reader, require_snapshot_hint
 from native_update import EXTENT, Snapshot, row_name, validate_name
 
 FORMAT = "stenosquid-backup-2"
@@ -118,9 +118,8 @@ def validate_rows(snapshot, image):
             raise ValueError("Invalid compact image member count")
         counts[base] = count
         if marker:
-            validate_search_index(blob, XIP + address)
+            require_snapshot_hint(blob, XIP + address)
         # Walk the compiled data using the same host reader as export.
-        from jsc4 import reader
         lookup = reader(blob, XIP + address, member, count)
         entries = dict(compact_entries(blob, XIP + address, member, count))
         if any(lookup(outline) != text for outline, text in entries.items()):

@@ -1,6 +1,5 @@
 #include "native_store_fixture.h"
 #include "native_provisioner.h"
-#include "compact_search.h"
 #include "hint_index.h"
 #include <fstream>
 #include <iostream>
@@ -52,25 +51,20 @@ void TestLookups(RepackDevice &device) {
         const auto pointer = reinterpret_cast<uintptr_t>(blob);
         const uintptr_t text = pointer + Word(blob + 12) - Xip - address;
         const uint32_t bytes = Word(extent + 4), text_bytes = Word(blob + 8);
-        return std::pair{StenoSquidCompactSearch(pointer, bytes, text, text_bytes, ReadWord, ReadByte),
-                         StenoSquidHintIndex(pointer, bytes, 0, 1, text, text_bytes, ReadWord, ReadByte)};
+        return StenoSquidHintIndex(pointer, bytes, 0, 1, text, text_bytes, ReadWord, ReadByte);
     };
-    const auto [lean, hint] = snapshot(row);
+    const auto personal = snapshot(row);
     uint32_t stroke;
-    assert(!lean.Available() && hint.Find("personal cat", stroke) && stroke == 524552);
+    assert(personal.Available() && personal.Find("personal cat", stroke) && stroke == 524552);
+    assert(!personal.Find("personal catalog", stroke));
 
     bool found = false;
     for (unsigned i = 0; i < count; ++i) {
         assert(store.Row(i, row));
         if (std::memcmp(row + 16, "Keep Compact", 13)) continue;
-        const auto [legacy, ignored] = snapshot(row);
-        assert(legacy.Available());
-        StenoSquidCompactSearch::Range range;
-        StenoSquidCompactSearch::Entry entry;
-        assert(legacy.TextRange("stay compact", 12, false, range) && range.end - range.begin == 1);
-        assert(legacy.ReadTextEntry(range.begin, entry) && entry.length == 1 && entry.strokes[0] == 8);
-        assert(legacy.TextRange("stay ", 5, true, range) && range.end - range.begin == 2);
-        assert(legacy.OutlineRange(8, range) && range.end - range.begin == 1);
+        const auto relocated = snapshot(row);
+        assert(relocated.Available() && relocated.Find("stay compact", stroke) && stroke == 8);
+        assert(!relocated.Find("stay multistroke", stroke));
         found = true;
         break;
     }

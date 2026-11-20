@@ -12,12 +12,11 @@ from test_native_stage import ROOT, fixture
 from test_native_recovery import Console
 from test_native_personal_snapshot import opened, publish_image
 from build_native_image import SEGMENT, SOURCES, build
-from compact_search_index import add_search_index
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import digest
 from native_repack import repack
-from native_snapshot import CompactImage, compile_snapshot, plan_named_snapshot
+from native_snapshot import compile_snapshot, plan_named_snapshot
 from native_update import backup_all, row_name
 
 
@@ -56,9 +55,8 @@ def main():
         assert complete["format"] == "stenosquid-backup-2"
         # A packed snapshot appears after the large source journal/indexes, so
         # rebuilding must move it and rebase its absolute fields.
-        existing = compile_snapshot("Keep Compact", {(8,): b"stay compact", (8, 16): b"stay indexed"})
-        indexed = CompactImage(add_search_index(existing.data), existing.pointers)
-        update = plan_named_snapshot(old, layout(old), "Keep Compact", indexed)
+        existing = compile_snapshot("Keep Compact", {(8,): b"stay compact", (8, 16): b"stay multistroke"})
+        update = plan_named_snapshot(old, layout(old), "Keep Compact", existing)
         data = publish_image(data, update, 3)
         old = opened(data)
         complete = backup_all(Console(data, old.payload), complete=True)

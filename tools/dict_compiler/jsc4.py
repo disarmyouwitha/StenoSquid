@@ -4,6 +4,20 @@ import zlib
 from compile_dict import parse_outline
 
 
+def require_snapshot_hint(blob, base):
+    """A user snapshot is one JSC4 member ending at its SHI1 directory."""
+    if len(blob) >= 60 and len(blob) % 4 == 0 and blob[:8] == b"JSC4\x01\0\0\0":
+        magic, directory, members = struct.unpack_from("<4sII", blob, len(blob) - 12)
+        if magic == b"SHI1" and members == 1 and directory == len(blob) - 20:
+            records, count = struct.unpack_from("<II", blob, directory)
+            text_bytes, text_pointer = struct.unpack_from("<II", blob, 8)
+            text = text_pointer - base
+            if (0 <= text <= records and records % 4 == 0 and text + text_bytes + 4 <= records
+                    and records + count * 8 == directory):
+                return
+    raise ValueError("Unsupported compact snapshot. A lean JSC4 image ending in SHI1 is required.")
+
+
 def reader(blob, base=0, index=0, count=1):
     def word(offset):
         return struct.unpack_from("<I", blob, offset)[0]

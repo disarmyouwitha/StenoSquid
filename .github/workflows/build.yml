@@ -79,7 +79,7 @@ jobs:
           python3 tools/tests/test_native_stage.py
           python3 tools/tests/test_native_recovery.py
           python3 tools/tests/test_native_personal_snapshot.py
-          python3 tools/tests/test_compact_search.py
+          python3 tools/tests/test_hint_index.py
           python3 tools/tests/test_native_repack.py
           python3 tools/tests/test_native_usb_recovery.py
           python3 tools/tests/test_native_layout.py

@@ -136,25 +136,18 @@ The [personal capacity report](benchmarks/personal-snapshot-capacity.json) valid
 
 ## Lean compact storage and search capabilities
 
-Commit `48f6f97` made `compile_snapshot()` append SQS1 by default when it added
-exhaustive editor search. Named import preview and staging, personal conversion,
-same-ID replacement, and consolidation all call that compiler. The offline
-repacker subsequently inherited the same default when converting journals.
-Installing or restoring an existing image kept the exact captured bytes.
-
-New snapshots use the original JSC4 plus SHI1 bytes. The existing SQS1 reader
-and version 2 validation still support indexed snapshots. They remain indexed
-until an explicit replacement or consolidation. Offline repacking copies
-existing compact images as-is apart from relocating absolute pointers. It
-compiles any newly converted dictionaries as lean JSC4.
+User snapshots are single-member JSC4 images ending in SHI1. That gives compact
+forward lookup and lightweight hints at the original compiler's exact footprint.
+The catalog keeps its existing snapshot marker. User snapshots with other
+trailers are rejected at open or staging. Backup, export and recovery require
+the same lean format.
 
 | Path | What it supports |
 | --- | --- |
 | Javelin compact map | Exact forward lookup with per-outline-length hash tables, occupancy bitmaps and 24-bit rows, plus entry enumeration for export. Upstream partial-outline search enumerates rows of eligible lengths. Upstream exact reverse and prefix methods consume candidate entry addresses supplied by a separate reverse-map layer. The plain forward tables cannot produce these candidates efficiently by text. |
 | StenoSquid SHI1 | An exact translation can suggest one preferred single chord. The compiler selects the candidate with the fewest keys, then the smallest mask. There is no multi-stroke candidate, prefix enumeration or list of all equivalent single chords. The Native adapter checks that the selected outline still resolves to this dictionary and is visible through overlays. |
 | Native journal and overlays | Forward and reverse checkpoint indexes with a bounded live tail preserve current sets, replacements and tombstones. The reverse index accelerates exact text for current journal sets. Prefix and partial-outline queries enumerate live journal entries, retaining their existing result limits. |
-| Lean StenoSquid compact baseline | Forward lookup, Practice, export, and SHI1 hints. The USB editor can return the one-stroke SHI1 candidate for exact text, plus existing journal matches. Multi-stroke exact reverse, prefix and partial-outline matches from the lean baseline are absent. A missing search result does not prove an outline is absent. |
-| Existing SQS1 compact baseline | The editor still searches indexed exact text, prefixes and partial outlines with overlay, enabled-state and priority filtering. Typing-time hints stay on SHI1. |
+| StenoSquid compact baseline | Forward lookup, Practice, export, and SHI1 hints. Exhaustive reverse, prefix and partial-outline search of compact baselines is unsupported. The HID console returns `ERR Command unavailable on this keyboard` for `lookup`, `lookup_prefix`, and `lookup_partial_outline`. Exact forward `lookup_stroke` still works. |
 | USB host | Export a dictionary to search all of its effective translations and outline sequences. Export merges that dictionary's baseline with its own overlays. Use the saved catalog order and enabled flags to reconstruct cross-dictionary winners. For any future on-device scan, a result cap alone cannot bound no-hit latency. A scan would need a fixed work budget, continuation and cancellation that yields to typing. No such scan is enabled. |
 
 The StenoSquid Native adapter reads compact data through QSPI-safe accessors.
@@ -165,7 +158,7 @@ snapshots. The upstream source audit used the pinned Javelin implementation.
 
 ### Capacity gate
 
-| Same input | Original JSC4 + SHI1 | Regressed SQS1 | Corrected default | Conversion / consolidation staging |
+| Same input | Original JSC4 + SHI1 | Abandoned indexed experiment | Corrected default | Conversion / consolidation staging |
 | --- | ---: | ---: | ---: | ---: |
 | Plover, 147,424 | 2,339,624 B / 36 segments | 4,318,524 B / 66 | 2,339,624 B / 36 | 37 / 37 segments |
 | Synthetic, 200,000 | 1,931,932 B / 30 segments | 4,339,360 B / 67 | 1,931,932 B / 30 | 31 / 31 segments |
@@ -188,7 +181,6 @@ python3 tools/tests/test_native_compact_capacity.py
 ```
 
 [Capacity gate output](benchmarks/lean-snapshot-capacity.json)
-· [Historical SQS1 breakdown](benchmarks/compact-index-overhead.json)
 
 ## Experimental USB recovery on a spare
 
@@ -213,7 +205,7 @@ fallback. See the checklist below for the expected editor search differences.
 
 ### Offline repacking
 
-The repacker takes a verified version 2 bundle and plans a compact physical layout on the computer. Existing compact images keep their contents and relative search indexes. The planner relocates their absolute JSC4 pointers, regenerates the journal and both checkpoint indexes, and keeps three free segments in reserve. It considers journal-only user dictionaries in catalog order and converts each only if it saves packed segments. It leaves that dictionary's tombstones and all other dictionaries' live edits in the shared overlay. Unsupported outlines and candidates that would save no space are reported.
+The repacker takes a verified version 2 bundle and plans a compact physical layout on the computer. Existing lean compact images keep their contents and SHI1 hints. The planner relocates their absolute JSC4 pointers, regenerates the journal and both checkpoint indexes, and keeps three free segments in reserve. It considers journal-only user dictionaries in catalog order and converts each only if it saves packed segments. It leaves that dictionary's tombstones and all other dictionaries' live edits in the shared overlay. Unsupported outlines and candidates that would save no space are reported.
 
 A journal-only store can be captured as a complete bundle with `--backup-all --bundle`. This reads flash and writes a host file. It holds the existing backup lease, so run it while idle. The repack step itself stays offline.
 
@@ -228,7 +220,40 @@ For the full 147,424-entry Plover personal journal, the offline target shrank fr
 
 ## Tonight's hardware checkpoint and test sequence
 
-Use the two `Left-Snapshot-Experimental` artifacts from the corrective CI run and use the scripts from the same branch revision. The compiler runs on the host, so replacing a UF2 alone leaves existing snapshot bytes unchanged. Keep the matching right firmware in place. The following `4e1f9a4` artifacts are the rollback/reference UF2s. The kit's [JSON fixtures](fixtures/adaptive-snapshot/) assume a disposable, provisioned spare with an empty journal-only personal dictionary and Lapwing Base enabled. If a spare has other personal data, export it before the test and compare fixture entries as a subset of that export instead of wiping it.
+Use the matching `Left-Snapshot-Experimental` artifact from this branch's green
+[firmware run](https://github.com/disarmyouwitha/StenoSquid/actions/workflows/build.yml?query=branch%3Aprototype%2Fadaptive-snapshot)
+and the scripts from the same revision. Keep the current right firmware.
+The [JSON fixtures](fixtures/adaptive-snapshot/) assume a disposable spare
+with an empty journal-only personal dictionary and Lapwing Base enabled.
+
+### Prepare the disposable pool
+
+Flash only the spare's left controller with the matching UF2. Remove other
+StenoSquid boards from USB, close Studio and Javelin, then identify the spare
+in its normal running mode.
+
+```sh
+python3 -m pip install -r requirements.txt
+PYTHONPATH=tools/dictionaries python3 -c 'from import_personal import open_console; exec("with open_console() as c: print(c.serial)")'
+SERIAL='YOUR_SPARE_USB_SERIAL'
+python3 stenosquid.py --status --serial "$SERIAL"
+```
+
+A clean ordinary Native pool with empty personal data can be used as-is.
+An incompatible snapshot or blank pool requires explicit provisioning.
+Confirm that the serial is the disposable spare and that its external
+dictionaries may be erased. If the board holds data to keep, stop and use a
+different spare. Installing a UF2 does not erase the external pool.
+
+```sh
+python3 stenosquid.py --install --confirm-erase --serial "$SERIAL"
+python3 stenosquid.py --status --serial "$SERIAL"
+python3 stenosquid.py --list-dictionaries --serial "$SERIAL"
+```
+
+The first command replaces the shared pool with the pinned dictionaries and
+empty personal journal. After reboot, expect `NATIVE2 READY`. Verify Lapwing
+Base is enabled. The following `4e1f9a4` UF2s are rollback references.
 
 | Left half | Boot volume | SHA-256 |
 | --- | --- | --- |
@@ -265,10 +290,14 @@ Use the two `Left-Snapshot-Experimental` artifacts from the corrective CI run an
    python3 stenosquid.py --list-dictionaries --serial "$SERIAL"
    ```
 
-   Forward lookup must resolve `KAT/TA` through the lean baseline. In the Javelin console, `lookup sqcheck cat` can offer the SHI1 candidate `KAT`. The baseline-only multi-stroke result for `lookup sqcheck catalog`, and the lean baseline results for `lookup_prefix 20 sqcheck ca` and `lookup_partial_outline KAT 20`, are absent by design. These entries must still appear in the full personal export. Temporarily put personal below enabled Lapwing Base and check that the factory `KAT` wins and the personal hint disappears. Reorder it back, disable personal, repeat, then re-enable it. Those priority and checkbox changes write the catalog.
+   Forward lookup must resolve `KAT/TA` through the lean baseline and the full
+   personal export must contain the fixture. The HID console should return
+   an unsupported-command error for exhaustive reverse, prefix and
+   partial-outline requests. Temporarily put personal below enabled Lapwing
+   Base and check that the factory `KAT` wins. Restore the order, disable
+   personal, repeat, then re-enable it. These changes write the catalog.
 
-   If the spare already has a known indexed snapshot, record its baseline-only exact, prefix and partial results before changing it and repeat them on the corrected firmware. If you choose to consolidate that indexed snapshot, forward translations and export must match and the new baseline uses lean search behavior.
-4. **Edit and consolidate.** Set `PERSONAL_ID` to the current numeric ID. The edit file replaces `KAT/TA` and adds `KAT/KAT`; the explicit remove adds a tombstone for `PWOB`. The old exact reverse hit for “sqcheck catalog” and the personal “sqcheck removed” hit should disappear. Pinned fallback for that outline can still resolve. Export before and after consolidation, compare the JSON as dictionaries, and confirm that the personal ID is stable and its overlay count is zero in Manager's **Measure saved edits**.
+4. **Edit and consolidate.** Set `PERSONAL_ID` to the current numeric ID. The edit file replaces `KAT/TA` and adds `KAT/KAT`; the explicit remove adds a tombstone for `PWOB`. The old “sqcheck catalog” translation and the personal “sqcheck removed” translation should disappear from forward lookup and the export. Pinned fallback for that outline can still resolve. Export before and after consolidation, compare the JSON as dictionaries, and confirm that the personal ID is stable and its overlay count is zero in Manager's **Measure saved edits**.
 
    ```sh
    PERSONAL_ID='NUMERIC_PERSONAL_ID'

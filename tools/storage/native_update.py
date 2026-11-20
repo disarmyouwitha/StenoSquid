@@ -427,6 +427,7 @@ def export_dictionary(console, name):
 def effective_entries(snapshot, name, read):
     from build_native_image import XIP
     from hybrid import compact_entries, format_stroke
+    from jsc4 import require_snapshot_hint
 
     row = next((row for row in snapshot.rows if row_name(row) == name), None)
     if row is None:
@@ -439,6 +440,8 @@ def effective_entries(snapshot, name, read):
         blob = read(address, size)
         if zlib.crc32(blob) != checksum:
             raise ValueError("Compiled dictionary checksum failed during export.")
+        if row[11]:
+            require_snapshot_hint(blob, XIP + address)
         count = struct.unpack_from("<H", blob, 4)[0]
         entries.update(compact_entries(blob, XIP + address, member, count))
     for entry in snapshot.entries.values():

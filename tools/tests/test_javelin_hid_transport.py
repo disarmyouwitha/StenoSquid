@@ -137,6 +137,16 @@ int main() {
     reset();ble("c02 flash_erase\n");run();assert(commands.empty());
     std::string reply;for(auto &r:ble_tx) for(auto c:r) if(c) reply+=(char)c;
     assert(reply.find("ERR Command unavailable")!=std::string::npos);
+    for (const auto *query : {"lookup a", "lookup_prefix 10 a", "lookup_partial_outline KAT 10"}) {
+        reset();
+        usb(std::string("c06 ") + query + "\n");
+        run();
+        assert(commands.empty());
+        std::string denied;
+        for (const auto &report : usb_tx) for (auto byte : report) if (byte) denied += char(byte);
+        assert(denied == "c06 ERR Command unavailable on this keyboard\n\n");
+    }
+
 
     reset();
     const std::string import_line = "user_dictionary_import data 0 " + std::string(512, 'a') + "\n";

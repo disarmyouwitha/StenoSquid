@@ -23,7 +23,6 @@
 #include "engine_work.h"
 #include "engine_stream.h"
 #include "hint_index.h"
-#include "compact_search.h"
 #include "stroke_list_parser.h"
 #include "split_status.h"
 #include "w25q_quad.h"
@@ -115,6 +114,7 @@ struct FlashDevice {
 NativeStore<FlashDevice> store(flash_device);
 NativeValidator<FlashDevice> validator(flash_device,store.catalog);
 bool healthy=false,loaded=false,exporting=false,maintenance_hold=false;
+bool snapshot_format_rejected=false;
 uint32_t maintenance_steps=0,warm_resumes=0,full_opens=0;
 uint32_t maintenance_max_slice_us=0;
 using Maintenance = NativeStore<FlashDevice>::Work;
@@ -167,9 +167,6 @@ public:
     void PrintDictionary(PrintDictionaryContext &context)const override;
     void PrintEntriesWithPrefix(PrintPrefixContext &context)const override;
     void PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)const override;
-    StenoSquidCompactSearch SearchIndex() const;
-    bool VisibleBaseline(const StenoSquidCompactSearch::Entry &, StenoStroke *) const;
-    void PrintSnapshotEntries(LookupDictionaryContext &, const char *, size_t, const StenoStroke *) const;
     bool LoadBase(uint32_t at, uint32_t bytes, uint32_t crc, uint8_t member) {
         if (base) return base_offset == at && base_bytes == bytes && base_crc == crc &&
                          base_member == member;
@@ -181,7 +178,8 @@ public:
         if (bytes < pointers || xip_load_word(collection) != STENO_MAP_DICTIONARY_COLLECTION_MAGIC)
             return false;
         const uint32_t count = xip_load_word(collection + offsetof(StenoDictionaryCollection, dictionaryCount));
-        if (count > 64 || member >= count || count > (bytes - pointers) / sizeof(uint32_t))
+        if (count > 64 || member >= count || count > (bytes - pointers) / sizeof(uint32_t) ||
+            (user_snapshot && count != 1))
             return false;
         const uintptr_t map = xip_load_word(collection + pointers + member * sizeof(uint32_t));
         if(map%4 || !in(map,sizeof(definition)))return false;
@@ -197,13 +195,12 @@ public:
             if(!in(data,1) || hash%4 || mask<127 || (mask&(mask+1)) || mask>0x7fffff || !in(hash,(uint64_t(mask)+1+127)/128*sizeof(StenoCompactHashMapEntryBlock)))return false;
         }
         if(!in(reinterpret_cast<uintptr_t>(definition.textBlock),1))return false;
+        const uint32_t text_bytes=xip_load_word(collection+offsetof(StenoDictionaryCollection,textBlock));
+        hint=new (hint_storage) StenoSquidHintIndex(address,bytes,member,count,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
+        if (user_snapshot && !hint->Available()) return false;
         definition.strokes=strokes;definition.name=name;
         base=new (definition) StenoCompactMapDictionary(definition);
-        if(!base)return false;
-        const uint32_t text_bytes=xip_load_word(collection+offsetof(StenoDictionaryCollection,textBlock));
-        const auto hint_bytes = user_snapshot && kUserSnapshotsEnabled ? SearchIndex().LegacyBytes() : bytes;
-        hint=new (hint_storage) StenoSquidHintIndex(address,hint_bytes,member,count,reinterpret_cast<uintptr_t>(definition.textBlock),text_bytes,xip_load_word,xip_load_byte);
-        return true;
+        return base!=nullptr;
     }
     uint32_t GroupEntries(const StenoCompactMapDictionaryStrokesDefinition &group) const {
         const auto last = reinterpret_cast<uintptr_t>(group.offsets) +
@@ -459,50 +456,6 @@ void Cell::PrintDictionary(PrintDictionaryContext &context)const {
         }
     }
 }
-StenoSquidCompactSearch Cell::SearchIndex() const {
-    const auto image = Xip + base_offset;
-    const uint32_t text_bytes = xip_load_word(reinterpret_cast<const uint8_t *>(image) +
-                                             offsetof(StenoDictionaryCollection, textBlock));
-    return {image, base_bytes, reinterpret_cast<uintptr_t>(definition.textBlock),
-            text_bytes, xip_load_word, xip_load_byte};
-}
-bool Cell::VisibleBaseline(const StenoSquidCompactSearch::Entry &entry, StenoStroke *outline) const {
-    return NativeBaselineVisible(store.live, export_view, identity, entry.strokes, entry.length, enabled,
-        [&] {
-            for (unsigned i = 0; i < entry.length; ++i) outline[i] = StenoStroke(entry.strokes[i]);
-            return !parent || parent->GetDictionaryForOutline(outline, entry.length) == this;
-        }, [] { base_provider.Fault(); });
-}
-void Cell::PrintSnapshotEntries(LookupDictionaryContext &context, const char *prefix,
-                                size_t length, const StenoStroke *partial) const {
-    if (!kUserSnapshotsEnabled || !user_snapshot || !base || context.IsDone() || !healthy) return;
-    const auto search = SearchIndex();
-    if (!search.Available() || length > (partial ? 15u : 2047u) || (partial && !length)) return;
-    StenoSquidCompactSearch::Range range;
-    const bool valid = partial ? search.OutlineRange(partial[0].GetKeyState(), range) :
-                                search.TextRange(prefix, length, true, range);
-    if (!valid) { base_provider.Fault(); return; }
-    StenoSquidExportWriter writer(steno_squid_javelin_response_active());
-    for (uint32_t i = range.begin; i < range.end && healthy && !context.IsDone() &&
-         !writer.Failed() && !steno_squid_javelin_response_cancelled(); ++i) {
-        StenoSquidCompactSearch::Entry entry;
-        if (!(partial ? search.ReadOutlineEntry(i, entry) : search.ReadTextEntry(i, entry))) {
-            base_provider.Fault(); return;
-        }
-        if (partial ? entry.length <= length : !search.IsStrictPrefix(entry, length)) continue;
-        StenoStroke outline[16];
-        if (partial) {
-            for (unsigned position = 0; position < entry.length; ++position)
-                outline[position] = StenoStroke(entry.strokes[position]);
-            if (!StenoStroke::HasPartialOutline(outline, partial, length, entry.length - length)) continue;
-        }
-        if (!VisibleBaseline(entry, outline)) continue;
-        auto text = lapwing_copy_lookup_text(entry.text);
-        if (!text.IsValid()) { base_provider.Fault(); return; }
-        context.Add(outline, entry.length, text.GetText(), this);
-        text.Destroy();
-    }
-}
 void Cell::PrintEntriesWithPrefix(PrintPrefixContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
     if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
@@ -516,7 +469,6 @@ void Cell::PrintEntriesWithPrefix(PrintPrefixContext &context)const {
         if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         context.Add(outline,record.count,export_text,this);
     }
-    PrintSnapshotEntries(context, context.prefix, context.prefixLength, nullptr);
 }
 void Cell::PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)const {
     ExportGuard guard;if(!guard.ok)return;MergeRecord record;
@@ -530,7 +482,6 @@ void Cell::PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)co
         if (kUserSnapshotsEnabled && user_snapshot && parent && parent->GetDictionaryForOutline(outline, record.count) != this) continue;
         export_text[record.text_bytes]=0;context.Add(outline,record.count,export_text,this);
     }
-    PrintSnapshotEntries(context, nullptr, context.length, context.strokes);
 }
 void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
     if (kUserSnapshotsEnabled && user_snapshot && !enabled) return;
@@ -580,33 +531,13 @@ void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
         for(unsigned i=0;i<used;++i)emit(page[i]);
         if(result==PageResult::Done)break;
     }
-    // Typing-time suggestions keep the existing bounded one-stroke hint path.
-    if (kUserSnapshotsEnabled && user_snapshot && base && healthy && steno_squid_javelin_response_active()) {
-        const auto search = SearchIndex();
-        if (search.Available()) {
-            StenoSquidCompactSearch::Range range;
-            if (!search.TextRange(lookup.definition, lookup.definitionLength, false, range)) {
-                base_provider.Fault(); return;
-            }
-            for (uint32_t i = range.begin; i < range.end && healthy && !lookup.results.IsFull() &&
-                 !lookup.strokes.IsFull() && !steno_squid_javelin_response_cancelled(); ++i) {
-                StenoSquidCompactSearch::Entry entry;
-                if (!search.ReadTextEntry(i, entry)) { base_provider.Fault(); return; }
-                if (entry.length >= lookup.ignoreStrokeThreshold) continue;
-                StenoStroke outline[16];
-                if (VisibleBaseline(entry, outline)) lookup.AddResult(outline, entry.length, this);
-            }
-            return;
-        }
-    }
     uint32_t mask;
     if(healthy && hint && lookup.ignoreStrokeThreshold>1 && hint->Find(lookup.definition,mask)) {
-        RecordView overlay;const auto state=store.live.FindSnapshot(export_view,identity,&mask,1,overlay);
-        if(state!=LiveResult::Missing && state!=LiveResult::Ok){base_provider.Fault();return;}
-        if(state==LiveResult::Missing || overlay.operation==Operation::Reset) {
-            StenoStroke stroke(mask);
-            if(!parent || parent->GetDictionaryForOutline(&stroke,1)==this)lookup.AddResult(&stroke,1,this);
-        }
+        const StenoStroke stroke(mask);
+        if (NativeBaselineVisible(store.live, export_view, identity, &mask, 1, enabled,
+                [&] { return !parent || parent->GetDictionaryForOutline(&stroke,1)==this; },
+                [] { base_provider.Fault(); }))
+            lookup.AddResult(&stroke,1,this);
     }
 }
 void ReplyEdit(LiveResult result) {
@@ -789,7 +720,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         NoteIdleMaintenance();
         ++warm_resumes;return true;
     }
-    healthy=false;++full_opens;
+    healthy=false;snapshot_format_rejected=false;++full_opens;
     LoadNativeTrust();
     const auto result=store.Open([](const CatalogRoot &root){
         const uint32_t fingerprint=BaseFingerprint(root);
@@ -808,8 +739,13 @@ extern "C" bool steno_squid_native_flash_open(void) {
         const uint16_t base=uint16_t(row[8]) | uint16_t(row[9])<<8;
         if(base!=kNoExtent) {
             uint8_t extent[24];
-            if(!flash_device.Read(store.selected.root.address+32+count*96+base*24,extent,24) ||
-               !cell.LoadBase((uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes,Word(extent+4),Word(extent+8),row[10]))return false;
+            if(!flash_device.Read(store.selected.root.address+32+count*96+base*24,extent,24))return false;
+            if (!cell.LoadBase((uint16_t(extent[0]) | uint16_t(extent[1])<<8)*kSegmentBytes,
+                               Word(extent+4),Word(extent+8),row[10])) {
+                snapshot_format_rejected=cell.user_snapshot;
+                store.opened=false;
+                return false;
+            }
         } else if(cell.base)return false;
         cell.Bind();
     }
@@ -901,15 +837,11 @@ bool Number(const char *&p,uint32_t &out) {
 bool End(const char *p){return !*p || (*p=='\n' && !p[1]);}
 bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
     Cell probe;
+    probe.user_snapshot = row[11] == kUserSnapshot;
     std::memcpy(probe.name, row + 16, row[12]);
     const uint32_t start = uint16_t(extent[0]) | uint16_t(extent[1]) << 8;
     if (!probe.LoadBase(start * kSegmentBytes, Word(extent + 4), Word(extent + 8), row[10]))
         return false;
-    if (row[11] == kUserSnapshot) {
-        const auto *collection = reinterpret_cast<const uint8_t *>(Xip + start * kSegmentBytes);
-        if (xip_load_word(collection + offsetof(StenoDictionaryCollection, dictionaryCount)) != 1)
-            return false;
-    }
     for (unsigned i = 0; i < probe.definition.maximumOutlineLength; ++i) {
         const auto &group = probe.strokes[i];
         if (!group.hashMapMask) continue;
@@ -1075,7 +1007,12 @@ const char *Update(const char *command, char *reply, size_t bytes) {
 const char *Install(const char *command,char *reply,size_t bytes) {
     if (!std::strncmp(command, "update ", 7)) return Update(command + 7, reply, bytes);
     if(!std::strcmp(command,"status\n")) {
-        snprintk(reply,bytes,"NATIVE2 %s %u",healthy?"READY":transfer.Active()?"INSTALL":"UNPROVISIONED",unsigned(store.selected.root.generation));return nullptr;
+        const bool installing=transfer.Active();
+        const char *detail = snapshot_format_rejected && !installing ?
+            " Incompatible compact snapshot. Reprovision a disposable pool with --install --confirm-erase." : "";
+        snprintk(reply,bytes,"NATIVE2 %s %u%s",healthy?"READY":installing?"INSTALL":"UNPROVISIONED",
+                 unsigned(store.selected.root.generation),detail);
+        return nullptr;
     }
     if (kUserSnapshotsEnabled && !std::strncmp(command, "match RECOVERY ", 15)) {
         const char *p = command + 15;

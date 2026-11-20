@@ -17,7 +17,6 @@ from test_native_stage import fixture, write_plan, ROOT
 
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from build_native_image import SEGMENT, catalog_header
-from compact_search_index import add_search_index
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import FORMAT, digest, pack, reconstruct, save_atomic, unpack
@@ -68,8 +67,7 @@ def main():
         assert prior["format"] == "stenosquid-backup-1"
         kat, bob, tas = (parse_outline(word) for word in ("KAT", "PWOB", "TAS"))
         compiled = compile_snapshot("Smoke", {kat: b"snapshot cat", bob: b"Bob", (8, 16): "bêta".encode()})
-        legacy = CompactImage(add_search_index(compiled.data), compiled.pointers)
-        update = plan_named_snapshot(snapshot, protected, "Smoke", legacy)
+        update = plan_named_snapshot(snapshot, protected, "Smoke", compiled)
         for segment, block in update.segments.items():
             start = segment * SEGMENT
             image[start:start + len(block)] = block
@@ -102,6 +100,27 @@ def main():
         assert restored.entries[snapshot.next_id, bob].operation == 1
         assert overlay_usage(console)[snapshot.next_id]["count"] == 3
         assert export_dictionary(Console(decoded, update.payload), "Smoke") == exported
+
+        # A valid catalog/CRC cannot make bytes beyond the supported image admissible.
+        unsupported = CompactImage(compiled.data + bytes(20), compiled.pointers)
+        invalid = plan_named_snapshot(snapshot, protected, "Smoke", unsupported)
+        bad_image = bytearray(image)
+        for segment, block in invalid.segments.items():
+            start = segment * SEGMENT
+            bad_image[start:start + len(block)] = block
+        start = SEGMENT + 32
+        bad_image[start:start + len(invalid.payload)] = invalid.payload
+        reject(backup_all, Console(bad_image, invalid.payload))
+        reject(export_dictionary, Console(bad_image, invalid.payload), "Smoke")
+
+        bad_bundle = deepcopy(backup)
+        blob = unpack(bad_bundle["extents"][-1]) + bytes(20)
+        payload = bytearray(unpack(bad_bundle["catalog"]))
+        struct.pack_into("<II", payload, len(payload) - 20, len(blob), zlib.crc32(blob))
+        bad_bundle["extents"][-1] = pack(blob)
+        bad_bundle["catalog"] = pack(payload)
+        bad_bundle["sha256"] = digest(bad_bundle)
+        reject(reconstruct, bad_bundle)
 
         protected = {0, 1, 255}
         for segment, count, *_ in restored.extents:
