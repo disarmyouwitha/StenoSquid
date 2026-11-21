@@ -180,9 +180,9 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
     if expected_segments + 2 > 255 - RESERVE:
         raise ValueError("The packed target cannot retain the three-segment maintenance reserve")
     image = bytearray(b"\xff" * LIMIT)
-    extents = [write_journal_header(image, 2, 1)]
+    extents = []
     remap, new_bases = {}, {}
-    next_segment = 3
+    next_segment = 2
 
     def place(data):
         nonlocal next_segment
@@ -194,9 +194,24 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
         next_segment += count
         return len(extents) - 1
 
-    for index, (start, _, size, _, kind, _) in enumerate(source.extents):
-        if kind != 1:
-            continue
+    # Put the factory packages in their factory order even after an update
+    # has moved their extents or the user has reordered their dictionaries.
+    factory = {}
+    for row in source.rows:
+        identity, _, base = struct.unpack_from("<IIH", row)
+        if 2 <= identity <= 7 and base != 65535:
+            factory[base] = min(identity, factory.get(base, identity))
+    compact_extents = sorted(
+        (index for index, extent in enumerate(source.extents) if extent[4] == 1),
+        key=lambda index: (factory.get(index, 8), index),
+    )
+    journal_segment = None
+    for index in compact_extents:
+        if index not in factory and journal_segment is None:
+            journal_segment = next_segment
+            extents.append(write_journal_header(image, journal_segment, 1))
+            next_segment += 1
+        start, _, size, _, _, _ = source.extents[index]
         address = start * SEGMENT
         new_address = next_segment * SEGMENT
         blob = source_image[address:address + size]
@@ -205,6 +220,10 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
         if relocate_compact(rebased, XIP + new_address, XIP + address) != blob:
             raise ValueError("Compact relocation changed bytes outside pointer fields")
         remap[index] = place(rebased)
+    if journal_segment is None:
+        journal_segment = next_segment
+        extents.append(write_journal_header(image, journal_segment, 1))
+        next_segment += 1
     for identity, compiled in converted.items():
         new_bases[identity] = place(compiled.at(XIP + next_segment * SEGMENT))
 
@@ -218,7 +237,7 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
             struct.pack_into("<H", row, 8, remap[base])
         rows.append(row)
     after = operations_after(operations, converted)
-    end = seed_entries(image, extents, next_segment, after)
+    end = seed_entries(image, extents, journal_segment, next_segment, after)
     if end != 2 + expected_segments:
         raise ValueError("Packed estimate differs from the generated image")
     payload = struct.pack("<IHHQ16x", source.next_id, len(rows), len(extents), len(after))

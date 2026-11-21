@@ -51,11 +51,11 @@ def overlay_record_span(strokes, text):
     return (43 + 4 * len(strokes) + len(text)) & ~3
 
 
-def seed_entries(image, extents, next_segment, entries):
+def seed_entries(image, extents, journal_segment, next_segment, entries):
     """Build both indexes for a validated overlay collection before USB writes."""
     if not entries:
         return next_segment
-    epoch, segment = 1, 2
+    epoch, segment = 1, journal_segment
     address = segment * SEGMENT + 256
     records = {}
     for sequence, ((identity, strokes), (operation, text)) in enumerate(entries.items(), 1):
@@ -101,10 +101,10 @@ def read_personal(path):
 
 def build(source_root, personal=None, *, collection=None):
     image = bytearray(b"\xff" * LIMIT)
-    extents = [write_journal_header(image, 2, 1)]
+    extents = []
     dictionaries = []
     manifest = []
-    next_segment = 3
+    next_segment = 2
     location = {}
     for region_name, sources in (("Lapwing + extras", SOURCES[1:6]), ("Plover Base", SOURCES[6:])):
         members = []
@@ -142,7 +142,11 @@ def build(source_root, personal=None, *, collection=None):
         row[16 : 16 + len(encoded)] = encoded
         row[64:96] = digest
         dictionaries.append(row)
-    next_segment = seed_entries(image, extents, next_segment, entries)
+    journal_segment = next_segment
+    if journal_segment >= 252:
+        raise ValueError("The initial journal must leave the three-segment reserve")
+    extents.append(write_journal_header(image, journal_segment, 1))
+    next_segment = seed_entries(image, extents, journal_segment, journal_segment + 1, entries)
     prefix = bytearray(32)
     struct.pack_into("<IHHQ", prefix, 0, next_id, len(dictionaries), len(extents), len(entries))
     payload = bytes(prefix) + b"".join(dictionaries) + b"".join(extents)

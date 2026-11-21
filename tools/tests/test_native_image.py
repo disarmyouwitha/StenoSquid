@@ -32,6 +32,11 @@ def validate(image, report, sources):
         assert (
             zlib.crc32(image[slot * SEGMENT + 32 : slot * SEGMENT + 32 + count]) == crc
         )
+    assert report["base_images"][0]["address"] == 2 * SEGMENT
+    first, second = report["base_images"]
+    assert second["address"] == first["address"] + first["segments"] * SEGMENT
+    initial_journal = second["address"] + second["segments"] * SEGMENT
+    assert image[initial_journal:initial_journal + 8] == b"SQJSEG01"
     verified = 0
     for base in report["base_images"]:
         binary = image[base["address"] : base["address"] + base["bytes"]]
