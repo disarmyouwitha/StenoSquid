@@ -128,12 +128,9 @@ Use the Boardsource artifacts from one successful workflow run:
 
 1. `Boardsource-Probe` for the initial rail, JEDEC and single-line read checks.
 2. `Boardsource-Quad-Probe` for quad-read comparison after the initial checks pass.
-3. `Boardsource-Right-Default` for the portrait display peripheral. Without a
-   nice!view, use `Boardsource-Right-No-Display` and, for everyday use,
-   `Boardsource-Left-No-Display`.
+3. `Boardsource-Right-Default` for the right half, with or without a nice!view.
 4. `Boardsource-Left-Default` for everyday use. Connect the left half over USB and
-   run `python3 stenosquid.py --install --confirm-erase` to provision the dictionaries. Use
-   `Boardsource-Left-No-Display` when using the right build without nice!view.
+   run `python3 stenosquid.py --install --confirm-erase` to provision the dictionaries.
    For an existing board, follow the [backup and update instructions](../../README.md#update-firmware).
 
 The corrected everyday pair and wired Adafruit breakout passed the functional

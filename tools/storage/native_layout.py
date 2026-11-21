@@ -119,7 +119,7 @@ def read_images(console):
             if member:
                 raise ValueError("Expected individual dictionary images")
             start, segments, size, _, _, _ = snapshot.extents[extent]
-            images.append(dict(id=identity, name=row_name(row), start=start, segments=segments,
+            images.append(dict(id=identity, name=row_name(row), extent=extent, start=start, segments=segments,
                                bytes=size, kind="s" if row[11] else "b"))
         return sorted(images, key=lambda image: image["start"])
     finally:

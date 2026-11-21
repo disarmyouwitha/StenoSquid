@@ -62,7 +62,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ### Provision a new keyboard
 
-1. Flash the matching **Left** and **Right** UF2s. Use the **No-Display** pair if you don't have a nice!view.
+1. Flash the matching **Left-Default** and **Right-Default** UF2s for your board. Use the same pair with or without a nice!view. Practice uses the right display.
 2. Plug the left half in over USB, close any Javelin browser connection, and run these commands from this repository.
 
    ```sh
@@ -71,6 +71,8 @@ From the Javelin or Plover layer, tap the outer right thumb
    ```
 
    This prepares the pinned dictionaries, replaces the external dictionary pool, and verifies the result. If a fresh install is interrupted, reconnect USB and rerun the same command. On a provisioned board, use `--install` without `--confirm-erase` to check that it is already installed.
+
+If your board still has the shared Lapwing image from v0.1.2, export any dictionaries you want to keep as JSON before flashing. After flashing, use **Reprovision** in Manager to install the factory dictionaries, then import your exported JSON files.
 
 
 ## StenoSquid Manager
@@ -108,9 +110,7 @@ Saved Studio keymaps take precedence over the source keymap. To load updated def
 https://zmk.studio/
 
 ## External Memory Map
-Lapwing Base, Commands, Numbers, UK Additions, and Proper Nouns share one compact image and keep their own checkboxes. Plover has its own image. The personal dictionary and indexes grow in the shared QSPI pool. A fresh install leaves 180 free 64 KiB segments, including the three-segment maintenance reserve.
-
-![External QSPI install map showing the combined Lapwing collection and the shared pool](assets/qspi-flash-map-native.png)
+Lapwing Base, Commands, Numbers, UK Additions, Proper Nouns, and Plover Base each have a separate compact image. **External flash map** in Manager shows the current layout. A fresh install with every factory dictionary leaves 178 free 64 KiB blocks, including the three-block maintenance reserve.
 
 ## NiceNano Wiring Diagram
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)

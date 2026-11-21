@@ -209,6 +209,17 @@ def main():
             recover_usb(optimized, live.serial, live.serial, lambda _: None, live_source=(source, view))
             assert live.data == expected and live.begin_count == 1
 
+        usb = Console(expected, rows)
+        usb.ready = True
+        with patch("native_install.open_console", return_value=nullcontext(usb)):
+            try:
+                recover_usb(bundle, usb.serial, usb.serial, lambda _: None, unprovisioned_only=True)
+            except RuntimeError as error:
+                assert "already has a readable dictionary pool" in str(error)
+            else:
+                raise AssertionError("Manager backup recovery was allowed on a readable pool")
+            assert not usb.erasures and usb.begin_count == 0
+
         usb = Console(b"\xff" * LIMIT, rows)
         for supported, serial in ((True, "wrong-device"), (False, Console.serial)):
             usb.supported = supported

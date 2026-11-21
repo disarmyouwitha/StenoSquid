@@ -163,7 +163,7 @@ def main():
     parser.add_argument("port", nargs="?", help="USB serial port for --diag only")
     parser.add_argument("--install", action="store_true", help="Install and verify base dictionaries over USB HID")
     parser.add_argument("--import", dest="personal", type=Path, metavar="USER.JSON", help="Merge a personal dictionary over USB HID")
-    parser.add_argument("--as", dest="name", metavar="NAME", help="Import into a new named dictionary")
+    parser.add_argument("--as", dest="name", metavar="NAME", help="Import as a new named compact dictionary")
     parser.add_argument("--rename", nargs=2, metavar=("OLD", "NEW"), help="Rename an independent dictionary")
     parser.add_argument("--delete", metavar="NAME", help="Delete an independent dictionary")
     parser.add_argument("--manager", action="store_true", help="Open the local Steno Squid Manager")

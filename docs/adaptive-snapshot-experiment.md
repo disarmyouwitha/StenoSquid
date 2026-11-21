@@ -39,7 +39,7 @@ The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengt
 3. Connect by USB, close Studio/Javelin connections and run the preflight with a Plover JSON dictionary. The planner opens a staging session to account for both catalog roots. It reads metadata and releases the session without writing unless you add `--stage`. Do this while idle.
 
    ```sh
-   python3 tools/storage/native_snapshot.py smoke.json --name 'Snapshot Smoke' --serial YOUR_USB_SERIAL --format snapshot
+   python3 tools/storage/native_snapshot.py smoke.json --name 'Snapshot Smoke' --serial YOUR_USB_SERIAL
    ```
 
    A minimal fixture is `{"KAT":"snapshot cat","KAT/TA":"snapshot multi","PWOB":"snapshot Bob"}`. Append `--stage` to publish. Reconnect after reboot and check that the named row and its enabled state appear in Active Dictionaries. If a final acknowledgment is lost, reconnect and check the catalog before retrying. Reusing the same name is refused.
@@ -138,7 +138,7 @@ python3 tools/bench/snapshot_churn.py --baseline 50000 --output build/adaptive-s
 
 [10K fixture results](benchmarks/adaptive-snapshot-churn.csv) · [50K fixture results](benchmarks/adaptive-snapshot-churn-50k.csv)
 
-On the experimental firmware, Manager previews named imports using both host planners and shows the bytes, added segments, staging cost, current free run and any refusals. Automatic prefers a compact image if it saves steady-state segments and either at least 1 MiB or at least one segment of logical bytes and 25% of journal bytes. A compact plan also needs space for a same-size consolidation under the current layout. Manager highlights the automatic recommendation. Select either eligible format card to override it before staging. The approved plan is recomputed before publication. Source changes, appended edits, changed catalogs or different occupied segments invalidate the approval. Leave the name blank to keep the existing personal merge path.
+Manager previews named imports as compact snapshots. The preview shows the compiled size, added blocks, and temporary staging blocks. The planner also checks room for a future same-size consolidation. The approved plan is recomputed before publication. Source changes, appended edits, changed catalogs, or different occupied blocks invalidate the approval. Leave the name blank to add entries to the personal dictionary through the shared journal.
 
 ## Read-only flash map
 
@@ -230,7 +230,7 @@ python3 tools/storage/native_recovery.py experiment.json --restore \
 
 The host validates every extent before contacting the board. The firmware accepts the recovery transport without a mounted Native catalog. It erases the pool, writes and checks the content with the catalog commit words still erased, then publishes each root and verifies the complete image. After reboot, the host verifies dictionary IDs, order and flags before applying and reading back the saved host layout. If the final acknowledgment is lost, a matching image can finish without re-erasing. If the store remains incomplete, reconnect and explicitly repeat with the same bundle. No destructive retry is automatic.
 
-For physical qualification, test an initially blank spare and interruptions during **Erasing**, data transfer, and the **Verifying** message. Record the point reached, reboot with USB and battery restored, and repeat the command. Verify the exported test dictionary and overlays, dictionary ordering, checkboxes, and host layout against the bundle. Inspect the physical catalog after a near-publication cut if the timing is observable. Host fault injection covered 138 boundaries in two initial states and with two tear lengths. Neither Manager nor automatic import selection offers destructive recovery.
+For physical qualification, test an initially blank spare and interruptions during **Erasing**, data transfer, and the **Verifying** message. Record the point reached, reboot with USB and battery restored, and repeat the command. Verify the exported test dictionary and overlays, dictionary ordering, checkboxes, and host layout against the bundle. Inspect the physical catalog after a near-publication cut if the timing is observable. Host fault injection covered 138 boundaries in two initial states and with two tear lengths. Imports always stage through copy-on-write.
 
 ### Import eligibility
 
@@ -322,8 +322,8 @@ journal high-water mark and host layout with the verified source. The firmware
 rechecks the catalog generation and CRC, journal sequence and host layout
 under the same lock that starts recovery. A difference aborts before erase.
 Use an unprovisioned spare only when testing disaster recovery independently
-of the captured device. Manager and Automatic import keep their existing
-staging refusal.
+of the captured device. In Manager, **Preview USB repack** runs the guarded
+repack separately. A refused import can be previewed again after a repack.
 
 1. **Offline verification.** Save the original and optimized bundles as
    separate files and verify both with the commands above. Record both file
@@ -507,7 +507,7 @@ its exact build hash over HID.
    entries = {"/".join(map(format_stroke, outline)): text.decode() for outline, text in synthetic(50000).items()}
    pathlib.Path(sys.argv[1]).write_text(json.dumps(entries))
    PY
-   python3 -u tools/storage/native_snapshot.py "$OUT/cut-source.json" --name SQCut --format snapshot --serial "$SERIAL"
+   python3 -u tools/storage/native_snapshot.py "$OUT/cut-source.json" --name SQCut --serial "$SERIAL"
    ```
 
    If the preview fits, repeat its final command with `--stage` **to write

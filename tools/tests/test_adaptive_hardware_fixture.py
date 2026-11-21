@@ -12,7 +12,7 @@ from test_native_personal_snapshot import opened, publish_image
 from build_native_image import SEGMENT, build
 from compile_dict import parse_outline
 from import_personal import parse_named
-from native_import_plan import compare
+from native_import_plan import plan_compact_import
 from native_snapshot import change_snapshot, compile_snapshot
 from native_update import Edit, effective_entries, encode_record, row_name
 
@@ -84,10 +84,9 @@ def main():
         assert effective_entries(current, "user_dictionary", lambda at, n: restored[at:at + n]) == expected
         assert current.personal == original.personal and not current.entries
         cut_source = synthetic(50000)
-        layout, _ = compare(current, occupied(current), "SQCut", cut_source, 16,
-                            compile_snapshot("SQCut", cut_source))
-        staged_cut = layout["options"]["snapshot"]
-        assert staged_cut["eligible"] and staged_cut["staging_segments"] > 8
+        staged_cut, update = plan_compact_import(current, occupied(current), "SQCut",
+                                                  compile_snapshot("SQCut", cut_source), 16)
+        assert update and staged_cut["staging_segments"] > 8
         print(f"SQCut preview has {staged_cut['staging_segments']} staging segments in the host fixture")
         print("Tonight's fixture verified fill-only precedence, edits, tombstones, cold exports and consolidation")
 

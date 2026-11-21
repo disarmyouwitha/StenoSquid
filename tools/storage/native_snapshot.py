@@ -52,25 +52,33 @@ def compile_snapshot(name, entries):
     return CompactImage(image, builder.pointer_offsets)
 
 
-def stage_allocation(protected):
+def stage_allocator(protected):
     free = set(range(2, 255)) - set(protected)
+
+    def allocate(count):
+        if len(free) < count + 3:
+            raise NoSpace("Too little free space after protecting the three-segment reserve")
+        for segment in sorted(free):
+            run = set(range(segment, segment + count))
+            if run <= free:
+                free.difference_update(run)
+                return segment
+        raise NoSpace("Not enough contiguous staging space")
+
+    return allocate
+
+
+def stage_allocation(protected):
+    allocate = stage_allocator(protected)
     blocks = {}
     extents = []
 
     def write(contents, kind):
         size = len(contents.data) if isinstance(contents, CompactImage) else len(contents)
         count = (size + SEGMENT - 1) // SEGMENT
-        if len(free) < count + 3:
-            raise NoSpace("Too little free space after protecting the three-segment reserve")
-        for segment in sorted(free):
-            run = set(range(segment, segment + count))
-            if run <= free:
-                break
-        else:
-            raise NoSpace("Not enough contiguous staging space")
+        segment = allocate(count)
         data = contents.at(XIP + segment * SEGMENT) if isinstance(contents, CompactImage) else contents
         blocks.update({segment + i: data[i * SEGMENT:(i + 1) * SEGMENT] for i in range(count)})
-        free.difference_update(run)
         if kind:
             extents.append(EXTENT.pack(segment, count, size, zlib.crc32(data), kind, 0))
         return segment
@@ -304,8 +312,6 @@ def main():
     action.add_argument("--delete", action="store_true", help="Retire the named snapshot")
     action.add_argument("--convert-personal", action="store_true", help="Convert in place with optional fill-only JSON")
     parser.add_argument("--serial", required=True, help="USB serial of the experimental left half")
-    parser.add_argument("--format", choices=("auto", "journal", "snapshot"), default="auto",
-                        help="Choose an eligible representation for a new named dictionary")
     parser.add_argument("--stage", action="store_true", help="Write free segments and publish a new catalog")
     args = parser.parse_args()
     if args.convert_personal:
@@ -321,8 +327,6 @@ def main():
     if args.dictionary:
         entries, _ = parse_named(args.dictionary.read_bytes())
     if args.consolidate or args.delete or args.convert_personal:
-        if args.format != "auto":
-            parser.error("--format only applies to new named dictionaries")
         operation = "personal" if args.convert_personal else "consolidate" if args.consolidate else "delete"
         with open_console(args.serial) as console:
             published = change_snapshot(console, operation, args.name,
@@ -334,7 +338,7 @@ def main():
     from native_import_plan import named_import
 
     with open_console(args.serial) as console:
-        report = named_import(console, args.name, entries, preference=args.format, stage=args.stage)
+        report = named_import(console, args.name, entries, stage=args.stage)
         print(json.dumps(report, indent=2))
     if args.stage:
         wait_ready(args.serial)

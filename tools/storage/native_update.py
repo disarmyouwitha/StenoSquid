@@ -12,16 +12,6 @@ EXTENT = struct.Struct("<HHIIIQ")
 RECORD = struct.Struct("<4sIQIIII")
 KEY = struct.Struct("<IBBH")
 COMMIT = 0x434F4D54
-# Conservative interactive budget until cold boots and USB commits have been
-# timed on a larger corpus. This limits new named imports, not personal edits.
-NAMED_JOURNAL_ENTRY_BUDGET = 4096
-
-
-def named_journal_limit(snapshot, incoming_count):
-    if len(snapshot.entries) + incoming_count > NAMED_JOURNAL_ENTRY_BUDGET:
-        return ("Import as a compact snapshot. A journal import would exceed "
-                f"the shared journal budget of {NAMED_JOURNAL_ENTRY_BUDGET:,} live records.")
-    return None
 
 
 class NoSpace(ValueError):
@@ -405,11 +395,13 @@ def backup_all(console):
         update_command(console, "abort", timeout=5)
 
 
-def overlay_usage(console):
+def overlay_usage(console, *, metadata_only=False):
     capability = console.command("native_install update journal-usage-capabilities")
     if capability == "ERR Native flash busy":
         raise RuntimeError(capability)
     on_device = capability == "OK USAGE2"
+    if metadata_only and not on_device:
+        raise RuntimeError("This keyboard does not offer a metadata-only journal measurement.")
     answer = update_command(console, "begin metadata" if on_device else "begin backup")
     try:
         snapshot, _ = read_snapshot(console, answer, metadata_only=on_device)
@@ -531,7 +523,7 @@ def abort(console):
         pass
 
 
-def transfer(console, incoming=None, progress=print, *, name=None, limit=64, move=None, rename=None, delete=None,
+def transfer(console, incoming=None, progress=print, *, move=None, rename=None, delete=None,
              preview_compact=False, expected_compact=None):
     """Preflight, upload and commit one update over USB HID."""
     def command(text, timeout=30):
@@ -543,8 +535,6 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
         mode = "rename"
     elif delete:
         mode = "delete"
-    elif name is not None:
-        mode = "named"
     else:
         mode = "compact" if incoming is None else "import"
     if (preview_compact or expected_compact is not None) and mode != "compact":
@@ -553,9 +543,7 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
     try:
         progress("Reading the current dictionary store and planning free space…")
         snapshot, protected = read_snapshot(console, answer, metadata_only=bool(move or rename or delete))
-        if mode == "named" and (reason := named_journal_limit(snapshot, len(incoming))):
-            raise NoSpace(reason)
-        update = plan(snapshot, protected, incoming, name=name, limit=limit, move=move, rename=rename, delete=delete)
+        update = plan(snapshot, protected, incoming, move=move, rename=rename, delete=delete)
         if preview_compact or expected_compact is not None:
             token = None
             victims = []
@@ -593,8 +581,6 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
             progress(f"Renamed {rename[0]} to {rename[1]}; the left half is rebooting.")
         elif delete:
             progress(f"Deleted {delete}; the left half is rebooting.")
-        elif name is not None:
-            progress(f"Imported {name} with {update.changes:,} entries; the left half is rebooting.")
         elif incoming is not None:
             progress(f"Published {update.changes:,} entries; the left half is rebooting.")
         else:

@@ -25,7 +25,8 @@
     </div>
     <section id="setup-panel" aria-labelledby="setup-title" hidden>
       <h2 id="setup-title">Set up dictionaries</h2>
-      <p>Choose the factory dictionaries to install. You can add more later.</p>
+      <p id="setup-description">Choose the factory dictionaries to install. You can add more later.</p>
+      <button id="repack-restore" type="button" hidden>Restore original backup</button>
       <form id="setup-form">
         <div id="setup-packages"></div>
         <p id="setup-warning">Setup clears the external dictionary pool. Keep the left half connected by USB until it reboots.</p>
@@ -98,14 +99,18 @@
             <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
             <label>Dictionary name (optional) <input name="name" maxlength="44" aria-describedby="import-name-help"></label>
             <p id="import-name-help">(Clear to import into your personal dictionary.)</p>
-            <p id="import-help" hidden>Preview checks how much space the new dictionary needs. Nothing is written until you approve.</p>
             <button id="import-preview" data-write>Import</button>
           </form>
           <div id="import-plan" hidden aria-live="polite">
             <p id="import-entry-count"></p>
-            <p id="import-savings" hidden></p>
-            <ul id="import-plan-costs" aria-label="Import formats"></ul>
-            <button id="import-apply" data-write>Stage approved import</button>
+            <div class="import-format" data-format="snapshot">
+              <div class="import-format-heading">
+                <strong>Compact snapshot</strong>
+                <span id="import-compact-size" class="import-bytes"></span>
+              </div>
+              <div id="import-plan-blocks"></div>
+            </div>
+            <button id="import-apply" data-write hidden>Import compact snapshot</button>
           </div>
           <div role="alert"><p id="import-error" hidden></p></div>
         </section>
@@ -113,21 +118,33 @@
       <section id="flash-map-panel" hidden aria-labelledby="flash-map-title">
         <div class="section-heading">
           <h2 id="flash-map-title">External flash map</h2>
-          <div class="toolbar">
+          <div id="flash-map-actions" class="toolbar">
             <button type="button" id="flash-map-scan">Scan Memory</button>
             <button type="button" id="compact" data-write>Compact Memory</button>
             <button type="button" id="compact-apply" data-write hidden>Reclaim</button>
+            <button type="button" id="repack-preview" data-write hidden>Preview USB repack</button>
+          </div>
+          <div id="repack-actions" class="toolbar" hidden>
+            <button id="repack-apply" type="button" data-write hidden>Repack</button>
+            <button id="repack-cancel" type="button">Cancel</button>
           </div>
         </div>
         <p id="flash-map-error" class="inline-error" role="alert" tabindex="-1" hidden></p>
-        <div id="flash-map-result" hidden>
+        <div id="flash-map-result" class="flash-map-result" hidden>
           <p id="flash-map-summary" hidden></p>
-          <div id="flash-map-grid" role="img" aria-label="256 segment ownership map"></div>
-          <ul id="flash-map-legend"></ul>
+          <div id="flash-map-grid" class="flash-map-grid" role="img" aria-label="256 segment ownership map"></div>
+          <ul id="flash-map-legend" class="flash-map-legend"></ul>
         </div>
         <div id="journal-preview" hidden>
           <p id="journal-summary" aria-live="polite"></p>
           <div id="journal-reclaim-blocks"></div>
+        </div>
+        <div id="repack-plan" hidden>
+          <dl id="repack-comparison">
+            <div><dt>Largest free run</dt><dd id="repack-run"></dd></div>
+            <div><dt>Total free blocks</dt><dd id="repack-free"></dd></div>
+          </dl>
+          <p id="repack-detail"></p>
         </div>
       </section>
       <section aria-labelledby="settings-title">

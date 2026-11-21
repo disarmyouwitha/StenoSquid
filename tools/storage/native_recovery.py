@@ -209,7 +209,8 @@ def recovery_images(image):
     return bytes(staged), zlib.crc32(staged), zlib.crc32(image)
 
 
-def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=False, live_source=None):
+def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=False, live_source=None,
+                unprovisioned_only=False):
     if not serial or confirmation != serial:
         raise ValueError("Recovery needs an explicit USB serial and identical erase confirmation.")
     if ("repack" in backup) != (repack_spare or live_source is not None) or (repack_spare and live_source is not None):
@@ -236,6 +237,8 @@ def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=Fa
         state = status.split()[:2]
         if state not in (["NATIVE2", "READY"], ["NATIVE2", "UNPROVISIONED"]):
             raise RuntimeError("Native recovery transport is unavailable or busy. No erase was started.")
+        if unprovisioned_only and state[1] != "UNPROVISIONED":
+            raise RuntimeError("The keyboard already has a readable dictionary pool. No erase was started.")
         already_installed = state[1] == "READY" and matches(console)
         if not already_installed:
             if repack_spare and state[1] != "UNPROVISIONED":

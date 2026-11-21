@@ -1,15 +1,15 @@
 # Native dictionary storage
 
 Native is the default in [v0.1.2](https://github.com/disarmyouwitha/StenoSquid/releases/tag/v0.1.2)
-for both Boardsource and nice!nano left firmware, including No-Display builds.
+for both Boardsource and nice!nano left firmware.
 For installation, upgrades, and the Manager, use the [project README](../README.md#how-to-install).
 
 ## How the store works
 
 - The 16 MiB external flash uses 64 KiB segments. Two catalog generations track
   shared ownership of compiled bases, journals, and indexes. The final segment
-  is reserved for diagnostics. See the [memory map](../assets/qspi-flash-map-native.png).
-- Lapwing and its four extras share one compact image. Plover has its own image.
+  is reserved for diagnostics. **External flash map** in Manager shows the current layout.
+- Lapwing, its four extras, and Plover each have a separate compact image.
   Each dictionary keeps an independent ID, enabled state, and position in lookup
   order. A local edit or removal applies to the selected dictionary. Lower-priority
   enabled dictionaries can still supply an outline hidden in a higher one.

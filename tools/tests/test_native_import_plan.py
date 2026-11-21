@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check measured representation selection and staging preflight invariants."""
+"""Check compact import allocation, guarded publication and staging progress."""
 from pathlib import Path
 from contextlib import redirect_stderr
 import io
@@ -10,7 +10,7 @@ import zlib
 from test_native_recovery import Console
 from test_native_stage import fixture
 from build_native_image import SEGMENT
-from native_import_plan import compare, named_import
+from native_import_plan import consolidation_cost, metadata, named_import, plan_compact_import
 from native_snapshot import compile_snapshot
 from native_update import NoSpace, Update, publish
 
@@ -21,24 +21,27 @@ def inputs(n, value=None):
 
 
 class PlannerConsole(Console):
+    serial = "fixture-left"
     def __init__(self, image, payload, protected):
         super().__init__(image, payload)
         self.protected = protected
-        self.mode = None
         self.sessions = []
-        self.refuse_journal = False
+        self.reads = []
+        self.generation = 3
+        self.tail = 4
 
     def command(self, command, timeout=30):
         if command == "native_install update snapshot-capabilities":
             return "OK SNAPSHOT2"
         if command == "native_install update named-capabilities":
             return "OK NAMED1 16"
+        if command == "user_dictionary_status":
+            return f'{{"generation":{self.generation},"tail":{self.tail}}}'
+        if command.startswith("native_install update read "):
+            self.reads.append(int(command.split()[-2]))
         if command.startswith("native_install update begin "):
-            assert command.endswith(("snapshot-named", "named")) and not self.active
-            self.mode = command.split()[-1]
-            if self.refuse_journal and self.mode == "named":
-                return "ERR Busy"
-            self.sessions.append(self.mode)
+            assert command == "native_install update begin snapshot-named" and not self.active
+            self.sessions.append(command)
             self.active = True
             words = ''.join(f"{sum(1 << (i % 32) for i in self.protected if i // 32 == part):08x}"
                             for part in range(8))
@@ -62,95 +65,79 @@ def main():
     test_staging_progress()
     with tempfile.TemporaryDirectory() as folder:
         image, view, protected = fixture(Path(folder))
-        small, large = inputs(100), inputs(10000)
-        for data, expected in ((small, "journal"), (large, "snapshot")):
-            report, updates = compare(view, protected, "Practice", data, 16, compile_snapshot("Practice", data))
-            assert report["recommended"] == expected and report["reserve"] == 3
-            if data == large:
-                assert not report["options"]["journal"]["eligible"] and "journal" not in updates
-            for mode, update in updates.items():
-                assert not set(update.segments) & protected
-                assert report["options"][mode]["staging_segments"] == len(update.segments)
-                assert report["options"][mode]["free_after_commit"] >= 3
-            compact = report["options"]["snapshot"]
-            assert compact["eligibility"] == "copy-on-write"
-            assert compact["consolidation_staging_segments"] == compact["staging_segments"] + 2
-        report, _ = compare(view, protected, "Unrepresentable", {(1 << 24,): b"value"}, 16,
-                            None, "24-bit JSC4 limitation")
-        assert report["recommended"] == "journal" and not report["options"]["snapshot"]["eligible"]
-        assert report["options"]["snapshot"]["eligibility"] == "cannot-stage"
+        name = "Preview"
+        small = inputs(1)
+        compiled = compile_snapshot(name, small)
+        for entries in (small, inputs(10000)):
+            console = PlannerConsole(image, view.payload, protected)
+            preview = named_import(console, name, entries, progress=lambda _: None)
+            assert preview["token"] and preview["entries"] == len(entries) and not console.active
+            assert console.sessions == ["native_install update begin snapshot-named"]
+            assert max(console.reads) < 2 * SEGMENT, "Compact preflight read journal data"
+        console = PlannerConsole(image, view.payload, protected)
+        preview = named_import(console, name, small, progress=lambda _: None)
+        assert preview["image_segments"] == 1 and preview["staging_segments"] == 2
+        approved = dict(stage=True, expected=preview["token"], progress=lambda _: None)
+        with patch("native_import_plan.publish") as publish:
+            different = {key: text.upper() for key, text in small.items()}
+            for entries, tail, generation in ((different, 4, 3), (small, 5, 3), (small, 4, 4)):
+                console.tail, console.generation = tail, generation
+                try:
+                    named_import(console, name, entries, **approved)
+                except RuntimeError as error:
+                    assert "plan changed" in str(error)
+                else:
+                    raise AssertionError("A different source or store passed the preflight token")
+                assert not console.active
+                publish.assert_not_called()
+            console.tail, console.generation = 4, 3
+            named_import(console, name, small, **approved)
+            update = publish.call_args.args[1]
+            assert not set(update.segments) & protected
+            assert next(iter(update.segments.values()))[-12:-8] == b"SHI1"
+            assert consolidation_cost(metadata(update.payload), 1, (8, 8)) == 4
+
         dense = {key: str(i).ljust(1120, "x").encode() for i, key in enumerate(inputs(6900))}
         with redirect_stderr(io.StringIO()):
             dense_image = compile_snapshot("Dense", dense)
-        restricted = set(range(128)) | {255}
-        report, _ = compare(view, restricted, "Dense", dense, 16, dense_image)
-        assert report["recommended"] is None
-        assert "rebuild" in report["options"]["snapshot"]["reason"]
-        assert report["options"]["snapshot"]["eligibility"] == "usb-rebuild-unqualified"
-        assert report["options"]["snapshot"]["staging_segments"] > 100
+        layout, initial = plan_compact_import(view, set(range(128)) | {255}, "Dense", dense_image, 16)
+        assert initial and layout["staging_segments"] > 100
+        try:
+            consolidation_cost(metadata(initial.payload), layout["image_segments"], (1, 1))
+        except NoSpace:
+            pass
+        else:
+            raise AssertionError("Same-size consolidation unexpectedly fit")
 
+        # Force the conservative bound into a cold recheck. A full journal
+        # scan must use the exact counts before refusing publication.
         console = PlannerConsole(image, view.payload, protected)
-        with patch("native_import_plan.publish") as publish:
-            try:
-                named_import(console, "Large", large, preference="journal", stage=True)
-            except NoSpace as error:
-                assert "shared journal budget" in str(error)
-            else:
-                raise AssertionError("Large Journal override bypassed the import guard")
-            publish.assert_not_called()
-        preview = named_import(console, "Preview", small)
-        assert preview["selected"] == "journal" and not console.active
-        different = {key: text.upper() for key, text in small.items()}
-        with patch("native_import_plan.publish") as publish:
-            try:
-                named_import(console, "Preview", different, stage=True, expected=preview["token"])
-            except RuntimeError as exc:
-                assert "changed" in str(exc)
-            else:
-                raise AssertionError("A different source passed the preflight token")
-            assert not console.active
-            publish.assert_not_called()
+        real_check = consolidation_cost
+        calls = []
 
-            native = named_import(console, "Preview", small, preference="snapshot")
-            assert native["selected"] == "snapshot"
-            assert preview["tokens"]["snapshot"] == native["token"]
-            assert preview["tokens"]["journal"] == preview["token"]
-            try:
-                named_import(console, "Preview", small, preference="snapshot", stage=True, expected=preview["token"])
-            except RuntimeError as exc:
-                assert "plan changed" in str(exc)
-            else:
-                raise AssertionError("Journal approval was accepted for a snapshot")
-            publish.assert_not_called()
-            named_import(console, "Preview", small, preference="snapshot", stage=True,
-                         expected=preview["tokens"]["snapshot"])
-            snapshot_update = publish.call_args.args[1]
-            assert next(iter(snapshot_update.segments.values()))[-12:-8] == b"SHI1"
-            console.active = False  # The real publish closes this simulated session.
-            publish.reset_mock()
-            named_import(console, "Preview", small, stage=True, expected=preview["token"])
-            assert console.mode == "named"
-            publish.assert_called_once()
-        console = PlannerConsole(image, view.payload, protected)
-        console.refuse_journal = True
-        with patch("native_import_plan.publish") as publish:
-            try:
-                named_import(console, "Preview", small, stage=True)
-            except RuntimeError as exc:
-                assert "Busy" in str(exc)
-            else:
-                raise AssertionError("Busy journal incorrectly staged")
-            publish.assert_not_called()
+        def check(after, segments, counts):
+            calls.append(counts)
+            if len(calls) == 1:
+                raise NoSpace("Conservative bound exceeded")
+            return real_check(after, segments, counts)
+
+        with patch("native_import_plan.consolidation_cost", side_effect=check):
+            assert named_import(console, name, small, progress=lambda _: None)["token"]
+        assert len(calls) == 2 and max(console.reads) >= 2 * SEGMENT
+        assert calls[1] == (len(view.entries), sum(entry.operation == 0 for entry in view.entries.values()))
+
         with patch("native_import_plan.publish") as publish:
             limited = PlannerConsole(image, view.payload, set(range(251)) | {255})
+            refused = named_import(limited, name, small, progress=lambda _: None)
+            assert not refused["token"] and "reserve" in refused["reason"]
             try:
-                named_import(limited, "Preview", small, preference="snapshot", stage=True)
+                named_import(limited, name, small, stage=True, progress=lambda _: None)
             except NoSpace:
                 pass
             else:
-                raise AssertionError("Full store incorrectly allowed snapshot override")
+                raise AssertionError("Full store incorrectly staged a snapshot")
             publish.assert_not_called()
-    print("Adaptive import: measured recommendation, fragmented paths, overrides and preflight token passed")
+    print("Compact-only import: metadata preview, approval, space checks, exact-count fallback and publish passed")
 
 
 if __name__ == "__main__":

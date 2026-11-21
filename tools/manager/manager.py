@@ -18,19 +18,22 @@ sys.path.insert(0, str(TOOLS / "storage"))
 from native_install import FACTORY_CAPABILITIES, UNPROVISIONED, prepare_install_image, provision, wait_ready
 from build_native_image import FACTORY_KEYS
 from native_manage import checked, import_entries
-from native_update import NAMED_JOURNAL_ENTRY_BUDGET, backup_all, export_dictionary, overlay_usage, transfer
+from native_update import backup_all, export_dictionary, overlay_usage, transfer
 from import_personal import open_console, parse_named, usb_console_devices
 from compile_dict import parse_outline
 from native_base_update import factory_package
 from native_snapshot import change_snapshot, clear_personal
 from native_import_plan import named_import
 from native_layout import read_images, read_layout
+from manager_repack import capture_approved_repack, install_repack, last_repack_backup, preview_repack, restore_original
 
 MAX_REQUEST = 48 * 1024 * 1024
+LARGE_JOURNAL_RECORDS = 4096
 FACTORY_CHOICES = {key: row[1] for key, row in FACTORY_KEYS.items()}
 FACTORY_ACTIONS = {str(row[0]): key for key, row in FACTORY_KEYS.items()}
 MAP_REFRESH_ACTIONS = {"refresh", "layout_map", "setup", "import", "apply_import", "compact", "apply_package",
-                       "apply_optimize", "clear_personal", "delete", "set", "remove", "reset"}
+                       "apply_optimize", "clear_personal", "delete", "set", "remove", "reset", "apply_repack",
+                       "restore_repack_backup"}
 INSTALLABLE_STATUS = re.compile(r"NATIVE2 (?:READY [0-9]+|UNPROVISIONED [0-9]+(?: .*)?)")
 
 
@@ -99,7 +102,7 @@ def load_view(console, action, progress, show_view=None):
                     result["layout_map"]["journal_usage"] = usage
             result["usage"] = usage
             result["journal_budget_exceeded"] = (
-                sum(row["count"] for row in usage.values()) >= NAMED_JOURNAL_ENTRY_BUDGET
+                sum(row["count"] for row in usage.values()) >= LARGE_JOURNAL_RECORDS
             )
         except (RuntimeError, OSError, ValueError) as error:
             result["usage_error"] = str(error)
@@ -110,12 +113,15 @@ def read_state(console):
     install_status = console.command("native_install status")
     if install_status == "ERR Native flash busy":
         raise RuntimeError("The keyboard is still checking dictionary flash. Try connecting again in a moment.")
-    if install_status == UNPROVISIONED:
-        return installer_view(console, install_status)
+    if install_status.startswith("NATIVE2 UNPROVISIONED "):
+        backup = last_repack_backup(console.serial)
+        if backup and console.command("native_install update recovery-capabilities") == "OK RECOVERY1":
+            return {"setup": {"serial": console.serial, "repack_backup": backup.name}}
+        if install_status == UNPROVISIONED:
+            return installer_view(console, install_status)
+        raise RuntimeError("The keyboard could not open its dictionary store. Use USB recovery or explicit reprovisioning.")
     if install_status.startswith("NATIVE2 INSTALL "):
         raise RuntimeError("A dictionary install is in progress. Keep USB connected and refresh when it finishes.")
-    if install_status.startswith("NATIVE2 UNPROVISIONED "):
-        raise RuntimeError("The keyboard could not open its dictionary store. Use USB recovery or explicit reprovisioning.")
     if not install_status.startswith("NATIVE2 READY "):
         raise RuntimeError("Connect the left half running Steno Squid Native firmware over USB.")
     try:
@@ -147,6 +153,8 @@ def read_state(console):
             "native_install update snapshot-clear-capabilities") == "OK CLEAR1",
         "adaptive_imports": adaptive,
         "factory_actions": FACTORY_ACTIONS if factory else {},
+        "repack": adaptive and not status["read_only"] and console.command(
+            "native_install update repack-capabilities") == "OK REPACK1",
         "layout_map": adaptive and console.command("native_install update layout-capabilities") == "OK MAP1",
     }
 
@@ -203,6 +211,18 @@ def run_job(serial, request, progress, show_view=None):
     action = request["action"]
     if action == "setup":
         return setup_keyboard(serial, request, progress, show_view)
+    if action in {"apply_repack", "restore_repack_backup"}:
+        restore = action == "restore_repack_backup"
+        with open_console(serial) as console:
+            serial = console.serial
+            if not restore:
+                source, plan = capture_approved_repack(console, request, progress)
+        if restore:
+            restore_original(serial, request, progress)
+        else:
+            install_repack(source, plan, progress)
+        with open_console(serial) as console:
+            return {**load_view(console, action, progress, show_view), "repacked": not restore, "restored": restore}
     published = False
     report = {}
     with open_console(serial) as console:
@@ -212,6 +232,8 @@ def run_job(serial, request, progress, show_view=None):
                                             reprovision=True)}
         if action in {"refresh", "layout_map"}:
             return load_view(console, action, progress, show_view)
+        if action == "preview_repack":
+            return {"repack_plan": preview_repack(console, progress)}
         if action == "preview_compact":
             layout = None
             if console.command("native_install update layout-capabilities") == "OK MAP1":
@@ -310,7 +332,7 @@ def run_job(serial, request, progress, show_view=None):
             if staging and (not isinstance(expected, str) or len(expected) != 64):
                 raise ValueError("Preview the import before staging.")
             import_report = named_import(console, safe_name(request["name"]), entries,
-                                         preference=request.get("preference", "auto"), stage=staging,
+                                         stage=staging,
                                          expected=expected, progress=progress)
             if not staging:
                 return {"import_plan": import_report}
@@ -338,13 +360,8 @@ def run_job(serial, request, progress, show_view=None):
                 options["delete"] = name
             elif action == "import":
                 entries, _ = read_import(request["source"])
-                label = request.get("name", "")
-                if label:
-                    options["name"] = safe_name(label)
-                    reply = console.command("native_install update named-capabilities").split()
-                    if len(reply) != 3 or reply[:2] != ["OK", "NAMED1"]:
-                        raise RuntimeError("This firmware cannot create a named dictionary.")
-                    options["limit"] = int(reply[2])
+                if request.get("name"):
+                    raise ValueError("Preview named imports before saving the compact dictionary.")
             if action == "delete" and selected["kind"] == "snapshot":
                 published = change_snapshot(console, "delete", name, stage=True, progress=progress)
             else:

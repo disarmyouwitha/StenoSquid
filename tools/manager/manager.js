@@ -12,6 +12,7 @@ let connectionFailed = false;
 let importToApply;
 let optimizationToApply;
 let cleanupToken;
+let repackPlan;
 const number = new Intl.NumberFormat();
 const jobMessages = {
   open_installer: "Checking the USB installer…",
@@ -21,6 +22,8 @@ const jobMessages = {
   preview_import: "Calculating import size…", apply_import: "Importing dictionary…", import: "Importing dictionary…",
   backup: "Preparing backup…", export: "Exporting dictionary…",
   preview_package: "Checking factory dictionary space…", apply_package: "Saving factory dictionary…",
+  preview_repack: "Preparing the USB repack preview…", apply_repack: "Preparing to repack dictionary flash…",
+  restore_repack_backup: "Restoring the original dictionary backup…",
   preview_compact: "Finding blocks to reclaim…", compact: "Reclaiming flash space…", clear_personal: "Clearing personal dictionary…"
 };
 
@@ -28,9 +31,9 @@ function notify(text, error = false) {
   status.textContent = text;
   status.dataset.error = error;
   const progress = node("job-progress");
-  const percent = /^Writing dictionary data… (\d+)%$/.exec(text);
+  const percent = /^Writing .*?(?:… (\d+)%| \((\d+)%\))$/.exec(text);
   progress.hidden = !percent;
-  if (percent) progress.value = Number(percent[1]);
+  if (percent) progress.value = Number(percent[1] ?? percent[2]);
 }
 function selection() {
   return state?.catalog.find((row) => row.id === selectedId);
@@ -47,6 +50,7 @@ function setConnection(isConnected, lost = false) {
     setup = undefined;
     journalUsage = {};
     flashMap = undefined;
+    clearRepackPlan();
     node("workspace").hidden = true;
     node("setup-panel").hidden = true;
   }
@@ -57,14 +61,15 @@ function controls() {
   const packages = [...node("setup-form").querySelectorAll("input")];
   for (const checkbox of packages) checkbox.disabled = busy;
   node("setup-submit").disabled = busy || !setup || !packages.some((checkbox) => checkbox.checked);
+  node("repack-restore").disabled = busy || !setup?.repack_backup;
+  node("repack-cancel").disabled = busy;
+  const importFields = node("import").elements;
+  importFields.file.disabled = importFields.name.disabled = busy || !state || state.read_only;
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
   for (const id of ["refresh", "backup", "export", "reprovision",
     "emergency-provision", "setup-cancel"]) node(id).disabled = busy;
   node("emergency-provision").hidden = connected || !connectionFailed;
   node("flash-map-scan").disabled = busy;
-  for (const radio of node("import-plan-costs").querySelectorAll("input")) {
-    radio.disabled = busy || !!state?.read_only || radio.dataset.eligible !== "true";
-  }
   if (!state) return;
   const row = selection();
   const rank = state.catalog.indexOf(row);
@@ -107,6 +112,7 @@ function render(newState, usage = {}) {
   clearOptimizationPlan();
   clearFactoryPlan();
   node("flash-map-panel").hidden = !state.layout_map;
+  node("repack-preview").hidden = !state.repack;
   updateImportControls();
   if (!selection()) selectedId = state.catalog[0]?.id;
   node("catalog").replaceChildren();
@@ -227,12 +233,19 @@ async function watch(id) {
     setup = result.state.setup;
     node("workspace").hidden = true;
     node("setup-panel").hidden = false;
-    node("setup-title").textContent = setup.reprovision ? "Reprovision dictionaries" : "Set up dictionaries";
+    const recovering = Boolean(setup.repack_backup);
+    node("setup-title").textContent = recovering ? "Recover dictionaries"
+      : setup.reprovision ? "Reprovision dictionaries" : "Set up dictionaries";
+    node("setup-description").textContent = recovering
+      ? "Restore the original backup saved on this computer before the repack."
+      : "Choose the factory dictionaries to install. You can add more later.";
+    node("setup-form").hidden = recovering;
+    node("repack-restore").hidden = !recovering;
     node("setup-warning").textContent = setup.reprovision
       ? "Reprovisioning erases all dictionaries and saved edits on this keyboard. Download a full backup first if you want to keep them."
       : "Setup clears the external dictionary pool. Keep the left half connected by USB until it reboots.";
     node("setup-cancel").hidden = !setup.reprovision;
-    node("setup-packages").replaceChildren(...Object.entries(setup.packages).map(([key, name]) => {
+    node("setup-packages").replaceChildren(...Object.entries(setup.packages ?? {}).map(([key, name]) => {
       const label = document.createElement("label");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -242,12 +255,16 @@ async function watch(id) {
       return label;
     }));
     setConnection(true);
-    notify(setup.reprovision ? "Choose the factory dictionaries to reinstall." : "Connected. The keyboard needs dictionary setup.");
+    notify(recovering ? "The original repack backup is available."
+      : setup.reprovision ? "Choose the factory dictionaries to reinstall." : "Connected. The keyboard needs dictionary setup.");
   } else if (result.state) {
     showView(result);
     if (result.package_changed) {
       const plan = result.package_changed;
       notify(`${plan.name} ${plan.restoring ? "installed. Use the Active checkbox to enable it." : "removed from flash."}`);
+    } else if (result.repacked || result.restored) {
+      notify(result.repacked ? "Repack complete. Dictionaries verified."
+        : "Original backup restored. Dictionaries verified.");
     } else if (result.installed) {
       notify("Dictionaries installed. The keyboard is ready.");
     } else if (result.imported) {
@@ -266,6 +283,8 @@ async function watch(id) {
     showImportPlan(result.import_plan);
   } else if (result.package_plan) {
     showFactoryPlan(result.package_plan);
+  } else if (result.repack_plan) {
+    showRepackPlan(result.repack_plan);
   } else if (result.optimization_plan) {
     showOptimizationPlan(result.optimization_plan);
   } else if (result.cleanup) {
@@ -304,11 +323,15 @@ function showFlashMap(map, reclaimable = []) {
     : map.staging_blocked ? "A retained catalog reader currently blocks publication." : "";
   summary.hidden = !summary.textContent;
   const grid = node("flash-map-grid");
+  const legend = node("flash-map-legend");
+  grid.setAttribute("aria-label", map.projected ? "Projected flash layout, 256 blocks" : "Current flash layout, 256 blocks");
+  const result = node("flash-map-result");
+  result.toggleAttribute("data-projected", !!map.projected);
   const labels = {c: "Catalog roots", x: "Reserved", b: "Unidentified pinned image", s: "Unidentified user snapshot",
-    h: "Journal write head", j: "Unattributed journal blocks",
+    h: "Journal write head", j: map.projected ? "Packed journal" : "Unattributed journal blocks",
     "empty-journal": "Pending cleanup", reclaimable: "Reclaimable",
     f: "Forward index", r: "Reverse index", "retained-journal": "Retained-only journal blocks",
-    retained: "Retained-only extents", ".": "Unreferenced", "?": "Unknown"};
+    retained: "Retained-only extents", ".": map.projected ? "Free after repack" : "Unreferenced", "?": "Unknown"};
   const colorFor = (id, name) => {
     if (name === "user_dictionary") return "#d0b961";
     if (factoryColors[id]) return factoryColors[id];
@@ -354,7 +377,6 @@ function showFlashMap(map, reclaimable = []) {
     }
     return cell;
   }));
-  const legend = node("flash-map-legend");
   legend.replaceChildren(...Object.entries(labels).filter(([kind]) => kinds.has(kind)).map(([kind, label]) => {
     const item = document.createElement("li");
     const marker = document.createElement("span");
@@ -369,7 +391,7 @@ function showFlashMap(map, reclaimable = []) {
     item.append(marker, name);
     legend.append(item);
   }
-  node("flash-map-result").hidden = false;
+  result.hidden = false;
 }
 
 function showMapError(message) {
@@ -383,10 +405,7 @@ function showMapError(message) {
 function updateImportControls() {
   const fields = node("import").elements;
   const named = fields.name.value.trim() !== "";
-  node("import-preview").textContent = named
-    ? (state?.adaptive_imports ? "Preview new dictionary" : "Import new dictionary")
-    : "Import into personal";
-  node("import-help").hidden = !(named && state?.adaptive_imports);
+  node("import-preview").textContent = named ? "Preview new dictionary" : "Import into personal";
 }
 function showImportError(message = "") {
   const error = node("import-error");
@@ -398,23 +417,6 @@ function clearImportPlan() {
   importToApply = undefined;
   node("import-plan").hidden = true;
   node("import-preview").hidden = false;
-}
-function selectImportFormat(plan, format, manual = false) {
-  const token = plan.tokens[format];
-  if (manual && (busy || !importToApply || !token)) return;
-  for (const row of node("import-plan-costs").children) {
-    const selected = row.dataset.format === format;
-    row.toggleAttribute("data-selected", selected);
-    row.querySelector("input").checked = selected;
-    row.querySelector(".import-format-cost").hidden = !selected;
-  }
-  const apply = node("import-apply");
-  apply.hidden = !importToApply || !token;
-  apply.textContent = format === "snapshot" ? "Import compact snapshot" : "Import as journal";
-  if (importToApply) {
-    importToApply.preference = manual ? format : "auto";
-    importToApply.token = token;
-  }
 }
 function segmentCost(imageSegments, stagingSegments, imageLabel) {
   const blocks = document.createElement("div");
@@ -436,9 +438,11 @@ function segmentCost(imageSegments, stagingSegments, imageLabel) {
   image.textContent = `${imageSegments} ${imageLabel}`;
   const staging = document.createElement("span");
   staging.className = "caption-staging";
-  staging.textContent = `${stagingSegments} to stage`;
-  staging.title = "Includes the solid and striped segments";
-  caption.append(image, staging);
+  const temporary = Math.max(0, stagingSegments - imageSegments);
+  staging.textContent = `${temporary} to stage`;
+  staging.title = "Temporary blocks in addition to the blocks added";
+  caption.append(image);
+  if (temporary) caption.append(staging);
   return [blocks, caption];
 }
 
@@ -449,73 +453,21 @@ function showImportPlan(plan) {
   }
   node("import-entry-count").textContent = `${number.format(plan.entries)} ${plan.entries === 1 ? "entry" : "entries"} to import`;
 
-  const costs = node("import-plan-costs");
-  costs.replaceChildren();
-  for (const [format, option] of Object.entries(plan.options)) {
-    const row = document.createElement("li");
-    row.className = "import-format";
-    row.dataset.format = format;
-    row.dataset.available = String(option.eligible);
-
-    const header = document.createElement("div");
-    header.className = "import-format-heading";
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = "import-format";
-    radio.id = `import-format-${format}`;
-    radio.dataset.eligible = String(option.eligible);
-    radio.onchange = () => selectImportFormat(plan, format, true);
-    const name = document.createElement("label");
-    name.htmlFor = radio.id;
-    name.textContent = format === "snapshot" ? "Compact snapshot" : "Journal";
-    row.onclick = (event) => {
-      if (event.target.closest("input, label") || radio.disabled) return;
-      radio.focus({preventScroll: true});
-      selectImportFormat(plan, format, true);
-    };
-    header.append(radio, name);
-    if (format === plan.recommended) {
-      const label = document.createElement("span");
-      label.className = "import-choice";
-      label.textContent = "Recommended";
-      header.append(label);
-    }
-    if (option.logical_bytes != null) {
-      const size = document.createElement("span");
-      size.className = "import-bytes";
-      size.textContent = option.logical_bytes < 1024
-        ? `${number.format(option.logical_bytes)} B`
-        : `${number.format(Math.round(option.logical_bytes / 1024))} KiB`;
-      size.title = `${number.format(option.logical_bytes)} bytes`;
-      header.append(size);
-    }
-    row.append(header);
-
-    const cost = document.createElement("div");
-    cost.className = "import-format-cost";
-    if (option.staging_segments != null) {
-      cost.append(...segmentCost(option.added_segments, option.staging_segments, "added"));
-    }
-    row.append(cost);
-
-    if (!option.eligible && option.eligibility !== "journal-budget" && option.reason) {
-      const detail = document.createElement("p");
-      detail.className = "import-format-detail";
-      detail.textContent = option.reason;
-      row.append(detail);
-    }
-    costs.append(row);
-  }
-
-  const savings = node("import-savings");
-  const saved = plan.options.journal.added_segments - plan.options.snapshot.added_segments;
-  savings.hidden = !(saved > 0 && plan.options.journal.eligible && plan.options.snapshot.eligible);
-  savings.textContent = savings.hidden ? "" : `${saved} fewer segments with a snapshot`;
-  selectImportFormat(plan, plan.selected);
+  const size = node("import-compact-size");
+  size.textContent = formatBytes(plan.bytes);
+  size.title = `${number.format(plan.bytes)} bytes`;
+  const blocks = plan.staging_segments == null
+    ? segmentCost(plan.image_segments, null, "image blocks")
+    : segmentCost(plan.image_segments, plan.staging_segments, "added");
+  node("import-plan-blocks").replaceChildren(...blocks);
+  importToApply.token = plan.token;
+  node("import-apply").hidden = !plan.token;
   node("import-plan").hidden = false;
   node("import-preview").hidden = true;
-  notify(plan.selected ? "Review the import preview." : "Import stopped.");
-  if (!plan.selected) showImportError("This format cannot stage safely. USB rebuilding is unavailable in Manager.");
+  notify(plan.token ? "Review the import preview." : "Import stopped.");
+  if (!plan.token) showImportError(state?.repack
+    ? `${plan.reason} Preview USB repack under External flash map to check for a larger free run.`
+    : plan.reason);
 }
 function clearOptimizationPlan() {
   optimizationToApply = undefined;
@@ -547,10 +499,44 @@ function showOptimizationPlan(plan) {
   node("optimization-plan").hidden = false;
   notify(plan.token ? "Review before compacting." : noChange);
 }
+function clearRepackPlan() {
+  if (!repackPlan) return;
+  repackPlan = undefined;
+  node("flash-map-title").textContent = "External flash map";
+  node("flash-map-actions").hidden = false;
+  node("repack-actions").hidden = true;
+  node("repack-plan").hidden = true;
+  if (flashMap) showFlashMap(flashMap);
+  else node("flash-map-result").hidden = true;
+}
+function showRepackPlan(plan) {
+  repackPlan = plan;
+  const {before, after, token} = plan;
+  node("flash-map-title").textContent = "Projected layout after repack";
+  node("flash-map-actions").hidden = true;
+  node("repack-actions").hidden = false;
+  showFlashMap(after);
+  node("repack-run").textContent = `${before.largest_free_run} → ${after.largest_free_run} blocks`;
+  node("repack-free").textContent = `${before.free_segments} → ${after.free_segments} blocks`;
+  node("repack-detail").textContent = token
+    ? "After you confirm, Manager backs up the dictionaries, verifies the packed layout, and rewrites the dictionary flash. Keep USB connected."
+    : "This preview shows no space gain.";
+  node("repack-apply").hidden = !token;
+  node("repack-plan").hidden = false;
+  notify(token ? "Review the USB repack preview." : "The dictionary layout is already well packed.");
+}
+function confirmRepack(action, serial, token) {
+  if (busy) return;
+  const message = action === "apply_repack"
+    ? "Back up and repack this keyboard? Manager will verify the backup before rewriting the dictionary flash. Keep USB connected."
+    : "Restore the original backup to this keyboard? This rewrites the dictionary flash. Keep USB connected.";
+  if (window.confirm(message)) run({action, serial, token, confirm: serial});
+}
 async function run(payload) {
   if (busy) return;
   const importing = ["import", "preview_import", "apply_import"].includes(payload.action);
   if (importing) showImportError();
+  clearRepackPlan();
   if (payload.action !== "preview_optimize") clearOptimizationPlan();
   clearFactoryPlan();
   if (cleanupToken && flashMap) showFlashMap(flashMap);
@@ -573,7 +559,10 @@ async function run(payload) {
     if (connected && /^(No reply to |USB HID write failed|Connect one Steno Squid left half)/.test(error.message)) {
       setConnection(false, true);
     }
-    if (importing) {
+    if (["apply_repack", "restore_repack_backup"].includes(payload.action)) {
+      setConnection(false, true);
+      notify(`${error.message} Refresh Connection to check the keyboard and recover if needed.`, true);
+    } else if (importing) {
       notify("Import stopped.");
       showImportError(error.message);
     } else if (payload.action === "layout_map") {
@@ -602,6 +591,18 @@ for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"]]) {
 }
 node("reprovision").onclick = node("emergency-provision").onclick = () => run({action: "open_installer"});
 node("setup-cancel").onclick = () => run({action: "refresh"});
+node("repack-preview").onclick = () => run({action: "preview_repack"});
+node("repack-cancel").onclick = () => {
+  clearRepackPlan();
+  node("repack-preview").focus();
+  notify("Showing the current flash layout.");
+};
+node("repack-apply").onclick = () => {
+  if (repackPlan?.token) confirmRepack("apply_repack", repackPlan.serial, repackPlan.token);
+};
+node("repack-restore").onclick = () => {
+  if (setup?.repack_backup) confirmRepack("restore_repack_backup", setup.serial, setup.repack_backup);
+};
 node("compact").onclick = () => run({action: "preview_compact"});
 node("compact-apply").onclick = () => {
   if (cleanupToken) run({action: "compact", token: cleanupToken});
@@ -714,14 +715,17 @@ node("edit").onsubmit = (event) => {
   run({action: event.submitter.value, id: selectedId, outline: fields.get("outline").trim(), translation: fields.get("translation")});
 };
 node("import").oninput = (event) => {
-  if (event.target.name === "file" && event.target.files.length) {
-    const stem = event.target.files[0].name.replace(/\.json$/i, "").normalize("NFKD").replace(/\p{M}/gu, "");
-    node("import").elements.name.value = stem.replace(/[^A-Za-z0-9 ._-]+/g, "-")
+  const form = event.currentTarget;
+  const file = event.target.name === "file" && event.target.files[0];
+  if (file) {
+    const stem = file.name.replace(/\.json$/i, "").normalize("NFKD").replace(/\p{M}/gu, "");
+    form.elements.name.value = stem.replace(/[^A-Za-z0-9 ._-]+/g, "-")
       .replace(/^[^A-Za-z0-9]+/, "").slice(0, 44).trimEnd() || "Imported dictionary";
   }
   showImportError();
   clearImportPlan();
   updateImportControls();
+  if (file) form.requestSubmit();
 };
 node("import-apply").onclick = () => {
   if (importToApply?.token) {
@@ -732,20 +736,23 @@ node("import-apply").onclick = () => {
 };
 node("import").onsubmit = async (event) => {
   event.preventDefault();
-  if (busy || node("import-preview").hidden) return;
-  const fields = new FormData(event.currentTarget);
+  if (busy || !state || state.read_only || node("import-preview").hidden) return;
+  const {file: fileInput, name: nameInput} = event.currentTarget.elements;
+  const file = fileInput.files[0];
+  const name = nameInput.value.trim();
+  if (!file) return;
   try {
-    const source = await fields.get("file").text();
-    const name = fields.get("name").trim();
-    if (state?.adaptive_imports && name) {
+    const source = await file.text();
+    if (busy || fileInput.files[0] !== file || nameInput.value.trim() !== name) return;
+    if (name) {
       clearImportPlan();
       importToApply = {source, name};
       await run({action: "preview_import", ...importToApply});
     } else {
-      if (!name && !window.confirm(
+      if (!window.confirm(
         "Import this file into your personal dictionary? Entries with matching outlines will be replaced."
       )) return;
-      await run({action: "import", source, name});
+      await run({action: "import", source});
     }
   } catch (error) {
     showImportError(error.message);

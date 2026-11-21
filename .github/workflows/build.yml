@@ -115,12 +115,6 @@ jobs:
           - name: NiceNano-Left-Default
             shield: corne_left
             snippet: studio-rpc-usb-uart
-          - name: NiceNano-Left-No-Display
-            shield: corne_left
-            snippet: studio-rpc-usb-uart
-            extra: "-DEXTRA_CONF_FILE=$repo/config/nicenano-wireless-corne/left-no-display.conf"
-          - name: NiceNano-Right-No-Display
-            shield: corne_right
           - name: NiceNano-Right-Default
             shield: corne_right nice_view_adapter nice_view
             nice_view: true
@@ -134,13 +128,6 @@ jobs:
             snippet: studio-rpc-usb-uart
           - name: Boardsource-Right-Default
             boardsource: right
-          - name: Boardsource-Left-No-Display
-            boardsource: left
-            snippet: studio-rpc-usb-uart
-            no_display: true
-          - name: Boardsource-Right-No-Display
-            boardsource: right
-            no_display: true
           # Left-side flash probes for first power-up. They read the flash
           # chip and write nothing. Run them before the left firmware.
           - name: Boardsource-Probe
@@ -210,9 +197,6 @@ jobs:
             left)
               board=blecorne_left
               conf="$split/corne.conf;$split/corne_left.conf"
-              if [ "${{ matrix.no_display }}" = "true" ]; then
-                conf="$conf;$split/left-no-display.conf"
-              fi
               if [ "${{ matrix.diagnostics }}" = "true" ]; then
                 conf="$conf;$split/logging.conf"
                 args+=("-DEXTRA_DTC_OVERLAY_FILE=$repo/config/boardsource-wireless-corne/logging.overlay")
@@ -224,13 +208,9 @@ jobs:
             right)
               board=blecorne_right
               args+=("-DBOARD_ROOT=$GITHUB_WORKSPACE/vendor"
-                     "-DZMK_CONFIG=$repo/config/boardsource-wireless-corne")
-              if [ "${{ matrix.no_display }}" = "true" ]; then
-                args+=("-DEXTRA_CONF_FILE=$split/corne.conf")
-              else
-                args+=("-DSHIELD=nice_view"
-                       "-DEXTRA_CONF_FILE=$split/corne.conf;$split/right-nice-view.conf")
-              fi
+                     "-DZMK_CONFIG=$repo/config/boardsource-wireless-corne"
+                     "-DSHIELD=nice_view"
+                     "-DEXTRA_CONF_FILE=$split/corne.conf;$split/right-nice-view.conf")
               ;;
             probe)
               board=blecorne_left
@@ -255,9 +235,6 @@ jobs:
                 args+=("-DEXTRA_CONF_FILE=$split/logging.conf"
                        "-DEXTRA_DTC_OVERLAY_FILE=$split/logging.overlay")
               fi
-              if [ -n "${{ matrix.extra }}" ]; then
-                args+=(${{ matrix.extra }})
-              fi
               ;;
           esac
           snippet=()
@@ -268,7 +245,7 @@ jobs:
           west build -s "$source" -d "$GITHUB_WORKSPACE/out" -b "$board" "${snippet[@]}" -- "${args[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
 
           case "${{ matrix.name }}" in
-            *-Left-Default|*-Left-No-Display|*-Left-Diagnostic)
+            *-Left-Default|*-Left-Diagnostic)
               config="$GITHUB_WORKSPACE/out/zephyr/.config"
               expected='CONFIG_ZMK_STENO_SQUID_NATIVE_STORE=y'
               if ! awk -v expected="$expected" '$0 == expected { found = 1 } END { exit !found }' "$config"; then
@@ -332,12 +309,6 @@ jobs:
           pattern: "*-*-Default"
           path: artifacts
 
-      - name: Download firmware without display
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: "*-*-No-Display"
-          path: artifacts
-
       - name: Name the firmware files for each board and half
         shell: bash
         run: |
@@ -345,11 +316,9 @@ jobs:
           mkdir release
           for board in NiceNano Boardsource; do
             for half in Left Right; do
-              for variant in Default No-Display; do
-                name="$board-$half-$variant"
-                test -s "artifacts/$name/zmk.uf2"
-                cp "artifacts/$name/zmk.uf2" "release/$name.uf2"
-              done
+              name="$board-$half-Default"
+              test -s "artifacts/$name/zmk.uf2"
+              cp "artifacts/$name/zmk.uf2" "release/$name.uf2"
             done
           done
 

@@ -2,8 +2,10 @@
 
 from contextlib import nullcontext
 import json
+from pathlib import Path
 from queue import Queue
 import re
+from tempfile import TemporaryDirectory
 import time
 from threading import Thread, current_thread
 from urllib.error import HTTPError
@@ -12,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 import manager
+import manager_repack
 
 
 class Keyboard:
@@ -63,6 +66,10 @@ class Keyboard:
             return "OK CLEAR1" if self.adaptive else "ERR Unsupported"
         if command == "reset_user_dictionary":
             return "OK"
+        if command == "native_install update repack-capabilities":
+            return "OK REPACK1" if self.adaptive else "ERR Unsupported"
+        if command == "native_install update recovery-capabilities":
+            return "OK RECOVERY1"
         if command == "native_install update layout-capabilities":
             return "OK MAP1"
         if command == "native_install update layout-map":
@@ -91,6 +98,74 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(self.run_job("refresh")["state"]["auto_checkpoints"], 2)
         self.assertFalse(self.run_job("enable", id=8, enabled=False)["state"]["catalog"][0]["enabled"])
         self.assertEqual(self.run_job("layout", layout="Mac U.S.")["state"]["layout"], "Mac U.S.")
+
+    def test_repack_previews_without_backup_then_requires_matching_confirmation(self):
+        self.keyboard.adaptive = True
+        serial = self.keyboard.serial
+        source = {"sha256": "source", "capture": {"serial": serial, "generation": 3}}
+        images = [
+            {"id": 6, "extent": 1, "start": 13, "segments": 3, "kind": "b", "name": "Lapwing Base"},
+            {"id": 8, "extent": 2, "start": 22, "segments": 2, "kind": "s", "name": "Medical"},
+        ]
+        usage = {8: {"bytes": 48, "count": 1, "entries": 1}}
+        before = {"free_segments": 245, "largest_free_run": 200, "staging_blocked": False, "segments": []}
+        after = manager_repack.project_layout(images, usage)
+        with TemporaryDirectory() as home, patch.object(manager_repack.Path, "home", return_value=Path(home)), \
+                patch.object(manager_repack, "backup_all", return_value=source) as backup, \
+                patch.object(manager_repack, "read_layout", return_value=before), \
+                patch.object(manager_repack, "read_images", return_value=images), \
+                patch.object(manager_repack, "overlay_usage", return_value=usage) as measure, \
+                patch.object(manager_repack, "build_repack", return_value=(None, {"optimized": True},
+                                                                          {"target_layout": after})) as build, \
+                patch.object(manager_repack, "restore_repack") as install, \
+                patch.object(manager_repack, "recover_usb") as restore, \
+                patch.object(manager, "load_view", return_value={"state": {"serial": serial}}):
+            result = self.run_job("preview_repack")["repack_plan"]
+            measure.assert_called_once_with(self.keyboard, metadata_only=True)
+            self.assertEqual(result["before"]["largest_free_run"], 200)
+            self.assertEqual(result["after"], after)
+            self.assertEqual(len(after["segments"]), 256)
+            self.assertEqual("".join(row["kind"] for row in after["segments"][:10]), "ccbbbjssfr")
+            backup.assert_not_called()
+            build.assert_not_called()
+            install.assert_not_called()
+            self.assertEqual(list(Path(home).iterdir()), [])
+            fields = {"serial": serial, "token": result["token"]}
+            with self.assertRaisesRegex(ValueError, "Confirm"):
+                self.run_job("apply_repack", **fields, confirm="another-board")
+            with self.assertRaisesRegex(ValueError, "Flash changed"):
+                self.run_job("apply_repack", **{**fields, "token": "wrong"}, confirm=serial)
+            backup.assert_not_called()
+            install.assert_not_called()
+            self.assertTrue(self.run_job("apply_repack", **fields, confirm=serial)["repacked"])
+            backup.assert_called_once_with(self.keyboard)
+            build.assert_called_once_with(source, [])
+            saved = manager_repack.last_repack_backup(serial)
+            self.assertEqual(json.loads((saved / "original.json").read_text()), source)
+            _, target_hash = manager_repack.read_bundle(saved / "optimized.json")
+            self.assertEqual(install.call_args.args[3], serial + ":" + target_hash)
+            self.assertTrue(install.call_args.kwargs["live"])
+
+            self.keyboard.install_status = "NATIVE2 UNPROVISIONED 3"
+            self.assertEqual(manager.read_state(self.keyboard)["setup"]["repack_backup"], saved.name)
+            with self.assertRaisesRegex(ValueError, "latest repack backup"):
+                self.run_job("restore_repack_backup", serial=serial, confirm=serial, token="1" * 32)
+            restore.assert_not_called()
+            reply = self.run_job("restore_repack_backup", serial=serial, confirm=serial, token=saved.name)
+            self.assertTrue(reply["restored"])
+            self.assertEqual(restore.call_args.args[:3], (source, serial, serial))
+            self.assertTrue(restore.call_args.kwargs["unprovisioned_only"])
+
+    def test_repack_preview_with_no_gain_offers_no_rewrite(self):
+        self.keyboard.adaptive = True
+        layout = {"free_segments": 252, "largest_free_run": 252, "staging_blocked": False}
+        with patch.object(manager_repack, "read_layout", return_value=layout), \
+                patch.object(manager_repack, "read_images", return_value=[]), \
+                patch.object(manager_repack, "overlay_usage", return_value={}), \
+                patch.object(manager_repack, "backup_all") as backup:
+            result = self.run_job("preview_repack")["repack_plan"]
+            self.assertNotIn("token", result)
+            backup.assert_not_called()
 
     def test_unprovisioned_keyboard_offers_setup_without_reading_catalog(self):
         self.keyboard.install_status = manager.UNPROVISIONED
@@ -353,7 +428,15 @@ class ManagerTest(unittest.TestCase):
             transfer.assert_not_called()
         with patch.object(manager, "named_import", return_value={}) as named:
             self.run_job("preview_import", name="Medical", source='{"KAT":"cat"}')
-            self.assertEqual(named.call_args.kwargs["preference"], "auto")
+            self.assertEqual(named.call_args.args[1], "Medical")
+            self.assertFalse(named.call_args.kwargs["stage"])
+        with patch.object(manager, "transfer", return_value=False) as transfer:
+            with self.assertRaisesRegex(ValueError, "Preview named imports"):
+                self.run_job("import", name="Medical", source='{"KAT":"cat"}')
+            transfer.assert_not_called()
+            self.run_job("import", source='{"KAT":"cat"}')
+            transfer.assert_called_once()
+            self.assertFalse(transfer.call_args.kwargs)
 
     def test_backup_always_returns_a_complete_bundle(self):
         with patch.object(manager, "backup_all", return_value={"format": "stenosquid-backup-2"}) as backup:
