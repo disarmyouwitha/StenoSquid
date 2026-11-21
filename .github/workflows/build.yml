@@ -60,6 +60,7 @@ jobs:
           python3 -m pip install -r requirements-dev.txt
           python3 -m ruff check
           python3 tools/render_keymap.py --check
+          python3 tools/ci/package_manager.py build/StenoSquidManager.zip
       - name: Run every native regression and display renderer
         run: python3 tools/tests/run_all.py
       - name: Sanitize candidate-B native storage core
@@ -303,6 +304,8 @@ jobs:
       group: firmware-release-${{ github.ref }}
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
       - name: Download everyday firmware
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -316,13 +319,16 @@ jobs:
           mkdir release
           for board in NiceNano Boardsource; do
             for half in Left Right; do
-              name="$board-$half-Default"
-              test -s "artifacts/$name/zmk.uf2"
-              cp "artifacts/$name/zmk.uf2" "release/$name.uf2"
+              name="$board-$half"
+              test -s "artifacts/$name-Default/zmk.uf2"
+              cp "artifacts/$name-Default/zmk.uf2" "release/$name.uf2"
             done
           done
 
-      - name: Publish tested firmware
+      - name: Package Steno Squid Manager
+        run: python3 tools/ci/package_manager.py release/StenoSquidManager.zip
+
+      - name: Publish tested release assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -340,7 +346,7 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft \
               --title "$RELEASE_TAG" --generate-notes
           fi
-          gh release upload "$RELEASE_TAG" release/*.uf2 --clobber
+          gh release upload "$RELEASE_TAG" release/*.uf2 release/StenoSquidManager.zip --clobber
           prerelease=false
           if [[ "$RELEASE_TAG" == *-* ]]; then
             prerelease=true

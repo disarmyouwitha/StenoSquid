@@ -62,7 +62,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ### Provision a new keyboard
 
-1. Flash the matching **Left-Default** and **Right-Default** UF2s for your board. Use the same pair with or without a nice!view. Practice uses the right display.
+1. Flash the matching **Left** and **Right** UF2s for your board. Use the same pair with or without a nice!view. Practice uses the right display.
 2. Plug the left half in over USB, close any Javelin browser connection, and run these commands from this repository.
 
    ```sh
@@ -79,9 +79,12 @@ If your board still has the shared Lapwing image from v0.1.2, export any diction
 
 StenoSquid Manager offers full dictionary management! You can Import/Export, Edit, Rename and Delete dictionaries 
 
-Connect the left half over USB and Run
-`python3 stenosquid.py --manager` from the repository. The local Manager opens in
-your browser. Select **Connect over USB** to view Active dictionaries and their priorities. You can Import/Export and Edit any dictionary installed!
+Download `StenoSquidManager.zip` from the release and extract it. Connect the left half over USB, then run these commands from the extracted folder. The local Manager opens in your browser.
+
+```sh
+python3 -m pip install hidapi
+python3 stenosquid.py --manager
+```
 
 <sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools. </sub>
 
