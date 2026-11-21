@@ -194,7 +194,7 @@ def metadata_payload(snapshot, *, move=None, rename=None, delete=None):
             return None
         rows.insert(position, rows.pop(index))
     else:
-        if target == "user_dictionary" or (rows[index][8:10] != b"\xff\xff" and not (rename and rows[index][11] == 1)):
+        if target == "user_dictionary" or rows[index][11] == 2 or (rows[index][8:10] != b"\xff\xff" and not (rename and rows[index][11] == 1)):
             raise ValueError("Only independent named dictionaries can be renamed or deleted")
         if rename:
             label = validate_name(rename[1])

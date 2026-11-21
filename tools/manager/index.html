@@ -108,6 +108,18 @@
           <button type="button" id="apply-updates" data-write hidden>Apply pinned updates</button>
           <button type="button" id="compact" data-write>Compact journal</button>
         </div>
+        <div id="factory-packages" hidden>
+          <h3>Factory packages</h3>
+          <div class="toolbar">
+            <button type="button" id="factory-lapwing" data-write></button>
+            <button type="button" id="factory-plover" data-write></button>
+          </div>
+          <div id="factory-preview" hidden>
+            <p id="factory-summary" aria-live="polite"></p>
+            <button type="button" id="factory-apply" data-write></button>
+            <button type="button" id="factory-cancel">Cancel</button>
+          </div>
+        </div>
         <div id="journal-preview" hidden>
           <p id="journal-summary" aria-live="polite"></p>
           <button type="button" id="compact-apply" data-write>Apply journal cleanup</button>

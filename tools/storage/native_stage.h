@@ -6,7 +6,7 @@ namespace candidate_b {
 
 enum class NativeUpdateKind {
     Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base,
-    SnapshotNamed, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal, SnapshotClear
+    SnapshotNamed, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal, SnapshotClear, FactoryPackage
 };
 
 // Exclusive USB staging session. The active catalog and both retained roots
@@ -48,7 +48,7 @@ class NativeStage {
 
     static bool EditableRow(const uint8_t *row, bool rename) {
         const bool journal = row[8] == 255 && row[9] == 255;
-        return (journal || (rename && row[11] == kUserSnapshot)) &&
+        return row[11] != kFactoryAbsent && (journal || (rename && row[11] == kUserSnapshot)) &&
                !(row[12] == 15 && !std::memcmp(row + 16, "user_dictionary", 15));
     }
 
@@ -375,6 +375,95 @@ class NativeStage {
         return has_update && !std::memcmp(updated.words, changed_sources.words, sizeof(updated.words));
     }
 
+    bool CheckFactoryPackage(const CatalogRoot &candidate, uint32_t metadata, BaseProbe probe) {
+        if (snapshot_id != 6 && snapshot_id != 7) return false;
+        uint8_t before[32], after[32];
+        if (!store.device.Read(original.root.address, before, sizeof(before)) ||
+            !store.device.Read(candidate.address, after, sizeof(after)) ||
+            std::memcmp(before, after, 6) || std::memcmp(before + 8, after + 8, 24)) return false;
+        const unsigned dictionaries = before[4] | before[5] << 8;
+        const unsigned old_count = before[6] | before[7] << 8;
+        const unsigned new_count = after[6] | after[7] << 8;
+        const bool restore = new_count == old_count + 1;
+        if ((!restore && old_count != new_count + 1) || old_count > 253 || new_count > 253 ||
+            candidate.bytes != 32 + dictionaries * 96u + new_count * 24u) return false;
+        const unsigned first_id = snapshot_id == 6 ? 2 : 7;
+        unsigned package_extent = restore ? old_count : kNoExtent;
+        unsigned seen = 0;
+        uint8_t extent[24]{};
+        if (restore) {
+            if (!probe || !ReadExtent(candidate, dictionaries, package_extent, extent) ||
+                Word(extent + 12) != 1 || Word(extent + 16) || Word(extent + 20)) return false;
+            const unsigned start = extent[0] | extent[1] << 8;
+            const unsigned count = extent[2] | extent[3] << 8;
+            const uint32_t bytes = Word(extent + 4);
+            if (start < 2 || start >= 255 || !count || count > 255 - start ||
+                bytes < 40 || bytes > count * kSegmentBytes || bytes % 4) return false;
+            for (unsigned segment = start; segment < start + count; ++segment)
+                if (segment == metadata || !erased.Contains(segment)) return false;
+            uint8_t header[8];
+            if (!store.device.Read(start * kSegmentBytes, header, sizeof(header)) ||
+                Word(header) != 0x3443534a || Word(header + 4) != snapshot_id - first_id + 1) return false;
+        }
+        for (unsigned i = 0; i < dictionaries; ++i) {
+            uint8_t old_row[96], new_row[96];
+            if (!store.device.Read(original.root.address + 32 + i * 96u, old_row, sizeof(old_row)) ||
+                !store.device.Read(candidate.address + 32 + i * 96u, new_row, sizeof(new_row))) return false;
+            const uint32_t id = Word(old_row);
+            if (id < first_id || id > snapshot_id) continue;
+            const unsigned member = id - first_id;
+            const char *name = FactoryName(id);
+            if (old_row[12] != std::strlen(name) || std::memcmp(old_row + 16, name, old_row[12]) ||
+                (seen & (1u << member))) return false;
+            seen |= 1u << member;
+            const unsigned old_base = old_row[8] | old_row[9] << 8;
+            if (restore) {
+                if (old_row[11] != kFactoryAbsent || old_base != kNoExtent) return false;
+                old_row[8] = uint8_t(package_extent);
+                old_row[9] = uint8_t(package_extent >> 8);
+                old_row[10] = uint8_t(member);
+                old_row[11] = 0;
+                bool has_pin = false;
+                for (unsigned j = 64; j < sizeof(new_row); ++j) has_pin |= new_row[j] != 0;
+                if (!has_pin) return false;
+                std::memcpy(old_row + 64, new_row + 64, 32);
+            } else {
+                if (old_row[11] || old_row[10] != member || old_base >= old_count) return false;
+                if (package_extent == kNoExtent) package_extent = old_base;
+                if (old_base != package_extent) return false;
+                old_row[4] = 0;
+                old_row[8] = old_row[9] = 255;
+                old_row[10] = 0;
+                old_row[11] = kFactoryAbsent;
+            }
+            if (std::memcmp(old_row, new_row, sizeof(old_row)) || (restore && !probe(extent, new_row))) return false;
+        }
+        if (seen != (1u << (snapshot_id - first_id + 1)) - 1) return false;
+        for (unsigned i = 0; i < dictionaries; ++i) {
+            uint8_t old_row[96], new_row[96];
+            if (!store.device.Read(original.root.address + 32 + i * 96u, old_row, sizeof(old_row)) ||
+                !store.device.Read(candidate.address + 32 + i * 96u, new_row, sizeof(new_row))) return false;
+            const uint32_t id = Word(old_row);
+            if (id >= first_id && id <= snapshot_id) continue;
+            unsigned base = old_row[8] | old_row[9] << 8;
+            if (!restore && base != kNoExtent) {
+                if (base == package_extent) return false;
+                if (base > package_extent) --base;
+                old_row[8] = uint8_t(base);
+                old_row[9] = uint8_t(base >> 8);
+            }
+            if (std::memcmp(old_row, new_row, sizeof(old_row))) return false;
+        }
+        for (unsigned i = 0, j = 0; i < old_count; ++i) {
+            if (!restore && i == package_extent) continue;
+            uint8_t old_extent[24], new_extent[24];
+            if (!ReadExtent(original.root, dictionaries, i, old_extent) ||
+                !ReadExtent(candidate, dictionaries, j++, new_extent) ||
+                std::memcmp(old_extent, new_extent, sizeof(old_extent))) return false;
+        }
+        return true;
+    }
+
     bool PreservesEntries() {
         const bool merging_personal = kind == NativeUpdateKind::Personal;
         const auto folded = [&](const MergeRecord &entry) {
@@ -534,15 +623,17 @@ public:
         if (!store.device.Checksum(candidate.address, bytes, checksum)) return CatalogResult::IoError;
         const bool replacing_base = kind == NativeUpdateKind::Base;
         const bool adding_snapshot = kind == NativeUpdateKind::SnapshotNamed;
-        const bool changing_snapshot = kind >= NativeUpdateKind::SnapshotConsolidate;
+        const bool changing_snapshot = kind >= NativeUpdateKind::SnapshotConsolidate && kind <= NativeUpdateKind::SnapshotClear;
+        const bool factory = kind == NativeUpdateKind::FactoryPackage;
         if (checksum != crc) return CatalogResult::Corrupt;
-        const bool layout_ok = adding_snapshot ? CheckNewSnapshot(candidate, segment, probe) :
+        const bool layout_ok = factory ? CheckFactoryPackage(candidate, segment, probe) :
+            adding_snapshot ? CheckNewSnapshot(candidate, segment, probe) :
             changing_snapshot ? CheckSnapshotChange(candidate, segment, probe) :
             replacing_base ? CheckBaseLayout(candidate, segment, probe) : CheckLayout(candidate, segment);
         if (!layout_ok) return CatalogResult::Corrupt;
         if (kind == NativeUpdateKind::SnapshotConsolidate || kind == NativeUpdateKind::SnapshotPersonal ||
             kind == NativeUpdateKind::SnapshotClear ||
-            (!MetadataOnly() && !replacing_base && !adding_snapshot && !changing_snapshot)) {
+            (!MetadataOnly() && !replacing_base && !adding_snapshot && !changing_snapshot && !factory)) {
             const auto validation = validator.Validate(candidate);
             if (validation != CatalogResult::Ok) return validation;
             if (!PreservesEntries()) return CatalogResult::Corrupt;

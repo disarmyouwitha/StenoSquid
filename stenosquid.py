@@ -90,6 +90,15 @@ def handle_native(console, args, status):
             if conflicts:
                 print(json.dumps(conflicts, ensure_ascii=False, indent=2))
         return bool(changed)
+    elif args.uninstall_factory or args.restore_factory:
+        sys.path.insert(0, str(REPO / "tools/storage"))
+        from native_base_update import factory_package
+
+        package = args.uninstall_factory or args.restore_factory
+        report = factory_package(console, package, restore=bool(args.restore_factory),
+                                 confirmation=args.confirm_factory)
+        print(json.dumps(report, indent=2))
+        return bool(args.confirm_factory)
     elif args.list_dictionaries:
         print(json.dumps(json.loads(console.command("native_catalog")), indent=2))
     elif args.backup_all:
@@ -162,6 +171,9 @@ def main():
     parser.add_argument("--position", type=int, metavar="N", help="Priority position for --move, starting at 1")
     parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
     parser.add_argument("--update", action="store_true", help="Update installed bases to the pinned revisions")
+    parser.add_argument("--uninstall-factory", choices=("lapwing", "plover"), help="Preview factory package removal")
+    parser.add_argument("--restore-factory", choices=("lapwing", "plover"), help="Preview restoring a pinned package")
+    parser.add_argument("--confirm-factory", metavar="TOKEN", help="Apply the approved factory package preview")
     parser.add_argument("--list-dictionaries", action="store_true", help="Show the Native dictionary catalog")
     parser.add_argument("--backup-all", type=Path, metavar="FILE.JSON", help="Save a complete Native recovery bundle")
     parser.add_argument("--dictionary", metavar="NAME", help="Select a dictionary for --backup")
@@ -173,7 +185,7 @@ def main():
     parser.add_argument("--status", action="store_true", help="Read dictionary status")
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
-    actions = (args.install, args.personal, args.backup, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update)
+    actions = (args.install, args.personal, args.backup, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update, args.uninstall_factory, args.restore_factory)
     if sum(map(bool, actions)) != 1:
         parser.error("Choose exactly one action (see --help)")
     if args.dictionary is not None and not args.backup:
@@ -184,6 +196,9 @@ def main():
         parser.error("--move requires --position with a positive position")
     if args.port and not args.diag:
         parser.error("Serial provisioning is retired. Omit the port to use USB HID; ports are only for --diag")
+    if args.confirm_factory is not None and (not (args.uninstall_factory or args.restore_factory)
+                                              or len(args.confirm_factory) != 64):
+        parser.error("--confirm-factory requires a 64-character preview token and a factory package action")
     if args.confirm_erase and not args.install:
         parser.error("--confirm-erase goes with --install")
     if args.restore and not args.install:

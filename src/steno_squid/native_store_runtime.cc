@@ -148,7 +148,7 @@ NativeEngineBackend<FlashDevice> backend(store,base_provider);
 class Cell final : public StenoDictionary {
 public:
     uint32_t identity=0,base_offset=0,base_bytes=0,base_crc=0;
-    bool enabled=false, user_snapshot=false;
+    bool enabled=false, user_snapshot=false, factory_absent=false;
     uint8_t base_member = 0;
     char name[45]{};
     StenoCompactMapDictionaryDefinition definition{};
@@ -166,10 +166,10 @@ public:
     void Bind(){new (overlay_storage) NativeOverlayDictionary(backend,identity,name);Refresh();}
     const char *GetName()const override{return name;}
     StenoDictionaryLookupResult Lookup(const StenoDictionaryLookup &lookup)const override {
-        if(lookup.length>maximumOutlineLength)return StenoDictionaryLookupResult::CreateInvalid();
+        if(factory_absent || lookup.length>maximumOutlineLength)return StenoDictionaryLookupResult::CreateInvalid();
         return reinterpret_cast<const NativeOverlayDictionary *>(overlay_storage)->Lookup(lookup);
     }
-    bool CanRemove()const override{return true;}
+    bool CanRemove()const override{return !factory_absent;}
     bool Remove(const char *label,const StenoStroke *outline,size_t count)override;
     void ReverseLookup(StenoReverseDictionaryLookup &lookup)const override;
     void PrintDictionary(PrintDictionaryContext &context)const override;
@@ -357,6 +357,7 @@ void StepWork(k_work *) {
     FinishMaintenance();
 }
 LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t count,const char *text,size_t bytes) {
+    if (cell.factory_absent) return LiveResult::ReadOnly;
     if(!healthy || !count || count>16 || bytes>2047 ||
        (cell.user_snapshot && operation==uint8_t(Operation::Reset)))return LiveResult::Invalid;
     if(steno_squid_native_input_pending())return LiveResult::Busy;
@@ -493,7 +494,7 @@ void Cell::PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)co
     }
 }
 void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
-    if (user_snapshot && !enabled) return;
+    if (factory_absent || (user_snapshot && !enabled)) return;
     ExportGuard guard;if(!guard.ok || lookup.definitionLength>2047)return;
     auto matches=[&](uint32_t address) {
         MergeRecord record;if(!iter_ops.Record(address,record))return -1;
@@ -583,7 +584,7 @@ void native_catalog(void *, const char *) {
         Console::Printf("%s{\"id\":%u,\"name\":\"%s\",\"enabled\":%s,\"kind\":\"%s\","
                         "\"base_entries\":%u,\"image_bytes\":%u,\"image_crc\":%u,\"source_sha256\":\"%s\"}",
                         i ? "," : "", cell.identity, cell.name, cell.enabled ? "true" : "false",
-                        cell.user_snapshot ? "snapshot" : cell.base ? "base" :
+                        cell.factory_absent ? "uninstalled" : cell.user_snapshot ? "snapshot" : cell.base ? "base" :
                             !std::strcmp(cell.name, "user_dictionary") ? "personal" : "named",
                         base_entries, cell.base_bytes, cell.base_crc, digest);
     }
@@ -743,7 +744,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         uint8_t row[96];if(!store.Row(i,row))return false;
         auto &cell=cells[i];const uint32_t id=Word(row);
         if(loaded && id!=cell.identity)return false;
-        cell.identity=id;cell.user_snapshot=row[11]==kUserSnapshot;cell.enabled=Word(row+4);std::memcpy(cell.name,row+16,row[12]);cell.name[row[12]]=0;
+        cell.identity=id;cell.user_snapshot=row[11]==kUserSnapshot;cell.factory_absent=row[11]==kFactoryAbsent;cell.enabled=Word(row+4);std::memcpy(cell.name,row+16,row[12]);cell.name[row[12]]=0;
         const uint16_t base=uint16_t(row[8]) | uint16_t(row[9])<<8;
         if(base!=kNoExtent) {
             uint8_t extent[24];
@@ -777,7 +778,7 @@ bool steno_squid_native_dictionary_ready(){return healthy && store.opened;}
 size_t steno_squid_native_dictionary_count(){return healthy?cell_count:0;}
 bool steno_squid_native_dictionary_enabled(size_t i){return i<cell_count && cells[i].enabled;}
 bool steno_squid_native_select(const char *name,int operation,bool *enabled) {
-    auto *cell=ByName(name);if(!healthy || !cell || exporting || steno_squid_native_input_pending())return false;
+    auto *cell=ByName(name);if(!healthy || !cell || cell->factory_absent || exporting || steno_squid_native_input_pending())return false;
     const NativeInputPause input_pause;
     const bool value=operation==0?true:operation==1?false:!cell->enabled;
     flash_device.mapped=false;
@@ -911,6 +912,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
     if (!std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
+    if (!std::strcmp(command, "factory-capabilities\n")) return "OK FACTORY1";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     uint32_t snapshot_id = 0;
     const bool metadata_read = !std::strcmp(command, "begin metadata\n");
@@ -941,6 +943,12 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
     else if (metadata_read || !std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
     else if (!std::strcmp(command, "begin base\n")) kind = NativeUpdateKind::Base;
+    else if (!std::strncmp(command, "begin factory ", 14)) {
+        const char *p = command + 14;
+        if (!Number(p, snapshot_id) || !End(p) || (snapshot_id != 6 && snapshot_id != 7))
+            return "ERR Invalid factory package";
+        kind = NativeUpdateKind::FactoryPackage;
+    }
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
         if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id))
             return "ERR Native store cannot stage an update";

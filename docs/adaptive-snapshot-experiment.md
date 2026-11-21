@@ -240,6 +240,36 @@ initial image that cannot stage. The second case remains gated. Experimental
 USB recovery restores a verified bundle exactly. Manager offers no destructive
 fallback. See the checklist below for the expected editor search differences.
 
+### Factory packages
+
+Fresh provisioning and offline repacking put the factory images first, in
+Lapwing then Plover order, followed by the initial journal. Existing pools
+keep their addresses until an explicit reprovision or repack.
+
+In Manager, open **Keyboard and storage → Factory packages** and preview
+uninstall or restore. **Lapwing package** covers all five Lapwing
+dictionaries in its shared image. **Plover Base** is a separate package.
+The preview reports the blocks needed to stage the change and free space
+after both catalogs publish. Uninstall releases the compiled image for reuse
+and keeps local edits, hidden outlines, dictionary IDs, priority slots and
+pinned source digests. A restored package starts disabled, so enable the
+members you want in the catalog.
+
+Over USB, the equivalent CLI starts with a preview. Repeat that command with
+`--confirm-factory TOKEN`, using the token printed by the preview, to apply it.
+
+```sh
+python3 stenosquid.py --uninstall-factory plover
+python3 stenosquid.py --restore-factory plover
+```
+
+Use `lapwing` for the shared Lapwing package. A package restore compiles the
+pinned sources and stages only that package. It preserves the personal
+dictionary and the rest of the pool. A complete backup keeps the uninstalled
+state and the saved overlays. Recover such a bundle with firmware that
+supports factory packages. Restore all packages before going back to an
+older firmware that expects every factory image to be present.
+
 ### Offline repacking
 
 Repacking is a host operation. It relocates lean JSC4 images and their SHI1

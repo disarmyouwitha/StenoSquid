@@ -8,6 +8,19 @@ constexpr uint32_t kCatalogHeader = 32, kCatalogPrefix = 32;
 constexpr uint32_t kDictionaryBytes = 96, kExtentBytes = 24;
 constexpr uint16_t kNoExtent = 65535;
 constexpr uint8_t kUserSnapshot = 1;
+constexpr uint8_t kFactoryAbsent = 2;
+
+inline const char *FactoryName(uint32_t id) {
+    switch (id) {
+    case 2: return "Lapwing Commands";
+    case 3: return "Lapwing Numbers";
+    case 4: return "Lapwing UK Additions";
+    case 5: return "Lapwing Proper Nouns";
+    case 6: return "Lapwing Base";
+    case 7: return "Plover Base";
+    default: return nullptr;
+    }
+}
 enum class CatalogResult { Ok, Empty, Corrupt, IoError, Invalid, Quarantined, Busy };
 enum class ExtentKind : uint32_t { Base=1, Journal=2, Forward=3, Reverse=4 };
 struct CatalogRoot {
@@ -182,6 +195,7 @@ public:
             if(forwards>1 || reverses>1)return CatalogResult::Corrupt;
             if(!check(i,extent))return CatalogResult::Corrupt;
         }
+        unsigned absent_factories = 0;
         for(uint32_t i=0;i<header.dictionaries;++i) {
             uint8_t dictionary[96];
             if(!input.Read(root.address+32+i*96,dictionary,96))return CatalogResult::IoError;
@@ -189,15 +203,24 @@ public:
             uint16_t base=uint16_t(dictionary[8]) | uint16_t(dictionary[9])<<8;
             uint8_t name= dictionary[12];
             const uint8_t format = dictionary[11];
-            if (format && (format != kUserSnapshot ||
-                           base == kNoExtent || dictionary[10] || (id >= 2 && id <= 7)))
+            if (format == kFactoryAbsent) {
+                const char *expected = FactoryName(id);
+                bool has_pin = false;
+                for (unsigned j = 64; j < sizeof(dictionary); ++j) has_pin |= dictionary[j] != 0;
+                if (!expected || name != std::strlen(expected) ||
+                    std::memcmp(dictionary + 16, expected, name) || !has_pin ||
+                    flags || base != kNoExtent || dictionary[10]) return CatalogResult::Corrupt;
+                absent_factories |= 1u << id;
+            } else if (format && (format != kUserSnapshot || base == kNoExtent ||
+                                 dictionary[10] || FactoryName(id))) {
                 return CatalogResult::Corrupt;
+            }
             if(!id || id>=header.next_id || flags>1 || Word(dictionary+60) ||
                dictionary[10]>=64 || !name || name>44 ||
                dictionary[13] || dictionary[14] || dictionary[15])return CatalogResult::Corrupt;
             for(uint32_t j=0;j<i;++j)if(ids[j]==id)return CatalogResult::Corrupt;
             ids[i]=id;
-            if (format) {
+            if (format == kUserSnapshot) {
                 for (unsigned j = 64; j < sizeof(dictionary); ++j)
                     if (dictionary[j]) return CatalogResult::Corrupt;
             }
@@ -221,6 +244,9 @@ public:
                 bases.Add(base,1);
             }
         }
+        constexpr unsigned lapwing = 0x7c;
+        if ((absent_factories & lapwing) && (absent_factories & lapwing) != lapwing)
+            return CatalogResult::Corrupt;
         // Every base extent needs a catalog member. A member pair is unique.
         for(uint32_t i=0;i<header.extents;++i) {
             uint8_t extent[24];

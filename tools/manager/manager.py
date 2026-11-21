@@ -18,7 +18,7 @@ from native_manage import checked, import_entries
 from native_update import backup_all, export_dictionary, overlay_usage, transfer
 from import_personal import open_console, parse_named
 from compile_dict import parse_outline
-from native_base_update import changed_pins, replace_pinned
+from native_base_update import changed_pins, factory_package, replace_pinned
 from native_snapshot import change_snapshot, clear_personal
 from native_import_plan import named_import
 from native_layout import read_images, read_layout
@@ -63,6 +63,7 @@ def read_state(console):
         "personal_clear": adaptive and console.command(
             "native_install update snapshot-clear-capabilities") == "OK CLEAR1",
         "adaptive_imports": adaptive,
+        "factory_packages": console.command("native_install update factory-capabilities") == "OK FACTORY1",
         "layout_map": adaptive and console.command("native_install update layout-capabilities") == "OK MAP1",
     }
 
@@ -114,7 +115,22 @@ def run_job(serial, request, progress):
         if action in {"enable", "move", "rename", "delete", "export", "set", "remove", "reset", "preview_optimize", "apply_optimize"} and selected is None:
             raise ValueError("Select a dictionary from the current catalog.")
         name = safe_name(selected["name"]) if selected else None
-        if action == "enable":
+        if selected and selected["kind"] == "uninstalled" and action in {"enable", "set", "remove", "reset", "export"}:
+            raise ValueError("Restore the factory package before using this dictionary.")
+        if action in {"preview_package", "apply_package"}:
+            applying = action == "apply_package"
+            token = request.get("token")
+            restore = request.get("restore")
+            if not isinstance(restore, bool) or (applying and (not isinstance(token, str) or len(token) != 64)):
+                raise ValueError("Preview the factory package before applying changes.")
+            progress("Checking factory package and flash space…")
+            outcome = factory_package(console, request.get("package"), restore=restore,
+                                      confirmation=token if applying else None, progress=progress)
+            if not applying:
+                return {"package_plan": outcome}
+            report = {"package_changed": outcome}
+            published = True
+        elif action == "enable":
             if not isinstance(request["enabled"], bool):
                 raise ValueError("Expected an enabled checkbox value")
             verb = "enable" if request["enabled"] else "disable"

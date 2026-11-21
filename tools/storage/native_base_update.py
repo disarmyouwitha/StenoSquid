@@ -1,5 +1,6 @@
 """Replace pinned compiled bases by staging new extents beside the old catalog."""
 from dataclasses import dataclass
+import hashlib
 import json
 import struct
 import zlib
@@ -9,6 +10,7 @@ from compile_dict import DictionaryCollectionBuilder
 from hybrid import format_stroke
 from jsc4 import reader
 from manifest import BASES, ROOT
+from native_snapshot import CompactImage, inspect_free, stage_allocation
 from native_update import EXTENT, NoSpace, Update, abort, publish, read_flash, read_snapshot, row_name, update_command
 from prepare import fetch
 from verify_mapped_dict import verify
@@ -167,3 +169,101 @@ def replace_pinned(console, catalog, progress=print):
     except BaseException:
         abort(console)
         raise
+
+
+PACKAGES = {"lapwing": (6, GROUPS[0]), "plover": (7, GROUPS[1])}
+FACTORY_ABSENT = 2
+
+
+def plan_package(snapshot, protected, package, restore=False, compiled=None):
+    package_id, names = PACKAGES[package]
+    rows = [bytearray(row) for row in snapshot.rows]
+    by_name = {row_name(row): row for row in rows}
+    if any(name not in by_name for name in names):
+        raise ValueError("Pinned package rows are missing")
+    members = [by_name[name] for name in names]
+    if [struct.unpack_from("<I", row)[0] for row in members] != list(range(package_id - len(names) + 1, package_id + 1)):
+        raise ValueError("Pinned package IDs do not match")
+    extents = list(snapshot.extents)
+    blocks, added, write = stage_allocation(protected)
+    if restore:
+        if any(row[11] != FACTORY_ABSENT for row in members):
+            raise ValueError("The factory package is already installed")
+        if not compiled:
+            raise ValueError("Verified pinned sources are required to restore a package")
+        if len(extents) == 253:
+            raise NoSpace("Catalog extent limit")
+        base = len(extents)
+        write(CompactImage(compiled.contents, compiled.pointers), 1)
+        extents.extend(EXTENT.unpack(row) for row in added)
+        for member, row in enumerate(members):
+            struct.pack_into("<HBB", row, 8, base, member, 0)
+            row[64:96] = compiled.digests[row_name(row)]
+        package_segments = extents[base][1]
+    else:
+        if any(row[11] == FACTORY_ABSENT for row in members):
+            raise ValueError("The factory package is already uninstalled")
+        base = struct.unpack_from("<H", members[0], 8)[0]
+        if base >= len(extents) or any(
+                struct.unpack_from("<HB", row, 8) != (base, member) or row[11]
+                for member, row in enumerate(members)):
+            raise ValueError("The factory package does not have one shared extent")
+        for row in rows:
+            reference = struct.unpack_from("<H", row, 8)[0]
+            if row in members:
+                struct.pack_into("<IHBB", row, 4, 0, 65535, 0, FACTORY_ABSENT)
+            elif reference == base:
+                raise ValueError("The package extent is shared with another dictionary")
+            elif base < reference < 65535:
+                struct.pack_into("<H", row, 8, reference - 1)
+        _, package_segments, *_ = extents.pop(base)
+    prefix = bytearray(snapshot.payload[:32])
+    struct.pack_into("<H", prefix, 6, len(extents))
+    payload = bytes(prefix) + b"".join(rows) + b"".join(EXTENT.pack(*row) for row in extents)
+    metadata = write(payload, 0)
+    current = {0, 1, 255}
+    for start, count, *_ in snapshot.extents:
+        current.update(range(start, start + count))
+    target = {0, 1, 255}
+    for start, count, *_ in extents:
+        target.update(range(start, start + count))
+    confirmed = hashlib.sha256(snapshot.payload)
+    confirmed.update(bytes(sorted(protected)))
+    confirmed.update(payload)
+    for segment in sorted(blocks):
+        confirmed.update(blocks[segment])
+    free, run = inspect_free(protected)
+    after, after_run = inspect_free(target)
+    report = dict(package=package, restoring=restore, package_segments=package_segments,
+                  staging_segments=len(blocks), free_now=free, largest_run_now=run,
+                  free_after_one_root=inspect_free(current | target)[0],
+                  free_after_both_roots=after, largest_run_after_both_roots=after_run,
+                  package_segments_released=0 if restore else package_segments,
+                  retained_only_segments=len(set(protected) - current),
+                  confirmation=confirmed.hexdigest())
+    return Update(blocks, metadata, payload, 0, 0), report
+
+
+def factory_package(console, package, *, restore=False, confirmation=None, progress=print):
+    if package not in PACKAGES:
+        raise ValueError("Select Lapwing or Plover")
+    if console.command("native_install update factory-capabilities") != "OK FACTORY1":
+        raise RuntimeError("Flash the matching left firmware before managing factory packages.")
+    identity, names = PACKAGES[package]
+    compiled = prepare(names) if restore else None
+    answer = update_command(console, f"begin factory {identity}")
+    published = False
+    try:
+        snapshot, protected = read_snapshot(console, answer, metadata_only=True)
+        update, report = plan_package(snapshot, protected, package, restore, compiled)
+        approval = hashlib.sha256(f"{console.serial}:{report['confirmation']}".encode()).hexdigest()
+        report["confirmation"] = approval
+        if confirmation is not None:
+            if confirmation != approval:
+                raise ValueError("The approved plan changed. Preview the package again.")
+            publish(console, update, progress)
+            published = True
+        return report
+    finally:
+        if not published:
+            abort(console)

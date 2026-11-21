@@ -13,6 +13,7 @@ const jobMessages = {
   apply_optimize: "Saving compact dictionary…", layout_map: "Reading flash layout…",
   preview_import: "Calculating import size…", apply_import: "Importing dictionary…", import: "Importing dictionary…",
   backup: "Preparing backup…", export: "Exporting dictionary…",
+  preview_package: "Checking factory package space…", apply_package: "Saving factory package…",
   preview_compact: "Checking journal space…", compact: "Compacting journal…", clear_personal: "Clearing personal dictionary…"
 };
 
@@ -47,21 +48,30 @@ function controls() {
   const personal = state.personal_conversion && row?.kind === "personal";
   node("optimize").hidden = !snapshot && !personal;
   node("optimize").disabled = !editable;
-  node("export").disabled = busy || !row;
-  node("target").textContent = row ? `Editing ${row.name}` : "Select a dictionary first.";
+  const uninstalled = row?.kind === "uninstalled";
+  node("export").disabled = busy || !row || uninstalled;
+  node("target").textContent = uninstalled ? `${row.name} is uninstalled.` : row ? `Editing ${row.name}` : "Select a dictionary first.";
   const canRevert = row?.kind === "base";
   node("edit-note").hidden = !row;
   node("edit-revert-note").hidden = !canRevert;
   for (const el of node("edit").querySelectorAll("button")) {
     const unavailable = el.value === "reset" && !canRevert;
     el.hidden = unavailable;
-    el.disabled = !editable || !row || unavailable;
+    el.disabled = !editable || !row || uninstalled || unavailable;
   }
 }
 function render(newState, usage = {}) {
   state = newState;
   clearImportPlan();
   clearOptimizationPlan();
+  clearFactoryPlan();
+  node("factory-packages").hidden = !state.factory_packages;
+  for (const [key, name] of Object.entries(factoryNames)) {
+    const row = state.catalog.find(({id}) => id === (key === "lapwing" ? 6 : 7));
+    const button = node(`factory-${key}`);
+    button.hidden = !row;
+    button.textContent = `Preview ${row?.kind === "uninstalled" ? "restore" : "uninstall"} ${name}`;
+  }
   node("flash-map-panel").hidden = !state.layout_map;
   node("flash-map-error").hidden = true;
   node("flash-map-result").hidden = true;
@@ -78,12 +88,13 @@ function render(newState, usage = {}) {
     radio.name = "dictionary";
     radio.checked = selectedId === row.id;
     radio.onchange = () => { clearOptimizationPlan(); selectedId = row.id; controls(); };
-    label.append(radio, ` ${row.name}`);
+    label.append(radio, ` ${row.name}${row.kind === "uninstalled" ? " (uninstalled)" : ""}`);
     tr.insertCell().append(label);
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = row.enabled;
-    checkbox.dataset.write = "";
+    if (row.kind === "uninstalled") checkbox.disabled = true;
+    else checkbox.dataset.write = "";
     checkbox.setAttribute("aria-label", `Enable ${row.name}`);
     checkbox.onchange = () => {
       const enabled = checkbox.checked;
@@ -149,6 +160,9 @@ async function watch(id) {
       } else {
         notify(summary);
       }
+    } else if (result.package_changed) {
+      const plan = result.package_changed;
+      notify(`${factoryNames[plan.package]} ${plan.restoring ? "restored. Enable the dictionaries you want above." : "uninstalled."}`);
     } else if (result.cleared) {
       notify("Personal dictionary cleared.");
     } else if (result.optimized) {
@@ -166,6 +180,8 @@ async function watch(id) {
       : "All installed bases match this version’s pinned sources.");
   } else if (result.import_plan) {
     showImportPlan(result.import_plan);
+  } else if (result.package_plan) {
+    showFactoryPlan(result.package_plan);
   } else if (result.optimization_plan) {
     showOptimizationPlan(result.optimization_plan);
   } else if (result.cleanup) {
@@ -412,6 +428,7 @@ async function run(payload) {
   let refreshMap = false;
   if (importing) showImportError();
   if (payload.action !== "preview_optimize") clearOptimizationPlan();
+  clearFactoryPlan();
   cleanupToken = undefined;
   node("journal-preview").hidden = true;
   node("flash-map-legend").querySelector("[data-reclaimable]")?.parentElement.remove();
@@ -430,7 +447,7 @@ async function run(payload) {
       notify(message || "Checking the current keyboard operation…");
     }
     await watch(id);
-    refreshMap = !existing && ["import", "apply_import", "compact"].includes(payload.action);
+    refreshMap = !existing && ["import", "apply_import", "compact", "apply_package"].includes(payload.action);
   } catch (error) {
     if (importing) {
       notify("Import stopped.");
@@ -479,6 +496,37 @@ function scanLayout() {
   return run({action: "layout_map"});
 }
 node("flash-map-scan").onclick = scanLayout;
+const factoryNames = {lapwing: "Lapwing package", plover: "Plover Base"};
+let factoryPlan;
+
+function clearFactoryPlan() {
+  factoryPlan = null;
+  node("factory-preview").hidden = true;
+}
+
+function showFactoryPlan(plan) {
+  factoryPlan = plan;
+  const space = `Free blocks after publication ${number.format(plan.free_now)} → ${number.format(plan.free_after_both_roots)}.`;
+  const action = plan.restoring
+    ? `Stage ${number.format(plan.staging_segments)} blocks. Restored dictionaries start disabled.`
+    : `Release ${number.format(plan.package_segments_released)} package blocks after both catalogs are published. Saved edits are kept.`;
+  node("factory-summary").textContent = `${space} ${action} The left half will reboot.`;
+  node("factory-apply").textContent = `${plan.restoring ? "Restore" : "Uninstall"} ${factoryNames[plan.package]}`;
+  node("factory-preview").hidden = false;
+}
+
+for (const [key, id] of [["lapwing", 6], ["plover", 7]]) {
+  node(`factory-${key}`).onclick = () => {
+    clearFactoryPlan();
+    const restore = state.catalog.find((row) => row.id === id)?.kind === "uninstalled";
+    run({action: "preview_package", package: key, restore});
+  };
+}
+node("factory-apply").onclick = () => {
+  if (factoryPlan) run({action: "apply_package", package: factoryPlan.package, restore: factoryPlan.restoring,
+    token: factoryPlan.confirmation});
+};
+node("factory-cancel").onclick = clearFactoryPlan;
 node("apply-updates").onclick = () => {
   if (window.confirm("Download a backup before updating the pinned dictionaries. Apply the pinned revisions now? The left half will reboot after saving.")) {
     run({action: "apply_updates", approved: true});

@@ -38,7 +38,7 @@ def fixture(path):
     size = struct.unpack_from("<I", image, 16)[0]
     payload = bytearray(image[32:32 + size])
     live_additions = [
-        (2, 1, [(1, 0, 1, b"stay-1"), (1, 0, 2, b"obsolete-2"), (1, 0, 9, b"reset-later")]),
+        (first_free - 1, 1, [(1, 0, 1, b"stay-1"), (1, 0, 2, b"obsolete-2"), (1, 0, 9, b"reset-later")]),
         (first_free, 2, [(1, 0, 3, b"stay-3"), (1, 0, 4, b"obsolete-4")]),
         (first_free + 1, 3, [(1, 0, 2, b"keep-2"), (1, 0, 4, b"keep-4"),
                              (2, 1, 5, b""), (2, 0, 6, b"base-override"), (1, 2, 9, b"")]),

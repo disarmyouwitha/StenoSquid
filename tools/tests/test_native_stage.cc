@@ -2,6 +2,8 @@
 #include <array>
 #include <iostream>
 
+static constexpr unsigned FixtureInitialJournal = 4;
+
 void Check(NativeStore<NativeDevice> &store, bool updated, bool merge) {
     auto value = [&](uint32_t id, const uint32_t *key, uint8_t count) {
         RecordView record;
@@ -77,7 +79,7 @@ void Run(const std::vector<uint8_t> &image, const Plan &plan, bool merge) {
                 if (!merge) {
                     SegmentMap owned;
                     assert(CollectOwnership(device, cold.catalog, cold.selected.root, owned) == CatalogResult::Ok);
-                    assert(!owned.Contains(2));
+                    assert(!owned.Contains(FixtureInitialJournal));
                     unsigned journal_count = 0;
                     uint8_t prefix[8];
                     assert(device.Read(cold.selected.root.address, prefix, 8));
@@ -301,7 +303,7 @@ void CheckIdleCompaction(const std::vector<uint8_t> &image, bool cancel) {
             SegmentMap after;
             assert(CollectOwnership(device, recovered.catalog, recovered.selected.root, after) == CatalogResult::Ok);
             assert(AllocationPlan(after).Free() > AllocationPlan(before).Free());
-            assert(!after.Contains(2) && recovered.live.TailCount() == 0);
+            assert(!after.Contains(FixtureInitialJournal) && recovered.live.TailCount() == 0);
             assert(store.checkpoint.ReclaimedJournals() == 1);
             assert(recovered.live.Highwater() == 12);
         }

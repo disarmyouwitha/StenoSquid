@@ -146,7 +146,7 @@ def operations_after(operations, converted):
 def choose_conversions(source, operations, compact_segments, names):
     current = compact_segments + sum(overlay_geometry(operations))
     converted, refusals = {}, {}
-    eligible = {row_name(row): row for row in source.rows if row[8:10] == b"\xff\xff"}
+    eligible = {row_name(row): row for row in source.rows if row[8:10] == b"\xff\xff" and not row[11]}
     ordered = list(eligible) if names is None else list(dict.fromkeys(names))
     for name in ordered:
         row = eligible.get(name)
@@ -318,7 +318,7 @@ def consolidation_geometry(image, snapshot):
         protected.update(range(start, start + span))
     result = {}
     for row in snapshot.rows:
-        if not row[11]:
+        if row[11] != 1:
             continue
         identity, _, base = struct.unpack_from("<IIH", row)
         start, span, size, *_ = snapshot.extents[base]
@@ -348,7 +348,7 @@ def validate_pair(source_backup, target_backup, original, repacked):
     names = metadata.get("converted")
     if not isinstance(names, list) or any(not isinstance(name, str) for name in names) or len(names) != len(set(names)):
         raise ValueError("Invalid optimized bundle conversion list")
-    candidates = {row_name(row): struct.unpack_from("<I", row)[0] for row in source.rows if row[8:10] == b"\xff\xff"}
+    candidates = {row_name(row): struct.unpack_from("<I", row)[0] for row in source.rows if row[8:10] == b"\xff\xff" and not row[11]}
     if set(names) - candidates.keys():
         raise ValueError("Optimized bundle converted an ineligible dictionary")
     converted = {candidates[name] for name in names}

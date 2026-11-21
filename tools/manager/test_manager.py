@@ -45,6 +45,8 @@ class Keyboard:
             return "OK"
         if command == "print_dictionary Medical":
             return '{"KAT":"ça"}'
+        if command == "native_install update factory-capabilities":
+            return "OK FACTORY1"
         if command == "native_install update manage-capabilities":
             return "OK MANAGE1"
         if command == "native_install update snapshot-capabilities":
@@ -76,6 +78,22 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(self.run_job("refresh")["state"]["auto_checkpoints"], 2)
         self.assertFalse(self.run_job("enable", id=8, enabled=False)["state"]["catalog"][0]["enabled"])
         self.assertEqual(self.run_job("layout", layout="Mac U.S.")["state"]["layout"], "Mac U.S.")
+
+    def test_factory_package_requires_preview(self):
+        with patch.object(manager, "factory_package", return_value={"package": "lapwing"}) as change, patch.object(manager, "wait_ready") as wait:
+            self.assertTrue(self.run_job("refresh")["state"]["factory_packages"])
+            with self.assertRaisesRegex(ValueError, "Preview"):
+                self.run_job("apply_package", package="lapwing", restore=False)
+            change.assert_not_called()
+            self.assertIn("package_plan", self.run_job("preview_package", package="lapwing", restore=False))
+            self.assertIsNone(change.call_args.kwargs["confirmation"])
+            wait.assert_not_called()
+            self.assertIn("package_changed", self.run_job(
+                "apply_package", package="lapwing", restore=False, token="a" * 64))
+            wait.assert_called_once_with(self.keyboard.serial)
+        self.keyboard.kind = "uninstalled"
+        with self.assertRaisesRegex(ValueError, "Restore the factory package"):
+            self.run_job("enable", id=8, enabled=True)
 
     def test_edit_uses_selected_stable_id(self):
         self.run_job("set", id=8, outline="KAT", translation="ça\nva")
