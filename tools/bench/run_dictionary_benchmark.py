@@ -96,6 +96,8 @@ def main():
             report['base_status']=console.command('native_install status')
             report['selection']=console.command('list_dictionaries')
             report['personal_status']=json.loads(console.command('user_dictionary_status'))
+            if report['personal_status'].get('format') != 'SQBCAT02' or not report['personal_status'].get('ready'):
+                raise RuntimeError('A ready Native dictionary pool is required')
             hz=report['device']['timer_hz']
             if args.capture_seconds:
                 console.command('dictionary_benchmark capture start')
@@ -151,8 +153,7 @@ def main():
                             report['rows'].append(dict(target=target,kind='reverse',text=text,
                                                        **result,**summarize(result['samples_cycles'],hz)))
                 personal=json.loads(console.command("print_dictionary user_dictionary",timeout=1800))
-                if len(personal)!=report['personal_status']['entries']:
-                    raise RuntimeError('Personal export count mismatch')
+                report['personal_export_entries']=len(personal)
                 (args.output/'personal-before.json').write_text(json.dumps(personal,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
                 for outline,expected in sorted(personal.items())[:32]:
                     result=command(f'lookup personal {outline}')
@@ -160,6 +161,10 @@ def main():
                     report['rows'].append(dict(target='personal',kind='existing-hit',outline=outline,passed=passed,
                                                **result,**summarize(result['samples_cycles'],hz)))
                     if not passed:raise RuntimeError('Existing personal lookup parity failed')
+                final_status=json.loads(console.command('user_dictionary_status'))
+                for key in ('generation','tail','personal_id'):
+                    if final_status[key]!=report['personal_status'][key]:
+                        raise RuntimeError('The Native dictionary pool changed during the benchmark')
                 report['device_after']=command('meta')
                 save()
                 summary=args.output/'summary.csv'

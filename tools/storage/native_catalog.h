@@ -195,7 +195,6 @@ public:
             if(forwards>1 || reverses>1)return CatalogResult::Corrupt;
             if(!check(i,extent))return CatalogResult::Corrupt;
         }
-        unsigned absent_factories = 0;
         for(uint32_t i=0;i<header.dictionaries;++i) {
             uint8_t dictionary[96];
             if(!input.Read(root.address+32+i*96,dictionary,96))return CatalogResult::IoError;
@@ -203,6 +202,7 @@ public:
             uint16_t base=uint16_t(dictionary[8]) | uint16_t(dictionary[9])<<8;
             uint8_t name= dictionary[12];
             const uint8_t format = dictionary[11];
+            if (FactoryName(id) && dictionary[10]) return CatalogResult::Corrupt;
             if (format == kFactoryAbsent) {
                 const char *expected = FactoryName(id);
                 bool has_pin = false;
@@ -210,7 +210,6 @@ public:
                 if (!expected || name != std::strlen(expected) ||
                     std::memcmp(dictionary + 16, expected, name) || !has_pin ||
                     flags || base != kNoExtent || dictionary[10]) return CatalogResult::Corrupt;
-                absent_factories |= 1u << id;
             } else if (format && (format != kUserSnapshot || base == kNoExtent ||
                                  dictionary[10] || FactoryName(id))) {
                 return CatalogResult::Corrupt;
@@ -244,9 +243,6 @@ public:
                 bases.Add(base,1);
             }
         }
-        constexpr unsigned lapwing = 0x7c;
-        if ((absent_factories & lapwing) && (absent_factories & lapwing) != lapwing)
-            return CatalogResult::Corrupt;
         // Every base extent needs a catalog member. A member pair is unique.
         for(uint32_t i=0;i<header.extents;++i) {
             uint8_t extent[24];

@@ -171,9 +171,12 @@ def main():
     parser.add_argument("--position", type=int, metavar="N", help="Priority position for --move, starting at 1")
     parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
     parser.add_argument("--update", action="store_true", help="Update installed bases to the pinned revisions")
-    parser.add_argument("--uninstall-factory", choices=("lapwing", "plover"), help="Preview factory package removal")
-    parser.add_argument("--restore-factory", choices=("lapwing", "plover"), help="Preview restoring a pinned package")
-    parser.add_argument("--confirm-factory", metavar="TOKEN", help="Apply the approved factory package preview")
+    sys.path.insert(0, str(REPO / "tools/storage"))
+    from build_native_image import FACTORY_KEYS
+
+    parser.add_argument("--uninstall-factory", choices=tuple(FACTORY_KEYS), help="Preview factory dictionary removal")
+    parser.add_argument("--restore-factory", choices=tuple(FACTORY_KEYS), help="Preview installing a pinned dictionary")
+    parser.add_argument("--confirm-factory", metavar="TOKEN", help="Apply the approved factory dictionary preview")
     parser.add_argument("--list-dictionaries", action="store_true", help="Show the Native dictionary catalog")
     parser.add_argument("--backup-all", type=Path, metavar="FILE.JSON", help="Save a complete Native recovery bundle")
     parser.add_argument("--dictionary", metavar="NAME", help="Select a dictionary for --backup")
@@ -198,7 +201,7 @@ def main():
         parser.error("Serial provisioning is retired. Omit the port to use USB HID; ports are only for --diag")
     if args.confirm_factory is not None and (not (args.uninstall_factory or args.restore_factory)
                                               or len(args.confirm_factory) != 64):
-        parser.error("--confirm-factory requires a 64-character preview token and a factory package action")
+        parser.error("--confirm-factory requires a 64-character preview token and a factory dictionary action")
     if args.confirm_erase and not args.install:
         parser.error("--confirm-erase goes with --install")
     if args.restore and not args.install:

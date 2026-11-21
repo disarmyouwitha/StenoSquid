@@ -12,7 +12,7 @@ from test_native_stage import fixture
 from build_native_image import SEGMENT
 from native_import_plan import compare, named_import
 from native_snapshot import compile_snapshot
-from native_update import NoSpace
+from native_update import NoSpace, Update, publish
 
 
 def inputs(n, value=None):
@@ -46,13 +46,28 @@ class PlannerConsole(Console):
         return super().command(command, timeout)
 
 
+def test_staging_progress():
+    messages = []
+    update = Update({2: b"A" * 4096, 8: b"\xff" * 512 + b"B" * 4096}, 8, b"B", 0, 0)
+    with patch("native_update.update_command", return_value="OK Rebooting") as command:
+        publish(None, update, messages.append)
+    percentages = [int(message.split()[-1][:-1]) for message in messages[:-1]]
+    assert percentages[0] == 0 and percentages[-1] == 100
+    assert percentages == sorted(set(percentages))
+    assert messages[-1] == "Verifying staged data and saving the catalog…"
+    assert command.call_args.args[1].startswith("commit ")
+
+
 def main():
+    test_staging_progress()
     with tempfile.TemporaryDirectory() as folder:
         image, view, protected = fixture(Path(folder))
         small, large = inputs(100), inputs(10000)
         for data, expected in ((small, "journal"), (large, "snapshot")):
             report, updates = compare(view, protected, "Practice", data, 16, compile_snapshot("Practice", data))
             assert report["recommended"] == expected and report["reserve"] == 3
+            if data == large:
+                assert not report["options"]["journal"]["eligible"] and "journal" not in updates
             for mode, update in updates.items():
                 assert not set(update.segments) & protected
                 assert report["options"][mode]["staging_segments"] == len(update.segments)
@@ -75,6 +90,14 @@ def main():
         assert report["options"]["snapshot"]["staging_segments"] > 100
 
         console = PlannerConsole(image, view.payload, protected)
+        with patch("native_import_plan.publish") as publish:
+            try:
+                named_import(console, "Large", large, preference="journal", stage=True)
+            except NoSpace as error:
+                assert "shared journal budget" in str(error)
+            else:
+                raise AssertionError("Large Journal override bypassed the import guard")
+            publish.assert_not_called()
         preview = named_import(console, "Preview", small)
         assert preview["selected"] == "journal" and not console.active
         different = {key: text.upper() for key, text in small.items()}

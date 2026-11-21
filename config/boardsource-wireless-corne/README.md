@@ -105,7 +105,7 @@ The factory application partition is `0x1000–0xD3FFF`. The settings partition 
 6. **Test wireless and sleep.** Pair **Steno Squid** and unplug USB. Test ordinary typing, Plover HID, onboard Javelin, and Javelin Steno Tools **Connect via HID**. Let both halves reach deep sleep. Check that the left rail turns off, wake each half with one of its own keys, and check display and split reconnection, flash verification, and onboard output. On a diagnostic build, use `stenosquid.py <port> --diag status` after USB reconnection to inspect the last Native open and wake timing. Check right display rail behavior and battery readings independently.
 7. **Provision and test persistence.** Once power and patterned read checks pass,
    flash the everyday Boardsource left UF2 and run `python3 stenosquid.py --install --confirm-erase`
-   over USB HID. It installs the packed Lapwing collection and Plover Base.
+   over USB HID. It installs Lapwing Base, its four extras, and Plover Base as separate images.
    Use `--verify` for a separate full CRC check and `--status` to confirm `NATIVE2 READY`.
    Switch bases in the browser, save a temporary personal edit, reboot, verify
    persistence, and remove the test entry. Repeat the HID and wake checks.

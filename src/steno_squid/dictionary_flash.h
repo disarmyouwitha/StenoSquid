@@ -33,6 +33,8 @@ bool dictionary_flash_is_powered(void);
 
 /* Hold across mapped reads and personal dictionary writes. */
 bool dictionary_flash_acquire(void);
+/* USB storage commands may report busy and retry while the worker holds flash. */
+bool dictionary_flash_try_service(void);
 void dictionary_flash_release(void);
 /* For a streaming reader: always reacquires, even if mapping became unavailable. */
 bool dictionary_flash_resume_read(void);

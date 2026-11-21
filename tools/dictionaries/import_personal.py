@@ -51,6 +51,18 @@ class Console:
         self.channel = 0
 
     def command(self, text, timeout=30):
+        deadline = time.monotonic() + timeout
+        while True:
+            reply = self._exchange(text, deadline)
+            if reply != "ERR Native flash busy" or not text.startswith("native_install "):
+                return reply
+            if time.monotonic() >= deadline:
+                return reply
+            time.sleep(min(0.1, max(0, deadline - time.monotonic())))
+            if time.monotonic() >= deadline:
+                return reply
+
+    def _exchange(self, text, deadline):
         self.channel = (self.channel + 1) % 100
         prefix = f"c{self.channel:02} ".encode()
         line = text.encode() + b"\n"
@@ -60,7 +72,6 @@ class Console:
             if self.device.write(b"\0" + report) <= 0:
                 raise RuntimeError("USB HID write failed. Keep the left half connected.")
         response = bytearray()
-        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             packet = self.device.read(REPORT_BYTES, 250)
             if packet:
@@ -73,21 +84,27 @@ class Console:
 
 
 
-@contextmanager
-def open_console(serial=None):
+def usb_console_devices(serial=None):
     try:
         import hid
     except ImportError:
         raise SystemExit("Install the USB HID dependency with: python3 -m pip install hidapi") from None
-    devices = [
+    return [
         device for device in hid.enumerate()
         if (device.get("usage_page"), device.get("usage")) == USAGE
         and device.get("bus_type", 0) in (0, 1)  # HIDAPI unknown or USB
         and (device.get("serial_number") == serial if serial else
              device.get("serial_number") and device.get("product_string") == "Steno Squid")
     ]
+
+
+@contextmanager
+def open_console(serial=None):
+    devices = usb_console_devices(serial)
     if len(devices) != 1:
         raise RuntimeError("Connect one Steno Squid left half by USB, or use --serial to select it.")
+    import hid
+
     device = hid.device()
     device.open_path(devices[0]["path"])
     try:

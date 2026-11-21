@@ -6,7 +6,7 @@ Start with the [hardware checkpoint and test sequence](#tonights-hardware-checkp
 
 ## Gate A results
 
-J uses the current Native staged named import. S compiles the same input as JSC4 and rebases the image into a free contiguous run. Both start with the same six factory dictionaries and empty personal store. The initial catalog and extents occupy 75 of 255 usable segments, including the two roots. Both candidates retain the three-segment maintenance reserve.
+J uses the current Native staged named import. S compiles the same input as JSC4 and rebases the image into a free contiguous run. Both start with the same six factory dictionaries and empty personal store. The benchmark fixture's initial catalog and extents occupied 75 of 255 usable segments, including the two roots. Both candidates retain the three-segment maintenance reserve.
 
 | Added corpus | Journal added / total segments | Snapshot added / total segments | Snapshot compiled size | Same-size second-copy estimate |
 | --- | ---: | ---: | ---: | --- |
@@ -240,35 +240,29 @@ initial image that cannot stage. The second case remains gated. Experimental
 USB recovery restores a verified bundle exactly. Manager offers no destructive
 fallback. See the checklist below for the expected editor search differences.
 
-### Factory packages
+### Factory dictionaries
 
-Fresh provisioning and offline repacking put the factory images first, in
-Lapwing then Plover order, followed by the initial journal. Existing pools
-keep their addresses until an explicit reprovision or repack.
+Fresh provisioning and offline repacking place the factory images in Lapwing
+then Plover order, followed by the initial journal. Each factory dictionary uses
+its own image. The setup screen lets you choose which dictionaries to install.
 
-In Manager, open **Keyboard and storage → Factory packages** and preview
-uninstall or restore. **Lapwing package** covers all five Lapwing
-dictionaries in its shared image. **Plover Base** is a separate package.
-The preview reports the blocks needed to stage the change and free space
-after both catalogs publish. Uninstall releases the compiled image for reuse
-and keeps local edits, hidden outlines, dictionary IDs, priority slots and
-pinned source digests. A restored package starts disabled, so enable the
-members you want in the catalog.
+Select a factory dictionary in Manager and choose **Delete** or **Install**.
+The preview gives the staging cost and free space after both catalogs publish.
+Deleting an image keeps its saved edits, hidden outlines, ID, priority and pinned
+source digest. A later install starts with the dictionary disabled. Use the
+**Active** checkbox to enable it.
 
-Over USB, the equivalent CLI starts with a preview. Repeat that command with
-`--confirm-factory TOKEN`, using the token printed by the preview, to apply it.
+The CLI also previews each operation. Repeat the command with
+`--confirm-factory TOKEN` to apply the preview.
 
 ```sh
-python3 stenosquid.py --uninstall-factory plover
-python3 stenosquid.py --restore-factory plover
+python3 stenosquid.py --uninstall-factory lapwing-uk
+python3 stenosquid.py --restore-factory lapwing-uk
 ```
 
-Use `lapwing` for the shared Lapwing package. A package restore compiles the
-pinned sources and stages only that package. It preserves the personal
-dictionary and the rest of the pool. A complete backup keeps the uninstalled
-state and the saved overlays. Recover such a bundle with firmware that
-supports factory packages. Restore all packages before going back to an
-older firmware that expects every factory image to be present.
+A complete backup keeps the uninstalled state and saved overlays. Provision
+a fresh pool before using the individual-image firmware on a board with the
+earlier shared factory layout.
 
 ### Offline repacking
 

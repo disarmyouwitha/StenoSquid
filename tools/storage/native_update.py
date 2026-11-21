@@ -12,6 +12,16 @@ EXTENT = struct.Struct("<HHIIIQ")
 RECORD = struct.Struct("<4sIQIIII")
 KEY = struct.Struct("<IBBH")
 COMMIT = 0x434F4D54
+# Conservative interactive budget until cold boots and USB commits have been
+# timed on a larger corpus. This limits new named imports, not personal edits.
+NAMED_JOURNAL_ENTRY_BUDGET = 4096
+
+
+def named_journal_limit(snapshot, incoming_count):
+    if len(snapshot.entries) + incoming_count > NAMED_JOURNAL_ENTRY_BUDGET:
+        return ("Import as a compact snapshot. A journal import would exceed "
+                f"the shared journal budget of {NAMED_JOURNAL_ENTRY_BUDGET:,} live records.")
+    return None
 
 
 class NoSpace(ValueError):
@@ -396,13 +406,52 @@ def backup_all(console):
 
 
 def overlay_usage(console):
-    answer = update_command(console, "begin backup")
+    capability = console.command("native_install update journal-usage-capabilities")
+    if capability == "ERR Native flash busy":
+        raise RuntimeError(capability)
+    on_device = capability == "OK USAGE2"
+    answer = update_command(console, "begin metadata" if on_device else "begin backup")
     try:
-        snapshot, _ = read_snapshot(console, answer)
-        usage = {struct.unpack_from("<I", row)[0]: {"count": 0, "bytes": 0} for row in snapshot.rows}
-        for entry in snapshot.entries.values():
-            usage[entry.identity]["count"] += 1
-            usage[entry.identity]["bytes"] += entry.span
+        snapshot, _ = read_snapshot(console, answer, metadata_only=on_device)
+        usage = {struct.unpack_from("<I", row)[0]: {"count": 0, "entries": 0, "bytes": 0, "blocks": {}}
+                 for row in snapshot.rows}
+
+        def add(segment, identity, count, entries, bytes_used):
+            stats = usage[identity]
+            stats["count"] += count
+            stats["entries"] += entries
+            stats["bytes"] += bytes_used
+            blocks = stats["blocks"]
+            blocks[segment] = blocks.get(segment, 0) + bytes_used
+
+        if on_device:
+            journals = {segment for start, span, _, _, kind, _ in snapshot.extents if kind == 2
+                        for segment in range(start, start + span)}
+            position, total = 0, None
+            while total is None or position < total:
+                marker, version, cursor, limit, *rows = update_command(console, f"journal-usage {position}").split()
+                cursor, limit = int(cursor), int(limit)
+                if (marker != "OK" or version != "USAGE2" or not position <= cursor <= limit
+                        or cursor - position > 128 or (total is not None and total != limit)
+                        or (cursor == position and cursor != limit)):
+                    raise ValueError("Invalid journal usage cursor")
+                counts = 0
+                seen = set()
+                for row in rows:
+                    segment, identity, count, entries, bytes_used = map(int, row.split(","))
+                    pair = segment, identity
+                    if (segment not in journals or identity not in usage or pair in seen or not 0 <= entries <= count
+                            or not 0 < count <= cursor - position or not 0 < bytes_used <= SEGMENT):
+                        raise ValueError("Invalid journal usage totals")
+                    seen.add(pair)
+                    counts += count
+                    add(segment, identity, count, entries, bytes_used)
+                if counts > cursor - position:
+                    raise ValueError("Invalid journal usage count")
+                position, total = cursor, limit
+        else:
+            for entry in snapshot.entries.values():
+                add(entry.address // SEGMENT, entry.identity, 1, entry.operation == 0, entry.span)
         return usage
     finally:
         update_command(console, "abort", timeout=5)
@@ -452,17 +501,23 @@ def effective_entries(snapshot, name, read):
 def publish(console, update, progress):
     import base64
 
-    for index, (segment, block) in enumerate(update.segments.items(), 1):
+    total = sum(map(len, update.segments.values()))
+    processed = 0
+    last_percent = 0
+    progress("Writing dictionary data… 0%")
+    for segment, block in update.segments.items():
         update_command(console, f"erase {segment}")
         for offset in range(0, len(block), 512):
             data = block[offset:offset + 512]
-            if data == b"\xff" * len(data):
-                continue
-            encoded = base64.b64encode(data).decode("ascii")
-            update_command(console, f"write {segment * SEGMENT + offset} {encoded}")
-        if index % 8 == 0 or index == len(update.segments):
-            progress(f"Staged {index}/{len(update.segments)} segments")
-    progress("Validating the staged dictionaries and publishing the new catalog…")
+            if data != b"\xff" * len(data):
+                encoded = base64.b64encode(data).decode("ascii")
+                update_command(console, f"write {segment * SEGMENT + offset} {encoded}")
+            processed += len(data)
+            percent = processed * 100 // total
+            if percent >= last_percent + 5 or percent == 100:
+                progress(f"Writing dictionary data… {percent}%")
+                last_percent = percent
+    progress("Verifying staged data and saving the catalog…")
     reply = update_command(console, f"commit {update.metadata} {len(update.payload)} {zlib.crc32(update.payload)}",
                            timeout=1800)
     if reply != "OK Rebooting":
@@ -498,6 +553,8 @@ def transfer(console, incoming=None, progress=print, *, name=None, limit=64, mov
     try:
         progress("Reading the current dictionary store and planning free space…")
         snapshot, protected = read_snapshot(console, answer, metadata_only=bool(move or rename or delete))
+        if mode == "named" and (reason := named_journal_limit(snapshot, len(incoming))):
+            raise NoSpace(reason)
         update = plan(snapshot, protected, incoming, name=name, limit=limit, move=move, rename=rename, delete=delete)
         if preview_compact or expected_compact is not None:
             token = None

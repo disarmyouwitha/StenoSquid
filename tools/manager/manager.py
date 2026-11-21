@@ -4,26 +4,43 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 from queue import Empty, Queue
+import re
 import secrets
 import signal
 import sys
 from threading import Lock, Thread, current_thread, main_thread
+import time
 import webbrowser
 
 HERE = Path(__file__).resolve().parent
 TOOLS = HERE.parent
 sys.path.insert(0, str(TOOLS / "storage"))
-from native_install import wait_ready
+from native_install import FACTORY_CAPABILITIES, UNPROVISIONED, prepare_install_image, provision, wait_ready
+from build_native_image import FACTORY_KEYS
 from native_manage import checked, import_entries
-from native_update import backup_all, export_dictionary, overlay_usage, transfer
-from import_personal import open_console, parse_named
+from native_update import NAMED_JOURNAL_ENTRY_BUDGET, backup_all, export_dictionary, overlay_usage, transfer
+from import_personal import open_console, parse_named, usb_console_devices
 from compile_dict import parse_outline
-from native_base_update import changed_pins, factory_package, replace_pinned
+from native_base_update import factory_package
 from native_snapshot import change_snapshot, clear_personal
 from native_import_plan import named_import
 from native_layout import read_images, read_layout
 
 MAX_REQUEST = 48 * 1024 * 1024
+FACTORY_CHOICES = {key: row[1] for key, row in FACTORY_KEYS.items()}
+FACTORY_ACTIONS = {str(row[0]): key for key, row in FACTORY_KEYS.items()}
+MAP_REFRESH_ACTIONS = {"refresh", "layout_map", "setup", "import", "apply_import", "compact", "apply_package",
+                       "apply_optimize", "clear_personal", "delete", "set", "remove", "reset"}
+INSTALLABLE_STATUS = re.compile(r"NATIVE2 (?:READY [0-9]+|UNPROVISIONED [0-9]+(?: .*)?)")
+
+
+def installer_view(console, status, *, reprovision=False):
+    if not INSTALLABLE_STATUS.fullmatch(status):
+        raise RuntimeError("The USB installer is unavailable. Keep the left half connected and try again.")
+    if console.command(FACTORY_CAPABILITIES) != "OK FACTORY2":
+        raise RuntimeError("This keyboard did not offer dictionary installation over USB.")
+    return {"setup": {"serial": console.serial, "packages": FACTORY_CHOICES,
+                      "expected_status": status, "reprovision": reprovision}}
 
 
 def read_catalog(console):
@@ -40,16 +57,80 @@ def image_details(console):
         return None
 
 
+def scan_layout(console, progress):
+    for attempt in range(3):
+        try:
+            return read_layout(console)
+        except RuntimeError as error:
+            if not str(error).startswith("ERR Layout scan deferred") or attempt == 2:
+                raise
+            progress("Waiting for flash, then retrying the scan…")
+            if str(error) == "ERR Layout scan deferred until the flash and input are idle":
+                # Earlier firmware wakes flash for status queries but not for the map.
+                console.command("native_install status", timeout=3)
+            time.sleep(0.25)
+
+
+def load_layout(console, progress):
+    layout = scan_layout(console, progress)
+    layout["images"] = image_details(console)
+    return layout
+
+
+def load_view(console, action, progress, show_view=None):
+    state = read_state(console)
+    result = {"state": state}
+    if state.get("layout_map") and action in MAP_REFRESH_ACTIONS:
+        try:
+            progress("Scanning memory…")
+            result["layout_map"] = load_layout(console, progress)
+            result["layout_map"]["generation"] = state["generation"]
+        except (RuntimeError, OSError, ValueError) as error:
+            result["layout_map_error"] = str(error)
+    if state.get("catalog") and action in MAP_REFRESH_ACTIONS:
+        if show_view is not None:
+            show_view(dict(result))
+        try:
+            progress("Measuring journal sizes…")
+            usage = overlay_usage(console)
+            if "layout_map" in result:
+                expected = f"NATIVE2 READY {state['generation']}"
+                if console.command("native_install status") == expected:
+                    result["layout_map"]["journal_usage"] = usage
+            result["usage"] = usage
+            result["journal_budget_exceeded"] = (
+                sum(row["count"] for row in usage.values()) >= NAMED_JOURNAL_ENTRY_BUDGET
+            )
+        except (RuntimeError, OSError, ValueError) as error:
+            result["usage_error"] = str(error)
+    return result
+
+
 def read_state(console):
-    status = json.loads(console.command("user_dictionary_status"))
-    if status.get("format") != "SQBCAT02" or not status.get("ready"):
+    install_status = console.command("native_install status")
+    if install_status == "ERR Native flash busy":
+        raise RuntimeError("The keyboard is still checking dictionary flash. Try connecting again in a moment.")
+    if install_status == UNPROVISIONED:
+        return installer_view(console, install_status)
+    if install_status.startswith("NATIVE2 INSTALL "):
+        raise RuntimeError("A dictionary install is in progress. Keep USB connected and refresh when it finishes.")
+    if install_status.startswith("NATIVE2 UNPROVISIONED "):
+        raise RuntimeError("The keyboard could not open its dictionary store. Use USB recovery or explicit reprovisioning.")
+    if not install_status.startswith("NATIVE2 READY "):
+        raise RuntimeError("Connect the left half running Steno Squid Native firmware over USB.")
+    try:
+        status = json.loads(console.command("user_dictionary_status"))
+    except json.JSONDecodeError as error:
+        raise RuntimeError("The dictionary store did not respond. Refresh the USB connection and try again.") from error
+    if not isinstance(status, dict) or status.get("format") != "SQBCAT02" or not status.get("ready"):
         raise RuntimeError("The dictionary store is unavailable. Check USB and firmware.")
     layouts = json.loads(console.command("get_parameter available_host_layouts"))
     adaptive = console.command("native_install update snapshot-capabilities") == "OK SNAPSHOT2"
     catalog = read_catalog(console)
+    factory = console.command(FACTORY_CAPABILITIES) == "OK FACTORY2"
     return {
+        "serial": console.serial,
         "catalog": catalog,
-        "images": image_details(console) if any(row.get("image_bytes") for row in catalog) else [],
         "layouts": layouts,
         "layout": console.command("get_parameter host_layout"),
         "read_only": status["read_only"],
@@ -60,10 +141,12 @@ def read_state(console):
         "maintenance_active": bool(status.get("maintenance")),
         "personal_conversion": adaptive and console.command(
             "native_install update personal-snapshot-capabilities") == "OK PERSONAL1",
+        "journal_conversion": adaptive and console.command(
+            "native_install update journal-snapshot-capabilities") == "OK JOURNAL1",
         "personal_clear": adaptive and console.command(
             "native_install update snapshot-clear-capabilities") == "OK CLEAR1",
         "adaptive_imports": adaptive,
-        "factory_packages": console.command("native_install update factory-capabilities") == "OK FACTORY1",
+        "factory_actions": FACTORY_ACTIONS if factory else {},
         "layout_map": adaptive and console.command("native_install update layout-capabilities") == "OK MAP1",
     }
 
@@ -84,18 +167,51 @@ def read_import(source):
     return entries, names
 
 
-def run_job(serial, request, progress):
+def setup_keyboard(serial, request, progress, show_view=None):
+    if request.get("approved") is not True:
+        raise ValueError("Confirm that setup can clear the external dictionary pool.")
+    target = request.get("serial")
+    if not isinstance(target, str) or not target or (serial and serial != target):
+        raise ValueError("Reconnect the keyboard and confirm setup for its USB serial.")
+    packages = request.get("packages")
+    expected_status = request.get("expected_status", UNPROVISIONED)
+    if not isinstance(expected_status, str) or not INSTALLABLE_STATUS.fullmatch(expected_status):
+        raise ValueError("Open the installer to verify the keyboard before proceeding.")
+    if expected_status != UNPROVISIONED and request.get("confirm_serial") != target:
+        raise ValueError("Confirm the USB serial before replacing the dictionary pool.")
+    with open_console(target) as console:
+        if console.serial != target or console.command("native_install status") != expected_status:
+            raise RuntimeError("The selected keyboard’s dictionary status changed. Reopen the installer.")
+        if console.command(FACTORY_CAPABILITIES) != "OK FACTORY2":
+            raise RuntimeError("This keyboard did not offer dictionary installation over USB.")
+        if (not isinstance(packages, list) or not packages
+                or any(not isinstance(package, str) or package not in FACTORY_CHOICES for package in packages)
+                or len(set(packages)) != len(packages)):
+            raise ValueError("Select at least one available factory dictionary.")
+        progress("Preparing the selected factory dictionaries…")
+        image, manifest = prepare_install_image(packages=packages)
+        provision(console, image, manifest, progress, expected_status=expected_status)
+    progress("Waiting for the keyboard to reconnect…")
+    try:
+        view = wait_ready(target, load_state=lambda console: load_view(console, "setup", progress, show_view))
+    except RuntimeError:
+        return {"commit_pending": True}
+    return {**view, "installed": True}
+
+
+def run_job(serial, request, progress, show_view=None):
     action = request["action"]
+    if action == "setup":
+        return setup_keyboard(serial, request, progress, show_view)
     published = False
     report = {}
     with open_console(serial) as console:
         serial = console.serial
-        if action == "refresh":
-            return {"state": read_state(console)}
-        if action == "layout_map":
-            layout = read_layout(console)
-            layout["images"] = image_details(console)
-            return {"layout_map": layout}
+        if action == "open_installer":
+            return {"state": installer_view(console, console.command("native_install status", timeout=5),
+                                            reprovision=True)}
+        if action in {"refresh", "layout_map"}:
+            return load_view(console, action, progress, show_view)
         if action == "preview_compact":
             layout = None
             if console.command("native_install update layout-capabilities") == "OK MAP1":
@@ -108,6 +224,8 @@ def run_job(serial, request, progress):
             cleanup = transfer(console, progress=progress, preview_compact=True)
             if layout and generation != json.loads(console.command("user_dictionary_status"))["generation"]:
                 layout = None
+            if layout:
+                layout["generation"] = generation
             return {"cleanup": cleanup, "layout_map": layout}
         catalog = read_catalog(console)
         by_id = {row["id"]: row for row in catalog}
@@ -116,14 +234,14 @@ def run_job(serial, request, progress):
             raise ValueError("Select a dictionary from the current catalog.")
         name = safe_name(selected["name"]) if selected else None
         if selected and selected["kind"] == "uninstalled" and action in {"enable", "set", "remove", "reset", "export"}:
-            raise ValueError("Restore the factory package before using this dictionary.")
+            raise ValueError("Install the factory dictionary before using it.")
         if action in {"preview_package", "apply_package"}:
             applying = action == "apply_package"
             token = request.get("token")
             restore = request.get("restore")
             if not isinstance(restore, bool) or (applying and (not isinstance(token, str) or len(token) != 64)):
-                raise ValueError("Preview the factory package before applying changes.")
-            progress("Checking factory package and flash space…")
+                raise ValueError("Preview the factory dictionary before applying changes.")
+            progress("Checking factory dictionary and flash space…")
             outcome = factory_package(console, request.get("package"), restore=restore,
                                       confirmation=token if applying else None, progress=progress)
             if not applying:
@@ -156,20 +274,9 @@ def run_job(serial, request, progress):
             progress(f"Exporting {name}…")
             entries = export_dictionary(console, name)
             return {"download": entries, "filename": name + ".json", "count": len(entries)}
-        elif action in {"backup", "measure"}:
-            if action == "backup":
-                progress("Reading saved edits, dictionary order and checkboxes…")
-                return {"download": backup_all(console), "filename": "stenosquid-backup.json"}
-            progress("Counting saved edits across dictionaries…")
-            return {"state": read_state(console), "usage": overlay_usage(console)}
-        elif action == "check_updates":
-            return {"updates": changed_pins(catalog)}
-        elif action == "apply_updates":
-            if request.get("approved") is not True:
-                raise ValueError("Confirm the pinned dictionary update.")
-            changed, conflicts = replace_pinned(console, catalog, progress)
-            published = bool(changed)
-            report = {"updated": changed, "conflicts": conflicts}
+        elif action == "backup":
+            progress("Reading saved edits, dictionary order and checkboxes…")
+            return {"download": backup_all(console), "filename": "stenosquid-backup.json"}
         elif action == "clear_personal":
             if request.get("confirm") != "CLEAR" or not selected or name != "user_dictionary":
                 raise ValueError("Select your personal dictionary and type CLEAR to confirm.")
@@ -184,8 +291,10 @@ def run_job(serial, request, progress):
             if applying and (not isinstance(expected, str) or len(expected) != 64):
                 raise ValueError("Preview the optimization before staging.")
             operation = request.get("operation")
-            if (selected["kind"], operation) not in {("personal", "personal"), ("snapshot", "consolidate")}:
-                raise ValueError("Choose an eligible personal journal or user snapshot.")
+            if (selected["kind"], operation) not in {
+                ("personal", "personal"), ("named", "convert"), ("snapshot", "consolidate")
+            }:
+                raise ValueError("Choose an eligible journal or user snapshot.")
             progress(f"Reading {name} and calculating staging space…")
             outcome = change_snapshot(console, operation, name, stage=applying,
                                       preview=not applying, expected=expected if applying else None,
@@ -206,6 +315,7 @@ def run_job(serial, request, progress):
             if not staging:
                 return {"import_plan": import_report}
             published = True
+            report = {"imported": len(entries)}
         elif action in {"move", "rename", "delete", "import", "compact"}:
             if action in {"rename", "delete"} and (name == "user_dictionary" or selected["kind"] not in {"named", "snapshot"}):
                 raise ValueError("Rename and delete are available for added dictionaries.")
@@ -239,19 +349,21 @@ def run_job(serial, request, progress):
                 published = change_snapshot(console, "delete", name, stage=True, progress=progress)
             else:
                 published = transfer(console, entries, progress, **options)
+            if action == "import":
+                report = {"imported": len(entries)}
         else:
             raise ValueError("Unknown Manager operation")
 
     if published:
         progress("Keyboard acknowledged the catalog commit. Waiting for it to reconnect…")
         try:
-            wait_ready(serial)
-        except RuntimeError as exc:
-            raise RuntimeError("The keyboard acknowledged the commit, but USB did not reconnect in time. "
-                               "Refresh and check the catalog before retrying.") from exc
+            view = wait_ready(serial, load_state=lambda console: load_view(console, action, progress, show_view),
+                              checking=lambda: progress("Saved. Keyboard is checking dictionaries…"))
+        except RuntimeError:
+            return {"commit_pending": True}
+        return {**view, **report}
     with open_console(serial) as console:
-        state = read_state(console)
-    return {"state": state, **report}
+        return {**load_view(console, action, progress, show_view), **report}
 
 
 class Jobs:
@@ -260,6 +372,8 @@ class Jobs:
         self.lock = Lock()
         self.pending = Queue()
         self.stopping = False
+        self.connected_serial = None
+        self.next_connection_check = 0
         self.current = {"id": "", "status": "idle"}
 
     def start(self, request):
@@ -288,16 +402,37 @@ class Jobs:
             try:
                 request = self.pending.get(timeout=0.2)
             except Empty:
+                self.check_connection()
                 continue
             self.run(request)
 
     def run(self, request):
         try:
-            result = run_job(self.serial, request, lambda message: self.update(message=message))
+            result = run_job(self.serial, request, lambda message: self.update(message=message),
+                             lambda view: self.update(view=view))
         except (Exception, SystemExit) as error:
-            self.update(status="error", message=str(error))
+            self.update(status="error", message=str(error), view=None)
         else:
-            self.update(status="done", result=result)
+            state = result.get("state")
+            if state:
+                self.connected_serial = state.get("setup", state)["serial"]
+            if result.get("commit_pending"):
+                self.connected_serial = None
+            self.next_connection_check = time.monotonic() + 3
+            self.update(status="done", result=result, view=None, connection_lost=bool(result.get("commit_pending")))
+
+    def check_connection(self):
+        now = time.monotonic()
+        if not self.connected_serial or now < self.next_connection_check:
+            return
+        self.next_connection_check = now + 3
+        try:
+            present = bool(usb_console_devices(self.connected_serial))
+        except (OSError, RuntimeError):
+            present = False
+        if not present:
+            self.connected_serial = None
+            self.update(connection_lost=True)
 
 
 def serve(serial=None):

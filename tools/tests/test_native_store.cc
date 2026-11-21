@@ -1,4 +1,5 @@
 #include "native_store_fixture.h"
+#include "native_overlay_usage.h"
 #include <iostream>
 int main() {
     NativeFixture f;assert(f.Edit(1,1,"first")==LiveResult::Ok);
@@ -32,9 +33,30 @@ int main() {
     unsigned count=0;
     while(more){auto result=NextOverlay(f.device,f.store.live,export_view,cursor,item,more);if(result==LiveResult::Ok){assert(item.identity==4);++count;}else assert(result==LiveResult::Missing || result==LiveResult::More);}
     assert(count==2 && f.store.Release(export_view));
+    assert(f.Edit(4, 1, "unused")==LiveResult::Ok);
+    assert(f.Edit(4, 1, "", 1)==LiveResult::Ok);
+    assert(f.Edit(4, 2, "", 2)==LiveResult::Ok);
+    assert(f.Edit(2, 2, "other")==LiveResult::Ok);
+    OverlayUsage usage[3]{};
+    uint32_t position=0;
+    const auto &view=f.store.live.CurrentView();
+    const auto collect = [&](unsigned slot, unsigned segment, unsigned operation, unsigned span) {
+        assert(view.journals.Contains(segment));
+        ++usage[slot].count;
+        usage[slot].entries += operation == 0;
+        usage[slot].bytes += span;
+        return true;
+    };
+    while(position<view.forward_count+view.tail.count) {
+        const auto before=position;
+        assert(MeasureOverlay(f.device,view,position,collect,[]{return true;}));
+        assert(position==before+1);
+    }
+    assert(usage[0].count==1 && usage[0].entries==0 && usage[0].bytes==44);
+    assert(usage[1].count==1 && usage[1].entries==1 && usage[1].bytes==52);
     // A malformed committed index is never reformatted during engine open.
     f.nor.data[2*65536+256+32]^=1;const auto bytes=f.nor.data;
-    assert(f.store.Open([&](const CatalogRoot &r){return f.validator.Validate(r);})!=CatalogResult::Ok);
+    assert(f.store.Open([&](const CatalogRoot &r){return f.validator.Validate(r, false);})!=CatalogResult::Ok);
     assert(!f.store.opened && f.nor.data==bytes);
     std::cout<<"Native engine store: persistent flags, atomic fresh-ID reset, scheduled maintenance, leased readers, export deduplication and fail-closed reopen passed\n";
 }

@@ -54,7 +54,7 @@ int main(int argc,char **argv) {
     const auto &root = store.selected.root;
     std::vector<uint8_t> invalid(root.bytes);
     assert(device.Read(root.address, invalid.data(), invalid.size()));
-    invalid[32 + 2 * 96 + 10] = invalid[32 + 96 + 10]; // Duplicate collection member.
+    std::memcpy(invalid.data() + 32 + 2 * 96 + 8, invalid.data() + 32 + 96 + 8, 3); // Duplicate extent/member.
     CatalogSelection rejected;
     assert(store.catalog.Publish(store.selected, invalid.size(), Source{invalid},
         [&](uint32_t i, const uint8_t *extent) { return validator.Extent(i, extent); },

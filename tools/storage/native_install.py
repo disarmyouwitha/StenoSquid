@@ -22,8 +22,13 @@ sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from import_personal import open_console
 from build_native_image import build, read_personal, LIMIT, SEGMENT, SOURCES
 
+UNPROVISIONED = "NATIVE2 UNPROVISIONED 0"
+FACTORY_CAPABILITIES = "native_install update factory-member-capabilities"
+
 
 def check_image(image, manifest):
+    from native_update import Snapshot
+
     if len(image) != LIMIT or manifest.get("format") != "SQBCAT02":
         raise ValueError("Not a native shared-pool image")
     if (
@@ -31,13 +36,45 @@ def check_image(image, manifest):
         or hashlib.sha256(image).hexdigest() != manifest["sha256"]
     ):
         raise ValueError("Native image checksum differs from its manifest")
+    absent = None
+    factory_names = {identity: name.encode() for identity, name, _, source in SOURCES if source}
     for root in (0, SEGMENT):
-        payload_bytes = struct.unpack_from("<I", image, root + 16)[0]
-        rows = struct.unpack_from("<H", image, root + 36)[0]
-        if image[root:root + 8] != b"SQBCAT02" or rows > 64 or 32 + rows * 96 > payload_bytes:
+        payload_bytes, crc, header_crc, committed = struct.unpack_from("<IIII", image, root + 16)
+        payload = image[root + 32:root + 32 + payload_bytes]
+        rows, extents = struct.unpack_from("<HH", image, root + 36)
+        extent_offset = 32 + rows * 96
+        if (image[root:root + 8] != b"SQBCAT02" or rows > 64
+                or extents > 253 or payload_bytes != extent_offset + extents * 24
+                or committed != 0x434F4D54 or zlib.crc32(image[root:root + 24]) != header_crc
+                or zlib.crc32(payload) != crc):
             raise ValueError("Invalid Native image catalog")
-        if any(image[root + 64 + index * 96 + 11] for index in range(rows)):
-            raise ValueError("Experimental snapshot images cannot be provisioned over USB.")
+        omitted = set()
+        factory_extents = set()
+        for index in range(rows):
+            row = payload[32 + index * 96:32 + (index + 1) * 96]
+            identity, enabled, base, member, marker, name_bytes = struct.unpack_from("<IIHBBB", row)
+            if not marker:
+                if identity in factory_names:
+                    if member or base >= extents or base in factory_extents:
+                        raise ValueError("Factory dictionaries must have individual flash images.")
+                    start, span, size, _, kind, _ = struct.unpack_from("<HHIIIQ", payload, extent_offset + base * 24)
+                    if (not 2 <= start < 255 or not 1 <= span <= 255 - start or not 8 <= size <= span * SEGMENT
+                            or kind != 1 or image[start * SEGMENT:start * SEGMENT + 8] != b"JSC4\x01\x00\x00\x00"):
+                        raise ValueError("Invalid individual factory image")
+                    factory_extents.add(base)
+                continue
+            if marker == 1:
+                raise ValueError("Experimental snapshot images cannot be provisioned over USB.")
+            if (marker != 2 or enabled or base != 65535 or member or not any(row[64:96])
+                    or factory_names.get(identity) != row[16:16 + name_bytes]
+                    or identity in omitted):
+                raise ValueError("Invalid uninstalled factory dictionary")
+            omitted.add(identity)
+        if absent is not None and absent != omitted:
+            raise ValueError("Native catalogs disagree about factory dictionaries")
+        absent = omitted
+        Snapshot(lambda at, size: image[at:at + size], root + 32, payload_bytes, crc, strict=True)
+    return absent
 
 
 def command(console, text, timeout=30):
@@ -47,14 +84,18 @@ def command(console, text, timeout=30):
     return result
 
 
-def provision(console, image, manifest, progress=print):
+def provision(console, image, manifest, progress=print, *, expected_status=None):
     check_image(image, manifest)
+    if console.command(FACTORY_CAPABILITIES) != "OK FACTORY2":
+        raise RuntimeError("Update the left firmware to install individual factory dictionaries.")
     status = console.command("native_install status")
     if not status.startswith("NATIVE2 "):
         raise RuntimeError("Flash the matching Native firmware before installing: " + status)
+    if expected_status is not None and status != expected_status:
+        raise RuntimeError("The keyboard’s dictionary status changed. Reconnect before setting up.")
     command(console, f"begin CLEAR {manifest['crc32']}")
     try:
-        write_pool(console, image, progress)
+        write_pool(console, image, progress, write_label="Writing base dictionaries")
     except BaseException:
         try:
             command(console, "abort", timeout=2)
@@ -63,23 +104,28 @@ def provision(console, image, manifest, progress=print):
         raise
 
 
-def write_pool(console, image, progress, *, finish=True):
+def write_pool(console, image, progress, *, finish=True, write_label="Writing native image"):
+    # Write all referenced data before making either catalog visible at boot.
+    catalog_end = 2 * SEGMENT
+    block_size = 512
+    erased = b"\xff" * block_size
+    offsets = [
+        at for at in chain(range(catalog_end, len(image), block_size), range(0, catalog_end, block_size))
+        if image[at : at + block_size] != erased
+    ]
+    total = len(offsets) * block_size
     for segment in range(255):
         command(console, f"erase {segment}")
         if segment % 16 == 0:
             progress(f"Erasing shared pool: {segment + 1}/255")
-    sent = 0
-    # Write all referenced data before making either catalog visible at boot.
-    catalog_end = 2 * SEGMENT
-    offsets = chain(range(catalog_end, len(image), 512), range(0, catalog_end, 512))
-    for at in offsets:
-        data = image[at : at + 512]
-        if data == b"\xff" * len(data):
-            continue
+    if total:
+        progress(f"{write_label}: 0 / {total / 1024:,.1f} KiB (0%)")
+    for count, at in enumerate(offsets, 1):
+        data = image[at : at + block_size]
         command(console, f"write {at} {base64.b64encode(data).decode()}")
-        sent += len(data)
-        if sent % (128 * 1024) == 0:
-            progress(f"Writing native image: {sent // 1024} KiB")
+        sent = count * block_size
+        if sent == total or sent % (128 * 1024) == 0:
+            progress(f"{write_label}: {sent / 1024:,.1f} / {total / 1024:,.1f} KiB ({sent * 100 // total}%)")
     if finish:
         progress("Verifying the complete shared pool; the left will reboot afterward")
         command(console, "finish", timeout=180)
@@ -108,40 +154,46 @@ def main():
     install(args.serial, args.image, args.restore)
 
 
+def prepare_install_image(restore=None, *, packages=None):
+    personal = read_personal(restore) if restore else None
+    if any(source and not (ROOT / "build" / source).exists() for _, _, _, source in SOURCES):
+        subprocess.run([sys.executable, str(ROOT / "tools/dictionaries/prepare.py")], check=True)
+    return build(ROOT / "build", personal, packages=packages)
+
+
 def install(serial=None, image_path=None, restore=None):
     if image_path:
         image = image_path.read_bytes()
         manifest = json.loads(image_path.with_suffix(".json").read_text())
-    else:
-        personal = read_personal(restore) if restore else None
-        if any(
-            source and not (ROOT / "build" / source).exists()
-            for _, _, _, source in SOURCES
-        ):
-            subprocess.run(
-                [sys.executable, str(ROOT / "tools/dictionaries/prepare.py")],
-                check=True,
-            )
-        image, manifest = build(ROOT / "build", personal)
     with open_console(serial) as console:
+        serial = console.serial
+        if not image_path:
+            image, manifest = prepare_install_image(restore)
         provision(console, image, manifest)
     wait_ready(serial)
 
 
-def wait_ready(serial=None):
+def wait_ready(serial=None, *, load_state=None, checking=None):
     time.sleep(3)
-    deadline = time.monotonic() + 90
+    started = time.monotonic()
+    deadline = started + 90
+    saw_busy = False
     while time.monotonic() < deadline:
         try:
             with open_console(serial) as console:
                 status = console.command("native_install status", timeout=2)
-                if (status.startswith("NATIVE2 READY ") and
-                        console.command("list_dictionaries", timeout=2).lstrip().startswith("[")):
-                    print(
-                        "Native engine ready. Test KAT, multi-stroke, Practice and browser edits."
-                    )
-                    return
-        except (OSError, RuntimeError, TimeoutError):
+                if status == "ERR Native flash busy" and not saw_busy:
+                    saw_busy = True
+                    deadline = started + 180
+                    if checking is not None:
+                        checking()
+                if status.startswith("NATIVE2 READY "):
+                    if load_state is not None:
+                        return load_state(console)
+                    if console.command("list_dictionaries", timeout=2).lstrip().startswith("["):
+                        print("Native engine ready. Test KAT, multi-stroke, Practice and browser edits.")
+                        return
+        except (OSError, RuntimeError, ValueError):
             pass
         time.sleep(1)
     raise RuntimeError(

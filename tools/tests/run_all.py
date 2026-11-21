@@ -3,7 +3,7 @@
 
 python3 tools/tests/run_all.py --workspace /path/to/west-workspace
 CI can instead supply --engine, --zmk and --lvgl individually.
-Dictionary images must be prepared first with tools/dictionaries/prepare.py.
+Pinned dictionary sources must be prepared first with tools/dictionaries/prepare.py.
 """
 import argparse
 import os

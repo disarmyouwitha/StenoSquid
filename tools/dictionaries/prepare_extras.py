@@ -1,4 +1,4 @@
-"""Prepare the pinned Extras image."""
+"""Prepare the pinned Extras sources."""
 import argparse
 from prepare import prepare
 

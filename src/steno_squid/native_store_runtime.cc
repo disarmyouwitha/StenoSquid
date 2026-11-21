@@ -15,6 +15,7 @@
 #include "../../tools/storage/native_stage.h"
 #include "../../tools/storage/native_entry_stager.h"
 #include "../../tools/storage/native_layout_map.h"
+#include "../../tools/storage/native_overlay_usage.h"
 #include "../../tools/storage/reverse_cursor.h"
 #include "dictionary/compact_map_dictionary.h"
 #include "dictionary/dictionary_definition.h"
@@ -59,6 +60,7 @@ extern int64_t scrub_due;
 constexpr size_t MaxDictionaries=CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES;
 struct FlashDevice {
     bool mapped=false,trust_bases=false;
+    int64_t cold_read_yield_at=0;
     alignas(4) uint8_t dma[256];
     struct Cached {uint32_t at=0,bytes=0,crc=0;} cached[32];
     unsigned cache_next=0;
@@ -72,6 +74,10 @@ struct FlashDevice {
             squid_bench_personal_bytes += n;
         }
 #endif
+        if (cold_read_yield_at && k_uptime_get() >= cold_read_yield_at) {
+            k_sleep(K_TICKS(1));
+            cold_read_yield_at = k_uptime_get() + 5;
+        }
         if(mapped){copy_xip_bytes(out,reinterpret_cast<const void *>(Xip+at),n);return true;}
         while(n) {
             uint32_t skip=at%4,count=n<256-skip?n:256-skip;
@@ -186,8 +192,7 @@ public:
         if (bytes < pointers || xip_load_word(collection) != STENO_MAP_DICTIONARY_COLLECTION_MAGIC)
             return false;
         const uint32_t count = xip_load_word(collection + offsetof(StenoDictionaryCollection, dictionaryCount));
-        if (count > 64 || member >= count || count > (bytes - pointers) / sizeof(uint32_t) ||
-            (user_snapshot && count != 1))
+        if (count != 1 || member || bytes - pointers < sizeof(uint32_t))
             return false;
         const uintptr_t map = xip_load_word(collection + pointers + member * sizeof(uint32_t));
         if(map%4 || !in(map,sizeof(definition)))return false;
@@ -731,11 +736,30 @@ extern "C" bool steno_squid_native_flash_open(void) {
     }
     healthy=false;snapshot_format_rejected=false;++full_opens;
     LoadNativeTrust();
+    // QSPI is in mapped quad mode here. Compare both root headers against
+    // DMA before using the mapping for the many small index validation reads.
+    bool mapping_ok = true;
+    for (uint32_t at = 0; at < 2 * kSegmentBytes; at += kSegmentBytes) {
+        uint8_t raw[32], mapped[32];
+        if (!flash_device.Read(at, raw, sizeof(raw))) {
+            mapping_ok = false;
+            break;
+        }
+        copy_xip_bytes(mapped, reinterpret_cast<const void *>(Xip + at), sizeof(mapped));
+        if (std::memcmp(raw, mapped, sizeof(raw))) {
+            mapping_ok = false;
+            break;
+        }
+    }
+    flash_device.mapped = mapping_ok;
+    flash_device.cold_read_yield_at = k_uptime_get() + 5;
     const auto result=store.Open([](const CatalogRoot &root){
         const uint32_t fingerprint=BaseFingerprint(root);
         flash_device.trust_bases=fingerprint && fingerprint==verified_fingerprint;
-        const auto status=validator.Validate(root);flash_device.trust_bases=false;return status;
+        const auto status=validator.Validate(root, false);flash_device.trust_bases=false;return status;
     });
+    flash_device.cold_read_yield_at = 0;
+    flash_device.mapped = false;
     if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined){base_provider.Fault();return false;}
     uint8_t prefix[8];if(!flash_device.Read(store.selected.root.address,prefix,8))return false;
     const size_t count=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
@@ -862,10 +886,10 @@ bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
 }
 const char *LayoutMap(char *reply, size_t bytes) {
     if (lf_suspended || !healthy || !store.opened || exporting || transfer.Active() || staged.Active() ||
-        store.work != NativeStore<FlashDevice>::Work::None || steno_squid_native_input_pending())
-        return "ERR Layout scan deferred until the flash and input are idle";
+        store.work != NativeStore<FlashDevice>::Work::None)
+        return "ERR Layout scan deferred until flash is available";
     const auto deadline = k_uptime_get() + 25;
-    const auto stop = [&] { return steno_squid_native_input_pending() || k_uptime_get() >= deadline; };
+    const auto stop = [&] { return k_uptime_get() >= deadline; };
     const bool writable = store.catalog.CanWrite(store.selected.root);
     const char access = !writable ? 'r' : store.catalog.DestinationPinned(store.selected) ? 'p' : 'w';
     const int prefix = snprintk(reply, bytes, "OK MAP1 %u %c -- ", unsigned(store.selected.slot), access);
@@ -876,7 +900,7 @@ const char *LayoutMap(char *reply, size_t bytes) {
         char state = 'e';
         if (root.generation) {
             state = ReadLayout(flash_device, root, map, stop) ? 'v' : '?';
-            if (stop()) return "ERR Layout scan deferred until the flash and input are idle";
+            if (stop()) return "ERR Layout scan timed out";
         } else if (!writable) {
             state = '?';
         }
@@ -901,6 +925,8 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return "OK SNAPSHOT2";
     if (!std::strcmp(command, "personal-snapshot-capabilities\n"))
         return "OK PERSONAL1";
+    if (!std::strcmp(command, "journal-snapshot-capabilities\n"))
+        return "OK JOURNAL1";
     if (!std::strcmp(command, "snapshot-clear-capabilities\n"))
         return "OK CLEAR1";
     if (!std::strcmp(command, "recovery-capabilities\n"))
@@ -910,9 +936,10 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return "OK REPACK1";
 #endif
     if (!std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
+    if (!std::strcmp(command, "journal-usage-capabilities\n")) return "OK USAGE2";
     if (!std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
-    if (!std::strcmp(command, "factory-capabilities\n")) return "OK FACTORY1";
+    if (!std::strcmp(command, "factory-member-capabilities\n")) return "OK FACTORY2";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     uint32_t snapshot_id = 0;
     const bool metadata_read = !std::strcmp(command, "begin metadata\n");
@@ -931,6 +958,9 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         } else if (!std::strncmp(p, "personal ", 9)) {
             p += 9;
             kind = NativeUpdateKind::SnapshotPersonal;
+        } else if (!std::strncmp(p, "convert ", 8)) {
+            p += 8;
+            kind = NativeUpdateKind::SnapshotPersonal;
         } else if (!std::strncmp(p, "clear ", 6)) {
             p += 6;
             kind = NativeUpdateKind::SnapshotClear;
@@ -943,11 +973,11 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     else if (!std::strcmp(command, "begin delete\n")) kind = NativeUpdateKind::Delete;
     else if (metadata_read || !std::strcmp(command, "begin backup\n")) kind = NativeUpdateKind::Backup;
     else if (!std::strcmp(command, "begin base\n")) kind = NativeUpdateKind::Base;
-    else if (!std::strncmp(command, "begin factory ", 14)) {
-        const char *p = command + 14;
-        if (!Number(p, snapshot_id) || !End(p) || (snapshot_id != 6 && snapshot_id != 7))
-            return "ERR Invalid factory package";
-        kind = NativeUpdateKind::FactoryPackage;
+    else if (!std::strncmp(command, "begin factory-member ", 21)) {
+        const char *p = command + 21;
+        if (!Number(p, snapshot_id) || !End(p) || !FactoryName(snapshot_id))
+            return "ERR Invalid factory dictionary";
+        kind = NativeUpdateKind::FactoryMember;
     }
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
         if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id))
@@ -973,6 +1003,49 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         k_work_cancel_delayable(&install_timeout_work);
         steno_squid_upload_status(stage_mode, 0);
         return "OK";
+    }
+    if (!std::strncmp(command, "journal-usage ", 14)) {
+        const char *p = command + 14;
+        uint32_t position;
+        if (staged.Kind() != NativeUpdateKind::Backup || !Number(p, position) || !End(p))
+            return "ERR Invalid journal measurement";
+        const auto &view = store.live.CurrentView();
+        struct BlockUsage {
+            unsigned slot, segment;
+            OverlayUsage usage;
+        };
+        constexpr unsigned max_blocks = 16;
+        BlockUsage blocks[max_blocks];
+        unsigned block_count = 0;
+        if (view.dictionary_count > MaxDictionaries) return "ERR Invalid journal view";
+        const int64_t deadline = k_uptime_get() + 2;
+        const auto collect = [&](unsigned slot, unsigned segment, unsigned operation, unsigned span) {
+            unsigned i = 0;
+            for (; i < block_count; ++i)
+                if (blocks[i].slot == slot && blocks[i].segment == segment) break;
+            if (i == block_count) {
+                if (block_count == max_blocks) return false;
+                blocks[block_count++] = {slot, segment, {}};
+            }
+            auto &usage = blocks[i].usage;
+            ++usage.count;
+            usage.entries += operation == 0;
+            usage.bytes += span;
+            return true;
+        };
+        if (!MeasureOverlay(flash_device, view, position, collect, [&] { return k_uptime_get() >= deadline; }))
+            return "ERR Journal measurement failed";
+        int length = snprintk(reply, bytes, "OK USAGE2 %u %u", unsigned(position),
+                              unsigned(view.forward_count + view.tail.count));
+        for (unsigned i = 0; i < block_count && length >= 0 && size_t(length) < bytes; ++i) {
+            const auto &block = blocks[i];
+            const auto &row = block.usage;
+            length += snprintk(reply + length, bytes - length, " %u,%u,%u,%u,%u", block.segment,
+                               unsigned(view.identities[block.slot]), unsigned(row.count),
+                               unsigned(row.entries), unsigned(row.bytes));
+        }
+        if (length < 0 || size_t(length) >= bytes) return "ERR Journal measurement reply too small";
+        return nullptr;
     }
     if (!std::strncmp(command, "read ", 5)) {
         const char *p = command + 5;
@@ -1133,13 +1206,10 @@ const char *Install(const char *command,char *reply,size_t bytes) {
 }
 }
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes) {
-    if (!std::strcmp(command, "update layout-map\n")) {
-        if (k_mutex_lock(&flash_lock, K_NO_WAIT)) {
-            snprintk(reply, bytes, "ERR Layout scan deferred until the flash and input are idle");
-            return;
-        }
-    } else if (!dictionary_flash_acquire()) {
-        k_mutex_lock(&flash_lock, K_FOREVER);
+    if (!dictionary_flash_try_service()) {
+        snprintk(reply, bytes, "%s", !std::strcmp(command, "update layout-map\n")
+                ? "ERR Layout scan deferred until flash is available" : "ERR Native flash busy");
+        return;
     }
     const char *result=Install(command,reply,bytes);if(result)snprintk(reply,bytes,"%s",result);
     k_mutex_unlock(&flash_lock);

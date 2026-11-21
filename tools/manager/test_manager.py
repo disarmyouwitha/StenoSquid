@@ -25,14 +25,18 @@ class Keyboard:
         self.adaptive = False
         self.name = "Medical"
         self.command_threads = []
+        self.install_status = "NATIVE2 READY 3"
+        self.individual_factory = True
 
     def command(self, command, timeout=30):
         self.commands.append(command)
         self.command_threads.append(current_thread())
+        if command == "native_install status":
+            return self.install_status
         if command == "native_catalog":
             return json.dumps([{"id": 8, "name": self.name, "enabled": self.enabled, "kind": self.kind}])
         if command == "user_dictionary_status":
-            return '{"format":"SQBCAT02","ready":true,"read_only":false,"tail":64,"auto_checkpoints":2}'
+            return '{"format":"SQBCAT02","ready":true,"read_only":false,"tail":64,"generation":3,"auto_checkpoints":2}'
         if command == "get_parameter host_layout":
             return self.layout
         if command == "get_parameter available_host_layouts":
@@ -45,20 +49,29 @@ class Keyboard:
             return "OK"
         if command == "print_dictionary Medical":
             return '{"KAT":"ça"}'
-        if command == "native_install update factory-capabilities":
-            return "OK FACTORY1"
+        if command == "native_install update factory-member-capabilities":
+            return "OK FACTORY2" if self.individual_factory else "ERR Unsupported"
         if command == "native_install update manage-capabilities":
             return "OK MANAGE1"
         if command == "native_install update snapshot-capabilities":
             return "OK SNAPSHOT2" if self.adaptive else "ERR Unsupported"
         if command == "native_install update personal-snapshot-capabilities":
             return "OK PERSONAL1"
+        if command == "native_install update journal-snapshot-capabilities":
+            return "OK JOURNAL1"
         if command == "native_install update snapshot-clear-capabilities":
             return "OK CLEAR1" if self.adaptive else "ERR Unsupported"
         if command == "reset_user_dictionary":
             return "OK"
         if command == "native_install update layout-capabilities":
             return "OK MAP1"
+        if command == "native_install update layout-map":
+            segments = "cc" + "." * 253 + "x"
+            return f"OK MAP1 0 w vv {segments} {segments}"
+        if command in ("native_install update begin metadata", "native_install update begin backup"):
+            return "ERR Unavailable in fixture"
+        if command == "native_install update journal-usage-capabilities":
+            return "ERR Unsupported"
         if command.startswith("native_entry "):
             return "OK"
         raise AssertionError(command)
@@ -79,20 +92,123 @@ class ManagerTest(unittest.TestCase):
         self.assertFalse(self.run_job("enable", id=8, enabled=False)["state"]["catalog"][0]["enabled"])
         self.assertEqual(self.run_job("layout", layout="Mac U.S.")["state"]["layout"], "Mac U.S.")
 
+    def test_unprovisioned_keyboard_offers_setup_without_reading_catalog(self):
+        self.keyboard.install_status = manager.UNPROVISIONED
+        setup = self.run_job("refresh")["state"]["setup"]
+        self.assertEqual(setup, {"serial": self.keyboard.serial, "packages": manager.FACTORY_CHOICES,
+                                 "expected_status": manager.UNPROVISIONED, "reprovision": False})
+        self.keyboard.individual_factory = False
+        with self.assertRaisesRegex(RuntimeError, "did not offer"):
+            self.run_job("refresh")
+        self.assertNotIn("user_dictionary_status", self.keyboard.commands)
+        self.assertNotIn("native_catalog", self.keyboard.commands)
+        self.keyboard.install_status += " Incompatible compact snapshot."
+        with self.assertRaisesRegex(RuntimeError, "USB recovery"):
+            self.run_job("refresh")
+
+    def test_setup_requires_confirmation_and_unprovisioned_target(self):
+        fields = {"serial": self.keyboard.serial, "packages": ["plover"]}
+        with patch.object(manager, "prepare_install_image", return_value=(b"image", {})) as prepare, \
+                patch.object(manager, "provision") as provision, patch.object(manager, "wait_ready") as wait:
+            with self.assertRaisesRegex(ValueError, "Confirm"):
+                self.run_job("setup", **fields)
+            with self.assertRaisesRegex(RuntimeError, "status changed"):
+                self.run_job("setup", approved=True, **fields)
+            self.keyboard.install_status = manager.UNPROVISIONED
+            with self.assertRaisesRegex(ValueError, "USB serial"):
+                manager.run_job("another-board", dict(action="setup", approved=True, **fields), print)
+            prepare.assert_not_called()
+            provision.assert_not_called()
+            def reconnected(serial, *, load_state):
+                self.keyboard.install_status = "NATIVE2 READY 2"
+                return load_state(self.keyboard)
+
+            wait.side_effect = reconnected
+            self.assertTrue(self.run_job("setup", approved=True, **fields)["installed"])
+            prepare.assert_called_once_with(packages=["plover"])
+            self.assertEqual(provision.call_args.kwargs["expected_status"], manager.UNPROVISIONED)
+            wait.assert_called_once_with(self.keyboard.serial, load_state=unittest.mock.ANY)
+
+    def test_reprovision_only_uses_installer_and_requires_matching_status(self):
+        for status in ("NATIVE2 READY 3", "NATIVE2 UNPROVISIONED 7 Incompatible image."):
+            with (
+                self.subTest(status=status),
+                patch.object(manager, "prepare_install_image", return_value=(b"", {})),
+                patch.object(manager, "provision") as provision,
+                patch.object(manager, "wait_ready", return_value={"state": {"serial": self.keyboard.serial}}),
+            ):
+                self.keyboard.install_status = status
+                self.keyboard.commands.clear()
+                setup = self.run_job("open_installer")["state"]["setup"]
+                self.assertTrue(setup["reprovision"])
+                self.assertEqual(setup["expected_status"], status)
+                self.assertNotIn("native_catalog", self.keyboard.commands)
+                self.assertNotIn("user_dictionary_status", self.keyboard.commands)
+                fields = dict(serial=setup["serial"], packages=["plover"], approved=True, expected_status=status)
+                with self.assertRaisesRegex(ValueError, "Confirm the USB serial"):
+                    self.run_job("setup", **fields)
+                self.keyboard.install_status = "NATIVE2 READY 4"
+                with self.assertRaisesRegex(RuntimeError, "status changed"):
+                    self.run_job("setup", **fields, confirm_serial=setup["serial"])
+                provision.assert_not_called()
+                self.keyboard.install_status = status
+                self.assertTrue(self.run_job("setup", **fields, confirm_serial=setup["serial"])["installed"])
+                self.assertEqual(provision.call_args.kwargs["expected_status"], status)
+        self.keyboard.install_status = "NATIVE2 INSTALL 3"
+        with self.assertRaisesRegex(RuntimeError, "installer is unavailable"):
+            self.run_job("open_installer")
+
+    def test_factory_actions_require_individual_firmware(self):
+        self.assertEqual(self.run_job("refresh")["state"]["factory_actions"]["4"], "lapwing-uk")
+        self.keyboard.individual_factory = False
+        self.assertEqual(self.run_job("refresh")["state"]["factory_actions"], {})
+
+    def test_scan_retries_transient_deferral(self):
+        layout = {"segments": []}
+        with patch.object(manager, "read_layout", side_effect=[
+                RuntimeError("ERR Layout scan deferred until the flash and input are idle"), layout
+        ]) as read, patch.object(manager.time, "sleep"):
+            self.assertEqual(manager.scan_layout(self.keyboard, lambda _: None), layout)
+            self.assertEqual(read.call_count, 2)
+            self.assertEqual(self.keyboard.commands, ["native_install status"])
+
+    def test_refresh_and_committed_import_include_memory_map(self):
+        self.keyboard.adaptive = True
+        request = {"source": '{"KAT":"cat"}', "name": "Medical", "token": "a" * 64}
+        layout = {"segments": []}
+        with patch.object(manager, "load_layout", return_value=layout) as scan, \
+                patch.object(manager, "named_import") as publish, \
+                patch.object(manager, "wait_ready", side_effect=lambda serial, *, load_state, checking:
+                             load_state(self.keyboard)) as wait:
+            self.assertEqual(self.run_job("refresh")["layout_map"], layout)
+            self.run_job("preview_import", **request)
+            self.assertEqual(scan.call_count, 1)
+            result = self.run_job("apply_import", **request)
+            self.assertEqual(result["imported"], 1)
+            self.assertEqual(result["layout_map"], layout)
+            self.assertEqual(scan.call_count, 2)
+            scan.side_effect = TimeoutError("Map timed out")
+            result = self.run_job("apply_import", **request)
+            self.assertEqual(result["imported"], 1)
+            self.assertEqual(result["layout_map_error"], "Map timed out")
+            wait.side_effect = RuntimeError("Reconnect timed out")
+            self.assertEqual(self.run_job("apply_import", **request), {"commit_pending": True})
+            self.assertTrue(publish.call_args.kwargs["stage"])
+
     def test_factory_package_requires_preview(self):
         with patch.object(manager, "factory_package", return_value={"package": "lapwing"}) as change, patch.object(manager, "wait_ready") as wait:
-            self.assertTrue(self.run_job("refresh")["state"]["factory_packages"])
+            self.assertEqual(self.run_job("refresh")["state"]["factory_actions"]["6"], "lapwing-base")
             with self.assertRaisesRegex(ValueError, "Preview"):
-                self.run_job("apply_package", package="lapwing", restore=False)
+                self.run_job("apply_package", package="lapwing-base", restore=False)
             change.assert_not_called()
-            self.assertIn("package_plan", self.run_job("preview_package", package="lapwing", restore=False))
+            self.assertIn("package_plan", self.run_job("preview_package", package="lapwing-base", restore=False))
             self.assertIsNone(change.call_args.kwargs["confirmation"])
             wait.assert_not_called()
             self.assertIn("package_changed", self.run_job(
-                "apply_package", package="lapwing", restore=False, token="a" * 64))
-            wait.assert_called_once_with(self.keyboard.serial)
+                "apply_package", package="lapwing-base", restore=False, token="a" * 64))
+            wait.assert_called_once_with(self.keyboard.serial, load_state=unittest.mock.ANY, checking=unittest.mock.ANY)
         self.keyboard.kind = "uninstalled"
-        with self.assertRaisesRegex(ValueError, "Restore the factory package"):
+        with self.assertRaisesRegex(ValueError, "Install the factory dictionary"):
             self.run_job("enable", id=8, enabled=True)
 
     def test_edit_uses_selected_stable_id(self):
@@ -114,7 +230,7 @@ class ManagerTest(unittest.TestCase):
             transfer.assert_not_called()
             self.run_job("delete", id=8, confirm="Medical")
             self.assertEqual(transfer.call_args.kwargs, {"delete": "Medical"})
-            wait.assert_called_once_with("smoke-board")
+            wait.assert_called_once_with("smoke-board", load_state=unittest.mock.ANY, checking=unittest.mock.ANY)
 
 
     def test_rename_and_delete_named_and_protect_builtin_rows(self):
@@ -137,11 +253,24 @@ class ManagerTest(unittest.TestCase):
             transfer.assert_not_called()
             change.assert_not_called()
 
-    def test_measure_counts_saved_edits(self):
-        usage = {8: {"count": 2, "bytes": 92}}
+    def test_refresh_measures_journal_usage(self):
+        usage = {8: {"count": 2, "entries": 1, "bytes": 92}}
         with patch.object(manager, "overlay_usage", return_value=usage) as inspect:
-            self.assertEqual(self.run_job("measure")["usage"], usage)
-            inspect.assert_called_once_with(self.keyboard)
+            self.assertEqual(self.run_job("refresh")["usage"], usage)
+            self.assertEqual(inspect.call_count, 1)
+            inspect.reset_mock()
+            self.assertNotIn("usage", self.run_job("enable", id=8, enabled=False))
+            inspect.assert_not_called()
+
+    def test_map_only_attributes_journal_blocks_from_the_scanned_generation(self):
+        self.keyboard.adaptive = True
+        layout = {"segments": []}
+        usage = {8: {"count": 2, "entries": 1, "bytes": 92, "blocks": {4: 92}}}
+        with patch.object(manager, "load_layout", side_effect=lambda *_: dict(layout)), \
+                patch.object(manager, "overlay_usage", return_value=usage):
+            self.assertEqual(self.run_job("layout_map")["layout_map"]["journal_usage"], usage)
+            self.keyboard.install_status = "NATIVE2 READY 4"
+            self.assertNotIn("journal_usage", self.run_job("layout_map")["layout_map"])
 
     def test_clear_personal_requires_confirmation_and_firmware_capability(self):
         with patch.object(manager, "clear_personal", return_value=True) as clear, patch.object(manager, "wait_ready"):
@@ -160,6 +289,27 @@ class ManagerTest(unittest.TestCase):
             clear.reset_mock()
             self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
             clear.assert_called_once_with(self.keyboard, 8, unittest.mock.ANY)
+
+    def test_connection_probe_detects_removed_board(self):
+        jobs = manager.Jobs(self.keyboard.serial)
+        jobs.connected_serial = self.keyboard.serial
+        with patch.object(manager, "usb_console_devices", return_value=[{}]):
+            jobs.check_connection()
+        self.assertEqual(jobs.connected_serial, self.keyboard.serial)
+        self.assertEqual(self.keyboard.commands, [])
+        jobs.next_connection_check = 0
+        with patch.object(manager, "usb_console_devices", return_value=[]):
+            jobs.check_connection()
+        self.assertIsNone(jobs.connected_serial)
+        self.assertTrue(jobs.snapshot()["connection_lost"])
+
+    def test_named_journal_can_preview_conversion(self):
+        self.keyboard.adaptive = True
+        self.assertTrue(self.run_job("refresh")["state"]["journal_conversion"])
+        with patch.object(manager, "change_snapshot", return_value={"token": "a" * 64}) as change:
+            self.assertIn("optimization_plan", self.run_job("preview_optimize", id=8, operation="convert"))
+            change.assert_called_once_with(self.keyboard, "convert", "Medical", stage=False,
+                                           preview=True, expected=None, target_id=8, progress=unittest.mock.ANY)
 
     def test_optimize_requires_matching_selection_and_preview(self):
         self.keyboard.adaptive = True
@@ -186,7 +336,7 @@ class ManagerTest(unittest.TestCase):
             self.assertEqual(reply["optimized"], "Medical")
             self.assertEqual(change.call_args.kwargs["target_id"], 8)
             self.assertEqual(change.call_args.kwargs["expected"], plan["token"])
-            wait.assert_called_once_with("smoke-board")
+            wait.assert_called_once_with("smoke-board", load_state=unittest.mock.ANY, checking=unittest.mock.ANY)
 
     def test_import_explains_empty_and_invalid_files(self):
         self.keyboard.kind = "snapshot"

@@ -77,7 +77,7 @@ def capture(console_read, snapshot, layout):
 
 def validate_rows(snapshot, image):
     factory = {identity: name for identity, name, _, source in SOURCES if source}
-    references, names, ids, absent = {}, set(), set(), set()
+    references, names, ids = {}, set(), set()
     counts = {}
     for row in snapshot.rows:
         identity, enabled, base, member, marker, name_bytes = struct.unpack_from("<IIHBBB", row)
@@ -91,9 +91,8 @@ def validate_rows(snapshot, image):
         if identity in factory:
             if name != factory[identity] or not any(row[64:96]):
                 raise ValueError("Invalid pinned source identity")
-            if marker == 2 and base == 65535 and not enabled and not member:
-                absent.add(identity)
-            elif marker or base == 65535:
+            absent = marker == 2 and base == 65535 and not enabled and not member
+            if not absent and (marker or base == 65535):
                 raise ValueError("Invalid factory image state")
         else:
             if name != "user_dictionary":
@@ -118,7 +117,7 @@ def validate_rows(snapshot, image):
         if len(blob) < 40:
             raise ValueError("Truncated compact image")
         count = struct.unpack_from("<H", blob, 4)[0]
-        if not 1 <= count <= 64 or member >= count or (marker and count != 1):
+        if count != 1 or member:
             raise ValueError("Invalid compact image member count")
         counts[base] = count
         if marker:
@@ -133,8 +132,6 @@ def validate_rows(snapshot, image):
                 seen.add(outline)
         except (AssertionError, IndexError, struct.error) as error:
             raise ValueError("Malformed compact recovery image") from error
-    if absent.intersection(range(2, 7)) and not set(range(2, 7)) <= absent:
-        raise ValueError("The Lapwing factory package is only partially uninstalled")
     if not (factory.keys() <= ids and "user_dictionary" in names):
         raise ValueError("Recovery bundle is missing a pinned or personal dictionary")
     if any(members != set(range(counts[base])) for base, members in references.items()):
@@ -219,7 +216,7 @@ def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=Fa
         raise ValueError("Optimized bundles require the repack workflow with both backup files.")
     image, snapshot = reconstruct(backup)
     staged, staged_crc, final_crc = recovery_images(image)
-    from native_install import command, open_console, wait_ready, write_pool
+    from native_install import FACTORY_CAPABILITIES, command, open_console, wait_ready, write_pool
     from native_manage import checked
 
     def matches(console):
@@ -233,9 +230,8 @@ def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=Fa
             raise RuntimeError("The connected USB serial differs from the confirmed recovery target.")
         if console.command("native_install update recovery-capabilities") != "OK RECOVERY1":
             raise RuntimeError("Flash firmware with Native USB recovery support first.")
-        if any(row[11] == 2 for row in snapshot.rows) and console.command(
-                "native_install update factory-capabilities") != "OK FACTORY1":
-            raise RuntimeError("This bundle has uninstalled factory packages. Update the target firmware before recovery.")
+        if any(row[11] == 2 for row in snapshot.rows) and console.command(FACTORY_CAPABILITIES) != "OK FACTORY2":
+            raise RuntimeError("Update the target firmware before recovering uninstalled factory dictionaries.")
         status = console.command("native_install status")
         state = status.split()[:2]
         if state not in (["NATIVE2", "READY"], ["NATIVE2", "UNPROVISIONED"]):

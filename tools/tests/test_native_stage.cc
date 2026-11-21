@@ -2,7 +2,7 @@
 #include <array>
 #include <iostream>
 
-static constexpr unsigned FixtureInitialJournal = 4;
+static constexpr unsigned FixtureInitialJournal = 8; // Two roots and six individual factory images.
 
 void Check(NativeStore<NativeDevice> &store, bool updated, bool merge) {
     auto value = [&](uint32_t id, const uint32_t *key, uint8_t count) {

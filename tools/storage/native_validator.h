@@ -1,6 +1,5 @@
-// Full byte/ownership/order validation at open. Coverage is established before
-// every checkpoint commit; boot verifies its persisted CRCs, not a quadratic
-// reimplementation of the checkpoint builder. Fresh provisioning has no indexes.
+// At boot, validate checksums, ownership and index structure in sequential
+// passes. Publication and explicit Verify also cross-check index membership.
 #pragma once
 #include "native_merge_ops.h"
 namespace candidate_b {
@@ -35,7 +34,7 @@ public:
         uint32_t crc=0;
         return device.Checksum(start*kSegmentBytes,bytes,crc) && crc==Word(extent+8);
     }
-    CatalogResult Validate(const CatalogRoot &root) {
+    CatalogResult Validate(const CatalogRoot &root, bool cross_check = true) {
         const auto schema=catalog.Validate(root,[&](uint32_t i,const uint8_t *row){return Extent(i,row);});
         if(schema!=CatalogResult::Ok)return schema;
         view={};reverse_address=reverse_count=0;uint8_t prefix[32];
@@ -68,18 +67,20 @@ public:
             if(status!=JournalResult::End && status!=JournalResult::Sealed)return status==JournalResult::IoError?CatalogResult::IoError:CatalogResult::Corrupt;
         }
         if(!boundary || view.through>view.highwater || view.forward_count>kMaxEntries || reverse_count>kMaxEntries)return CatalogResult::Corrupt;
+        uint32_t translations = 0;
         for(unsigned reverse=0;reverse<2;++reverse) {
-            uint32_t previous=0;
+            MergeRecord previous;
             for(uint32_t i=0;i<(reverse?reverse_count:view.forward_count);++i) {
                 uint32_t address;MergeRecord record;
-                if(!Index(reverse,i,address) || !ops.Record(address,record,true) || record.identity>=Word(prefix) ||
+                if(!Index(reverse,i,address) || !ops.Record(address,record,cross_check) || record.identity>=Word(prefix) ||
                    record.record.sequence>view.through || record.operation==2 || (reverse && record.operation) ||
-                   (previous && (reverse?ops.CompareReverse(previous,address):ops.CompareKey(previous,address))>=0) ||
-                   (reverse?!MatchIndex(false,record):(!record.operation && !MatchIndex(true,record))))return CatalogResult::Corrupt;
-                previous=address;
+                   (i && (reverse?ops.ReverseKeys(previous,record):ops.Keys(previous,record))>=0) ||
+                   (cross_check && (reverse?!MatchIndex(false,record):(!record.operation && !MatchIndex(true,record)))))return CatalogResult::Corrupt;
+                if (!reverse && !record.operation) ++translations;
+                previous=record;
             }
         }
-        return CatalogResult::Ok;
+        return translations == reverse_count ? CatalogResult::Ok : CatalogResult::Corrupt;
     }
 };
 }

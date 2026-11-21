@@ -11,10 +11,11 @@ CODE=r'''
 #include <stdbool.h>
 #define IDLE_OFF 1
 #define K_FOREVER -1
+#define K_NO_WAIT 0
 #define K_MSEC(n) (n)
 #define K_SECONDS(n) ((n)*1000)
 static int flash_lock, lf_restart_done, k_sys_work_q;
-static bool lf_idle_off, lf_mapped_ready, key_thread;
+static bool lf_idle_off, lf_mapped_ready, lf_checked, key_thread;
 static int lock_result, locks, unlocks, wake_requests, waits, timeout;
 static int atomic_get(const bool *p){return *p;}
 static void lf_note_use(void){}
@@ -35,6 +36,15 @@ int main(void){
  dictionary_flash_release();assert(unlocks==2);
  key_thread=true;locks=0;
  assert(dictionary_flash_acquire() && locks==1 && timeout==10);dictionary_flash_release();
+ lock_result=-1;
+ assert(!dictionary_flash_try_service() && timeout==K_NO_WAIT);
+ lock_result=0;
+ assert(!dictionary_flash_try_service() && timeout==K_NO_WAIT);
+ lf_checked=true;lf_idle_off=true;
+ const int wake_before=wake_requests;
+ assert(!dictionary_flash_try_service() && wake_requests==wake_before+1);
+ lf_idle_off=false;lf_mapped_ready=false;
+ assert(dictionary_flash_try_service());dictionary_flash_release();
 }
 '''
 

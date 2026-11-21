@@ -24,11 +24,15 @@ SOURCES = [
     (1, "user_dictionary", True, None),
     (2, "Lapwing Commands", True, "extras/lapwing-commands.json"),
     (3, "Lapwing Numbers", True, "extras/lapwing-numbers.json"),
-    (4, "Lapwing UK Additions", False, "extras/lapwing-uk-additions.json"),
+    (4, "Lapwing UK Additions", True, "extras/lapwing-uk-additions.json"),
     (5, "Lapwing Proper Nouns", True, "extras/lapwing-proper-nouns.json"),
     (6, "Lapwing Base", True, "lapwing/lapwing-base.json"),
     (7, "Plover Base", False, "plover/plover-main.json"),
 ]
+FACTORY_KEYS = dict(zip(
+    ("lapwing-commands", "lapwing-numbers", "lapwing-uk", "lapwing-proper", "lapwing-base", "plover"),
+    SOURCES[1:], strict=True,
+))
 
 
 def catalog_header(generation, payload):
@@ -99,35 +103,39 @@ def read_personal(path):
     return parse_named(path.read_text(encoding="utf-8"))[0]
 
 
-def build(source_root, personal=None, *, collection=None):
+def build(source_root, personal=None, *, collection=None, packages=None):
+    packages = set(FACTORY_KEYS if packages is None else packages)
+    if not packages or not packages <= FACTORY_KEYS.keys():
+        raise ValueError("Select at least one factory dictionary.")
+    installed = {FACTORY_KEYS[key][0] for key in packages}
     image = bytearray(b"\xff" * LIMIT)
     extents = []
     dictionaries = []
     manifest = []
     next_segment = 2
     location = {}
-    for region_name, sources in (("Lapwing + extras", SOURCES[1:6]), ("Plover Base", SOURCES[6:])):
-        members = []
-        definitions = []
-        for index, (identity, name, _, source) in enumerate(sources):
-            raw = (source_root / source).read_bytes()
-            digest = hashlib.sha256(raw).digest()
-            definitions.append((name, json.loads(raw)))
-            location[name] = len(extents), index, digest
-            members.append(dict(id=identity, index=index, name=name, source_sha256=digest.hex()))
+    for identity, name, _, source in SOURCES[1:]:
+        raw = (source_root / source).read_bytes()
+        digest = hashlib.sha256(raw).digest()
+        if identity not in installed:
+            location[name] = 65535, 0, digest
+            continue
+        location[name] = len(extents), 0, digest
         address = next_segment * SEGMENT
-        binary = DictionaryCollectionBuilder(XIP + address).build(definitions)
+        binary = DictionaryCollectionBuilder(XIP + address).build([(name, json.loads(raw))])
         count = (len(binary) + SEGMENT - 1) // SEGMENT
         if next_segment + count > 252:
             raise ValueError("Base images exhaust the three-segment reserve")
         image[address : address + len(binary)] = binary
         crc = zlib.crc32(binary)
         extents.append(struct.pack("<HHIIIQ", next_segment, count, len(binary), crc, 1, 0))
-        manifest.append(dict(name=region_name, address=address, bytes=len(binary),
-                             segments=count, crc32=crc, dictionaries=members))
+        manifest.append(dict(name=name, address=address, bytes=len(binary), segments=count, crc32=crc,
+                             dictionaries=[dict(id=identity, index=0, name=name, source_sha256=digest.hex())]))
         next_segment += count
     if collection is None:
         rows = [(identity, name, enabled) for identity, name, enabled, _ in SOURCES]
+        if "plover" in packages and "lapwing-base" not in packages:
+            rows[-1] = (7, "Plover Base", True)
         entries = {(1, strokes): (0, text) for strokes, text in (personal or {}).items()}
         next_id = 8
     else:
@@ -137,6 +145,9 @@ def build(source_root, personal=None, *, collection=None):
         base, index, digest = location.get(name, (65535, 0, bytes(32)))
         encoded = name.encode()
         row = bytearray(96)
+        if base == 65535 and name in location:
+            enabled = False
+            row[11] = 2
         struct.pack_into("<IIHB", row, 0, identity, int(enabled), base, index)
         row[12] = len(encoded)
         row[16 : 16 + len(encoded)] = encoded

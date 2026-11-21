@@ -1,13 +1,12 @@
-"""Fetch, hash-check, compile and verify the pinned base dictionary images."""
+"""Fetch and hash-check the pinned factory dictionary sources."""
 import argparse
 import hashlib
 import ssl
-import subprocess
 import sys
 from pathlib import Path
 from urllib.request import urlopen
 
-from manifest import BASES, ROOT, XIP_BASE
+from manifest import BASES, ROOT
 
 
 def fetch(url, path, sha):
@@ -28,22 +27,9 @@ def prepare(name, output_dir=None):
     base = BASES[name]
     directory = Path(output_dir) if output_dir else ROOT / 'build' / base['directory']
     directory.mkdir(parents=True, exist_ok=True)
-    sources = []
-    for url, file, _, sha in base['sources']:
-        path = directory / file
-        fetch(url, path, sha)
-        sources.append(path)
-    address = hex(XIP_BASE + base['offset'])
-    image = directory / base['image']
-    compiler = ROOT / 'tools/dict_compiler'
-    args = [sys.executable, str(compiler / 'compile_dict.py'), *map(str, sources)]
-    for _, _, label, _ in base['sources']:
-        args += ['--name', label]
-    subprocess.run(args + ['--base-addr', address, '-o', str(image)], check=True)
-    for index, source in enumerate(sources):
-        subprocess.run([sys.executable, str(compiler / 'verify_mapped_dict.py'), str(source), str(image),
-                        '--base-addr', address, '--index', str(index), '--count', str(len(sources))], check=True)
-    return image
+    for url, file, _, sha in base["sources"]:
+        fetch(url, directory / file, sha)
+    return directory
 
 
 def main():

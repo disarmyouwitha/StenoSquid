@@ -37,7 +37,7 @@ def main():
             if text=='dictionary_benchmark meta':return '{"version":1,"timer_hz":64000000}'
             if text=='native_install status':return 'NATIVE2 READY 1'
             if text=='list_dictionaries':return '[]'
-            if text=='user_dictionary_status':return '{"entries":1}'
+            if text=='user_dictionary_status':return '{"format":"SQBCAT02","ready":true,"generation":1,"tail":0,"personal_id":1}'
             if text=='print_dictionary user_dictionary':return '{"KAT":"cat"}'
             if text in ['dictionary_benchmark capture start','dictionary_benchmark capture stop']:return 'OK'
             if text=='dictionary_benchmark capture read':return '{"overflow":0,"samples":[[8,64,42,1],[4,128,43,0]]}'
@@ -57,6 +57,7 @@ def main():
             with mock.patch.object(sys,'argv',['bench','--output',str(root/'lookup'),'--samples-per-length','1']):runner.main()
             report=json.loads((root/'lookup/raw.json').read_text())
             assert len(report['rows'])==43 and 'error' not in report
+            assert report['personal_export_entries']==1
             assert (root/'lookup/personal-before.json').is_file() and (root/'lookup/summary.csv').is_file()
             with mock.patch.object(sys,'argv',['bench','--output',str(root/'trace'),'--capture-seconds','1']),mock.patch.object(runner.time,'sleep'):
                 runner.main()

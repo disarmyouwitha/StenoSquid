@@ -109,8 +109,8 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
     if compiled is not None and not (consolidate or convert):
         raise ValueError("Existing compact dictionaries can only be rebuilt by consolidation.")
     target = next((row for row in snapshot.rows if struct.unpack_from("<I", row)[0] == identity), None)
-    if target is None or (convert and (target[11] or row_name(target) != "user_dictionary" or deleting)):
-        raise ValueError("Select a journal-only personal dictionary")
+    if target is None or (convert and (target[8:12] != b"\xff\xff\0\0" or 2 <= identity <= 7 or deleting)):
+        raise ValueError("Select a journal-only user dictionary")
     if clear and (target is None or row_name(target) != "user_dictionary" or compiled is not None):
         raise ValueError("Select the built-in personal dictionary to clear")
     if not (convert or clear) and (target[11] != SNAPSHOT_MARKER or (deleting and row_name(target) == "user_dictionary")):
@@ -161,17 +161,21 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
     return Update(blocks, metadata, payload, 0, 0)
 
 
-def personal_baseline(snapshot, additions=None):
+def journal_baseline(snapshot, identity, additions=None):
     # Imported entries fill gaps. An existing local set or tombstone wins.
     effective = dict(additions or {})
     for entry in snapshot.entries.values():
-        if entry.identity != snapshot.personal:
+        if entry.identity != identity:
             continue
         if entry.operation:
             effective.pop(entry.strokes, None)
         else:
             effective[entry.strokes] = entry.text
     return effective
+
+
+def personal_baseline(snapshot, additions=None):
+    return journal_baseline(snapshot, snapshot.personal, additions)
 
 
 def clear_personal(console, identity, progress):
@@ -190,17 +194,19 @@ def clear_personal(console, identity, progress):
 
 def change_snapshot(console, operation, name, *, source=None, stage=False, progress=print,
                     preview=False, expected=None, target_id=None):
-    if operation not in {"personal", "consolidate", "delete"} or (
+    if operation not in {"personal", "convert", "consolidate", "delete"} or (
         (preview or expected is not None) and (operation == "delete" or (preview and stage))
     ):
         raise ValueError("Select an optimization to preview or stage.")
     if update_command(console, "snapshot-capabilities") != "OK SNAPSHOT2":
         raise RuntimeError("Flash the matching experimental lifecycle firmware")
     validate_name(name)
-    converting = operation == "personal"
-    if converting and update_command(console, "personal-snapshot-capabilities") != "OK PERSONAL1":
+    converting = operation in {"personal", "convert"}
+    if operation == "personal" and update_command(console, "personal-snapshot-capabilities") != "OK PERSONAL1":
         raise RuntimeError("Flash the experimental personal conversion firmware")
-    expected_kind = "personal" if converting else "snapshot"
+    if operation == "convert" and update_command(console, "journal-snapshot-capabilities") != "OK JOURNAL1":
+        raise RuntimeError("Update the left firmware to convert named journal dictionaries.")
+    expected_kind = {"personal": "personal", "convert": "named"}.get(operation, "snapshot")
     row = next((row for row in json.loads(console.command("native_catalog"))
                 if row["kind"] == expected_kind and row["name"] == name), None)
     if row is None or (target_id is not None and row["id"] != target_id):
@@ -229,7 +235,12 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
                             after_bytes=before_bytes, staging_segments=0, segment_delta=0)
         compiled = None
         if converting:
-            compiled = compile_snapshot(name, personal_baseline(snapshot, source))
+            baseline = journal_baseline(snapshot, identity, source)
+            if preview and not baseline:
+                return dict(token=None, id=identity, name=name, operation=operation, before_bytes=before_bytes,
+                            after_bytes=before_bytes, staging_segments=0, segment_delta=0,
+                            reason="This journal has no entries to compact.")
+            compiled = compile_snapshot(name, baseline)
         elif consolidating:
             entries = effective_entries(snapshot, name, lambda at, n: read_flash(console, at, n))
             compiled = compile_snapshot(name, {parse_outline(outline): text.encode("utf-8")

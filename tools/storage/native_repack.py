@@ -15,7 +15,7 @@ import zlib
 from build_native_image import LIMIT, SEGMENT, XIP, catalog_header, overlay_record_span, seed_entries, write_journal_header
 from compile_dict import parse_outline
 from hybrid import compact_entries
-from native_layout import compact_member_sizes
+from native_layout import validate_compact_layout
 from native_recovery import capture, digest, reconstruct, recover_usb, save_atomic, sync_directory
 from native_snapshot import CompactImage, compile_snapshot, inspect_free, plan_change
 from native_update import EXTENT, NoSpace, Snapshot, effective_entries, row_name
@@ -76,7 +76,7 @@ def verify_hints(blob, base):
         offset = address - start_address
         return blob[offset:offset + size]
 
-    compact_member_sizes(read, start_address, len(blob))
+    validate_compact_layout(read, start_address, len(blob))
     _, members = struct.unpack_from("<II", blob, len(blob) - 8)
     directory = len(blob) - 12 - 8 * members
     text_bytes, text_pointer = struct.unpack_from("<II", blob, 8)
@@ -194,7 +194,7 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
         next_segment += count
         return len(extents) - 1
 
-    # Put the factory packages in their factory order even after an update
+    # Put the factory dictionaries in their factory order even after an update
     # has moved their extents or the user has reordered their dictionaries.
     factory = {}
     for row in source.rows:

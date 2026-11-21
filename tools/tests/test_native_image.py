@@ -14,7 +14,7 @@ from hostlib import compiler
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
 sys.path.insert(0, str(ROOT / "tools/dict_compiler"))
-from build_native_image import build, SOURCES, SEGMENT, XIP
+from build_native_image import build, catalog_header, SOURCES, SEGMENT, XIP
 from compile_dict import parse_outline
 from jsc4 import reader
 from native_install import check_image
@@ -33,9 +33,10 @@ def validate(image, report, sources):
             zlib.crc32(image[slot * SEGMENT + 32 : slot * SEGMENT + 32 + count]) == crc
         )
     assert report["base_images"][0]["address"] == 2 * SEGMENT
-    first, second = report["base_images"]
-    assert second["address"] == first["address"] + first["segments"] * SEGMENT
-    initial_journal = second["address"] + second["segments"] * SEGMENT
+    initial_journal = 2 * SEGMENT
+    for base in report["base_images"]:
+        assert base["address"] == initial_journal
+        initial_journal += base["segments"] * SEGMENT
     assert image[initial_journal:initial_journal + 8] == b"SQJSEG01"
     verified = 0
     for base in report["base_images"]:
@@ -74,6 +75,21 @@ def main():
         image, report = build(path, personal)
         assert report["personal_entries"] == len(personal)
         assert validate(image, report, path) == 18
+        incompatible = bytearray(image)
+        for slot in range(2):
+            start = slot * SEGMENT
+            payload = bytearray(image[start + 32:start + 32 + report["catalog_bytes"]])
+            # A nonzero factory collection member must be rejected before any erase.
+            payload[32 + 2 * 96 + 10] = 1
+            catalog = catalog_header(slot + 1, payload) + payload
+            incompatible[start:start + len(catalog)] = catalog
+        checksums = dict(report, crc32=zlib.crc32(incompatible), sha256=hashlib.sha256(incompatible).hexdigest())
+        try:
+            check_image(incompatible, checksums)
+        except ValueError as error:
+            assert "individual flash images" in str(error)
+        else:
+            raise AssertionError("Accepted a factory collection for provisioning")
         rows = [(8, "Medical", True)] + [(10 if identity == 1 else identity, name, enabled and identity != 2)
                                           for identity, name, enabled, _ in SOURCES]
         entries = {(8, (1,)): (0, b"named"), (10, (1,)): (0, "ça".encode()), (2, (2,)): (1, b"")}

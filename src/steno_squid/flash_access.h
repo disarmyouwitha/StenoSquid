@@ -44,3 +44,20 @@ void dictionary_flash_release(void) {
     k_mutex_unlock(&flash_lock);
 }
 
+bool dictionary_flash_try_service(void) {
+    if (k_mutex_lock(&flash_lock, K_NO_WAIT) != 0) return false;
+#if IDLE_OFF
+    lf_note_use();
+    if (atomic_get(&lf_idle_off)) {
+        lf_request_restart();
+        k_mutex_unlock(&flash_lock);
+        return false;
+    }
+#endif
+    if (!atomic_get(&lf_checked)) {
+        k_mutex_unlock(&flash_lock);
+        return false;
+    }
+    return true;
+}
+

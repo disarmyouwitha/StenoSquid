@@ -1,4 +1,4 @@
-"""Prepare the pinned Plover image."""
+"""Prepare the pinned Plover sources."""
 import argparse
 from prepare import prepare
 

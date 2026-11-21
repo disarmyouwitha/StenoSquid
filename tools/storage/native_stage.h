@@ -6,7 +6,7 @@ namespace candidate_b {
 
 enum class NativeUpdateKind {
     Compact, Personal, Named, Reorder, Rename, Delete, Backup, Base,
-    SnapshotNamed, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal, SnapshotClear, FactoryPackage
+    SnapshotNamed, SnapshotConsolidate, SnapshotDelete, SnapshotPersonal, SnapshotClear, FactoryMember
 };
 
 // Exclusive USB staging session. The active catalog and both retained roots
@@ -225,7 +225,7 @@ class NativeStage {
         }
         if (target_index == rows) return false;
         const bool personal = target[12] == 15 && !std::memcmp(target + 16, "user_dictionary", 15);
-        if ((clearing ? !personal : converting ? !personal || target[11] : target[11] != kUserSnapshot) ||
+        if ((clearing ? !personal : converting ? FactoryName(snapshot_id) || target[11] : target[11] != kUserSnapshot) ||
             (deleting && personal))
             return false;
         const unsigned old_base = target[8] | target[9] << 8;
@@ -375,8 +375,9 @@ class NativeStage {
         return has_update && !std::memcmp(updated.words, changed_sources.words, sizeof(updated.words));
     }
 
-    bool CheckFactoryPackage(const CatalogRoot &candidate, uint32_t metadata, BaseProbe probe) {
-        if (snapshot_id != 6 && snapshot_id != 7) return false;
+    bool CheckFactoryMember(const CatalogRoot &candidate, uint32_t metadata, BaseProbe probe) {
+        const char *name = FactoryName(snapshot_id);
+        if (!name) return false;
         uint8_t before[32], after[32];
         if (!store.device.Read(original.root.address, before, sizeof(before)) ||
             !store.device.Read(candidate.address, after, sizeof(after)) ||
@@ -387,9 +388,8 @@ class NativeStage {
         const bool restore = new_count == old_count + 1;
         if ((!restore && old_count != new_count + 1) || old_count > 253 || new_count > 253 ||
             candidate.bytes != 32 + dictionaries * 96u + new_count * 24u) return false;
-        const unsigned first_id = snapshot_id == 6 ? 2 : 7;
         unsigned package_extent = restore ? old_count : kNoExtent;
-        unsigned seen = 0;
+        bool seen = false;
         uint8_t extent[24]{};
         if (restore) {
             if (!probe || !ReadExtent(candidate, dictionaries, package_extent, extent) ||
@@ -403,34 +403,30 @@ class NativeStage {
                 if (segment == metadata || !erased.Contains(segment)) return false;
             uint8_t header[8];
             if (!store.device.Read(start * kSegmentBytes, header, sizeof(header)) ||
-                Word(header) != 0x3443534a || Word(header + 4) != snapshot_id - first_id + 1) return false;
+                Word(header) != 0x3443534a || Word(header + 4) != 1) return false;
         }
         for (unsigned i = 0; i < dictionaries; ++i) {
             uint8_t old_row[96], new_row[96];
             if (!store.device.Read(original.root.address + 32 + i * 96u, old_row, sizeof(old_row)) ||
                 !store.device.Read(candidate.address + 32 + i * 96u, new_row, sizeof(new_row))) return false;
             const uint32_t id = Word(old_row);
-            if (id < first_id || id > snapshot_id) continue;
-            const unsigned member = id - first_id;
-            const char *name = FactoryName(id);
-            if (old_row[12] != std::strlen(name) || std::memcmp(old_row + 16, name, old_row[12]) ||
-                (seen & (1u << member))) return false;
-            seen |= 1u << member;
+            if (id != snapshot_id) continue;
+            if (seen || old_row[12] != std::strlen(name) ||
+                std::memcmp(old_row + 16, name, old_row[12]) || old_row[10]) return false;
+            seen = true;
             const unsigned old_base = old_row[8] | old_row[9] << 8;
             if (restore) {
                 if (old_row[11] != kFactoryAbsent || old_base != kNoExtent) return false;
                 old_row[8] = uint8_t(package_extent);
                 old_row[9] = uint8_t(package_extent >> 8);
-                old_row[10] = uint8_t(member);
                 old_row[11] = 0;
                 bool has_pin = false;
                 for (unsigned j = 64; j < sizeof(new_row); ++j) has_pin |= new_row[j] != 0;
                 if (!has_pin) return false;
                 std::memcpy(old_row + 64, new_row + 64, 32);
             } else {
-                if (old_row[11] || old_row[10] != member || old_base >= old_count) return false;
-                if (package_extent == kNoExtent) package_extent = old_base;
-                if (old_base != package_extent) return false;
+                if (old_row[11] || old_base >= old_count) return false;
+                package_extent = old_base;
                 old_row[4] = 0;
                 old_row[8] = old_row[9] = 255;
                 old_row[10] = 0;
@@ -438,13 +434,13 @@ class NativeStage {
             }
             if (std::memcmp(old_row, new_row, sizeof(old_row)) || (restore && !probe(extent, new_row))) return false;
         }
-        if (seen != (1u << (snapshot_id - first_id + 1)) - 1) return false;
+        if (!seen) return false;
         for (unsigned i = 0; i < dictionaries; ++i) {
             uint8_t old_row[96], new_row[96];
             if (!store.device.Read(original.root.address + 32 + i * 96u, old_row, sizeof(old_row)) ||
                 !store.device.Read(candidate.address + 32 + i * 96u, new_row, sizeof(new_row))) return false;
             const uint32_t id = Word(old_row);
-            if (id >= first_id && id <= snapshot_id) continue;
+            if (id == snapshot_id) continue;
             unsigned base = old_row[8] | old_row[9] << 8;
             if (!restore && base != kNoExtent) {
                 if (base == package_extent) return false;
@@ -624,9 +620,9 @@ public:
         const bool replacing_base = kind == NativeUpdateKind::Base;
         const bool adding_snapshot = kind == NativeUpdateKind::SnapshotNamed;
         const bool changing_snapshot = kind >= NativeUpdateKind::SnapshotConsolidate && kind <= NativeUpdateKind::SnapshotClear;
-        const bool factory = kind == NativeUpdateKind::FactoryPackage;
+        const bool factory = kind == NativeUpdateKind::FactoryMember;
         if (checksum != crc) return CatalogResult::Corrupt;
-        const bool layout_ok = factory ? CheckFactoryPackage(candidate, segment, probe) :
+        const bool layout_ok = factory ? CheckFactoryMember(candidate, segment, probe) :
             adding_snapshot ? CheckNewSnapshot(candidate, segment, probe) :
             changing_snapshot ? CheckSnapshotChange(candidate, segment, probe) :
             replacing_base ? CheckBaseLayout(candidate, segment, probe) : CheckLayout(candidate, segment);

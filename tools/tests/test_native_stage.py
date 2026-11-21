@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "tools/storage"))
 from build_native_image import build, catalog_header, SEGMENT, SOURCES, write_journal_header
 from native_update import Edit, Snapshot, NoSpace, encode_record, export_dictionary, plan, transfer, EXTENT
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
-from native_base_update import GROUPS, Image, plan_replacements
+from native_base_update import Image, plan_replacements
 from native_snapshot import compile_snapshot, plan_named_snapshot
 from compile_dict import DictionaryCollectionBuilder, parse_outline
 from verify_mapped_dict import verify
@@ -186,7 +186,7 @@ def main():
             else:
                 raise AssertionError(f"Invalid catalog operation accepted: {kwargs}")
         assert plan(snapshot, protected, move=("user_dictionary", 1)) is None
-        group = GROUPS[0]
+        group = ("Lapwing Commands",)
         definitions = [(name, {"KAT": "new upstream" if index == 0 else name})
                        for index, name in enumerate(group)]
         digests = {name: hashlib.sha256(json.dumps(entries).encode()).digest()
@@ -198,7 +198,7 @@ def main():
         strokes = parse_outline("KAT")
         conflict = Edit(0, 2, 0, strokes, b"my override")
         conflict_snapshot.entries[conflict.key] = conflict
-        revised, changed, conflicts = plan_replacements(conflict_snapshot, protected, {group: compiled},
+        revised, changed, conflicts = plan_replacements(conflict_snapshot, protected, {group[0]: compiled},
                                                         lambda at, n: bytes(image[at:at+n]))
         assert changed == ["Lapwing Commands"]
         assert conflicts == [{"dictionary": "Lapwing Commands", "outline": "KAT",
@@ -207,7 +207,7 @@ def main():
         for index, (_, entries) in enumerate(definitions):
             verify(entries, binary_image, 0x12000000 + image_segment * SEGMENT, index, len(group))
         try:
-            plan_replacements(snapshot, set(range(251)), {group: compiled})
+            plan_replacements(snapshot, set(range(251)), {group[0]: compiled})
         except NoSpace:
             pass
         else:

@@ -42,7 +42,9 @@ class Console:
     def command(self, command, timeout=30):
         if command == "get_parameter host_layout":
             return "Mac U.S."
-        if command == "native_install update begin backup":
+        if command == "native_install update journal-usage-capabilities":
+            return "ERR Unsupported"
+        if command in ("native_install update begin backup", "native_install update begin metadata"):
             assert not self.active
             self.active = True
             return f"OK {SEGMENT + 32} {len(self.payload)} {zlib.crc32(self.payload)} " + "0" * 64
@@ -62,6 +64,30 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory)
         image, snapshot, protected = fixture(path)
+        # Model firmware replies separately from the host fallback, including a
+        # repeated (block, dictionary) pair received in successive slices.
+        expected_usage = overlay_usage(Console(image, snapshot.payload))
+        live = sorted(snapshot.entries.values(), key=lambda entry: entry.address)
+        assert live
+
+        class UsageConsole(Console):
+            def command(self, command, timeout=30):
+                if command == "native_install update journal-usage-capabilities":
+                    return "OK USAGE2"
+                if command.startswith("native_install update journal-usage "):
+                    assert self.active
+                    position = int(command.rsplit(" ", 1)[1])
+                    if position == len(live):
+                        return f"OK USAGE2 {position} {len(live)}"
+                    entry = live[position]
+                    return (f"OK USAGE2 {position + 1} {len(live)} "
+                            f"{entry.address // SEGMENT},{entry.identity},1,"
+                            f"{int(entry.operation == 0)},{entry.span}")
+                if command.startswith("native_install update read "):
+                    assert int(command.split()[-2]) < 2 * SEGMENT
+                return super().command(command, timeout)
+
+        assert overlay_usage(UsageConsole(image, snapshot.payload)) == expected_usage
         prior = backup_all(Console(image, snapshot.payload))
         assert prior["format"] == "stenosquid-backup-2" and "capture" not in prior
 

@@ -6,7 +6,7 @@ import zlib
 
 from build_native_image import SEGMENT
 from native_snapshot import compile_snapshot, inspect_free, plan_change, plan_named_snapshot
-from native_update import Edit, NoSpace, Snapshot, abort, plan, publish, read_snapshot, update_command, validate_name
+from native_update import Edit, NoSpace, Snapshot, abort, named_journal_limit, plan, publish, read_snapshot, update_command, validate_name
 
 
 def metadata(payload):
@@ -44,6 +44,9 @@ def compare(snapshot, protected, name, entries, limit, compiled, compile_problem
         ("snapshot", len(compiled.data) if compiled else None,
          lambda: plan_named_snapshot(snapshot, protected, name, compiled, limit=limit)),
     ):
+        if key == "journal" and (reason := named_journal_limit(snapshot, len(entries))):
+            options[key] = dict(eligible=False, reason=reason, logical_bytes=logical, eligibility="journal-budget")
+            continue
         if key == "snapshot" and compiled is None:
             options[key] = dict(eligible=False, reason=compile_problem, logical_bytes=None, eligibility="cannot-stage")
             continue
@@ -81,6 +84,8 @@ def compare(snapshot, protected, name, entries, limit, compiled, compile_problem
             if segment_saving > 0 and (byte_saving >= 1024 * 1024 or
                                       (byte_saving >= SEGMENT and byte_saving * 4 >= journal_bytes)):
                 report.update(recommended="snapshot", rationale="The compact image saves material space and a same-size consolidation fits.")
+    elif journal.get("eligibility") == "journal-budget":
+        report["rationale"] = compact["reason"]
     else:
         report["rationale"] = ("Neither format has a qualified copy-on-write plan. Nothing can be staged. "
                                "USB rebuilding is unavailable in Manager.")
@@ -106,6 +111,7 @@ def named_import(console, name, entries, *, preference="auto", stage=False, expe
     if len(capability) != 3 or capability[:2] != ["OK", "NAMED1"]:
         raise RuntimeError("This firmware does not support named dictionary imports.")
     limit = int(capability[2])
+    progress("Compiling the compact dictionary…")
     compiled = compile_problem = None
     try:
         compiled = compile_snapshot(name, entries)
@@ -116,6 +122,7 @@ def named_import(console, name, entries, *, preference="auto", stage=False, expe
     active = True
     published = False
     try:
+        progress("Reading flash and checking available space…")
         snapshot, protected = read_snapshot(console, answer)
         report, updates = compare(snapshot, protected, name, entries, limit, compiled, compile_problem)
         selected = report["recommended"] if preference == "auto" else preference
@@ -137,6 +144,7 @@ def named_import(console, name, entries, *, preference="auto", stage=False, expe
             active = False
             answer = update_command(console, "begin named")
             active = True
+            progress("Confirming space for the journal import…")
             check, check_protected = read_snapshot(console, answer)
             # Only differences in protected allocation, catalog or append
             # highwater can invalidate a plan prepared in the first session.

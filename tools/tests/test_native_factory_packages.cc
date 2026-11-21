@@ -33,7 +33,7 @@ static void Run(const std::vector<uint8_t> &image, const Plan &plan, unsigned id
                 old_segment = extent[0] | unsigned(extent[1]) << 8;
             }
             NativeStage<NativeDevice> stage(store, validator);
-            assert(stage.Begin(NativeUpdateKind::FactoryPackage, 16, id));
+            assert(stage.Begin(NativeUpdateKind::FactoryMember, 16, id));
             bool reboot = false;
             try {
                 Upload(stage, plan);
@@ -57,12 +57,10 @@ static void Run(const std::vector<uint8_t> &image, const Plan &plan, unsigned id
             const bool published = cold.selected.root.generation > generation;
             assert(cold.live.Highwater() == sequence);
             const bool absent = published != restore;
-            for (unsigned member = id == 6 ? 2 : 7; member <= id; ++member) {
-                uint8_t row[96];
-                assert(cold.Row(member - 1, row) && Word(row) == member);
-                assert((row[11] == kFactoryAbsent) == absent);
-                if (absent || published) assert(!Word(row + 4));
-            }
+            uint8_t row[96];
+            assert(cold.Row(id - 1, row) && Word(row) == id);
+            assert((row[11] == kFactoryAbsent) == absent);
+            if (absent || published) assert(!Word(row + 4));
             const uint32_t one = 1, remove = 5, replace = 6;
             RecordView record;
             assert(cold.live.FindLive(1, &one, 1, record) == LiveResult::Ok && record.operation == Operation::Set);

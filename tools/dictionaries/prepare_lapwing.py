@@ -1,4 +1,4 @@
-"""Prepare the pinned Lapwing base image."""
+"""Prepare the pinned Lapwing base sources."""
 import argparse
 from prepare import prepare
 

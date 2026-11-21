@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "tools/storage"))
 sys.path.insert(0, str(ROOT / "tools/dict_compiler"))
 from build_native_image import XIP
 from compile_dict import DictionaryCollectionBuilder
-from native_layout import compact_member_sizes, parse_layout, read_layout
+from native_layout import validate_compact_layout, parse_layout, read_layout
 
 
 def layer(assignments=(), background="."):
@@ -27,7 +27,6 @@ def main():
     start = 0x30000
     image = DictionaryCollectionBuilder(XIP + start).build([
         ("One", {"KAT": "cat", "KAT/TA": "cat"}),
-        ("Two", {"PWOB": "cat"}),
     ])
     text_bytes, text_pointer = struct.unpack_from("<II", image, 8)
 
@@ -35,8 +34,7 @@ def main():
         assert address + XIP + size <= text_pointer or address + XIP >= text_pointer + text_bytes
         return image[address - start:address - start + size]
 
-    assert compact_member_sizes(metadata_read, start, len(image)) == [119, 78]
-    assert text_bytes == 4  # One copy of the translation shared by both dictionaries.
+    validate_compact_layout(metadata_read, start, len(image))
 
     old = layer([(2, "j"), (3, "h"), (4, "b"), (9, "f"), (255, "x")])
     new = layer([(3, "j"), (4, "b"), (6, "s"), (7, "s"), (8, "h"), (10, "f")])
