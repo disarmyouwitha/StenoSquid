@@ -43,7 +43,8 @@ int steno_squid_javelin_ble_session_valid(uint32_t session);
 #ifdef __cplusplus
 class IWriter;
 bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer,
-                                      bool (*cancelled)(void *), void *context);
+                                      bool (*cancelled)(void *), void *context, uint32_t bluetooth_session);
+uint32_t steno_squid_javelin_bluetooth_session();
 bool steno_squid_javelin_response_cancelled();
 bool steno_squid_javelin_response_active();
 #endif

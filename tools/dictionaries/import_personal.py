@@ -1,8 +1,9 @@
-"""USB HID console and Plover JSON codec for the Native dictionary tools."""
+"""HID console and Plover JSON codec for the Native dictionary tools."""
 
 from contextlib import contextmanager
 import json
 from pathlib import Path
+import re
 import sys
 import time
 
@@ -45,9 +46,10 @@ def parse_named(source):
 
 
 class Console:
-    def __init__(self, device, serial=None):
+    def __init__(self, device, serial=None, transport="usb"):
         self.device = device
         self.serial = serial
+        self.transport = transport
         self.channel = 0
 
     def command(self, text, timeout=30):
@@ -69,18 +71,25 @@ class Console:
         payload = REPORT_BYTES - len(prefix)
         for offset in range(0, len(line), payload):
             report = (prefix + line[offset:offset + payload]).ljust(REPORT_BYTES, b"\0")
-            if self.device.write(b"\0" + report) <= 0:
-                raise RuntimeError("USB HID write failed. Keep the left half connected.")
+            try:
+                written = self.device.write(b"\0" + report)
+            except OSError as error:
+                raise RuntimeError("HID write failed. Check the left half’s connection.") from error
+            if written <= 0:
+                raise RuntimeError("HID write failed. Check the left half’s connection.")
         response = bytearray()
         while time.monotonic() < deadline:
-            packet = self.device.read(REPORT_BYTES, 250)
+            try:
+                packet = self.device.read(REPORT_BYTES, 250)
+            except OSError as error:
+                raise RuntimeError("HID read failed. Check the left half’s connection.") from error
             if packet:
                 response.extend(bytes(packet).rstrip(b"\0"))
                 if response.endswith(b"\n\n"):
                     if response.startswith(prefix):
                         return response[len(prefix):].decode().rstrip("\n")
                     response.clear()
-        raise TimeoutError(f"No reply to {text.split()[0]}. Reconnect USB and check the keyboard.")
+        raise TimeoutError(f"No reply to {text.split()[0]}. Check the left half’s connection.")
 
 
 
@@ -109,6 +118,46 @@ def open_console(serial=None):
     device.open_path(devices[0]["path"])
     try:
         yield Console(device, devices[0]["serial_number"])
+    finally:
+        device.close()
+
+
+def bluetooth_console_devices():
+    try:
+        import hid
+    except ImportError:
+        raise SystemExit("Install the HID dependency with: python3 -m pip install hidapi") from None
+    return [
+        device for device in hid.enumerate()
+        if (device.get("usage_page"), device.get("usage")) == USAGE
+        and device.get("bus_type") == 2  # HIDAPI Bluetooth
+    ]
+
+
+@contextmanager
+def open_bluetooth_console(serial=None):
+    devices = bluetooth_console_devices()
+    if not devices or (not serial and len(devices) != 1):
+        raise RuntimeError("Pair and connect one Steno Squid left half over Bluetooth, or use --serial to select it.")
+    import hid
+
+    for candidate in devices:
+        device = hid.device()
+        try:
+            device.open_path(candidate["path"])
+            console = Console(device, transport="bluetooth")
+            reply = console.command("native_install identity", timeout=2)
+            identity = re.fullmatch(r"OK SQMANAGER1 ([0-9A-F]+)", reply)
+            if identity and (serial is None or serial == identity[1]):
+                console.serial = identity[1]
+                break
+        except (OSError, RuntimeError, ValueError):
+            pass
+        device.close()
+    else:
+        raise RuntimeError("The paired keyboard’s Bluetooth Manager console is unavailable for this connection.")
+    try:
+        yield console
     finally:
         device.close()
 

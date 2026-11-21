@@ -21,7 +21,7 @@ bool steno_squid_native_flash_open(void);
 void steno_squid_native_power_changed(void);
 int32_t steno_squid_native_scrub_wait(void);
 void steno_squid_native_scrub_step(void);
-void steno_squid_native_install_command(const char *command,char *reply,size_t bytes);
+void steno_squid_native_install_command(const char *command,char *reply,size_t bytes,uint32_t bluetooth_session);
 #ifdef __cplusplus
 }
 #endif

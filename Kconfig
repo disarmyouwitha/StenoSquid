@@ -107,7 +107,7 @@ config ZMK_STENO_SQUID_NATIVE_DICTIONARIES
     default 16
 
 config ZMK_JAVELIN_STENO_HID_PROVISIONING
-    bool "Install base dictionaries over wired USB HID"
+    bool "Manage Native dictionary flash through the HID console"
     select BASE64
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     default y

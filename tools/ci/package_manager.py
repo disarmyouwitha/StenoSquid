@@ -16,15 +16,16 @@ Requires Python 3.10 or newer. Extract the whole ZIP, then open a terminal in
 the StenoSquidManager folder.
 
     python3 -m pip install hidapi
-    python3 stenosquid.py --manager
+    python3 stenosquid.py
 
-On Windows, use `py -3` in place of `python3`. Connect the keyboard's left half
-over USB and close other dictionary tools before opening Manager.
+On Windows, use `py -3` in place of `python3`. Close other dictionary tools
+before opening Manager. Plug in the left half or pair it in your computer's
+Bluetooth settings. Manager prefers USB when both are available. JSON imports,
+USB Repack, and recovery restores require USB.
 
 For a new keyboard, flash the matching Left and Right UF2s from the same
-release. Manager offers to install the factory dictionaries over USB. The
-first factory install downloads the pinned dictionary sources and verifies
-their checksums.
+release. The first factory install downloads the pinned dictionary sources and
+verifies their checksums.
 
 For diagnostic serial commands, install `pyserial` separately.
 Run `python3 stenosquid.py --help` for the command-line options.

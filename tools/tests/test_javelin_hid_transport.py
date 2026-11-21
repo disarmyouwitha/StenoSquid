@@ -81,12 +81,14 @@ extern "C" bool steno_squid_usb_hid_ready() { return usb_ready; }
 std::vector<std::string> commands;
 bool console_ready = true;
 std::string provision_command;
-extern "C" void steno_squid_native_install_command(const char *command, char *reply, size_t size) {
+uint32_t provision_session;
+extern "C" void steno_squid_native_install_command(const char *command, char *reply, size_t size, uint32_t session) {
+    provision_session = session;
     provision_command = command;
     std::snprintf(reply, size, "2 INSTALL");
 }
 bool steno_squid_javelin_console_line(const char *p,size_t n,IWriter &w,
-                                        bool (*cancelled)(void *), void *context) {
+                                        bool (*cancelled)(void *), void *context, uint32_t) {
     assert(!cancelled(context));
     if (!console_ready) {
         return false;
@@ -155,8 +157,8 @@ int main() {
         usb("c14 " + import_line.substr(off, 59));
     ble("c15 native_entry commit\n");
     run();
-    assert(commands == std::vector<std::string>{
-        "c14 " + import_line});
+    assert((commands == std::vector<std::string>{
+        "c14 " + import_line, "c15 native_entry commit\n"}));
     assert(!ble_tx.empty());
 
     reset();
@@ -177,16 +179,26 @@ int main() {
 
     reset();console_ready = false;
     usb("c15 native_install status\n");
+    run();
+    assert(provision_command == "status\n" && provision_session == 0 && commands.empty());
     ble("c15 native_install begin CLEAR 0\n");
     run();
-    assert(provision_command == "status\n" && commands.empty());
+    assert(provision_command == "begin CLEAR 0\n" && provision_session == live_session);
+    for (const auto *operation : {"update repack-capabilities", "update recovery-capabilities",
+                                  "begin REPACK 0", "begin RECOVERY 0", "match RECOVERY 0"}) {
+        ble("c16 native_install " + std::string(operation) + "\n");
+        run();
+        assert(provision_command == "begin CLEAR 0\n");
+    }
     usb_error.clear();ble_error.clear();
     for (const auto &report : usb_tx)
         for (auto byte : report) if (byte) usb_error += char(byte);
     for (const auto &report : ble_tx)
         for (auto byte : report) if (byte) ble_error += char(byte);
     assert(usb_error == "c15 2 INSTALL\n\n");
-    assert(ble_error == "c15 ERR Command unavailable on this keyboard\n\n");
+    std::string expected_ble = "c15 2 INSTALL\n\n";
+    for (int i = 0; i < 5; ++i) expected_ble += "c16 ERR Connect over USB for repack or recovery\n\n";
+    assert(ble_error == expected_ble);
 
     reset();ble("c04 add_user_entry KAT ");
     for(int i=0;i<40;i++) ble("c04 "+std::string(59,'a'));
@@ -260,7 +272,7 @@ def main():
                         str(ROOT / "src/steno_squid"), str(root / "test.cc"),
                         "-o", str(root / "test")], check=True)
         subprocess.run([str(root / "test")], check=True)
-    print("PASS: BLE without USB, transport isolation, stale sessions, allowlist, flash not ready, wired base provisioning, overflow, USB reconnect, stalled response and in-flight ownership")
+    print("PASS: BLE without USB, transport isolation, stale sessions, allowlist, flash not ready, Bluetooth provisioning and USB-only recovery, overflow, USB reconnect, stalled response and in-flight ownership")
 
 
 if __name__ == "__main__":

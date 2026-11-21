@@ -79,12 +79,14 @@ If your board still has the shared Lapwing image from v0.1.2, export any diction
 
 StenoSquid Manager offers full dictionary management! You can Import/Export, Edit, Rename and Delete dictionaries 
 
-Download `StenoSquidManager.zip` from the release and extract it. Connect the left half over USB, then run these commands from the extracted folder. The local Manager opens in your browser.
+Download `StenoSquidManager.zip` from the release and extract it. Run these commands from the extracted folder to open Manager in your browser.
 
 ```sh
 python3 -m pip install hidapi
-python3 stenosquid.py --manager
+python3 stenosquid.py
 ```
+
+Plug in the left half or pair it in your computer’s Bluetooth settings and choose **Connect**. Manager prefers USB when both connections are available. Bluetooth requires matching left firmware and a recent version of `hidapi`. Manager shows which connection is active. JSON imports, **USB Repack**, and restoring a repack backup require USB.
 
 <sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools. </sub>
 

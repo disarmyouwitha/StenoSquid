@@ -13,14 +13,14 @@
     <header>
       <div><h1>Steno Squid Manager</h1><p>Onboard dictionaries and keyboard output</p></div>
       <div class="toolbar">
-        <button id="refresh" type="button">Connect over USB</button>
+        <span id="connected" role="status" hidden></span>
+        <button id="refresh" type="button">Connect</button>
         <button id="emergency-provision" type="button" hidden>Emergency Provision</button>
-        <span id="connected" role="status" hidden>Connected</span>
       </div>
     </header>
     <div id="job-status">
       <span class="job-spinner" aria-hidden="true" hidden></span>
-      <output id="status" aria-live="polite">Plug in your left half by USB. Close other dictionary tools before connecting.</output>
+      <output id="status" aria-live="polite">Plug in your left half or pair it in your computer’s Bluetooth settings.</output>
       <progress id="job-progress" max="100" aria-label="Writing dictionary data" hidden></progress>
     </div>
     <section id="setup-panel" aria-labelledby="setup-title" hidden>
@@ -29,8 +29,9 @@
       <button id="repack-restore" type="button" hidden>Restore original backup</button>
       <form id="setup-form">
         <div id="setup-packages"></div>
-        <p id="setup-warning">Setup clears the external dictionary pool. Keep the left half connected by USB until it reboots.</p>
-        <button id="setup-submit" type="submit">Install selected dictionaries</button>
+        <p id="setup-warning">Setup clears the external dictionary pool. Keep the left half connected until it reboots.</p>
+        <p id="setup-speed-warning" class="transfer-warning" hidden></p>
+        <button id="setup-submit" type="submit" aria-describedby="setup-warning setup-speed-warning">Install selected dictionaries</button>
         <button id="setup-cancel" type="button" hidden>Back</button>
       </form>
     </section>
@@ -60,7 +61,8 @@
         <div id="factory-preview" hidden>
           <div id="factory-cost" class="import-format"></div>
           <p id="factory-summary" aria-live="polite"></p>
-          <button type="button" id="factory-apply" data-write></button>
+          <p id="factory-speed-warning" class="transfer-warning" hidden></p>
+          <button type="button" id="factory-apply" data-write aria-describedby="factory-summary factory-speed-warning"></button>
           <button type="button" id="factory-cancel">Cancel</button>
         </div>
         <div id="optimization-plan" hidden aria-live="polite">
@@ -73,7 +75,7 @@
             </dl>
             <p id="optimization-allocation" class="import-format-detail"></p>
           </div>
-          <p id="optimization-publish">Keep USB connected. Publishing can pause typing and will reboot the left half.</p>
+          <p id="optimization-publish">Keep the keyboard connected. Publishing can pause typing and will reboot the left half.</p>
           <button type="button" id="optimization-apply" data-write>Compact</button>
           <button type="button" id="optimization-cancel">Cancel</button>
         </div>
@@ -95,7 +97,8 @@
         </section>
         <section aria-labelledby="import-title">
           <h2 id="import-title">Import JSON</h2>
-          <form id="import">
+          <p id="import-usb-note" class="transfer-warning" hidden>To import JSON, plug in USB, then disconnect and reconnect in Manager.</p>
+          <form id="import" aria-describedby="import-usb-note">
             <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
             <label>Dictionary name (optional) <input name="name" maxlength="44" aria-describedby="import-name-help"></label>
             <p id="import-name-help">(Clear to import into your personal dictionary.)</p>
@@ -122,7 +125,7 @@
             <button type="button" id="flash-map-scan">Scan Memory</button>
             <button type="button" id="compact" data-write>Compact Memory</button>
             <button type="button" id="compact-apply" data-write hidden>Reclaim</button>
-            <button type="button" id="repack-preview" data-write hidden>Preview USB repack</button>
+            <button type="button" id="repack-preview" data-write disabled>Preview USB Repack</button>
           </div>
           <div id="repack-actions" class="toolbar" hidden>
             <button id="repack-apply" type="button" data-write hidden>Repack</button>

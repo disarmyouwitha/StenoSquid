@@ -83,8 +83,19 @@ class InstallerTest(unittest.TestCase):
             stenosquid.main()
         self.assertEqual(diag.call_args_list, [mock.call(port, section) for section in ('status', 'log', 'rail', 'bench')])
 
+    def test_manager_is_default_and_accepts_serial_or_explicit_flags(self):
+        manager = mock.Mock()
+        with mock.patch.dict(sys.modules, {'manager': manager}), mock.patch.object(sys, 'path', sys.path.copy()):
+            for args, serial in (([], None), (['--serial', 'left123'], 'left123'),
+                                 (['--manager'], None), (['--manage'], None)):
+                with self.subTest(args=args), mock.patch.object(sys, 'argv', ['stenosquid.py', *args]):
+                    manager.serve.reset_mock()
+                    stenosquid.main()
+                    manager.serve.assert_called_once_with(serial)
+
     def test_serial_provisioning_and_multiple_actions_are_rejected(self):
-        for args in (['COM1', '--install'], ['--repair', '--verify'], ['--backup', 'a.json', '--status']):
+        for args in (['COM1', '--install'], ['--repair', '--verify'], ['--backup', 'a.json', '--status'],
+                     ['--manage', '--status'], ['--confirm-erase'], ['--position', '1']):
             with mock.patch.object(sys, 'argv', ['stenosquid.py', *args]), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as result:
                 stenosquid.main()
             self.assertEqual(result.exception.code, 2)

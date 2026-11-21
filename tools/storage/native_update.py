@@ -525,7 +525,7 @@ def abort(console):
 
 def transfer(console, incoming=None, progress=print, *, move=None, rename=None, delete=None,
              preview_compact=False, expected_compact=None):
-    """Preflight, upload and commit one update over USB HID."""
+    """Preflight, upload and commit one update over the HID console."""
     def command(text, timeout=30):
         return update_command(console, text, timeout)
 

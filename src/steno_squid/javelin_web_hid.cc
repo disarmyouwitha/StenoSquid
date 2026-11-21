@@ -71,6 +71,7 @@ public:
 #endif
 
     bool IsUsb() const { return !bluetooth; }
+    uint32_t BluetoothSession() const { return session; }
 
     bool Failed() const { return failed; }
 
@@ -140,9 +141,18 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
 
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
     constexpr char install_prefix[] = "native_install ";
-    if (writer.IsUsb() && strncmp(command, install_prefix, sizeof(install_prefix) - 1) == 0) {
+    if (strncmp(command, install_prefix, sizeof(install_prefix) - 1) == 0) {
+        const char *operation = command + sizeof(install_prefix) - 1;
+        if (!writer.IsUsb() && (strcmp(operation, "update repack-capabilities\n") == 0 ||
+                               strcmp(operation, "update recovery-capabilities\n") == 0 ||
+                               strncmp(operation, "begin REPACK ", 13) == 0 ||
+                               strncmp(operation, "begin RECOVERY ", 15) == 0 ||
+                               strncmp(operation, "match RECOVERY ", 15) == 0)) {
+            reply_error(writer, line, channel, "ERR Connect over USB for repack or recovery\n\n");
+            return;
+        }
         static char reply[704]; // Only the HID worker calls dispatch.
-        steno_squid_native_install_command(command + sizeof(install_prefix) - 1, reply, sizeof(reply));
+        steno_squid_native_install_command(operation, reply, sizeof(reply), writer.BluetoothSession());
         if (channel) {
             writer.Write(line, 4);
         }
@@ -156,7 +166,8 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
     if (forward) {
         const bool handled = steno_squid_javelin_console_line(
             line, size, writer,
-            [](void *context) { return static_cast<HidWriter *>(context)->Failed(); }, &writer);
+            [](void *context) { return static_cast<HidWriter *>(context)->Failed(); }, &writer,
+            writer.BluetoothSession());
         if (handled) return;
     }
 
