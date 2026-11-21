@@ -39,6 +39,10 @@ bool ReadLayout(Device &device, const CatalogRoot &root, char *segments, Stop st
         uint8_t base[4];
         if (stop() || !device.Read(root.address + 32 + i * 96 + 8, base, 4)) return false;
         if (!base[3]) continue;
+        if (base[3] == kFactoryAbsent) {
+            if (base[0] != 255 || base[1] != 255 || base[2]) return false;
+            continue;
+        }
         if (base[3] != kUserSnapshot) return false;
         uint8_t value[24];
         unsigned start, size;

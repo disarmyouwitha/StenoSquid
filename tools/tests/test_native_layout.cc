@@ -44,6 +44,14 @@ int main() {
     assert(map[35] == 'h' && map[47] == 'f' && map[53] == 'r' && map[54] == '.');
     assert(!ReadLayout(device, root, map.data(), [&] { return device.reads >= 12; }));
     assert(device.reads == 12);
+    auto *factory = device.payload.data() + 32;
+    factory[8] = factory[9] = 255;
+    factory[11] = kFactoryAbsent;
+    assert(ReadLayout(device, root, map.data(), [] { return false; }));
+    assert(map[20] == 'b' && map[22] == 's');
+    factory[8] = 0;
+    assert(!ReadLayout(device, root, map.data(), [] { return false; }));
+    factory[8] = 255;
     extent(4, 22, 1, 4);
     assert(!ReadLayout(device, root, map.data(), [] { return false; }));
 }
