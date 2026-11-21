@@ -1,5 +1,10 @@
 # Adaptive dictionary snapshots experiment
 
+This is the historical Gate A and Gate B engineering record. Use the
+[current storage guide](../native-engine-integration.md) for Manager controls,
+firmware setup, and recovery. The firmware checkpoints and commands below
+record the builds tested at the time.
+
 Default Left firmware supports compact named snapshots and explicit personal conversion over USB. Compact images and journals use the same Native catalog and allocator. Existing pools using that layout open directly.
 
 Start with the [hardware checkpoint and test sequence](#tonights-hardware-checkpoint-and-test-sequence) for the pinned `b9eba3f` build, fixture commands, and recovery procedures.
@@ -28,7 +33,7 @@ python3 tools/bench/snapshot_feasibility.py --full --output build/adaptive-snaps
 python3 tools/tests/test_native_stage.py
 ```
 
-[JSON measurements](benchmarks/adaptive-snapshot-gate-a.json) and [CSV measurements](benchmarks/adaptive-snapshot-gate-a.csv) record pinned hashes, compiled bytes, record and index estimates, and contiguous-run and total-space checks. All successful staged cases compared every translation after reconstructing the image. The original legacy `TestConstantCost(190000)` passed with 37 free segments, up to six program calls to add, one to remove, and 2,084 open reads. That fixture uses arbitrary 32-bit keys, so its result is a separate reference. The Native/JSC4 synthetic corpus round-trips through the real outline parser.
+[JSON measurements](../benchmarks/adaptive-snapshot-gate-a.json) and [CSV measurements](../benchmarks/adaptive-snapshot-gate-a.csv) record pinned hashes, compiled bytes, record and index estimates, and contiguous-run and total-space checks. All successful staged cases compared every translation after reconstructing the image. The original legacy `TestConstantCost(190000)` passed with 37 free segments, up to six program calls to add, one to remove, and 2,084 open reads. That fixture uses arbitrary 32-bit keys, so its result is a separate reference. The Native/JSC4 synthetic corpus round-trips through the real outline parser.
 
 The strict NOR stage test cuts writes at 57 flash boundaries with two tear lengths and checks recovery, dictionary IDs/order/selections and unrelated entries. The firmware also checks staged extent CRCs and uses the normal Native dictionary adapter for forward lookup. Hardware latency and power-cut acceptance remain open. Gate A host timings do not predict typing latency.
 
@@ -136,7 +141,7 @@ python3 tools/bench/snapshot_churn.py --output build/adaptive-snapshot/churn.jso
 python3 tools/bench/snapshot_churn.py --baseline 50000 --output build/adaptive-snapshot/churn-50k.json
 ```
 
-[10K fixture results](benchmarks/adaptive-snapshot-churn.csv) · [50K fixture results](benchmarks/adaptive-snapshot-churn-50k.csv)
+[10K fixture results](../benchmarks/adaptive-snapshot-churn.csv) · [50K fixture results](../benchmarks/adaptive-snapshot-churn-50k.csv)
 
 Manager previews named imports as compact snapshots. The preview shows the compiled size, added blocks, and temporary staging blocks. The planner also checks room for a future same-size consolidation. The approved plan is recomputed before publication. Source changes, appended edits, changed catalogs, or different occupied blocks invalidate the approval. Leave the name blank to add entries to the personal dictionary through the shared journal.
 
@@ -169,7 +174,7 @@ python3 tools/storage/native_snapshot.py additional.json --convert-personal --se
 
 Append `--stage` after reviewing the contiguous extent requirement and the total staging segments. The second form fills missing outlines from Plover JSON. Local sets and tombstones win. The same catalog row keeps its ID, name, priority and enabled flag. Existing sets become the compact baseline and existing tombstones stay in the shared overlay. Further adds, replacements and removals use that overlay. Use `--consolidate --name user_dictionary` to fold subsequent edits into a new baseline. The bulk clear command remains unavailable for compact personal dictionaries.
 
-The [personal capacity report](benchmarks/personal-snapshot-capacity.json) validates every translation for Plover and the legal 200,000-entry target. A nearly full journal may leave too little contiguous room to preserve the old root while staging. The full Plover journal fixture left 29 contiguous segments and was refused. Both large compact images fit on the pinned factory pool using fill-only conversion, with no clean install. A fixture with 158 free segments but a seven-segment largest run refused both images. A small real Native transaction recovered across 92 simulated flash boundaries with two tear lengths, preserving the disabled flag, priority, ID and tombstone.
+The [personal capacity report](../benchmarks/personal-snapshot-capacity.json) validates every translation for Plover and the legal 200,000-entry target. A nearly full journal may leave too little contiguous room to preserve the old root while staging. The full Plover journal fixture left 29 contiguous segments and was refused. Both large compact images fit on the pinned factory pool using fill-only conversion, with no clean install. A fixture with 158 free segments but a seven-segment largest run refused both images. A small real Native transaction recovered across 92 simulated flash boundaries with two tear lengths, preserving the disabled flag, priority, ID and tombstone.
 
 ## Lean compact storage and search capabilities
 
@@ -217,7 +222,7 @@ staging both corpora. Run it after preparing the pinned dictionaries.
 python3 tools/tests/test_native_compact_capacity.py
 ```
 
-[Capacity gate output](benchmarks/lean-snapshot-capacity.json)
+[Capacity gate output](../benchmarks/lean-snapshot-capacity.json)
 
 ## USB recovery on a spare
 
@@ -312,7 +317,7 @@ For the 147,424-entry Plover personal journal, repacking used 111 segments
 instead of 226 and expanded the largest free run from 29 to 144 segments.
 All 438,827 effective per-dictionary entries and 243,093 active priority winners
 matched. An already lean 200,000-entry personal snapshot kept its 105 used
-segments. [Repack capacity report](benchmarks/offline-repack-capacity.json)
+segments. [Repack capacity report](../benchmarks/offline-repack-capacity.json)
 
 #### Guarded USB repack and spare recovery
 
@@ -647,3 +652,42 @@ Version 2 USB rescue restores the bundle's recorded layout. The optimized
 bundle uses the separate [offline repack and spare recovery](#offline-repacking)
 procedure. Physical qualification requires first install, intentional
 interruptions, cold readback and typing on the spare.
+
+## Native v0.1.2 and dense-store hardware results
+
+## What v0.1.2 verified
+
+| Area | Evidence |
+| --- | --- |
+| Translation and catalog | Pinned-source lookup checks, independent extras, duplicate-outline priority, persistent selections, and local override/reset behavior. |
+| Manager | Hardware tests for named import, edit, export, rename, reorder, and delete. A packed Lapwing Commands export matched all 146 expected entries. |
+| Pinned base updates | A temporary Lapwing UK Additions change passed on Boardsource. The local override won, the conflict report showed both values, and reset exposed the upstream entry. Rollback preserved the original catalog settings and entries. |
+| Automatic compaction | The corrected Boardsource build cleared 71 edits, freed three journal segments (192 KiB), and preserved all 73 test translations. The longest observed slice was 80.5 ms while idle. |
+| Recovery and capacity | Real power cuts during import staging and just before catalog commit preserved the live store. A sparse near-full test verified refusal and the three-segment reserve. Host fault injection covers compaction interruptions and recovery export. |
+| Full backup and restore | A real backup rebuilt and verified offline. Host tests exercised restore and confirmed a matching catalog, local edits, and pinned bases. |
+| Release | CI passed and all eight public UF2 downloads were verified. [Release build](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44565319621) |
+
+The [development record](native-engine-development.md) preserves the full
+test results and earlier experiments. The [storage decision](../dictionary-storage-decision.md)
+and [benchmark report](../dictionary-benchmark-report.md) explain the format choice.
+The [original spec](unified-dictionary-storage-spec.md) contains the full
+acceptance matrix.
+
+## Dense-store hardware follow-up
+
+On the installed Boardsource Left build, 6,900 temporary entries with
+1,120-byte translations filled 201 of 253 allocatable segments (79%). After
+110 edits, automatic compaction freed four 64 KiB segments and all 6,900
+translations matched on readback. The host planner refused an additional
+oversized import before sending erase or write commands.
+
+All 1,630 paced USB HID lookups returned the expected answers. Round-trip p95
+was 25.2 ms in the first dense window and 18.2 ms in the final window, versus
+4.4 ms in the sparse idle baseline. The worst USB round trip was 160.9 ms and
+the longest firmware worker slice was 309.2 ms. These measurements cover the
+dictionary console path. Physical Bluetooth typing latency remains open.
+
+Mac-side USB resets restored editor access after two large-store reboots.
+The temporary dictionary was removed, 122 stale journals were reclaimed in
+cleanup, and a full integrity scan passed. The original catalog, entries, and
+host layout matched the pre-test backup.

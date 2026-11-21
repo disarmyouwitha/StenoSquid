@@ -1,84 +1,94 @@
 # Native dictionary storage
 
-Native is the default in [v0.1.2](https://github.com/disarmyouwitha/StenoSquid/releases/tag/v0.1.2)
-for both Boardsource and nice!nano left firmware.
-For installation, upgrades, and the Manager, use the [project README](../README.md#how-to-install).
+Follow the [project installation guide](../README.md#how-to-install) for
+matching firmware and Manager. See [connection support](bluetooth.md) for
+operations available over USB and Bluetooth.
 
-## How the store works
+## Dictionaries and editing
 
-- The 16 MiB external flash uses 64 KiB segments. Two catalog generations track
-  shared ownership of compiled bases, journals, and indexes. The final segment
-  is reserved for diagnostics. **External flash map** in Manager shows the current layout.
-- Lapwing, its four extras, and Plover each have a separate compact image.
-  Each dictionary keeps an independent ID, enabled state, and position in lookup
-  order. A local edit or removal applies to the selected dictionary. Lower-priority
-  enabled dictionaries can still supply an outline hidden in a higher one.
-- The Manager runs locally over USB HID. It edits, imports, exports, renames, and
-  reorders dictionaries and applies pinned base updates. Updates stage and verify
-  the new image before publishing it. Local edits take precedence and conflicts
-  appear in the update report.
-- Full backups capture the ordered catalog, IDs, pinned source hashes, local
-  edits and removals, and host layout. Restore rebuilds the pinned bases and
-  explicitly reprovisions the target pool. For older fixed-layout firmware, export
-  a personal JSON backup before flashing and follow the README upgrade steps.
-- After 64 pending edits, automatic compaction can run on USB power while the
-  keyboard is idle. One pass can move up to 4 KiB of live records from older
-  journals. Resumed activity cancels unpublished work. An already published
-  catalog finishes recovery. **Compact now** runs a larger USB-assisted pass.
+- Lapwing Base, its four extras, and Plover Base are separate factory images.
+  The installer lets you select which to install. You can add or remove each
+  later in Manager. Each has its own lookup priority and enabled checkbox.
+- **Import JSON** creates a compact dictionary when you give it a name. Clear
+  the suggested filename to import into the personal dictionary's journal.
+- Edits to compiled dictionaries go into a shared journal. A local deletion
+  hides the outline in that dictionary, and a lower-priority enabled dictionary
+  can still supply it. **Export JSON** reads the effective dictionary with its
+  baseline and edits combined.
+- **Compact** in Dictionaries previews conversion of a journal-only dictionary
+  or consolidation of a compact dictionary with edits. It folds the effective
+  entries into a new compact baseline, preserving the ID, priority, and enabled
+  state. Future edits go into the journal. Factory dictionaries keep their
+  pinned baselines. **Delete** on the personal dictionary clears its contents.
+- Compact JSC4 + SHI1 supports forward translation, Practice, and one-stroke
+  hints. For exhaustive text or outline searches, export the dictionary and
+  search on your computer.
 
-## What v0.1.2 verified
+## Memory and capacity
 
-| Area | Evidence |
-| --- | --- |
-| Translation and catalog | Pinned-source lookup checks, independent extras, duplicate-outline priority, persistent selections, and local override/reset behavior. |
-| Manager | Hardware tests for named import, edit, export, rename, reorder, and delete. A packed Lapwing Commands export matched all 146 expected entries. |
-| Pinned base updates | A temporary Lapwing UK Additions change passed on Boardsource. The local override won, the conflict report showed both values, and reset exposed the upstream entry. Rollback preserved the original catalog settings and entries. |
-| Automatic compaction | The corrected Boardsource build cleared 71 edits, freed three journal segments (192 KiB), and preserved all 73 test translations. The longest observed slice was 80.5 ms while idle. |
-| Recovery and capacity | Real power cuts during import staging and just before catalog commit preserved the live store. A sparse near-full test verified refusal and the three-segment reserve. Host fault injection covers compaction interruptions and recovery export. |
-| Full backup and restore | A real backup rebuilt and verified offline. Host tests exercised restore and confirmed a matching catalog, local edits, and pinned bases. |
-| Release | CI passed and all eight public UF2 downloads were verified. [Release build](https://github.com/disarmyouwitha/StenoSquid/actions/runs/44565319621) |
+The 16 MiB external flash is divided into 64 KiB blocks. Two retained catalog
+roots protect the current and previous layouts. The last block is reserved
+for diagnostics, and staged operations leave three free blocks for maintenance.
 
-The [development record](archive/native-engine-development.md) preserves the full
-test results and earlier experiments. The [storage decision](dictionary-storage-decision.md)
-and [benchmark report](dictionary-benchmark-report.md) explain the format choice.
-The [original spec](archive/unified-dictionary-storage-spec.md) contains the full
-acceptance matrix.
+**Scan Memory** shows which dictionaries and storage structures occupy each
+block. **Compact Memory** previews reclaimable journal blocks, and **Reclaim**
+applies the cleanup. **Preview USB Repack** shows how a rebuilt pool would
+change the layout. It can grow the largest contiguous free run even when the
+total free space is similar. The preview runs before the complete backup or any
+pool erase. If you confirm **Repack**, Manager saves and verifies the backup
+before rebuilding the pool.
 
-## Dense-store hardware follow-up
+The capacity test requires byte-for-byte equality with the original Javelin
+compiler for the same input. Figures below cover the compiled image. A
+copy-on-write update additionally needs staging space and may need room for
+journal and index changes.
 
-On the installed Boardsource Left build, 6,900 temporary entries with
-1,120-byte translations filled 201 of 253 allocatable segments (79%). After
-110 edits, automatic compaction freed four 64 KiB segments and all 6,900
-translations matched on readback. The host planner refused an additional
-oversized import before sending erase or write commands.
+| Corpus | Image bytes | 64 KiB blocks |
+| --- | ---: | ---: |
+| Plover fixture, 147,424 entries | 2,339,624 | 36 |
+| Synthetic fixture, 200,000 entries | 1,931,932 | 30 |
 
-All 1,630 paced USB HID lookups returned the expected answers. Round-trip p95
-was 25.2 ms in the first dense window and 18.2 ms in the final window, versus
-4.4 ms in the sparse idle baseline. The worst USB round trip was 160.9 ms and
-the longest firmware worker slice was 309.2 ms. These measurements cover the
-dictionary console path. Physical Bluetooth typing latency remains open.
+[Capacity measurements](benchmarks/lean-snapshot-capacity.json) ·
+[Offline repack measurements](benchmarks/offline-repack-capacity.json)
 
-Mac-side USB resets restored editor access after two large-store reboots.
-The temporary dictionary was removed, 122 stale journals were reclaimed in
-cleanup, and a full integrity scan passed. The original catalog, entries, and
-host layout matched the pre-test backup.
+## Backup and USB recovery
 
-## Remaining validation
+**Download full backup** saves a self-contained version 2 bundle with the
+catalog, dictionary IDs, priority, enabled states, pinned images, overlays,
+tombstones, and host layout. Keep it private because journal bytes can contain
+older translations. Use JSON exports when you want portable dictionary data.
 
-1. **Typing and Bluetooth during compaction.** Record end-to-end output and
-   latency at sustained 200 WPM and during bursts, including when typing resumes
-   during automatic work. Check for dropped or reordered chords
-   and delayed bursts. The idle slice measurement covers flash work on the board.
-2. **Full restore onto a spare board.** Install a real backup and check named
-   and personal entries, base overrides and removals, priority, selections, and
-   host layout after reboot. Exercise interruption and retry during provisioning.
-3. **Power loss during compaction.** Cut power during journal and index writes
-   and around catalog publication. After reboot, verify the original or fully
-   committed state and check the retained catalog and allocator.
-4. **Near-full wear and runtime headroom.** Repeat imports and edits at higher
-   occupancy and over a longer period. Measure heap and stack headroom and check
-   wear across repeated compaction. Entry capacity depends on outlines,
-   translation lengths, and staging headroom.
+Verify a bundle offline from the repository root.
 
-Larger 32 and 64 MiB chips have a separate hardware, addressing, and format
-qualification. The current release supports the 16 MiB layout.
+```sh
+python3 tools/storage/native_recovery.py /path/to/stenosquid-backup.json
+```
+
+If Manager offers **Restore original backup** after an interrupted repack,
+reconnect the left half over USB and use that backup. For manual recovery,
+identify the exact left-half USB serial with `python3 tools/bench/gate_b.py identify`
+and verify the bundle first. The following command requires the same target
+serial twice and can erase the entire external dictionary pool.
+
+```sh
+python3 tools/storage/native_recovery.py /path/to/stenosquid-backup.json \
+  --restore --serial TARGET_USB_SERIAL --confirm-erase TARGET_USB_SERIAL
+```
+
+After recovery, power-cycle the keyboard and verify the catalog, settings and
+known translations. Flashing a UF2 leaves the external dictionary pool in
+place. Full recovery restores the bundle's saved layout. Offline repack produces
+a separate, optimized bundle. See the [offline repack and guarded USB
+procedures](archive/adaptive-snapshot-gate-a-b.md#offline-repacking) for the CLI
+and readback checks.
+
+## Validation
+
+The [Native development record](archive/native-engine-development.md) and
+[Gate A and Gate B results](archive/adaptive-snapshot-gate-a-b.md#firmware-and-hardware-qualification)
+record storage and physical tests. These include Boardsource USB and BLE
+typing, Practice, sleep/wake, an interrupted staged write, a 100,000-entry
+cold readback, and USB recovery on nice!nano. Host replay checks translation
+correctness at modeled rates up to 300 WPM. Physical scanning, split and BLE
+latency at sustained 200 WPM, and a physical cut during a catalog-root write
+remain separate validation work.
