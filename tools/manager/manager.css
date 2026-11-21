@@ -23,6 +23,7 @@ section { background: var(--surface); border: 1px solid var(--line); border-radi
 @keyframes job-spin { to { transform: rotate(1turn); } }
 @media (prefers-reduced-motion: reduce) { .job-spinner { animation: none; } }
 #import-error, .inline-error { margin: .75rem 0; padding: .55rem .75rem; border-left: .25rem solid #ff9d9d; color: #ffb6b6; overflow-wrap: anywhere; }
+.transfer-warning { margin: .65rem 0; padding: .5rem .65rem; border-left: .2rem solid #e0aa55; color: #ffd596; overflow-wrap: anywhere; }
 .table-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; margin: .55rem 0; text-align: left; }
 th, td { padding: .5rem .65rem; border-bottom: 1px solid var(--line); }
@@ -38,7 +39,7 @@ button, select, input:not([type="radio"], [type="checkbox"]), textarea { border:
 button { cursor: pointer; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled, input:disabled, select:disabled { opacity: .5; cursor: default; }
-#refresh, #setup-submit, button[value="set"] { background: var(--accent); color: #24163e; border-color: var(--accent); font-weight: 650; }
+#refresh:not([data-connected]), #setup-submit, button[value="set"] { background: var(--accent); color: #24163e; border-color: var(--accent); font-weight: 650; }
 #connected { color: var(--muted); }
 #setup-form { margin-top: .75rem; }
 #setup-form[hidden] { display: none; }

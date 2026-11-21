@@ -360,13 +360,15 @@ void zmk_javelin_steno_native_cancel(void) {
 // large personal export as soon as its transport reports a terminal failure.
 static bool (*response_cancelled)(void *);
 static void *response_context;
+static uint32_t response_bluetooth_session;
+uint32_t steno_squid_javelin_bluetooth_session() { return response_bluetooth_session; }
 bool steno_squid_javelin_response_active() { return response_context != nullptr; }
 bool steno_squid_javelin_response_cancelled() {
   return response_cancelled && response_cancelled(response_context);
 }
 
 bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &writer,
-                                      bool (*cancelled)(void *), void *context) {
+                                      bool (*cancelled)(void *), void *context, uint32_t bluetooth_session) {
   const JavelinEngineLock lock;
   if (!lock) {
     // The flash is asleep, unprovisioned or still verifying.
@@ -378,11 +380,13 @@ bool steno_squid_javelin_console_line(const char *line, size_t size, IWriter &wr
   }
   response_cancelled = cancelled;
   response_context = context;
+  response_bluetooth_session = bluetooth_session;
   ConsoleWriter::Push(&writer);
   Console::instance.HandleInput(line, size, ConnectionId::SERIAL_CONSOLE);
   ConsoleWriter::Pop();
   response_cancelled = nullptr;
   response_context = nullptr;
+  response_bluetooth_session = 0;
   return true;
 }
 #endif

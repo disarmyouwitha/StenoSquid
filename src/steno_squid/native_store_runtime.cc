@@ -23,6 +23,7 @@
 #include "user_dictionary_store.h"
 #include "dictionary_flash.h"
 #include "javelin_engine_lock.h"
+#include "javelin_hid_transport.h"
 #include "engine_work.h"
 #include "engine_stream.h"
 #include "hint_index.h"
@@ -31,6 +32,7 @@
 #include "w25q_quad.h"
 #include "xip_load.h"
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_hid.h>
 #include <zmk/keys.h>
@@ -659,14 +661,49 @@ void native_entry(void *,const char *line) {
     constexpr char prefix[]="native_entry ";
     if(std::strncmp(line,prefix,sizeof(prefix)-1)){Console::Printf("ERR Missing entry operation\n\n");return;}
     const char *p=line+sizeof(prefix)-1;
-    if(!std::strcmp(p,"abort")){entry_transfer.Abort();Console::SendOk();return;}
+    static uint32_t entry_owner;
+    static int64_t entry_expires;
+    static bool entry_committed;
+#ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    const auto session = steno_squid_javelin_bluetooth_session();
+#else
+    constexpr uint32_t session = 0;
+#endif
+    const auto now = k_uptime_get();
+    bool disconnected = false;
+#ifdef CONFIG_ZMK_JAVELIN_STENO_BLE_HID
+    disconnected = entry_owner && !steno_squid_javelin_ble_session_valid(entry_owner);
+#endif
+    if (entry_expires && (now >= entry_expires || disconnected)) {
+        entry_transfer.Abort();
+        entry_expires = 0;
+    }
+    const bool starts_entry = !std::strncmp(p, "begin ", 6) || !std::strcmp(p, "abort");
+    if (entry_expires && entry_owner != session && (!entry_committed || !starts_entry)) {
+        Console::Printf("ERR Entry transfer belongs to another connection\n\n");
+        return;
+    }
+    if (!std::strcmp(p, "abort")) {
+        entry_transfer.Abort();
+        entry_expires = 0;
+        Console::SendOk();
+        return;
+    }
+    if (entry_expires) entry_expires = now + 60000;
     if(!std::strncmp(p,"begin ",6)) {
         p+=6;uint32_t id,bytes;
         if(!Number(p,id) || *p++!=' ' || !Number(p,bytes) || bytes>2047 || *p++!=' ' || !ById(id)){Console::Printf("ERR Invalid native entry target\n\n");return;}
         StrokeListParser parser;
         if(!parser.Parse(p) || !parser.GetCount() || parser.GetCount()>16 || *parser.failureOrEnd){Console::Printf("ERR Invalid native outline\n\n");return;}
         uint32_t masks[16];for(unsigned i=0;i<parser.GetCount();++i)masks[i]=parser.GetData()[i].GetKeyState();
-        ReplyEdit(entry_transfer.Begin(id,masks,parser.GetCount(),bytes));return;
+        const auto result = entry_transfer.Begin(id, masks, parser.GetCount(), bytes);
+        if (result == LiveResult::Ok) {
+            entry_owner = session;
+            entry_committed = false;
+            entry_expires = now + 60000;
+        }
+        ReplyEdit(result);
+        return;
     }
     if(!std::strncmp(p,"data ",5)) {
         p+=5;uint32_t offset;size_t decoded=0;
@@ -674,11 +711,15 @@ void native_entry(void *,const char *line) {
         ReplyEdit(entry_transfer.Write(offset,entry_chunk,decoded));return;
     }
     if(!std::strcmp(p,"commit")) {
-        ReplyEdit(entry_transfer.Commit([](uint32_t id,const uint32_t *masks,uint8_t count,const uint8_t *text,uint16_t bytes) {
+        const auto result = entry_transfer.Commit([](uint32_t id,const uint32_t *masks,uint8_t count,const uint8_t *text,uint16_t bytes) {
             auto *cell=ById(id);if(!cell)return LiveResult::Invalid;
             StenoStroke strokes[16];for(unsigned i=0;i<count;++i)strokes[i]=StenoStroke(masks[i]);
             return Edit(*cell,0,strokes,count,reinterpret_cast<const char *>(text),bytes);
-        }));return;
+        });
+        // Keep same-session retry semantics without blocking the other transport.
+        if (result == LiveResult::Ok) entry_committed = true;
+        ReplyEdit(result);
+        return;
     }
     Console::Printf("ERR Unknown entry operation\n\n");
 }
@@ -1205,13 +1246,43 @@ const char *Install(const char *command,char *reply,size_t bytes) {
     return "ERR Unknown native installation command";
 }
 }
-extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes) {
+extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes,uint32_t bluetooth_session) {
+    if (!std::strcmp(command, "identity\n")) {
+        // Format the same hardware ID as Zephyr's USB serial descriptor,
+        // so reconnecting wirelessly never depends on the OS's HID path.
+        constexpr size_t serial_bytes = sizeof(CONFIG_USB_DEVICE_SN) / 2;
+        uint8_t hardware_id[MAX(16, serial_bytes)]{};
+        const auto length = hwinfo_get_device_id(hardware_id, sizeof(hardware_id));
+        if (length <= 0) {
+            snprintk(reply, bytes, "ERR Keyboard identity unavailable");
+            return;
+        }
+        const size_t start = size_t(length) > serial_bytes ? size_t(length) - serial_bytes : 0;
+        constexpr char digits[] = "0123456789ABCDEF";
+        char serial[2 * serial_bytes + 1]{};
+        for (size_t i = 0; i < serial_bytes; ++i) {
+            const auto byte = hardware_id[start + i];
+            serial[2 * i] = digits[byte >> 4];
+            serial[2 * i + 1] = digits[byte & 15];
+        }
+        snprintk(reply, bytes, "OK SQMANAGER1 %s", serial);
+        return;
+    }
     if (!dictionary_flash_try_service()) {
         snprintk(reply, bytes, "%s", !std::strcmp(command, "update layout-map\n")
                 ? "ERR Layout scan deferred until flash is available" : "ERR Native flash busy");
         return;
     }
-    const char *result=Install(command,reply,bytes);if(result)snprintk(reply,bytes,"%s",result);
+    static uint32_t owner_session;
+    const bool was_active = transfer.Active() || staged.Active();
+    const char *result;
+    if (was_active && owner_session != bluetooth_session && std::strcmp(command, "status\n")) {
+        result = "ERR Native transfer belongs to another connection";
+    } else {
+        result = Install(command, reply, bytes);
+        if (!was_active && (transfer.Active() || staged.Active())) owner_session = bluetooth_session;
+    }
+    if (result) snprintk(reply, bytes, "%s", result);
     k_mutex_unlock(&flash_lock);
 }
 

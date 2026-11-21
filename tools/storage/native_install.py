@@ -173,14 +173,15 @@ def install(serial=None, image_path=None, restore=None):
     wait_ready(serial)
 
 
-def wait_ready(serial=None, *, load_state=None, checking=None):
+def wait_ready(serial=None, *, load_state=None, checking=None, opener=None):
+    opener = opener or open_console
     time.sleep(3)
     started = time.monotonic()
     deadline = started + 90
     saw_busy = False
     while time.monotonic() < deadline:
         try:
-            with open_console(serial) as console:
+            with opener(serial) as console:
                 status = console.command("native_install status", timeout=2)
                 if status == "ERR Native flash busy" and not saw_busy:
                     saw_busy = True

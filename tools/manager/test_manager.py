@@ -1,4 +1,4 @@
-"""Exercise the Manager's routing against a fake USB console."""
+"""Exercise the Manager's routing against a fake HID console."""
 
 from contextlib import nullcontext
 import json
@@ -8,12 +8,14 @@ import re
 from tempfile import TemporaryDirectory
 import time
 from threading import Thread, current_thread
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import unittest
 from unittest.mock import patch
 
 import manager
+import import_personal
 import manager_repack
 
 
@@ -98,6 +100,110 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(self.run_job("refresh")["state"]["auto_checkpoints"], 2)
         self.assertFalse(self.run_job("enable", id=8, enabled=False)["state"]["catalog"][0]["enabled"])
         self.assertEqual(self.run_job("layout", layout="Mac U.S.")["state"]["layout"], "Mac U.S.")
+
+    def test_bluetooth_opener_checks_firmware_identity_not_hid_path(self):
+        devices = [dict(path=b"first", bus_type=2), dict(path=b"second", bus_type=2),
+                   dict(path=b"wired", bus_type=1)]
+        for device in devices:
+            device.update(usage_page=0xFF31, usage=0x74)
+
+        class Hid:
+            closed = []
+
+            def open_path(self, path):
+                self.path = path
+
+            def write(self, packet):
+                self.prefix = packet[1:5]
+                return len(packet)
+
+            def read(self, size, timeout):
+                serial = b"BEEF" if self.path == b"second" else b"ABCD"
+                return self.prefix + b"OK SQMANAGER1 " + serial + b"\n\n"
+
+            def close(self):
+                self.closed.append(self.path)
+
+        hid = SimpleNamespace(enumerate=lambda: devices, device=Hid)
+        with patch.dict("sys.modules", hid=hid):
+            with self.assertRaisesRegex(RuntimeError, "connect one"):
+                with import_personal.open_bluetooth_console():
+                    self.fail("Ambiguous Bluetooth device accepted")
+            with import_personal.open_bluetooth_console("BEEF") as console:
+                self.assertEqual(console.serial, "BEEF")
+                self.assertEqual(console.transport, "bluetooth")
+        self.assertEqual(Hid.closed, [b"first", b"second"])
+
+    def test_connect_prefers_usb_and_can_reconnect_over_bluetooth(self):
+        jobs = manager.Jobs(None)
+        connect = {"action": "refresh", "transport": "auto"}
+        with patch.object(manager, "usb_console_devices", side_effect=[[{}], []]), \
+                patch.object(manager, "bluetooth_console_devices", return_value=[{}]) as discover_ble, \
+                patch.object(manager, "open_bluetooth_console", side_effect=lambda _: nullcontext(self.keyboard)):
+            jobs.run(connect)
+            self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "usb")
+            discover_ble.assert_not_called()
+            jobs.run({"action": "disconnect"})
+            self.assertTrue(jobs.snapshot()["result"]["disconnected"])
+            self.assertIsNone(jobs.connected_serial)
+            self.keyboard.transport = "bluetooth"
+            jobs.run(connect)
+            self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "bluetooth")
+            self.assertEqual(jobs.connected_serial, self.keyboard.serial)
+
+    def test_auto_connect_keeps_initial_screen_when_keyboard_is_absent(self):
+        jobs = manager.Jobs(None)
+        connect = {"action": "refresh", "transport": "auto"}
+        with patch.object(manager, "usb_console_devices", return_value=[]), \
+                patch.object(manager, "bluetooth_console_devices", return_value=[]):
+            jobs.run({**connect, "initial": True})
+            self.assertTrue(jobs.snapshot()["result"]["disconnected"])
+            jobs.run(connect)
+            self.assertEqual(jobs.snapshot()["status"], "error")
+            self.assertIn("USB or pair", jobs.snapshot()["message"])
+
+    def test_bluetooth_connection_refresh_and_edits_pin_the_device(self):
+        self.keyboard.transport = "bluetooth"
+        self.keyboard.adaptive = True
+        jobs = manager.Jobs(None)
+        with patch.object(manager, "open_bluetooth_console", side_effect=lambda _: nullcontext(self.keyboard)) as opened:
+            jobs.run({"action": "refresh", "transport": "bluetooth"})
+            state = jobs.snapshot()["result"]["state"]
+            self.assertEqual(state["transport"], "bluetooth")
+            self.assertFalse(state["repack"])
+            self.assertNotIn("native_install update repack-capabilities", self.keyboard.commands)
+            jobs.run({"action": "set", "id": 8, "outline": "KAT", "translation": "cat"})
+            self.assertEqual(jobs.snapshot()["status"], "done")
+            self.assertIn("native_entry commit", self.keyboard.commands)
+            self.assertEqual(opened.call_args.args, (self.keyboard.serial,))
+
+    def test_bluetooth_json_import_is_rejected_before_opening_console(self):
+        with patch.object(manager, "open_bluetooth_console") as opened:
+            for action in ("import", "preview_import", "apply_import"):
+                with self.subTest(action=action), self.assertRaisesRegex(ValueError, "Connect over USB to import JSON"):
+                    manager.run_job(None, {"action": action}, lambda _: None, transport="bluetooth")
+            opened.assert_not_called()
+
+    def test_bluetooth_repack_is_rejected_before_opening_console(self):
+        with patch.object(manager, "open_bluetooth_console") as opened:
+            for action in ("preview_repack", "apply_repack", "restore_repack_backup"):
+                with self.subTest(action=action), self.assertRaisesRegex(ValueError, "Connect over USB"):
+                    manager.run_job(None, {"action": action}, lambda _: None, transport="bluetooth")
+            opened.assert_not_called()
+
+    def test_bluetooth_setup_reopens_the_same_device_over_bluetooth(self):
+        self.keyboard.transport = "bluetooth"
+        self.keyboard.install_status = manager.UNPROVISIONED
+        request = {"action": "setup", "serial": self.keyboard.serial, "packages": ["lapwing-base"],
+                   "approved": True}
+        with patch.object(manager, "open_bluetooth_console", return_value=nullcontext(self.keyboard)) as opened, \
+                patch.object(manager, "prepare_install_image", return_value=(b"image", {})), \
+                patch.object(manager, "provision") as provision, \
+                patch.object(manager, "wait_ready", return_value={}) as ready:
+            self.assertTrue(manager.run_job(None, request, lambda _: None, transport="bluetooth")["installed"])
+            opened.assert_called_once_with(self.keyboard.serial)
+            provision.assert_called_once()
+            ready.assert_called_once_with(self.keyboard.serial, load_state=unittest.mock.ANY, opener=opened)
 
     def test_repack_previews_without_backup_then_requires_matching_confirmation(self):
         self.keyboard.adaptive = True
@@ -190,7 +296,7 @@ class ManagerTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "status changed"):
                 self.run_job("setup", approved=True, **fields)
             self.keyboard.install_status = manager.UNPROVISIONED
-            with self.assertRaisesRegex(ValueError, "USB serial"):
+            with self.assertRaisesRegex(ValueError, "serial number"):
                 manager.run_job("another-board", dict(action="setup", approved=True, **fields), print)
             prepare.assert_not_called()
             provision.assert_not_called()
@@ -220,7 +326,7 @@ class ManagerTest(unittest.TestCase):
                 self.assertNotIn("native_catalog", self.keyboard.commands)
                 self.assertNotIn("user_dictionary_status", self.keyboard.commands)
                 fields = dict(serial=setup["serial"], packages=["plover"], approved=True, expected_status=status)
-                with self.assertRaisesRegex(ValueError, "Confirm the USB serial"):
+                with self.assertRaisesRegex(ValueError, "Confirm the keyboard serial"):
                     self.run_job("setup", **fields)
                 self.keyboard.install_status = "NATIVE2 READY 4"
                 with self.assertRaisesRegex(RuntimeError, "status changed"):

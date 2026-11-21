@@ -1,4 +1,4 @@
-"""Serve the local Steno Squid Manager and reuse the CLI's USB HID transport."""
+"""Serve the local Steno Squid Manager and reuse the CLI’s HID console."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -19,7 +19,7 @@ from native_install import FACTORY_CAPABILITIES, UNPROVISIONED, prepare_install_
 from build_native_image import FACTORY_KEYS
 from native_manage import checked, import_entries
 from native_update import backup_all, export_dictionary, overlay_usage, transfer
-from import_personal import open_console, parse_named, usb_console_devices
+from import_personal import bluetooth_console_devices, open_bluetooth_console, open_console, parse_named, usb_console_devices
 from compile_dict import parse_outline
 from native_base_update import factory_package
 from native_snapshot import change_snapshot, clear_personal
@@ -27,6 +27,9 @@ from native_import_plan import named_import
 from native_layout import read_images, read_layout
 from manager_repack import capture_approved_repack, install_repack, last_repack_backup, preview_repack, restore_original
 
+REPACK_ACTIONS = {"preview_repack", "apply_repack", "restore_repack_backup"}
+IMPORT_ACTIONS = {"preview_import", "apply_import", "import"}
+USB_ONLY_ACTIONS = REPACK_ACTIONS | IMPORT_ACTIONS
 MAX_REQUEST = 48 * 1024 * 1024
 LARGE_JOURNAL_RECORDS = 4096
 FACTORY_CHOICES = {key: row[1] for key, row in FACTORY_KEYS.items()}
@@ -37,12 +40,12 @@ MAP_REFRESH_ACTIONS = {"refresh", "layout_map", "setup", "import", "apply_import
 INSTALLABLE_STATUS = re.compile(r"NATIVE2 (?:READY [0-9]+|UNPROVISIONED [0-9]+(?: .*)?)")
 
 
-def installer_view(console, status, *, reprovision=False):
+def installer_view(console, status, *, reprovision=False, transport="usb"):
     if not INSTALLABLE_STATUS.fullmatch(status):
-        raise RuntimeError("The USB installer is unavailable. Keep the left half connected and try again.")
+        raise RuntimeError("The dictionary installer is unavailable. Keep the left half connected and try again.")
     if console.command(FACTORY_CAPABILITIES) != "OK FACTORY2":
-        raise RuntimeError("This keyboard did not offer dictionary installation over USB.")
-    return {"setup": {"serial": console.serial, "packages": FACTORY_CHOICES,
+        raise RuntimeError("This keyboard did not offer dictionary installation.")
+    return {"transport": transport, "setup": {"serial": console.serial, "packages": FACTORY_CHOICES,
                       "expected_status": status, "reprovision": reprovision}}
 
 
@@ -110,32 +113,34 @@ def load_view(console, action, progress, show_view=None):
 
 
 def read_state(console):
+    transport = getattr(console, "transport", "usb")
     install_status = console.command("native_install status")
     if install_status == "ERR Native flash busy":
         raise RuntimeError("The keyboard is still checking dictionary flash. Try connecting again in a moment.")
     if install_status.startswith("NATIVE2 UNPROVISIONED "):
-        backup = last_repack_backup(console.serial)
+        backup = last_repack_backup(console.serial) if transport == "usb" else None
         if backup and console.command("native_install update recovery-capabilities") == "OK RECOVERY1":
-            return {"setup": {"serial": console.serial, "repack_backup": backup.name}}
+            return {"transport": transport, "setup": {"serial": console.serial, "repack_backup": backup.name}}
         if install_status == UNPROVISIONED:
-            return installer_view(console, install_status)
+            return installer_view(console, install_status, transport=transport)
         raise RuntimeError("The keyboard could not open its dictionary store. Use USB recovery or explicit reprovisioning.")
     if install_status.startswith("NATIVE2 INSTALL "):
-        raise RuntimeError("A dictionary install is in progress. Keep USB connected and refresh when it finishes.")
+        raise RuntimeError("A dictionary install is in progress. Keep the keyboard connected and refresh when it finishes.")
     if not install_status.startswith("NATIVE2 READY "):
-        raise RuntimeError("Connect the left half running Steno Squid Native firmware over USB.")
+        raise RuntimeError("Connect the left half running Steno Squid Native firmware.")
     try:
         status = json.loads(console.command("user_dictionary_status"))
     except json.JSONDecodeError as error:
-        raise RuntimeError("The dictionary store did not respond. Refresh the USB connection and try again.") from error
+        raise RuntimeError("The dictionary store did not respond. Refresh the connection and try again.") from error
     if not isinstance(status, dict) or status.get("format") != "SQBCAT02" or not status.get("ready"):
-        raise RuntimeError("The dictionary store is unavailable. Check USB and firmware.")
+        raise RuntimeError("The dictionary store is unavailable. Check the connection and firmware.")
     layouts = json.loads(console.command("get_parameter available_host_layouts"))
     adaptive = console.command("native_install update snapshot-capabilities") == "OK SNAPSHOT2"
     catalog = read_catalog(console)
     factory = console.command(FACTORY_CAPABILITIES) == "OK FACTORY2"
     return {
         "serial": console.serial,
+        "transport": transport,
         "catalog": catalog,
         "layouts": layouts,
         "layout": console.command("get_parameter host_layout"),
@@ -153,7 +158,7 @@ def read_state(console):
             "native_install update snapshot-clear-capabilities") == "OK CLEAR1",
         "adaptive_imports": adaptive,
         "factory_actions": FACTORY_ACTIONS if factory else {},
-        "repack": adaptive and not status["read_only"] and console.command(
+        "repack": transport == "usb" and adaptive and not status["read_only"] and console.command(
             "native_install update repack-capabilities") == "OK REPACK1",
         "layout_map": adaptive and console.command("native_install update layout-capabilities") == "OK MAP1",
     }
@@ -175,23 +180,25 @@ def read_import(source):
     return entries, names
 
 
-def setup_keyboard(serial, request, progress, show_view=None):
+def setup_keyboard(serial, request, progress, show_view=None, *, transport="usb"):
+    opener = open_bluetooth_console if transport == "bluetooth" else open_console
+    ready_options = {"opener": opener} if transport == "bluetooth" else {}
     if request.get("approved") is not True:
         raise ValueError("Confirm that setup can clear the external dictionary pool.")
     target = request.get("serial")
     if not isinstance(target, str) or not target or (serial and serial != target):
-        raise ValueError("Reconnect the keyboard and confirm setup for its USB serial.")
+        raise ValueError("Reconnect the keyboard and confirm setup for its serial number.")
     packages = request.get("packages")
     expected_status = request.get("expected_status", UNPROVISIONED)
     if not isinstance(expected_status, str) or not INSTALLABLE_STATUS.fullmatch(expected_status):
         raise ValueError("Open the installer to verify the keyboard before proceeding.")
     if expected_status != UNPROVISIONED and request.get("confirm_serial") != target:
-        raise ValueError("Confirm the USB serial before replacing the dictionary pool.")
-    with open_console(target) as console:
+        raise ValueError("Confirm the keyboard serial before replacing the dictionary pool.")
+    with opener(target) as console:
         if console.serial != target or console.command("native_install status") != expected_status:
             raise RuntimeError("The selected keyboard’s dictionary status changed. Reopen the installer.")
         if console.command(FACTORY_CAPABILITIES) != "OK FACTORY2":
-            raise RuntimeError("This keyboard did not offer dictionary installation over USB.")
+            raise RuntimeError("This keyboard did not offer dictionary installation.")
         if (not isinstance(packages, list) or not packages
                 or any(not isinstance(package, str) or package not in FACTORY_CHOICES for package in packages)
                 or len(set(packages)) != len(packages)):
@@ -201,19 +208,26 @@ def setup_keyboard(serial, request, progress, show_view=None):
         provision(console, image, manifest, progress, expected_status=expected_status)
     progress("Waiting for the keyboard to reconnect…")
     try:
-        view = wait_ready(target, load_state=lambda console: load_view(console, "setup", progress, show_view))
+        view = wait_ready(target, load_state=lambda console: load_view(console, "setup", progress, show_view),
+                          **ready_options)
     except RuntimeError:
         return {"commit_pending": True}
     return {**view, "installed": True}
 
 
-def run_job(serial, request, progress, show_view=None):
+def run_job(serial, request, progress, show_view=None, *, transport="usb"):
     action = request["action"]
+    if transport == "bluetooth" and action in USB_ONLY_ACTIONS:
+        if action in IMPORT_ACTIONS:
+            raise ValueError("Connect over USB to import JSON.")
+        raise ValueError("Connect over USB to repack or restore a repack backup.")
+    opener = open_bluetooth_console if transport == "bluetooth" else open_console
+    ready_options = {"opener": opener} if transport == "bluetooth" else {}
     if action == "setup":
-        return setup_keyboard(serial, request, progress, show_view)
+        return setup_keyboard(serial, request, progress, show_view, transport=transport)
     if action in {"apply_repack", "restore_repack_backup"}:
         restore = action == "restore_repack_backup"
-        with open_console(serial) as console:
+        with opener(serial) as console:
             serial = console.serial
             if not restore:
                 source, plan = capture_approved_repack(console, request, progress)
@@ -221,15 +235,15 @@ def run_job(serial, request, progress, show_view=None):
             restore_original(serial, request, progress)
         else:
             install_repack(source, plan, progress)
-        with open_console(serial) as console:
+        with opener(serial) as console:
             return {**load_view(console, action, progress, show_view), "repacked": not restore, "restored": restore}
     published = False
     report = {}
-    with open_console(serial) as console:
+    with opener(serial) as console:
         serial = console.serial
         if action == "open_installer":
             return {"state": installer_view(console, console.command("native_install status", timeout=5),
-                                            reprovision=True)}
+                                            reprovision=True, transport=transport)}
         if action in {"refresh", "layout_map"}:
             return load_view(console, action, progress, show_view)
         if action == "preview_repack":
@@ -375,11 +389,11 @@ def run_job(serial, request, progress, show_view=None):
         progress("Keyboard acknowledged the catalog commit. Waiting for it to reconnect…")
         try:
             view = wait_ready(serial, load_state=lambda console: load_view(console, action, progress, show_view),
-                              checking=lambda: progress("Saved. Keyboard is checking dictionaries…"))
+                              checking=lambda: progress("Saved. Keyboard is checking dictionaries…"), **ready_options)
         except RuntimeError:
             return {"commit_pending": True}
         return {**view, **report}
-    with open_console(serial) as console:
+    with opener(serial) as console:
         return {**load_view(console, action, progress, show_view), **report}
 
 
@@ -390,6 +404,7 @@ class Jobs:
         self.pending = Queue()
         self.stopping = False
         self.connected_serial = None
+        self.transport = "usb"
         self.next_connection_check = 0
         self.current = {"id": "", "status": "idle"}
 
@@ -400,7 +415,7 @@ class Jobs:
             if self.current["status"] == "running":
                 raise ValueError("A keyboard operation is already running.")
             identity = secrets.token_hex(8)
-            self.current = {"id": identity, "status": "running", "message": "Connecting over USB HID…"}
+            self.current = {"id": identity, "status": "running", "message": "Opening keyboard connection…"}
             self.pending.put_nowait(request)
         return identity
 
@@ -424,14 +439,39 @@ class Jobs:
             self.run(request)
 
     def run(self, request):
+        action = request["action"]
+        if action == "disconnect":
+            self.connected_serial = None
+            self.update(status="done", result={"disconnected": True}, view=None, connection_lost=False)
+            return
+        serial = self.connected_serial or self.serial
+        transport = request.get("transport", self.transport) if action == "refresh" else self.transport
         try:
-            result = run_job(self.serial, request, lambda message: self.update(message=message),
-                             lambda view: self.update(view=view))
+            if transport == "auto" and action == "refresh":
+                if usb_console_devices(serial):
+                    transport = "usb"
+                elif bluetooth_console_devices():
+                    transport = "bluetooth"
+                elif request.get("initial") is True:
+                    self.connected_serial = None
+                    self.update(status="done", result={"disconnected": True}, view=None, connection_lost=False)
+                    return
+                else:
+                    raise ValueError("Connect the left half by USB or pair it in your computer’s Bluetooth settings.")
+            if transport not in ("usb", "bluetooth"):
+                raise ValueError("Unknown keyboard connection.")
+            result = run_job(serial, request, lambda message: self.update(message=message),
+                             lambda view: self.update(view=view), transport=transport)
         except (Exception, SystemExit) as error:
+            if action == "refresh":
+                if transport in ("usb", "bluetooth"):
+                    self.transport = transport
+                self.connected_serial = None
             self.update(status="error", message=str(error), view=None)
         else:
             state = result.get("state")
             if state:
+                self.transport = transport
                 self.connected_serial = state.get("setup", state)["serial"]
             if result.get("commit_pending"):
                 self.connected_serial = None
@@ -444,7 +484,8 @@ class Jobs:
             return
         self.next_connection_check = now + 3
         try:
-            present = bool(usb_console_devices(self.connected_serial))
+            present = bool(bluetooth_console_devices() if self.transport == "bluetooth"
+                           else usb_console_devices(self.connected_serial))
         except (OSError, RuntimeError):
             present = False
         if not present:

@@ -166,7 +166,8 @@ def main():
     parser.add_argument("--as", dest="name", metavar="NAME", help="Import as a new named compact dictionary")
     parser.add_argument("--rename", nargs=2, metavar=("OLD", "NEW"), help="Rename an independent dictionary")
     parser.add_argument("--delete", metavar="NAME", help="Delete an independent dictionary")
-    parser.add_argument("--manager", action="store_true", help="Open the local Steno Squid Manager")
+    parser.add_argument("--manager", "--manage", action="store_true",
+                        help="Open the local Steno Squid Manager (default when no action is given)")
     parser.add_argument("--move", metavar="NAME", help="Move a dictionary in the lookup priority list")
     parser.add_argument("--position", type=int, metavar="N", help="Priority position for --move, starting at 1")
     parser.add_argument("--compact", action="store_true", help="Reclaim partly stale Native journals over USB HID")
@@ -189,8 +190,11 @@ def main():
     parser.add_argument("--diag", nargs="?", const="report", choices=["report", *sorted(DIAG)])
     args = parser.parse_args()
     actions = (args.install, args.personal, args.backup, args.verify, args.status, args.diag, args.compact, args.move, args.rename, args.delete, args.manager, args.backup_all, args.list_dictionaries, args.update, args.uninstall_factory, args.restore_factory)
-    if sum(map(bool, actions)) != 1:
+    action_count = sum(map(bool, actions))
+    if action_count > 1:
         parser.error("Choose exactly one action (see --help)")
+    if action_count == 0:
+        args.manager = True
     if args.dictionary is not None and not args.backup:
         parser.error("--dictionary goes with --backup")
     if args.name is not None and not args.personal:

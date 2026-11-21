@@ -8,6 +8,7 @@ let journalUsage = {};
 let flashMap;
 let busy = false;
 let connected = false;
+let connectionTransport = "usb";
 let connectionFailed = false;
 let importToApply;
 let optimizationToApply;
@@ -15,7 +16,7 @@ let cleanupToken;
 let repackPlan;
 const number = new Intl.NumberFormat();
 const jobMessages = {
-  open_installer: "Checking the USB installer…",
+  open_installer: "Checking the dictionary installer…",
   setup: "Preparing the selected factory dictionaries…",
   preview_optimize: "Calculating compact storage…",
   apply_optimize: "Saving compact dictionary…", layout_map: "Scanning memory…",
@@ -26,6 +27,14 @@ const jobMessages = {
   restore_repack_backup: "Restoring the original dictionary backup…",
   preview_compact: "Finding blocks to reclaim…", compact: "Reclaiming flash space…", clear_personal: "Clearing personal dictionary…"
 };
+
+const bluetoothSpeedWarning = "Dictionary transfers over Bluetooth can take significantly longer than over USB. You can continue over Bluetooth or switch to USB for a faster transfer.";
+
+function showBluetoothSpeedWarning(id, eligible = true) {
+  const warning = node(id);
+  warning.hidden = !eligible || connectionTransport !== "bluetooth";
+  warning.textContent = warning.hidden ? "" : bluetoothSpeedWarning;
+}
 
 function notify(text, error = false) {
   status.textContent = text;
@@ -38,14 +47,21 @@ function notify(text, error = false) {
 function selection() {
   return state?.catalog.find((row) => row.id === selectedId);
 }
-function setConnection(isConnected, lost = false) {
+function setConnection(isConnected, lost = false, transport = connectionTransport, serial) {
+  connectionTransport = transport;
   connected = isConnected;
   connectionFailed = lost;
-  node("connected").hidden = !isConnected;
-  const refresh = node("refresh");
-  refresh.hidden = isConnected;
-  refresh.textContent = lost ? "Refresh Connection" : "Connect over USB";
-  if (lost) {
+  const badge = node("connected");
+  badge.hidden = !isConnected;
+  if (isConnected) {
+    badge.textContent = `Steno Squid left · ${transport === "bluetooth" ? "Bluetooth" : "USB"}`;
+    badge.title = serial ? `Keyboard serial ${serial}` : "";
+  }
+  const button = node("refresh");
+  button.textContent = isConnected ? "Disconnect" : "Connect";
+  button.toggleAttribute("data-connected", isConnected);
+  if (!isConnected) {
+    clearImportPlan();
     state = undefined;
     setup = undefined;
     journalUsage = {};
@@ -64,12 +80,19 @@ function controls() {
   node("repack-restore").disabled = busy || !setup?.repack_backup;
   node("repack-cancel").disabled = busy;
   const importFields = node("import").elements;
-  importFields.file.disabled = importFields.name.disabled = busy || !state || state.read_only;
   for (const el of document.querySelectorAll("[data-write]")) el.disabled = busy || !state || state.read_only;
+  const usbImport = connectionTransport === "usb";
+  const importDisabled = busy || !state || state.read_only || !usbImport;
+  importFields.file.disabled = importFields.name.disabled = importDisabled;
+  node("import-preview").disabled = node("import-apply").disabled = importDisabled;
+  node("import-usb-note").hidden = usbImport;
   for (const id of ["refresh", "backup", "export", "reprovision",
     "emergency-provision", "setup-cancel"]) node(id).disabled = busy;
   node("emergency-provision").hidden = connected || !connectionFailed;
   node("flash-map-scan").disabled = busy;
+  const repack = node("repack-preview");
+  repack.disabled = busy || !state?.repack;
+  repack.title = connectionTransport === "bluetooth" ? "Connect over USB to repack" : "";
   if (!state) return;
   const row = selection();
   const rank = state.catalog.indexOf(row);
@@ -112,7 +135,7 @@ function render(newState, usage = {}) {
   clearOptimizationPlan();
   clearFactoryPlan();
   node("flash-map-panel").hidden = !state.layout_map;
-  node("repack-preview").hidden = !state.repack;
+  node("repack-preview").hidden = !state.repack && state.transport !== "bluetooth";
   updateImportControls();
   if (!selection()) selectedId = state.catalog[0]?.id;
   node("catalog").replaceChildren();
@@ -166,7 +189,7 @@ function render(newState, usage = {}) {
   }
   node("layout").replaceChildren(...state.layouts.map((layout) => new Option(layout, layout)));
   node("layout").value = state.layout;
-  setConnection(true);
+  setConnection(true, false, state.transport ?? "usb", state.serial);
   node("workspace").hidden = false;
 }
 async function request(path, payload) {
@@ -219,11 +242,14 @@ async function watch(id) {
       controls();
       viewShown = true;
     }
-    if (job.message && job.message !== "Connecting over USB HID…" && job.status === "running") notify(job.message);
+    if (job.message && job.message !== "Opening keyboard connection…" && job.status === "running") notify(job.message);
   } while (job.status === "running");
   if (job.status === "error") throw new Error(job.message);
   const result = job.result;
-  if (result.commit_pending) {
+  if (result.disconnected) {
+    setConnection(false);
+    notify("Plug in your left half or pair it in your computer’s Bluetooth settings.");
+  } else if (result.commit_pending) {
     setConnection(false, true);
     clearImportPlan();
     notify("The keyboard accepted the change. Refresh the connection to verify it before retrying.", true);
@@ -243,18 +269,19 @@ async function watch(id) {
     node("repack-restore").hidden = !recovering;
     node("setup-warning").textContent = setup.reprovision
       ? "Reprovisioning erases all dictionaries and saved edits on this keyboard. Download a full backup first if you want to keep them."
-      : "Setup clears the external dictionary pool. Keep the left half connected by USB until it reboots.";
+      : "Setup clears the external dictionary pool. Keep the left half connected until it reboots.";
     node("setup-cancel").hidden = !setup.reprovision;
     node("setup-packages").replaceChildren(...Object.entries(setup.packages ?? {}).map(([key, name]) => {
       const label = document.createElement("label");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.value = key;
-      checkbox.checked = true;
+      checkbox.checked = key === "lapwing-base";
       label.append(checkbox, name);
       return label;
     }));
-    setConnection(true);
+    setConnection(true, false, result.state.transport ?? "usb", setup.serial);
+    showBluetoothSpeedWarning("setup-speed-warning", !recovering);
     notify(recovering ? "The original repack backup is available."
       : setup.reprovision ? "Choose the factory dictionaries to reinstall." : "Connected. The keyboard needs dictionary setup.");
   } else if (result.state) {
@@ -466,7 +493,8 @@ function showImportPlan(plan) {
   node("import-preview").hidden = true;
   notify(plan.token ? "Review the import preview." : "Import stopped.");
   if (!plan.token) showImportError(state?.repack
-    ? `${plan.reason} Preview USB repack under External flash map to check for a larger free run.`
+    ? `${plan.reason} ${connectionTransport === "bluetooth" ? "Switch to USB to preview a repack."
+      : "Preview USB repack under External flash map to check for a larger free run."}`
     : plan.reason);
 }
 function clearOptimizationPlan() {
@@ -555,8 +583,8 @@ async function run(payload) {
     }
     await watch(id);
   } catch (error) {
-    if (payload.action === "refresh" && !connected) connectionFailed = true;
-    if (connected && /^(No reply to |USB HID write failed|Connect one Steno Squid left half)/.test(error.message)) {
+    if (payload.action === "refresh") setConnection(false, true);
+    if (connected && /^(No reply to |HID (?:read|write) failed|Connect one Steno Squid left half|Pair and connect one Steno Squid left half|The paired keyboard’s Bluetooth Manager console)/.test(error.message)) {
       setConnection(false, true);
     }
     if (["apply_repack", "restore_repack_backup"].includes(payload.action)) {
@@ -575,7 +603,7 @@ async function run(payload) {
         node("setup-panel").hidden = true;
       }
       if (payload.action === "open_installer" && !connected) {
-        notify(`Emergency provisioning needs a responding USB installer. ${error.message}`, true);
+        notify(`Emergency provisioning needs a responding dictionary installer. ${error.message}`, true);
       } else {
         notify(error.message, true);
       }
@@ -586,9 +614,8 @@ async function run(payload) {
     controls();
   }
 }
-for (const [id, action] of [["refresh", "refresh"], ["backup", "backup"]]) {
-  node(id).onclick = () => run({action});
-}
+node("refresh").onclick = () => run(connected ? {action: "disconnect"} : {action: "refresh", transport: "auto"});
+node("backup").onclick = () => run({action: "backup"});
 node("reprovision").onclick = node("emergency-provision").onclick = () => run({action: "open_installer"});
 node("setup-cancel").onclick = () => run({action: "refresh"});
 node("repack-preview").onclick = () => run({action: "preview_repack"});
@@ -634,7 +661,7 @@ node("setup-form").onsubmit = (event) => {
   const packages = [...node("setup-form").querySelectorAll("input:checked")].map((input) => input.value);
   if (!packages.length) return;
   const confirmSerial = setup.reprovision
-    ? window.prompt(`This erases all dictionaries and saved edits on the connected keyboard. Type its USB serial ${setup.serial} to confirm.`)
+    ? window.prompt(`This erases all dictionaries and saved edits on the connected keyboard. Type its serial number ${setup.serial} to confirm.`)
     : null;
   const approved = setup.reprovision ? confirmSerial === setup.serial
     : window.confirm(`Install the selected dictionaries on ${setup.serial}? This clears its external dictionary pool.`);
@@ -666,6 +693,7 @@ function showFactoryPlan(plan) {
   node("factory-summary").textContent = plan.restoring
     ? "Starts disabled. The left half will reboot."
     : "Saved edits are kept. The left half will reboot.";
+  showBluetoothSpeedWarning("factory-speed-warning", plan.restoring);
   node("factory-apply").textContent = `${plan.restoring ? "Install" : "Delete"} ${plan.name}`;
   node("factory-preview").hidden = false;
   notify("Review the change in Dictionaries.");
@@ -728,7 +756,7 @@ node("import").oninput = (event) => {
   if (file) form.requestSubmit();
 };
 node("import-apply").onclick = () => {
-  if (importToApply?.token) {
+  if (connectionTransport === "usb" && importToApply?.token) {
     const approved = importToApply;
     clearImportPlan();
     run({action: "apply_import", ...approved});
@@ -736,22 +764,21 @@ node("import-apply").onclick = () => {
 };
 node("import").onsubmit = async (event) => {
   event.preventDefault();
-  if (busy || !state || state.read_only || node("import-preview").hidden) return;
+  if (node("import-preview").disabled || node("import-preview").hidden) return;
   const {file: fileInput, name: nameInput} = event.currentTarget.elements;
   const file = fileInput.files[0];
   const name = nameInput.value.trim();
   if (!file) return;
   try {
     const source = await file.text();
-    if (busy || fileInput.files[0] !== file || nameInput.value.trim() !== name) return;
+    if (node("import-preview").disabled || fileInput.files[0] !== file || nameInput.value.trim() !== name) return;
     if (name) {
       clearImportPlan();
       importToApply = {source, name};
       await run({action: "preview_import", ...importToApply});
     } else {
-      if (!window.confirm(
-        "Import this file into your personal dictionary? Entries with matching outlines will be replaced."
-      )) return;
+      const confirmation = "Import this file into your personal dictionary? Entries with matching outlines will be replaced.";
+      if (!window.confirm(confirmation)) return;
       await run({action: "import", source});
     }
   } catch (error) {
@@ -771,13 +798,13 @@ setInterval(async () => {
   if (lost && connected && !busy) {
     setConnection(false, true);
     controls();
-    notify("Keyboard disconnected. Reconnect USB, then refresh the connection.", true);
+    notify("Keyboard disconnected. Select Connect to try again.", true);
   }
 }, 2000);
 request("/api/job").then(async (job) => {
   if (busy) return;
   if (job.status !== "running") {
-    await run({action: "refresh"});
+    await run({action: "refresh", transport: "auto", initial: true});
     return;
   }
   busy = true;
