@@ -25,19 +25,19 @@
 | **Plover** | Raw steno strokes sent over Plover HID to Plover on the computer, using Plover's dictionaries. |
 | **Practice** | Offline practice drills using only your keyboard, no PC required! |
 
-## Onboard dictionaries
+## Factory dictionaries
 
-| Dictionary | Default |
+| Dictionary | Size |
 | --- | --- |
-| Personal dictionary | On |
-| Lapwing Commands | On |
-| Lapwing Numbers | On |
-| Lapwing UK Additions | **Off** |
-| Lapwing Proper Nouns | On |
-| Lapwing Base | On |
-| Plover Base | **Off** |
+| Personal dictionary | —— |
+| Lapwing Commands | kb |
+| Lapwing Numbers | kb |
+| Lapwing UK Additions | kb |
+| Lapwing Proper Nouns | kb |
+| Lapwing Base | mb |
+| Plover Base | mb |
 
-The full factory set contains 291,403 entries. A Boardsource test stored 918,000 compiled entries across 16 dictionaries on 16 MiB of flash. That total includes repeated dictionary copies and counts entries as stored, including matching outlines across dictionaries.
+The full factory set contains 291,403 entries. A Boardsource test stored 918,000 compiled entries across 16 dictionaries on 16 MiB of flash.
 
 You can set active dictionary and priorities in [StenoSquid Manager](https://github.com/disarmyouwitha/StenoSquid#stenosquid-manager). Selections and personal edits survive reboot and firmware updates. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
