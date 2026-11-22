@@ -37,8 +37,6 @@
 | Lapwing Base | 1.75 MiB |
 | Plover Base | 2.23 MiB |
 
-Sizes are measured JSC4 images including SHI1 hints, not the original JSON files or the flash blocks reserved for them.
-
 The full factory set contains 291,403 entries. A Boardsource test stored 918,000 compiled entries across 16 dictionaries on 16 MiB of flash.
 
 You can set active dictionary and priorities in [StenoSquid Manager](https://github.com/disarmyouwitha/StenoSquid#stenosquid-manager). Selections and personal edits survive reboot and firmware updates. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
@@ -65,7 +63,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 ### Provision a new keyboard
 
 1. **[Download firmware](https://github.com/disarmyouwitha/StenoSquid/releases/latest)** and flash the matching **Left** and **Right** UF2s for your board. Use the same pair with or without a nice!view. Practice uses the right display.
-2. From the same release, download and extract **`StenoSquidManagerOffline.zip`**. Open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). No installation, Python, or terminal needed.
+2. From the same release, download and extract **`StenoSquidManager.zip`**. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
 3. Plug the **left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
 4. In **Set up dictionaries**, choose the factory dictionaries you want and click **Install selected dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
 
