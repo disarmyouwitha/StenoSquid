@@ -113,7 +113,7 @@ def plan_named_snapshot(snapshot, protected, name, compiled, limit=16):
     return Update(blocks, metadata, payload, 0, 0)
 
 
-def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=False, convert=False, clear=False):
+def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=False, convert=False, clear=False, merge_id=None):
     deleting = compiled is None and not clear
     if compiled is not None and not (consolidate or convert):
         raise ValueError("Existing compact dictionaries can only be rebuilt by consolidation.")
@@ -124,11 +124,17 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
         raise ValueError("Select the built-in personal dictionary to clear")
     if not (convert or clear) and (target[11] != SNAPSHOT_MARKER or (deleting and row_name(target) == "user_dictionary")):
         raise ValueError("Select an eligible compact user dictionary")
+    retiring = None
+    if merge_id is not None:
+        if not consolidate or compiled is None or convert or clear:
+            raise ValueError("A merge requires a compiled replacement.")
+        target, retiring = merge_rows(snapshot, identity, merge_id)
     consolidate |= convert or clear
     old_base = struct.unpack_from("<H", target, 8)[0]
+    retiring_base = struct.unpack_from("<H", retiring, 8)[0] if retiring else None
     kept, remap = [], {}
     for i, extent in enumerate(snapshot.extents):
-        if i != old_base and (not consolidate or extent[4] < 3):
+        if i not in (old_base, retiring_base) and (not consolidate or extent[4] < 3):
             remap[i] = len(kept)
             kept.append(EXTENT.pack(*extent))
     blocks, added, write = stage_allocation(protected)
@@ -137,7 +143,7 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
         write(compiled, 1)
     if consolidate:
         retained = [entry for entry in snapshot.entries.values()
-                    if entry.identity != identity or (convert and entry.operation == 1)]
+                    if entry.identity not in (identity, merge_id) or (convert and entry.operation == 1)]
         for kind, entries in ((3, sorted(retained, key=lambda entry: entry.outline_key)),
                               (4, sorted((entry for entry in retained if not entry.operation),
                                          key=lambda entry: (entry.text, entry.key)))):
@@ -148,7 +154,7 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
         raise NoSpace("Catalog extent limit")
     rows = []
     for original in snapshot.rows:
-        if deleting and original is target:
+        if (deleting and original is target) or original is retiring:
             continue
         row = bytearray(original)
         base = struct.unpack_from("<H", row, 8)[0]
@@ -157,7 +163,7 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
         elif original is target and convert:
             struct.pack_into("<HBB", row, 8, remap[old_base], 0, SNAPSHOT_MARKER)
         elif base != 65535:
-            if base == old_base and original is not target:
+            if base == retiring_base or (base == old_base and original is not target):
                 raise ValueError("Snapshot unexpectedly shares its compact extent")
             struct.pack_into("<H", row, 8, remap[base])
         rows.append(row)
@@ -168,6 +174,101 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
     payload = bytes(prefix) + b"".join(rows) + b"".join(extents)
     metadata = write(payload, 0)
     return Update(blocks, metadata, payload, 0, 0)
+
+
+def merge_rows(snapshot, upper_id, lower_id):
+    for upper, lower in zip(snapshot.rows, snapshot.rows[1:]):
+        if (struct.unpack_from("<I", upper)[0], struct.unpack_from("<I", lower)[0]) != (upper_id, lower_id):
+            continue
+        if (upper[11] == lower[11] == SNAPSHOT_MARKER
+                and snapshot.personal not in (upper_id, lower_id)
+                and upper[4:8] == lower[4:8]
+                and upper[8:10] != lower[8:10]):
+            return upper, lower
+    raise ValueError("Choose two adjacent added compact dictionaries with the same Active setting.")
+
+
+def merge_limit(console):
+    capability = console.command("native_install update snapshot-merge-capabilities").split()
+    if len(capability) == 3 and capability[:2] == ["OK", "MERGE1"] and capability[2].isdigit():
+        limit = int(capability[2])
+        if 7 <= limit <= 64:
+            return limit
+    return None
+
+
+def merged_entries(snapshot, upper, lower, read):
+    lower_entries = effective_entries(snapshot, row_name(lower), read)
+    upper_entries = effective_entries(snapshot, row_name(upper), read)
+    # A tombstone only suppresses its own source. Priority decides overlaps.
+    merged = lower_entries | upper_entries
+    return merged, len(upper_entries) + len(lower_entries) - len(merged)
+
+
+def offline_merge_token(snapshot, serial, upper, lower):
+    digest = hashlib.sha256(json.dumps([serial, upper, lower, snapshot.highwater]).encode())
+    digest.update(snapshot.payload)
+    return digest.hexdigest()
+
+
+def merge_snapshots(console, upper_id, lower_id, *, expected=None, progress=print):
+    if any(type(identity) is not int or not 0 < identity <= 0xffffffff for identity in (upper_id, lower_id)):
+        raise ValueError("Select two compact dictionaries.")
+    if merge_limit(console) is None:
+        raise ValueError("Compact dictionary merging is unavailable.")
+    answer = update_command(console, f"begin snapshot-merge {upper_id} {lower_id}")
+    published = False
+    try:
+        snapshot, protected = read_snapshot(console, answer)
+        upper, lower = merge_rows(snapshot, upper_id, lower_id)
+        names = [row_name(upper), row_name(lower)]
+        progress("Reading both compact dictionaries…")
+        def read(at, n):
+            return read_flash(console, at, n)
+
+        merged, duplicates = merged_entries(snapshot, upper, lower, read)
+        progress("Compiling the merged dictionary…")
+        compiled = compile_snapshot(names[0], {parse_outline(key): value.encode("utf-8")
+                                              for key, value in merged.items()})
+        free, largest = inspect_free(protected)
+        report = dict(names=names, ids=[upper_id, lower_id], entries=len(merged),
+                      duplicates=duplicates, source_image_segments=[
+                          snapshot.extents[struct.unpack_from("<H", row, 8)[0]][1] for row in (upper, lower)
+                      ],
+                      image_segments=(len(compiled.data) + SEGMENT - 1) // SEGMENT,
+                      free_segments=free, largest_free_run=largest, reserve=3)
+        try:
+            update = plan_change(snapshot, protected, upper_id, compiled, consolidate=True, merge_id=lower_id)
+        except NoSpace as error:
+            if expected is not None:
+                raise
+            fallback = {}
+            if (console.serial and console.command("native_install update repack-capabilities") == "OK REPACK1"
+                    and console.command("native_install update recovery-capabilities") == "OK RECOVERY1"):
+                fallback = dict(serial=console.serial, offline_token=offline_merge_token(
+                    snapshot, console.serial, upper_id, lower_id))
+            return dict(report, token=None, reason=str(error), **fallback)
+        _, rows, _ = struct.unpack_from("<IHH", update.payload)
+        next_extents = EXTENT.iter_unpack(update.payload[32 + 96 * rows:])
+        segment_delta = sum(extent[1] for extent in next_extents) - sum(extent[1] for extent in snapshot.extents)
+        fingerprint = hashlib.sha256(json.dumps([console.serial, answer, upper_id, lower_id,
+                                                  snapshot.highwater], separators=(",", ":")).encode())
+        fingerprint.update(snapshot.payload)
+        for segment, block in sorted(update.segments.items()):
+            fingerprint.update(struct.pack("<II", segment, len(block)))
+            fingerprint.update(block)
+        token = fingerprint.hexdigest()
+        if expected is None:
+            return dict(report, token=token, segment_delta=segment_delta,
+                        staging_segments=len(update.segments))
+        if expected != token:
+            raise ValueError("The dictionaries or available space changed. Preview the merge again.")
+        publish(console, update, progress)
+        published = True
+        return names[0]
+    finally:
+        if not published:
+            abort(console)
 
 
 def journal_baseline(snapshot, identity, additions=None):

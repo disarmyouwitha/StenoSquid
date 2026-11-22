@@ -8,8 +8,9 @@ import secrets
 
 from build_native_image import SEGMENT, overlay_record_span
 from native_layout import read_images, read_layout
-from native_recovery import recover_usb, save_atomic, sync_directory
-from native_repack import RESERVE, build_repack, read_bundle, restore_repack, segment_count
+from native_recovery import reconstruct, recover_usb, save_atomic, sync_directory
+from native_repack import RESERVE, build_merge_repack, build_repack, read_bundle, restore_repack, segment_count
+from native_snapshot import offline_merge_token
 from native_update import backup_all, overlay_usage
 
 
@@ -93,6 +94,16 @@ def preview_repack(console, progress):
     return result
 
 
+def backup_for_rewrite(console, progress):
+    label = "Backing up dictionaries and saved edits"
+    progress(f"{label}…")
+
+    def report(received, total):
+        progress(f"{label}: {received / 1024:,.1f} / {total / 1024:,.1f} KiB ({received * 100 // total}%)")
+
+    return backup_all(console, on_progress=report)
+
+
 def capture_approved_repack(console, request, progress):
     serial = console.serial
     if request.get("serial") != serial or request.get("confirm") != serial:
@@ -101,8 +112,7 @@ def capture_approved_repack(console, request, progress):
     if not plan.get("token") or request.get("token") != plan["token"]:
         raise ValueError("Flash changed since the approved preview. Preview USB repack again.")
 
-    progress("Backing up dictionaries and saved edits…")
-    source = backup_all(console)
+    source = backup_for_rewrite(console, progress)
     status = json.loads(console.command("user_dictionary_status"))
     if (source["capture"]["generation"] != plan["state"]["generation"] or
             any(status[key] != value for key, value in plan["state"].items())):
@@ -119,6 +129,36 @@ def install_repack(source, plan, progress):
     after = report["target_layout"]
     if any(after[key] < plan["after"][key] for key in ("free_segments", "largest_free_run")):
         raise RuntimeError("The verified plan has less space than the approved preview. No erase was started.")
+    install_verified_bundle(source, target, serial, progress)
+
+
+def capture_approved_merge(console, request, progress):
+    serial = console.serial
+    upper, lower = request.get("upper"), request.get("lower")
+    token = request.get("token")
+    if (not serial or request.get("serial") != serial or request.get("confirm") != serial
+            or not isinstance(token, str) or not re.fullmatch(r"[0-9a-f]{64}", token)
+            or any(type(identity) is not int or not 0 < identity <= 0xffffffff for identity in (upper, lower))):
+        raise ValueError("Confirm a USB merge preview for this keyboard.")
+    if (console.command("native_install update repack-capabilities") != "OK REPACK1"
+            or console.command("native_install update recovery-capabilities") != "OK RECOVERY1"):
+        raise RuntimeError("This keyboard does not offer guarded USB repacking.")
+
+    source = backup_for_rewrite(console, progress)
+    original = reconstruct(source)
+    if token != offline_merge_token(original[1], serial, upper, lower):
+        raise ValueError("The dictionaries changed after the preview. No erase was started. Preview the merge again.")
+    return source, original
+
+
+def install_offline_merge(source, original, request, progress):
+    progress("Building and verifying the merged layout on this computer…")
+    target, name = build_merge_repack(source, original, request["upper"], request["lower"])
+    install_verified_bundle(source, target, request["serial"], progress)
+    return name
+
+
+def install_verified_bundle(source, target, serial, progress):
     directory = plan_directory(serial, secrets.token_hex(16))
     directory.mkdir(mode=0o700, parents=True)
     # Make the backup discoverable before any operation can erase the pool.
@@ -132,7 +172,7 @@ def install_repack(source, plan, progress):
     _, target_hash = read_bundle(optimized, durable=True)
     save_atomic(directory / "attempt.json", {"original_sha256": source["sha256"],
                                             "optimized_file_sha256": target_hash})
-    restore_repack(original, optimized, serial, f"{serial}:{target_hash}", progress, live=True)
+    restore_repack(original, optimized, serial, f"{serial}:{target_hash}", progress, live=True, show_hashes=False)
 
 
 def last_repack_backup(serial):

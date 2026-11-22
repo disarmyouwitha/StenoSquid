@@ -366,7 +366,7 @@ def read_snapshot(console, answer, *, metadata_only=False):
     return Snapshot(read, int(address), int(length), int(checksum), metadata_only=metadata_only), protected
 
 
-def read_flash(console, start, size):
+def read_flash(console, start, size, *, on_read=None):
     import base64
 
     result = bytearray()
@@ -377,10 +377,12 @@ def read_flash(console, start, size):
         if len(data) != count:
             raise RuntimeError("Short snapshot read")
         result.extend(data)
+        if on_read is not None:
+            on_read(count)
     return bytes(result)
 
 
-def backup_all(console):
+def backup_all(console, *, on_progress=None):
     """Export the catalog and exact referenced extents from one frozen view."""
     from native_recovery import capture, digest
 
@@ -388,7 +390,24 @@ def backup_all(console):
     answer = update_command(console, "begin backup")
     try:
         snapshot, _ = read_snapshot(console, answer, metadata_only=True)
-        result = capture(lambda start, size: read_flash(console, start, size), snapshot, layout)
+        total = sum(size for _, _, size, *_ in snapshot.extents)
+        reporting = on_progress is not None and total > 0
+        received = last_percent = 0
+        if reporting:
+            on_progress(0, total)
+
+        def count_bytes(count):
+            nonlocal received, last_percent
+            received += count
+            percent = received * 100 // total
+            if percent != last_percent:
+                last_percent = percent
+                on_progress(received, total)
+
+        def read(start, size):
+            return read_flash(console, start, size, on_read=count_bytes if reporting else None)
+
+        result = capture(read, snapshot, layout)
         if console.command("get_parameter host_layout") != layout:
             raise RuntimeError("Host layout changed during backup. Retry the backup.")
         if serial := getattr(console, "serial", None):

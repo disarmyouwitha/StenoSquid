@@ -66,6 +66,8 @@ class Keyboard:
             return "OK MANAGE1"
         if command == "native_install update snapshot-capabilities":
             return "OK SNAPSHOT2" if self.adaptive else "ERR Unsupported"
+        if command == "native_install update snapshot-merge-capabilities":
+            return "OK MERGE1 16" if self.adaptive else "ERR Unsupported"
         if command == "native_install update personal-snapshot-capabilities":
             return "OK PERSONAL1"
         if command == "native_install update journal-snapshot-capabilities":
@@ -261,13 +263,13 @@ class ManagerTest(unittest.TestCase):
             backup.assert_not_called()
             install.assert_not_called()
             self.assertTrue(self.run_job("apply_repack", **fields, confirm=serial)["repacked"])
-            backup.assert_called_once_with(self.keyboard)
+            backup.assert_called_once_with(self.keyboard, on_progress=unittest.mock.ANY)
             build.assert_called_once_with(source, [])
             saved = manager_repack.last_repack_backup(serial)
             self.assertEqual(json.loads((saved / "original.json").read_text()), source)
             _, target_hash = manager_repack.read_bundle(saved / "optimized.json")
             self.assertEqual(install.call_args.args[3], serial + ":" + target_hash)
-            self.assertTrue(install.call_args.kwargs["live"])
+            self.assertEqual(install.call_args.kwargs, {"live": True, "show_hashes": False})
 
             self.keyboard.install_status = "NATIVE2 UNPROVISIONED 3"
             self.assertEqual(manager.read_state(self.keyboard)["setup"]["repack_backup"], saved.name)
@@ -278,6 +280,29 @@ class ManagerTest(unittest.TestCase):
             self.assertTrue(reply["restored"])
             self.assertEqual(restore.call_args.args[:3], (source, serial, serial))
             self.assertTrue(restore.call_args.kwargs["unprovisioned_only"])
+
+    def test_usb_merge_requires_approval_and_checks_backup_before_install(self):
+        self.keyboard.adaptive = True
+        serial = self.keyboard.serial
+        source = {"capture": {"serial": serial}}
+        original = (b"image", unittest.mock.Mock(payload=b"catalog", highwater=3))
+        token = manager_repack.offline_merge_token(original[1], serial, 8, 9)
+        fields = {"serial": serial, "confirm": serial, "upper": 8, "lower": 9, "token": token}
+        with patch.object(manager_repack, "backup_all", return_value=source) as backup, \
+                patch.object(manager_repack, "reconstruct", return_value=original), \
+                patch.object(manager, "install_offline_merge", return_value="Upper") as install, \
+                patch.object(manager, "load_view", return_value={"state": {"serial": serial}}):
+            with self.assertRaisesRegex(ValueError, "Connect over USB"):
+                manager.run_job(None, {"action": "apply_offline_merge", **fields}, lambda _: None,
+                                transport="bluetooth")
+            with self.assertRaisesRegex(ValueError, "Confirm"):
+                self.run_job("apply_offline_merge", **{**fields, "confirm": "different device"})
+            backup.assert_not_called()
+            with self.assertRaisesRegex(ValueError, "No erase was started"):
+                self.run_job("apply_offline_merge", **{**fields, "token": "0" * 64})
+            install.assert_not_called()
+            self.assertEqual(self.run_job("apply_offline_merge", **fields)["merged"], "Upper")
+            self.assertEqual(install.call_args.args[:2], (source, original))
 
     def test_repack_preview_with_no_gain_offers_no_rewrite(self):
         self.keyboard.adaptive = True
@@ -500,6 +525,22 @@ class ManagerTest(unittest.TestCase):
             jobs.check_connection()
         self.assertIsNone(jobs.connected_serial)
         self.assertTrue(jobs.snapshot()["connection_lost"])
+
+    def test_compact_merge_previews_and_requires_usb_and_approval(self):
+        self.keyboard.adaptive = True
+        self.assertEqual(self.run_job("refresh")["state"]["merge_limit"], 16)
+        with self.assertRaisesRegex(ValueError, "Connect over USB"):
+            manager.run_job(None, {"action": "preview_merge"}, lambda _: None, transport="bluetooth")
+        with patch.object(manager, "merge_snapshots", return_value={"token": "a" * 64}) as merge:
+            self.assertEqual(self.run_job("preview_merge", upper=8, lower=9)["merge_plan"]["token"], "a" * 64)
+            self.assertEqual(merge.call_args.args[1:], (8, 9))
+            with self.assertRaisesRegex(ValueError, "Preview the merge"):
+                self.run_job("apply_merge", upper=8, lower=9)
+            merge.assert_called_once()
+        with patch.object(manager, "merge_snapshots", return_value="Upper") as merge, \
+                patch.object(manager, "wait_ready", return_value={"state": {}}):
+            self.assertEqual(self.run_job("apply_merge", upper=8, lower=9, token="a" * 64)["merged"], "Upper")
+            self.assertEqual(merge.call_args.kwargs["expected"], "a" * 64)
 
     def test_named_journal_can_preview_conversion(self):
         self.keyboard.adaptive = True

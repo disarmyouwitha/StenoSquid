@@ -42,6 +42,7 @@
           <p>Highest lookup priority first.</p>
         </div>
         <p id="journal-size-error" class="inline-error" role="alert" hidden></p>
+        <p id="active-dictionary-warning" class="transfer-warning" hidden></p>
         <p id="journal-budget" hidden>The shared journal is large. Select a journal dictionary and choose Compact to reduce it.</p>
         <div class="table-wrap">
           <table>
@@ -78,6 +79,10 @@
           <p id="optimization-publish">Keep the keyboard connected. Publishing can pause typing and will reboot the left half.</p>
           <button type="button" id="optimization-apply" data-write>Compact</button>
           <button type="button" id="optimization-cancel">Cancel</button>
+        </div>
+        <div id="merge-panel" hidden>
+          <p id="merge-capacity"></p>
+          <button type="button" id="merge-open" data-write>Merge compact dictionaries</button>
         </div>
       </section>
       <div class="forms">
@@ -166,5 +171,46 @@
       </section>
     </div>
   </main>
+  <dialog id="merge-dialog" aria-labelledby="merge-title">
+    <h2 id="merge-title">Merge compact dictionaries</h2>
+    <div id="merge-choose">
+      <p>Choose two adjacent dictionaries. The dictionary on the left merges into the one on the right, which keeps its name and priority.</p>
+      <fieldset id="merge-pairs" aria-label="Dictionary pairs"></fieldset>
+    </div>
+    <div id="merge-plan" hidden>
+      <div class="merge-comparison">
+        <div>
+          <h3>Before</h3>
+          <div id="merge-before"></div>
+        </div>
+        <span class="merge-arrow" aria-hidden="true">→</span>
+        <div>
+          <h3>After</h3>
+          <div class="import-format" data-format="snapshot">
+            <strong id="merge-name"></strong>
+            <p id="merge-entries"></p>
+            <div id="merge-blocks"></div>
+          </div>
+        </div>
+      </div>
+      <p id="merge-overlaps" hidden></p>
+      <p>Saved edits and deletions from both dictionaries are folded into the result.</p>
+      <p id="merge-space"></p>
+      <p id="merge-note"></p>
+      <p id="merge-error" class="inline-error" hidden></p>
+    </div>
+    <div id="merge-job" role="status" hidden>
+      <span class="job-spinner" aria-hidden="true" hidden></span>
+      <output id="merge-status"></output>
+      <progress id="merge-progress" max="100" aria-label="Merge progress" hidden></progress>
+    </div>
+    <div class="toolbar merge-actions">
+      <button type="button" id="merge-preview" data-write>Preview merge</button>
+      <button type="button" id="merge-apply" data-write hidden>Merge</button>
+      <button type="button" id="merge-offline" data-write hidden>Merge via USB repack</button>
+      <button type="button" id="merge-back" hidden>Back</button>
+      <button type="button" id="merge-cancel">Cancel</button>
+    </div>
+  </dialog>
 </body>
 </html>
