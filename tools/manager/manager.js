@@ -58,7 +58,7 @@ function setConnection(isConnected, lost = false, transport = connectionTranspor
     badge.title = serial ? `Keyboard serial ${serial}` : "";
   }
   const button = node("refresh");
-  button.textContent = isConnected ? "Disconnect" : "Connect";
+  button.textContent = isConnected ? "Reconnect" : "Connect";
   button.toggleAttribute("data-connected", isConnected);
   if (!isConnected) {
     clearImportPlan();
@@ -84,6 +84,7 @@ function controls() {
   const usbImport = connectionTransport === "usb";
   const importDisabled = busy || !state || state.read_only || !usbImport;
   importFields.file.disabled = importFields.name.disabled = importDisabled;
+  node("import-clear-name").disabled = importDisabled;
   node("import-preview").disabled = node("import-apply").disabled = importDisabled;
   node("import-usb-note").hidden = usbImport;
   for (const id of ["refresh", "backup", "export", "reprovision",
@@ -591,7 +592,7 @@ async function run(payload) {
     }
     if (["apply_repack", "restore_repack_backup"].includes(payload.action)) {
       setConnection(false, true);
-      notify(`${error.message} Refresh Connection to check the keyboard and recover if needed.`, true);
+      notify(`${error.message} Select Connect to check the keyboard and recover if needed.`, true);
     } else if (importing) {
       notify("Import stopped.");
       showImportError(error.message);
@@ -616,7 +617,7 @@ async function run(payload) {
     controls();
   }
 }
-node("refresh").onclick = () => run(connected ? {action: "disconnect"} : {action: "refresh", transport: "auto"});
+node("refresh").onclick = () => run({action: "refresh", transport: "auto"});
 node("backup").onclick = () => run({action: "backup"});
 node("reprovision").onclick = node("emergency-provision").onclick = () => run({action: "open_installer"});
 node("setup-cancel").onclick = () => run({action: "refresh"});
@@ -748,6 +749,12 @@ node("edit").onsubmit = (event) => {
   event.preventDefault();
   const fields = new FormData(event.currentTarget);
   run({action: event.submitter.value, id: selectedId, outline: fields.get("outline").trim(), translation: fields.get("translation")});
+};
+node("import-clear-name").onclick = () => {
+  const name = node("import").elements.name;
+  name.value = "";
+  name.dispatchEvent(new Event("input", {bubbles: true}));
+  name.focus();
 };
 node("import").oninput = (event) => {
   const form = event.currentTarget;

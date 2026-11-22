@@ -3,9 +3,9 @@
 ✅ZMK Wireless Keyboard\
 ✅PloverHID\
 ✅Javelin onboard steno\
-🤌🍇 Wireless dictionary updates\
+🤌🍇 Wireless dictionary editing\
 🦑 Practice with just your keyboard!\
-📚 Tested: 440,000+ total stored entries on 16 MiB!
+📚 Tested: 900,000+ total stored entries on 16 MiB!
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
 (But it should work with any nRF52840 `Nice!Nano` microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
@@ -37,7 +37,7 @@
 | Lapwing Base | On |
 | Plover Base | **Off** |
 
-StenoSquid by default installs 291,403 factory dictionary entries. Tests verified an additional ~150,000 entries in the shared journal, for ~440,000 total stored entries. (Compacting dictionary snapshots can make significantly more efficient use of the same 16 MiB flash!)
+The full factory set contains 291,403 entries. A Boardsource test stored 918,000 compiled entries across 16 dictionaries on 16 MiB of flash. That total includes repeated dictionary copies and counts entries as stored, including matching outlines across dictionaries.
 
 You can set active dictionary and priorities in [StenoSquid Manager](https://github.com/disarmyouwitha/StenoSquid#stenosquid-manager). Selections and personal edits survive reboot and firmware updates. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
