@@ -1,6 +1,7 @@
 # Offline StenoSquid Manager
 
-Download and extract `StenoSquidManager.zip`, then open
+Download and extract `boardsource.zip` or `nicenano.zip` for your board. Each
+contains `Left.uf2`, `Right.uf2`, and `StenoSquidManager.html`. Open
 **StenoSquidManager.html in desktop Chrome or Edge 137 or newer**. Connect the
 left half and choose **Connect**. You can also drag the HTML file into Chrome.
 

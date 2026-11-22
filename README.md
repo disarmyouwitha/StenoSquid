@@ -62,8 +62,8 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ### Provision a new keyboard
 
-1. **[Download firmware](https://github.com/disarmyouwitha/StenoSquid/releases/latest)** and flash the matching **Left** and **Right** UF2s for your board. Use the same pair with or without a nice!view. Practice uses the right display.
-2. From the same release, download and extract **`StenoSquidManager.zip`**. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
+1. **[Download your board bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use the same pair with or without a nice!view. Practice uses the right display.
+2. Open the included **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
 3. Plug the **left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
 4. In **Set up dictionaries**, choose the factory dictionaries you want and click **Install selected dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
 
@@ -75,7 +75,7 @@ That's it! Use Manager to edit translations, import/export dictionaries, enable 
 
 StenoSquid Manager is the home for dictionary installation, importing, exporting, editing, renaming, deleting, priorities, backups, and flash management.
 
-Download **`StenoSquidManager.zip`** from [Releases](https://github.com/disarmyouwitha/StenoSquid/releases/latest), extract it, and open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). The ZIP contains just the HTML file. The app includes its runtime and factory dictionaries and works offline, even on first launch. No Python installation is needed. Safari and Firefox do not support the required WebHID connection.
+Download **`boardsource.zip`** or **`nicenano.zip`** for your board from [Releases](https://github.com/disarmyouwitha/StenoSquid/releases/latest). Each contains `Left.uf2`, `Right.uf2`, and the offline Manager. Extract your bundle and open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). The app includes its runtime and factory dictionaries and works offline, even on first launch. No Python installation is needed. Safari and Firefox do not support the required WebHID connection.
 
 Select a dictionary and choose **View / Edit JSON** to edit its entries in a searchable text editor. Preview shows additions, changes, and removals before saving. Factory dictionary changes are stored as overrides.
 

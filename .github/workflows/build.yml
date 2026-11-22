@@ -85,6 +85,7 @@ jobs:
         run: |
           python3 -m pip install -r requirements-dev.txt
           python3 -m ruff check
+          python3 tools/ci/test_package_board_releases.py
           python3 tools/render_keymap.py --check
           python3 tools/ci/package_manager.py build/StenoSquidManager.zip --offline-bundle build/offline-manager/StenoSquidManagerOffline.zip
       - name: Run every native regression and display renderer
@@ -360,6 +361,9 @@ jobs:
       - name: Package the single-file offline Manager
         run: python3 tools/ci/package_manager.py release/StenoSquidManager.zip --offline-bundle release/StenoSquidManagerOffline.zip
 
+      - name: Bundle firmware and Manager by board
+        run: python3 tools/ci/package_board_releases.py --firmware release --manager-zip release/StenoSquidManager.zip --output release
+
       - name: Publish tested release assets
         shell: bash
         env:
@@ -378,7 +382,7 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft \
               --title "$RELEASE_TAG" --generate-notes
           fi
-          gh release upload "$RELEASE_TAG" release/*.uf2 release/StenoSquidManager.zip --clobber
+          gh release upload "$RELEASE_TAG" release/boardsource.zip release/nicenano.zip --clobber
           prerelease=false
           if [[ "$RELEASE_TAG" == *-* ]]; then
             prerelease=true
