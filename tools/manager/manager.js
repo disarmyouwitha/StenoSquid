@@ -17,6 +17,10 @@ let optimizationToApply;
 let cleanupToken;
 let repackPlan;
 let mergePlan;
+let editorDocument;
+let editorOriginal = "";
+let editorReadOnly = true;
+let editorPlan;
 const number = new Intl.NumberFormat();
 const jobMessages = {
   open_installer: "Checking the dictionary installer…",
@@ -24,6 +28,7 @@ const jobMessages = {
   preview_optimize: "Calculating compact storage…",
   hints: "Saving hint preference…", apply_optimize: "Saving compact dictionary…", layout_map: "Scanning memory…",
   preview_import: "Calculating import size…", apply_import: "Importing dictionary…", import: "Importing dictionary…",
+  open_editor: "Opening dictionary JSON…", preview_editor: "Checking JSON changes…", apply_editor: "Saving dictionary changes…",
   backup: "Preparing backup…", export: "Exporting dictionary…",
   preview_package: "Checking factory dictionary space…", apply_package: "Saving factory dictionary…",
   preview_merge: "Preparing the compact merge…", apply_merge: "Merging compact dictionaries…",
@@ -44,6 +49,7 @@ function showBluetoothSpeedWarning(id, eligible = true) {
 function notify(text, error = false) {
   status.textContent = text;
   status.dataset.error = error;
+  if (node("dictionary-editor").open) node("editor-status").textContent = text;
   const progress = node("job-progress");
   const percent = /^(?:Writing .*?|Backing up dictionaries and saved edits: .*?)(?:… (\d+)%| \((\d+)%\))$/.exec(text);
   progress.hidden = !percent;
@@ -86,6 +92,8 @@ function setConnection(isConnected, lost = false, transport = connectionTranspor
   }
 }
 function controls() {
+  editorControls();
+  node("view-dictionary").disabled = busy || !selection() || selection().kind === "uninstalled";
   node("job-status").toggleAttribute("data-busy", busy);
   node("job-status").querySelector(".job-spinner").hidden = !busy;
   const packages = [...node("setup-form").querySelectorAll("input")];
@@ -140,7 +148,6 @@ function controls() {
   node("target").textContent = uninstalled ? `${row.name} is uninstalled.` : row ? `Editing ${row.name}` : "Select a dictionary first.";
   const canRevert = row?.kind === "base";
   node("edit-note").hidden = !row;
-  node("edit-revert-note").hidden = !canRevert;
   for (const el of node("edit").querySelectorAll("button")) {
     const unavailable = el.value === "reset" && !canRevert;
     el.hidden = unavailable;
@@ -310,7 +317,12 @@ async function watch(id) {
       : setup.reprovision ? "Choose the factory dictionaries to reinstall." : "Connected. The keyboard needs dictionary setup.");
   } else if (result.state) {
     showView(result);
-    if (result.package_changed) {
+    if (result.editor_saved) {
+      showEditorDocument(result.editor_saved, false);
+      node("editor-summary").textContent = `Saved ${number.format(result.editor_saved.changes)} ${result.editor_saved.changes === 1 ? "change" : "changes"}.`;
+      node("dictionary-editor").close();
+      notify("Dictionary changes saved.");
+    } else if (result.package_changed) {
       const plan = result.package_changed;
       notify(`${plan.name} ${plan.restoring ? "installed. Use the Active checkbox to enable it." : "removed from flash."}`);
     } else if (result.repacked || result.restored) {
@@ -330,6 +342,17 @@ async function watch(id) {
     } else {
       notify(state.read_only ? "Connected. The keyboard is in read-only recovery." : "Keyboard ready.");
     }
+  } else if (result.editor_document) {
+    showEditorDocument(result.editor_document, result.editor_read_only);
+    notify("Dictionary loaded.");
+  } else if (result.editor_plan) {
+    editorPlan = result.editor_plan;
+    const plan = editorPlan;
+    node("editor-summary").textContent = plan.mode === "edits"
+      ? `${number.format(plan.added)} added · ${number.format(plan.updated)} changed · ${number.format(plan.removed)} ${plan.removed === 1 ? "edit undone" : "edits undone"} · ${number.format(plan.count)} edits remain`
+      : `${number.format(plan.added)} added · ${number.format(plan.updated)} changed · ${number.format(plan.removed)} removed · ${number.format(plan.count)} entries after saving`;
+    node("editor-save").hidden = !(plan.added + plan.updated + plan.removed);
+    notify("Changes checked. Select Save changes to write them to the keyboard.");
   } else if (result.download) {
     download(result.filename, result.download);
     notify(`Downloaded ${result.filename}${result.count === undefined ? "" : ` with ${number.format(result.count)} entries`}.`);
@@ -718,7 +741,14 @@ async function run(payload) {
     if (connected && /^(No reply to |HID (?:read|write) failed|Connect one Steno Squid left half|Pair and connect one Steno Squid left half|The paired keyboard’s Bluetooth Manager console)/.test(error.message)) {
       setConnection(false, true);
     }
-    if (["apply_repack", "restore_repack_backup", "apply_offline_merge"].includes(payload.action)) {
+    if (["open_editor", "preview_editor", "apply_editor"].includes(payload.action)) {
+      node("editor-filter").value = editorDocument?.mode ?? "all";
+      node("editor-error").textContent = error.message;
+      node("editor-error").hidden = false;
+      node("editor-save").hidden = true;
+      editorPlan = undefined;
+      notify("Dictionary editor stopped.", true);
+    } else if (["apply_repack", "restore_repack_backup", "apply_offline_merge"].includes(payload.action)) {
       setConnection(false, true);
       notify(`${error.message} Select Connect to check the keyboard and recover if needed.`, true);
     } else if (importing) {
@@ -749,6 +779,111 @@ async function run(payload) {
     }
   }
 }
+function editorControls() {
+  const writable = !busy && connected && editorDocument && !editorReadOnly && !state?.read_only;
+  node("editor-source").readOnly = busy || !editorDocument || editorReadOnly;
+  node("editor-preview").disabled = !writable;
+  node("editor-save").disabled = !writable || !editorPlan;
+  node("editor-close").disabled = busy;
+  node("editor-reload").disabled = busy || !connected || !editorDocument;
+  node("editor-filter").disabled = busy || !editorDocument;
+}
+function showEditorDocument(document, readOnly) {
+  editorDocument = document;
+  editorOriginal = document.source;
+  editorReadOnly = readOnly;
+  editorPlan = undefined;
+  node("dictionary-editor-title").textContent = document.name;
+  node("editor-source").value = document.source;
+  node("editor-filter").value = document.mode ?? "all";
+  const editsOnly = document.mode === "edits";
+  node("editor-description").textContent = readOnly ? "Read-only dictionary. You can search or copy the JSON."
+    : editsOnly ? "Only your saved edits. Remove a key to undo that edit; {} clears all edits. null marks a hidden entry—remove its key to restore it."
+    : document.kind === "base" ? "Includes saved edits. Changes are saved as overrides; deleting a JSON entry hides that entry in this dictionary."
+    : "Add, change, or remove outline-to-translation entries. Changes save one at a time; keep the keyboard connected.";
+  node("editor-count").textContent = `${number.format(document.count)} ${editsOnly ? "edits" : "entries"}`;
+  node("editor-summary").textContent = "";
+  node("editor-error").hidden = true;
+  node("editor-save").hidden = true;
+  editorControls();
+  editorPosition();
+}
+function editorPosition() {
+  const input = node("editor-source");
+  const before = input.value.slice(0, input.selectionStart);
+  node("editor-position").textContent = `Line ${number.format(before.split("\n").length)}, column ${number.format(before.length - before.lastIndexOf("\n"))}`;
+}
+function discardEditor() {
+  return node("editor-source").value === editorOriginal || window.confirm("Discard the unsaved JSON changes?");
+}
+function editorPayload(action) {
+  return {action, id: editorDocument.id, source: node("editor-source").value,
+    version: editorDocument.version, token: editorPlan?.token, mode: editorDocument.mode ?? "all"};
+}
+node("view-dictionary").onclick = () => {
+  if (busy || !selection()) return;
+  editorDocument = undefined;
+  editorOriginal = "";
+  editorPlan = undefined;
+  node("editor-source").value = "";
+  node("editor-summary").textContent = "";
+  node("editor-error").hidden = true;
+  node("dictionary-editor-title").textContent = selection().name;
+  node("editor-description").textContent = "Reading dictionary and saved edits…";
+  node("dictionary-editor").showModal();
+  run({action: "open_editor", id: selectedId});
+};
+node("editor-source").addEventListener("input", () => {
+  editorPlan = undefined;
+  node("editor-save").hidden = true;
+  node("editor-summary").textContent = "Unsaved changes";
+  node("editor-error").hidden = true;
+  editorPosition();
+});
+node("editor-source").addEventListener("keyup", editorPosition);
+node("editor-source").addEventListener("click", editorPosition);
+node("editor-source").addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "f") {
+    event.preventDefault(); node("editor-find").focus();
+  }
+  if (event.key === "Tab" && !event.currentTarget.readOnly) {
+    event.preventDefault();
+    const input = event.currentTarget;
+    input.setRangeText("  ", input.selectionStart, input.selectionEnd, "end");
+    input.dispatchEvent(new Event("input"));
+  }
+});
+node("editor-find-next").onclick = () => {
+  const query = node("editor-find").value.toLocaleLowerCase();
+  if (!query) return;
+  const input = node("editor-source");
+  const text = input.value.toLocaleLowerCase();
+  let offset = text.indexOf(query, input.selectionEnd);
+  if (offset < 0) offset = text.indexOf(query);
+  if (offset < 0) { node("editor-status").textContent = "No match found."; return; }
+  input.focus(); input.setSelectionRange(offset, offset + query.length);
+  const line = input.value.slice(0, offset).split("\n").length - 1;
+  input.scrollTop = Math.max(0, line * parseFloat(getComputedStyle(input).lineHeight) - input.clientHeight / 2);
+  editorPosition();
+};
+node("editor-find").addEventListener("keydown", event => {
+  if (event.key === "Enter") { event.preventDefault(); node("editor-find-next").click(); }
+});
+node("editor-preview").onclick = () => run(editorPayload("preview_editor"));
+node("editor-save").onclick = () => run(editorPayload("apply_editor"));
+node("editor-reload").onclick = () => {
+  if (discardEditor()) run({action: "open_editor", id: editorDocument.id, reload: true, mode: editorDocument.mode ?? "all"});
+};
+node("editor-filter").onchange = () => {
+  if (!editorDocument || busy) return;
+  const mode = node("editor-filter").value;
+  if (!discardEditor()) { node("editor-filter").value = editorDocument.mode ?? "all"; return; }
+  run({action: "open_editor", id: editorDocument.id, mode});
+};
+node("editor-close").onclick = () => { if (!busy && discardEditor()) node("dictionary-editor").close(); };
+node("dictionary-editor").addEventListener("cancel", event => {
+  if (busy || !discardEditor()) event.preventDefault();
+});
 node("refresh").onclick = () => run({action: "refresh", transport: "auto"});
 node("backup").onclick = () => run({action: "backup"});
 node("reprovision").onclick = node("emergency-provision").onclick = () => run({action: "open_installer"});

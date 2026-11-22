@@ -133,3 +133,24 @@ textarea { resize: vertical; }
   .merge-comparison { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .merge-arrow { display: none; }
 }
+
+#dictionary-editor { width: min(70rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1.25rem; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: .75rem; }
+#dictionary-editor::backdrop { background: #0d0d17bb; }
+.editor-tools { margin: .8rem 0; }
+.editor-tools label { display: flex; align-items: center; gap: .5rem; flex: 1; }
+#editor-find { width: min(25rem, 40vw); }
+.editor-label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .3rem; }
+#editor-source { display: block; width: 100%; height: min(56dvh, 38rem); min-height: 12rem; resize: vertical; font: .9rem/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; white-space: pre; }
+.editor-footer { display: flex; justify-content: space-between; gap: 1rem; color: var(--muted); font-size: .8rem; margin: .4rem 0; }
+.editor-actions { margin-top: .8rem; }
+#editor-save { background: var(--accent); border-color: var(--accent); color: #24163e; font-weight: 650; }
+#editor-status { display: block; color: var(--muted); overflow-wrap: anywhere; }
+#dictionary-editor[open] { display: flex; flex-direction: column; height: min(54rem, calc(100dvh - 2rem)); overflow: hidden; }
+#dictionary-editor > :not(#editor-source) { flex-shrink: 0; }
+#dictionary-editor .section-heading { align-items: center; }
+#editor-source { flex: 1; min-height: 8rem; height: auto; resize: none; }
+@media (max-height: 36rem) { #dictionary-editor[open] { overflow: auto; } #editor-source { flex: none; height: 12rem; } }
+
+.editor-tools .editor-filter-label { flex: none; }
+
+.editor-tools .editor-search-label { flex: none; margin-left: auto; }

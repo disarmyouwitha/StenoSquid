@@ -357,7 +357,7 @@ jobs:
           name: StenoSquidManagerOffline
           path: release
 
-      - name: Package Python tools and offline HTML together
+      - name: Package the single-file offline Manager
         run: python3 tools/ci/package_manager.py release/StenoSquidManager.zip --offline-bundle release/StenoSquidManagerOffline.zip
 
       - name: Publish tested release assets

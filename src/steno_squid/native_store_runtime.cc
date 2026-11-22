@@ -365,8 +365,7 @@ void StepWork(k_work *) {
 }
 LiveResult Edit(Cell &cell,uint8_t operation,const StenoStroke *outline,size_t count,const char *text,size_t bytes) {
     if (cell.factory_absent) return LiveResult::ReadOnly;
-    if(!healthy || !count || count>16 || bytes>2047 ||
-       (cell.user_snapshot && operation==uint8_t(Operation::Reset)))return LiveResult::Invalid;
+    if(!healthy || !count || count>16 || bytes>2047)return LiveResult::Invalid;
     if(steno_squid_native_input_pending())return LiveResult::Busy;
     const NativeInputPause input_pause;
     uint32_t strokes[16];for(size_t i=0;i<count;++i)strokes[i]=outline[i].GetKeyState();
@@ -987,6 +986,8 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return "OK PERSONAL1";
     if (!std::strcmp(command, "journal-snapshot-capabilities\n"))
         return "OK JOURNAL1";
+    if (!std::strcmp(command, "snapshot-reset-capabilities\n"))
+        return "OK RESET1";
     if (!std::strcmp(command, "snapshot-clear-capabilities\n"))
         return "OK CLEAR1";
     if (!std::strcmp(command, "recovery-capabilities\n"))

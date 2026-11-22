@@ -25,6 +25,7 @@ from native_base_update import factory_package
 from native_snapshot import change_snapshot, clear_personal, merge_limit, merge_snapshots
 from native_import_plan import named_import
 from native_layout import read_images, read_layout
+from manager_editor import read_document, change_document, clear_documents
 from manager_repack import (
     capture_approved_merge, capture_approved_repack, install_offline_merge, install_repack, last_repack_backup,
     preview_repack, restore_original,
@@ -40,7 +41,7 @@ FACTORY_CHOICES = {key: row[1] for key, row in FACTORY_KEYS.items()}
 FACTORY_ACTIONS = {str(row[0]): key for key, row in FACTORY_KEYS.items()}
 MAP_REFRESH_ACTIONS = {"refresh", "layout_map", "setup", "import", "apply_import", "compact", "apply_package",
                        "apply_optimize", "clear_personal", "delete", "set", "remove", "reset", "apply_repack",
-                       "restore_repack_backup", "apply_merge", "apply_offline_merge"}
+                       "restore_repack_backup", "apply_merge", "apply_offline_merge", "apply_editor"}
 INSTALLABLE_STATUS = re.compile(r"NATIVE2 (?:READY [0-9]+|UNPROVISIONED [0-9]+(?: .*)?)")
 
 
@@ -261,6 +262,8 @@ def run_job(serial, request, progress, show_view=None, *, transport="usb"):
             return {"state": installer_view(console, console.command("native_install status", timeout=5),
                                             reprovision=True, transport=transport)}
         if action in {"refresh", "layout_map"}:
+            if action == "refresh":
+                clear_documents(console.serial)
             return load_view(console, action, progress, show_view)
         if action == "preview_repack":
             return {"repack_plan": preview_repack(console, progress)}
@@ -282,10 +285,10 @@ def run_job(serial, request, progress, show_view=None, *, transport="usb"):
         catalog = read_catalog(console)
         by_id = {row["id"]: row for row in catalog}
         selected = by_id.get(request.get("id"))
-        if action in {"enable", "move", "rename", "delete", "export", "set", "remove", "reset", "preview_optimize", "apply_optimize"} and selected is None:
+        if action in {"enable", "move", "rename", "delete", "export", "set", "remove", "reset", "preview_optimize", "apply_optimize", "open_editor", "preview_editor", "apply_editor"} and selected is None:
             raise ValueError("Select a dictionary from the current catalog.")
         name = safe_name(selected["name"]) if selected else None
-        if selected and selected["kind"] == "uninstalled" and action in {"enable", "set", "remove", "reset", "export"}:
+        if selected and selected["kind"] == "uninstalled" and action in {"enable", "set", "remove", "reset", "export", "open_editor", "preview_editor", "apply_editor"}:
             raise ValueError("Install the factory dictionary before using it.")
         if action in {"preview_package", "apply_package"}:
             applying = action == "apply_package"
@@ -327,6 +330,16 @@ def run_job(serial, request, progress, show_view=None, *, transport="usb"):
             else:
                 verb = "remove" if action == "remove" else "reset"
                 checked(console, f"native_{verb}_entry {selected['id']} {outline}")
+        elif action == "open_editor":
+            progress(f"Opening {name}…")
+            return {"editor_document": read_document(console, selected, progress, force=request.get("reload") is True, mode=request.get("mode", "all")), "editor_read_only": bool(
+                json.loads(console.command("user_dictionary_status")).get("read_only"))}
+        elif action in {"preview_editor", "apply_editor"}:
+            progress(f"Checking {name} against the keyboard…")
+            outcome = change_document(console, selected, request, progress, apply=action == "apply_editor")
+            if action == "preview_editor":
+                return {"editor_plan": outcome}
+            report = {"editor_saved": outcome}
         elif action == "export":
             progress(f"Exporting {name}…")
             entries = export_dictionary(console, name)

@@ -1,13 +1,14 @@
 # Offline StenoSquid Manager
 
-Download and extract `StenoSquidManager.zip`, which includes both interfaces, then open
+Download and extract `StenoSquidManager.zip`, then open
 **StenoSquidManager.html in desktop Chrome or Edge 137 or newer**. Connect the
 left half and choose **Connect**. You can also drag the HTML file into Chrome.
 
 The HTML contains the complete application, Python WebAssembly runtime, and
 pinned factory dictionaries. **It works on first launch with no internet.**
 There is no installation, Python dependency, local server, hosting, account,
-extension, or browser flag. Keep `stenosquid.py` if you prefer the Python tools.
+extension, or browser flag. License notices are embedded in the HTML.
+`stenosquid.py` stays in the repository for command-line use.
 
 Safari and Firefox cannot connect directly because they do not support WebHID.
 The Python Manager remains usable with those browsers. Use matching left firmware
@@ -19,6 +20,41 @@ imports, exports, edits, ordering, factory setup, compacting, merging, repacking
 flash maps, and guarded recovery all use the shared backend. USB-only operations
 keep their existing restrictions. OS-paired Bluetooth depends on the browser and
 OS exposing the keyboard's vendor HID console.
+
+## JSON editor
+
+Select an installed dictionary and choose **View / Edit JSON**. Edit the complete
+effective dictionary, including saved overrides, as outline-to-translation JSON.
+Matching factory dictionaries open from the bundled, checksum-verified JSON;
+the keyboard supplies their saved overrides. Other dictionaries are read from
+the device with byte progress. Loaded documents are cached until the keyboard's
+catalog generation or journal tail changes. Reconnect and Reload explicitly
+invalidate that cache. The whole-dictionary read also prepares Edits only from the same snapshot, so
+switching to the filter does not transfer the dictionary again. Search finds
+outlines or translations locally; Tab inserts spaces. Preview validates the
+whole draft and shows added, changed, and removed entries. Save writes only those
+changes to the selected dictionary. Factory images remain unchanged underneath
+the saved overrides.
+
+Use **Show → Edits only** to view saved overrides. Removing a key in this view
+undoes that edit, exposing the compact baseline again; saving `{}` clears all
+saved overrides for this dictionary. A `null` value represents a hidden entry:
+remove that key to restore it. The whole-dictionary view keeps normal entry
+removal behavior. Edits already folded into a compact baseline are part of that
+baseline and no longer appear as separate overrides.
+
+Imported compact dictionaries need left firmware advertising `OK RESET1` for
+`snapshot-reset-capabilities` to undo saved overrides. Factory dictionaries work
+with the existing reset command. The app checks support before writing anything.
+
+Editor reads stop at the first unused journal record instead of transferring
+the whole 64 KiB block. An empty journal needs one 512-byte read. Exact recovery
+backups still read every referenced byte. Successful saves close the modal and
+show “Dictionary changes saved.” on the main screen.
+
+The editor rejects stale drafts if the keyboard dictionary changes. Copy a
+draft before reloading if you want to keep it. An interrupted save reports how
+many changes completed; reload from the keyboard before retrying.
 
 ## USB preference
 
@@ -78,6 +114,6 @@ node tools/manager/browser/test_browser.mjs build/offline-manager/StenoSquidMana
 
 The browser test opens the actual HTML with `file://`, disables networking,
 loads real Python WebAssembly, and drives the Manager through a simulated HID
-device. It also runs 30 existing Python Manager regression cases inside the
+device. It also runs 48 existing Python Manager and editor regression cases inside the
 browser and checks local backup file safety. Physical-keyboard flash, reboot, Bluetooth, and recovery trials are still
 required before publishing a release.

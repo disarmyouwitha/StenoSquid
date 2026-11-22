@@ -56,6 +56,7 @@
           <button type="button" id="rename" data-write>Rename</button>
           <button type="button" id="delete" data-write>Delete</button>
           <button type="button" id="install-dictionary" data-write hidden>Install</button>
+          <button type="button" id="view-dictionary">View / Edit JSON</button>
           <button type="button" id="export">Export JSON</button>
           <button type="button" id="optimize" data-write hidden>Compact</button>
         </div>
@@ -95,9 +96,8 @@
             <div class="toolbar">
               <button value="set" data-write>Save entry</button>
               <button value="remove" data-write>Delete entry</button>
-              <button value="reset" data-write hidden>Revert to original</button>
             </div>
-            <p id="edit-note" hidden>Delete affects only this dictionary. Other dictionaries can still translate the outline.<span id="edit-revert-note" hidden> Revert undoes your changes to this outline.</span></p>
+            <p id="edit-note" hidden>Delete affects only this dictionary. Other dictionaries can still translate the outline.</p>
           </form>
         </section>
         <section aria-labelledby="import-title">
@@ -171,6 +171,32 @@
       </section>
     </div>
   </main>
+  <dialog id="dictionary-editor" aria-labelledby="dictionary-editor-title">
+    <div class="section-heading">
+      <h2 id="dictionary-editor-title">Dictionary JSON</h2>
+      <button type="button" id="editor-close" aria-label="Close dictionary editor">Close</button>
+    </div>
+    <p id="editor-description"></p>
+    <div class="toolbar editor-tools">
+      <label class="editor-filter-label">Show <select id="editor-filter">
+        <option value="all">Whole dictionary</option>
+        <option value="edits">Edits only</option>
+      </select></label>
+      <label class="editor-search-label">Find <input id="editor-find" type="search" placeholder="Outline or translation" spellcheck="false"></label>
+      <button type="button" id="editor-find-next">Find next</button>
+    </div>
+    <label for="editor-source" class="editor-label">Outline-to-translation JSON</label>
+    <textarea id="editor-source" wrap="off" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="editor-description editor-error"></textarea>
+    <div class="editor-footer"><span id="editor-position">Line 1, column 1</span><span id="editor-count"></span></div>
+    <p id="editor-error" class="inline-error" role="alert" hidden></p>
+    <p id="editor-summary" aria-live="polite"></p>
+    <output id="editor-status" role="status"></output>
+    <div class="toolbar editor-actions">
+      <button type="button" id="editor-preview">Preview changes</button>
+      <button type="button" id="editor-save" hidden>Save changes</button>
+      <button type="button" id="editor-reload">Reload from keyboard</button>
+    </div>
+  </dialog>
   <dialog id="merge-dialog" aria-labelledby="merge-title">
     <h2 id="merge-title">Merge compact dictionaries</h2>
     <div id="merge-choose">

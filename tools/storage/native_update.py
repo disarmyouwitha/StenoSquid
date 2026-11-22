@@ -353,17 +353,59 @@ def update_command(console, text, timeout=30):
     return reply
 
 
-def read_snapshot(console, answer, *, metadata_only=False):
+def read_snapshot(console, answer, *, metadata_only=False, on_read=None, trim_journals=False):
     _, address, length, checksum, ownership = answer.split()
     if len(ownership) != 64:
         raise ValueError("Invalid ownership bitmap")
     words = [int(ownership[i:i + 8], 16) for i in range(0, 64, 8)]
     protected = {i for i in range(256) if words[i // 32] & (1 << (i % 32))}
 
-    def read(start, size):
-        return read_flash(console, start, size)
+    address, length, checksum = int(address), int(length), int(checksum)
+    catalog = None
+    journals = set()
 
-    return Snapshot(read, int(address), int(length), int(checksum), metadata_only=metadata_only), protected
+    def read(start, size):
+        nonlocal catalog
+        if trim_journals and (start, size) == (address, length):
+            if catalog is None:
+                catalog = read_flash(console, start, size, on_read=on_read)
+            return catalog
+        if trim_journals and start in journals and size == SEGMENT:
+            return read_live_journal(console, start, on_read=on_read)
+        return read_flash(console, start, size, on_read=on_read)
+
+    if trim_journals and not metadata_only:
+        metadata = Snapshot(read, address, length, checksum, metadata_only=True)
+        journals = {segment * SEGMENT for segment, _, _, _, kind, _ in metadata.extents if kind == 2}
+    return Snapshot(read, address, length, checksum, metadata_only=metadata_only), protected
+
+
+def read_live_journal(console, start, *, on_read=None):
+    """Read only through the first unpublished record of a frozen journal.
+
+    Snapshot's record scanner stops at the same marker. Padding the unread tail
+    is for logical editing only; exact recovery backups always use full reads.
+    """
+    data = bytearray()
+
+    def ensure(end):
+        while len(data) < end:
+            size = min(512, SEGMENT - len(data))
+            data.extend(read_flash(console, start + len(data), size, on_read=on_read))
+
+    ensure(512)
+    if data[:8] == b"SQJSEG01":
+        offset = 256
+        while offset + RECORD.size <= SEGMENT:
+            ensure(offset + RECORD.size)
+            if struct.unpack_from("<I", data, offset + 28)[0] != COMMIT:
+                break
+            span = struct.unpack_from("<I", data, offset + 4)[0]
+            if span < 44 or span % 4 or offset + span > SEGMENT:
+                break  # Snapshot will report the malformed committed record.
+            ensure(offset + span)
+            offset += span
+    return bytes(data).ljust(SEGMENT, b"\xff")
 
 
 def read_flash(console, start, size, *, on_read=None):
@@ -478,12 +520,14 @@ def overlay_usage(console, *, metadata_only=False):
         update_command(console, "abort", timeout=5)
 
 
-def export_dictionary(console, name):
+def export_dictionary(console, name, *, on_read=None, on_snapshot=None, trim_journals=False):
     """Read one logical dictionary, including overrides on a packed base."""
     answer = update_command(console, "begin backup")
     try:
-        snapshot, _ = read_snapshot(console, answer)
-        return effective_entries(snapshot, name, lambda at, n: read_flash(console, at, n))
+        snapshot, _ = read_snapshot(console, answer, on_read=on_read, trim_journals=trim_journals)
+        if on_snapshot is not None:
+            on_snapshot(snapshot)
+        return effective_entries(snapshot, name, lambda at, n: read_flash(console, at, n, on_read=on_read))
     finally:
         update_command(console, "abort", timeout=5)
 

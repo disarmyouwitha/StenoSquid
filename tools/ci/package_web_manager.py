@@ -88,6 +88,9 @@ globalThis.fetch = async (input) => {
     html = html.replace('  <meta name="manager-token" content="MANAGER_SESSION_TOKEN">\n', '')
     html = html.replace('  <link rel="stylesheet" href="/manager.css">', '<style>' + (manager / "manager.css").read_text() + '</style>')
     html = html.replace('  <script type="module" src="/manager.js"></script>', '')
+    notices = json.dumps({"project": (ROOT / "LICENSE").read_text(),
+                          "third_party": (manager / "browser/THIRD_PARTY_LICENSES.txt").read_text()}).replace("<", "\\u003c")
+    html = html.replace('</body>', '<script id="manager-licenses" type="application/json">' + notices + '</script></body>')
     html = html.replace('</body>', script(setup) + script((destination / "pyodide.asm.js").read_text()) + script(shim, True) + script(hid + backend + ui, True) + '</body>')
     (output / "StenoSquidManager.html").write_text(html)
     shutil.copyfile(ROOT / "LICENSE", output / "LICENSE")

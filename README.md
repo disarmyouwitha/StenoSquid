@@ -75,14 +75,11 @@ That's it! Use Manager to edit translations, import/export dictionaries, enable 
 
 StenoSquid Manager is the home for dictionary installation, importing, exporting, editing, renaming, deleting, priorities, backups, and flash management.
 
-⭐ **Recommended, no-install browser version:** Download **`StenoSquidManagerOffline.zip`** from [Releases](https://github.com/disarmyouwitha/StenoSquid/releases/latest), extract it, and open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). It includes the factory dictionaries and works offline, even on first launch. Safari and Firefox do not support the required WebHID connection.
+Download **`StenoSquidManager.zip`** from [Releases](https://github.com/disarmyouwitha/StenoSquid/releases/latest), extract it, and open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). The ZIP contains just the HTML file. The app includes its runtime and factory dictionaries and works offline, even on first launch. No Python installation is needed. Safari and Firefox do not support the required WebHID connection.
 
-**Python alternative:** `StenoSquidManager.zip` includes both the offline HTML app and Python tools. From its extracted folder, run:
+Select a dictionary and choose **View / Edit JSON** to edit its entries in a searchable text editor. Preview shows additions, changes, and removals before saving. Factory dictionary changes are stored as overrides.
 
-```sh
-python3 -m pip install hidapi
-python3 stenosquid.py
-```
+`stenosquid.py` remains in the repository for command-line use and diagnostics.
 
 Connect the left half over USB, or pair it in your computer's Bluetooth settings and choose **Connect**. Manager prefers USB when both connections are available and shows the active connection. JSON imports, **USB Repack**, and restoring a repack backup require USB.
 

@@ -170,7 +170,13 @@ export class BrowserBackend {
         if (recovery) await this.restoreFiles();
         this.python.globals.set("browser_request", JSON.stringify(payload));
         const result = JSON.parse(await this.python.runPythonAsync("run_request(browser_request)"));
-        if (result._browser_error) throw new Error(result._browser_error);
+        if (result._browser_error) {
+          // Validation and stale-preview errors leave the device connected so
+          // the draft can be corrected or reloaded without leaving the modal.
+          this.job = {id, status: "error", message: result._browser_error,
+            connection_lost: this.job.connection_lost === true};
+          return;
+        }
         this.job = {id, status: "done", result, connection_lost: Boolean(result.commit_pending)};
       } catch (error) {
         await this.hid.close().catch(() => {});
