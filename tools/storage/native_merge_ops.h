@@ -40,8 +40,9 @@ public:
         out.text_address = address + 40u + 4u * out.count;
         return true;
     }
-    static int Keys(const MergeRecord &a,const MergeRecord &b) {
-        return CompareJournalKey(a, b.identity, b.strokes, b.count);
+    int Keys(const MergeRecord &a,const MergeRecord &b) const {
+        return view.outline_first ? CompareOutlineKey(a, b.identity, b.strokes, b.count)
+                                  : CompareJournalKey(a, b.identity, b.strokes, b.count);
     }
     int Operation(uint32_t at){MergeRecord record;return Record(at,record)?record.operation:-1;}
     int CompareKey(uint32_t a,uint32_t b) {
@@ -66,7 +67,8 @@ public:
             for(uint32_t i=0;i<n;++i)if(left[i]!=right[i])return left[i]<right[i]?-1:1;
             at+=n;
         }
-        return x.text_bytes==y.text_bytes?Keys(x,y):x.text_bytes<y.text_bytes?-1:1;
+        return x.text_bytes == y.text_bytes ? CompareJournalKey(x, y.identity, y.strokes, y.count)
+                                            : x.text_bytes < y.text_bytes ? -1 : 1;
     }
     bool ReadIndex(bool rev,uint32_t position,uint32_t &address) {
         if(position>=(rev?reverse_count:view.forward_count))return false;

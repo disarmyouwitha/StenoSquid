@@ -106,6 +106,7 @@ class NativeCheckpointJob {
                     row[2]=uint8_t(segments[rev]);row[3]=uint8_t(segments[rev]>>8);
                     PutWord(row+4,rev?reverse.Bytes():forward.Bytes());
                     PutWord(row+8,rev?reverse.Checksum():forward.Checksum());PutWord(row+12,rev?4:3);
+                    if(!rev && frozen.outline_first)PutWord(row+16,kOutlineFirst);
                 }
             }
             uint32_t n=size-(offset-start);if(n>bytes)n=bytes;

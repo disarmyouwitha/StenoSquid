@@ -14,7 +14,7 @@ import struct
 import tempfile
 import zlib
 
-from build_native_image import LIMIT, SEGMENT, SOURCES, XIP, catalog_header
+from build_native_image import LIMIT, OUTLINE_FIRST, SEGMENT, SOURCES, XIP, catalog_header
 from hybrid import compact_entries
 from jsc4 import reader, require_snapshot_hint
 from native_update import EXTENT, Snapshot, row_name, validate_name
@@ -56,7 +56,8 @@ def descriptors(payload):
         if (not 2 <= start < 255 or not 1 <= span <= 255 - start
                 or not 0 < size <= span * SEGMENT or run & used or kind not in (1, 2, 3, 4)
                 or (kind == 2 and (span != 1 or size != SEGMENT or not epoch or crc))
-                or (kind != 2 and epoch) or (kind in (3, 4) and (size % 4 or kind in kinds))):
+                or (kind != 2 and epoch and not (kind == 3 and epoch == OUTLINE_FIRST))
+                or (kind in (3, 4) and (size % 4 or kind in kinds))):
             raise ValueError("Invalid or overlapping recovery extent")
         used.update(run)
         kinds.add(kind)

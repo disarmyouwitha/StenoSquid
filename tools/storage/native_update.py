@@ -6,7 +6,7 @@ import re
 import struct
 import zlib
 
-from build_native_image import SEGMENT, write_journal_header
+from build_native_image import OUTLINE_FIRST, SEGMENT, write_journal_header
 
 EXTENT = struct.Struct("<HHIIIQ")
 RECORD = struct.Struct("<4sIQIIII")
@@ -29,6 +29,10 @@ class Edit:
     @property
     def key(self):
         return self.identity, self.strokes
+
+    @property
+    def outline_key(self):
+        return self.strokes, self.identity
 
     @property
     def span(self):
@@ -125,9 +129,11 @@ class Snapshot:
         if strict and not boundary:
             raise ValueError("Recovery checkpoint boundary is missing")
         indexed = {}
-        for start, _, length, expected, kind, _ in self.extents:
+        for start, _, length, expected, kind, auxiliary in self.extents:
             if kind != 3 and (not strict or kind != 4):
                 continue
+            if auxiliary not in ((0, OUTLINE_FIRST) if kind == 3 else (0,)):
+                raise ValueError("Unsupported journal index order")
             data = read(start * SEGMENT, length)
             if len(data) != length or zlib.crc32(data) != expected:
                 raise ValueError("Source forward index failed checksum")
@@ -140,7 +146,10 @@ class Snapshot:
                     sequence = sequences[address]
                     if entry.identity >= self.next_id or sequence > through or (kind == 4 and entry.operation):
                         raise ValueError("Invalid recovery index record")
-                    key = entry.key if kind == 3 else (entry.text, entry.key)
+                    if kind == 3:
+                        key = entry.outline_key if auxiliary == OUTLINE_FIRST else entry.key
+                    else:
+                        key = entry.text, entry.key
                     if previous is not None and key <= previous:
                         raise ValueError("Recovery index is out of order")
                     previous = key
@@ -300,7 +309,7 @@ def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None, 
         entries[entry.key] = Edit(segment * SEGMENT + offset, entry.identity, entry.operation,
                                   entry.strokes, entry.text)
         offset += entry.span
-    for kind, records in ((3, sorted(entries.values(), key=lambda entry: entry.key)),
+    for kind, records in ((3, sorted(entries.values(), key=lambda entry: entry.outline_key)),
                           (4, sorted((entry for entry in entries.values() if not entry.operation),
                                      key=lambda entry: (entry.text, entry.key)))):
         if not records:
@@ -310,7 +319,8 @@ def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None, 
         start = allocate(count)
         for index in range(count):
             segments[start + index] = data[index * SEGMENT:(index + 1) * SEGMENT]
-        extents.append(EXTENT.pack(start, count, len(data), zlib.crc32(data), kind, 0))
+        extents.append(EXTENT.pack(start, count, len(data), zlib.crc32(data), kind,
+                                   OUTLINE_FIRST if kind == 3 else 0))
     metadata = allocate()
     if len(extents) > 253:
         raise NoSpace("Catalog extent limit; no data was changed")

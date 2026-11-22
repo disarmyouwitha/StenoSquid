@@ -49,12 +49,12 @@ bool MeasureOverlay(Device &device, const LiveView &view, uint32_t &position,
         while (low < high) {
             const uint32_t mid = low + (high - low) / 2;
             if (!read_key(view.tail.addresses[mid], false, recent, recent_key)) return false;
-            if (CompareJournalKey(recent_key, key.identity, key.strokes, key.count) <= 0) low = mid + 1;
+            if (CompareOutlineKey(recent_key, key.identity, key.strokes, key.count) <= 0) low = mid + 1;
             else high = mid;
         }
         if (low > first) {
             if (!read_key(view.tail.addresses[low - 1], false, recent, recent_key)) return false;
-            if (!CompareJournalKey(recent_key, key.identity, key.strokes, key.count)) continue;
+            if (!CompareOutlineKey(recent_key, key.identity, key.strokes, key.count)) continue;
         }
         if (!emit(slot, address / kSegmentBytes, key.operation, record.span)) break;
     }

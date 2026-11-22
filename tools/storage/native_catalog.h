@@ -23,6 +23,8 @@ inline const char *FactoryName(uint32_t id) {
 }
 enum class CatalogResult { Ok, Empty, Corrupt, IoError, Invalid, Quarantined, Busy };
 enum class ExtentKind : uint32_t { Base=1, Journal=2, Forward=3, Reverse=4 };
+// The forward extent's 64-bit auxiliary field describes its pointer order.
+constexpr uint32_t kOutlineFirst = 1;
 struct CatalogRoot {
     uint64_t generation=0;
     uint32_t address=0, bytes=0, crc=0;
@@ -187,7 +189,7 @@ public:
             uint32_t bytes=Word(extent+4),kind=Word(extent+12);
             uint64_t epoch=uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32;
             if(start<2 || start>=255 || !count || count>255-start || !bytes || bytes>count*kSegmentBytes ||
-               kind<1 || kind>4 || (kind==2 && (count!=1 || !epoch)) || (kind!=2 && epoch) ||
+               kind<1 || kind>4 || (kind==2 && (count!=1 || !epoch)) || (kind!=2 && epoch && !(kind==3 && epoch==kOutlineFirst)) ||
                ((kind==3 || kind==4) && bytes%4))return CatalogResult::Corrupt;
             for(uint32_t j=start;j<start+count;++j)if(occupied.Contains(j))return CatalogResult::Corrupt;
             occupied.Add(start,count);
