@@ -197,6 +197,20 @@ def merge_limit(console):
     return None
 
 
+def merged_entries(snapshot, upper, lower, read):
+    lower_entries = effective_entries(snapshot, row_name(lower), read)
+    upper_entries = effective_entries(snapshot, row_name(upper), read)
+    # A tombstone only suppresses its own source. Priority decides overlaps.
+    merged = lower_entries | upper_entries
+    return merged, len(upper_entries) + len(lower_entries) - len(merged)
+
+
+def offline_merge_token(snapshot, serial, upper, lower):
+    digest = hashlib.sha256(json.dumps([serial, upper, lower, snapshot.highwater]).encode())
+    digest.update(snapshot.payload)
+    return digest.hexdigest()
+
+
 def merge_snapshots(console, upper_id, lower_id, *, expected=None, progress=print):
     if any(type(identity) is not int or not 0 < identity <= 0xffffffff for identity in (upper_id, lower_id)):
         raise ValueError("Select two compact dictionaries.")
@@ -212,17 +226,15 @@ def merge_snapshots(console, upper_id, lower_id, *, expected=None, progress=prin
         def read(at, n):
             return read_flash(console, at, n)
 
-        lower_entries = effective_entries(snapshot, names[1], read)
-        upper_entries = effective_entries(snapshot, names[0], read)
-        # Merge effective maps, so a tombstone in either source suppresses
-        # only that source. The higher priority effective entry wins.
-        merged = lower_entries | upper_entries
+        merged, duplicates = merged_entries(snapshot, upper, lower, read)
         progress("Compiling the merged dictionary…")
         compiled = compile_snapshot(names[0], {parse_outline(key): value.encode("utf-8")
                                               for key, value in merged.items()})
         free, largest = inspect_free(protected)
         report = dict(names=names, ids=[upper_id, lower_id], entries=len(merged),
-                      duplicates=len(upper_entries) + len(lower_entries) - len(merged),
+                      duplicates=duplicates, source_image_segments=[
+                          snapshot.extents[struct.unpack_from("<H", row, 8)[0]][1] for row in (upper, lower)
+                      ],
                       image_segments=(len(compiled.data) + SEGMENT - 1) // SEGMENT,
                       free_segments=free, largest_free_run=largest, reserve=3)
         try:
@@ -230,7 +242,12 @@ def merge_snapshots(console, upper_id, lower_id, *, expected=None, progress=prin
         except NoSpace as error:
             if expected is not None:
                 raise
-            return dict(report, token=None, reason=str(error))
+            fallback = {}
+            if (console.serial and console.command("native_install update repack-capabilities") == "OK REPACK1"
+                    and console.command("native_install update recovery-capabilities") == "OK RECOVERY1"):
+                fallback = dict(serial=console.serial, offline_token=offline_merge_token(
+                    snapshot, console.serial, upper_id, lower_id))
+            return dict(report, token=None, reason=str(error), **fallback)
         _, rows, _ = struct.unpack_from("<IHH", update.payload)
         next_extents = EXTENT.iter_unpack(update.payload[32 + 96 * rows:])
         segment_delta = sum(extent[1] for extent in next_extents) - sum(extent[1] for extent in snapshot.extents)

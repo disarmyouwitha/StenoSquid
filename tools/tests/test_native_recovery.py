@@ -20,7 +20,7 @@ from build_native_image import SEGMENT, catalog_header
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import FORMAT, digest, pack, reconstruct, save_atomic, unpack
-from native_snapshot import CompactImage, compile_snapshot, merge_snapshots, plan_change, plan_named_snapshot
+from native_snapshot import CompactImage, compile_snapshot, merge_snapshots, offline_merge_token, plan_change, plan_named_snapshot
 from native_update import Snapshot, backup_all, effective_entries, encode_record, Edit, export_dictionary, overlay_usage, plan, row_name
 
 
@@ -252,6 +252,22 @@ def main():
                                  if segment // 32 == index) for index in range(8)]
                     return answer[:-64] + "".join(f"{word:08x}" for word in words)
                 return super().command(command, timeout)
+
+        class FullMergeConsole(MergeConsole):
+            def command(self, command, timeout=30):
+                if command == "native_install update repack-capabilities":
+                    return "OK REPACK1"
+                if command == "native_install update recovery-capabilities":
+                    return "OK RECOVERY1"
+                answer = super().command(command, timeout)
+                return answer[:-64] + "f" * 64 if command.startswith(
+                    "native_install update begin snapshot-merge") else answer
+
+        full = FullMergeConsole(before_merge, merge_view.payload)
+        fallback = merge_snapshots(full, 9, 8, progress=lambda _: None)
+        assert not fallback["token"] and not full.active
+        assert fallback["serial"] == full.serial
+        assert fallback["offline_token"] == offline_merge_token(merge_view, full.serial, 9, 8)
 
         merge_console = MergeConsole(before_merge, merge_view.payload)
         with patch("native_snapshot.publish", side_effect=lambda console, update, progress: published.append(update)):

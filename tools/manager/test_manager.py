@@ -281,6 +281,29 @@ class ManagerTest(unittest.TestCase):
             self.assertEqual(restore.call_args.args[:3], (source, serial, serial))
             self.assertTrue(restore.call_args.kwargs["unprovisioned_only"])
 
+    def test_usb_merge_requires_approval_and_checks_backup_before_install(self):
+        self.keyboard.adaptive = True
+        serial = self.keyboard.serial
+        source = {"capture": {"serial": serial}}
+        original = (b"image", unittest.mock.Mock(payload=b"catalog", highwater=3))
+        token = manager_repack.offline_merge_token(original[1], serial, 8, 9)
+        fields = {"serial": serial, "confirm": serial, "upper": 8, "lower": 9, "token": token}
+        with patch.object(manager_repack, "backup_all", return_value=source) as backup, \
+                patch.object(manager_repack, "reconstruct", return_value=original), \
+                patch.object(manager, "install_offline_merge", return_value="Upper") as install, \
+                patch.object(manager, "load_view", return_value={"state": {"serial": serial}}):
+            with self.assertRaisesRegex(ValueError, "Connect over USB"):
+                manager.run_job(None, {"action": "apply_offline_merge", **fields}, lambda _: None,
+                                transport="bluetooth")
+            with self.assertRaisesRegex(ValueError, "Confirm"):
+                self.run_job("apply_offline_merge", **{**fields, "confirm": "different device"})
+            backup.assert_not_called()
+            with self.assertRaisesRegex(ValueError, "No erase was started"):
+                self.run_job("apply_offline_merge", **{**fields, "token": "0" * 64})
+            install.assert_not_called()
+            self.assertEqual(self.run_job("apply_offline_merge", **fields)["merged"], "Upper")
+            self.assertEqual(install.call_args.args[:2], (source, original))
+
     def test_repack_preview_with_no_gain_offers_no_rewrite(self):
         self.keyboard.adaptive = True
         layout = {"free_segments": 252, "largest_free_run": 252, "staging_blocked": False}

@@ -8,8 +8,9 @@ import secrets
 
 from build_native_image import SEGMENT, overlay_record_span
 from native_layout import read_images, read_layout
-from native_recovery import recover_usb, save_atomic, sync_directory
-from native_repack import RESERVE, build_repack, read_bundle, restore_repack, segment_count
+from native_recovery import reconstruct, recover_usb, save_atomic, sync_directory
+from native_repack import RESERVE, build_merge_repack, build_repack, read_bundle, restore_repack, segment_count
+from native_snapshot import offline_merge_token
 from native_update import backup_all, overlay_usage
 
 
@@ -119,6 +120,37 @@ def install_repack(source, plan, progress):
     after = report["target_layout"]
     if any(after[key] < plan["after"][key] for key in ("free_segments", "largest_free_run")):
         raise RuntimeError("The verified plan has less space than the approved preview. No erase was started.")
+    install_verified_bundle(source, target, serial, progress)
+
+
+def capture_approved_merge(console, request, progress):
+    serial = console.serial
+    upper, lower = request.get("upper"), request.get("lower")
+    token = request.get("token")
+    if (not serial or request.get("serial") != serial or request.get("confirm") != serial
+            or not isinstance(token, str) or not re.fullmatch(r"[0-9a-f]{64}", token)
+            or any(type(identity) is not int or not 0 < identity <= 0xffffffff for identity in (upper, lower))):
+        raise ValueError("Confirm a USB merge preview for this keyboard.")
+    if (console.command("native_install update repack-capabilities") != "OK REPACK1"
+            or console.command("native_install update recovery-capabilities") != "OK RECOVERY1"):
+        raise RuntimeError("This keyboard does not offer guarded USB repacking.")
+
+    progress("Backing up dictionaries and saved edits…")
+    source = backup_all(console)
+    original = reconstruct(source)
+    if token != offline_merge_token(original[1], serial, upper, lower):
+        raise ValueError("The dictionaries changed after the preview. No erase was started. Preview the merge again.")
+    return source, original
+
+
+def install_offline_merge(source, original, request, progress):
+    progress("Building and verifying the merged layout on this computer…")
+    target, name = build_merge_repack(source, original, request["upper"], request["lower"])
+    install_verified_bundle(source, target, request["serial"], progress)
+    return name
+
+
+def install_verified_bundle(source, target, serial, progress):
     directory = plan_directory(serial, secrets.token_hex(16))
     directory.mkdir(mode=0o700, parents=True)
     # Make the backup discoverable before any operation can erase the pool.

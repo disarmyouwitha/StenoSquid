@@ -82,15 +82,7 @@
         </div>
         <div id="merge-panel" hidden>
           <p id="merge-capacity"></p>
-          <div class="toolbar">
-            <label>Merge compact dictionaries <select id="merge-pair" data-write></select></label>
-            <button type="button" id="merge-preview" data-write>Preview merge</button>
-          </div>
-          <div id="merge-plan" hidden aria-live="polite">
-            <p id="merge-summary"></p>
-            <button type="button" id="merge-apply" data-write>Merge</button>
-            <button type="button" id="merge-cancel">Cancel</button>
-          </div>
+          <button type="button" id="merge-open" data-write>Merge compact dictionaries</button>
         </div>
       </section>
       <div class="forms">
@@ -179,5 +171,45 @@
       </section>
     </div>
   </main>
+  <dialog id="merge-dialog" aria-labelledby="merge-title">
+    <h2 id="merge-title">Merge compact dictionaries</h2>
+    <div id="merge-choose">
+      <p>Choose two adjacent dictionaries. The higher-priority dictionary keeps its name and position.</p>
+      <fieldset id="merge-pairs" aria-label="Dictionary pairs"></fieldset>
+    </div>
+    <div id="merge-plan" hidden>
+      <div class="merge-comparison">
+        <div>
+          <h3>Before</h3>
+          <div id="merge-before"></div>
+        </div>
+        <span class="merge-arrow" aria-hidden="true">→</span>
+        <div>
+          <h3>After</h3>
+          <div class="import-format" data-format="snapshot">
+            <strong id="merge-name"></strong>
+            <p id="merge-entries"></p>
+            <div id="merge-blocks"></div>
+          </div>
+        </div>
+      </div>
+      <p id="merge-overlaps" hidden></p>
+      <p id="merge-space"></p>
+      <p id="merge-note"></p>
+      <p id="merge-error" class="inline-error" hidden></p>
+    </div>
+    <div id="merge-job" role="status" hidden>
+      <span class="job-spinner" aria-hidden="true" hidden></span>
+      <output id="merge-status"></output>
+      <progress id="merge-progress" max="100" aria-label="Merge progress" hidden></progress>
+    </div>
+    <div class="toolbar merge-actions">
+      <button type="button" id="merge-preview" data-write>Preview merge</button>
+      <button type="button" id="merge-apply" data-write hidden>Merge</button>
+      <button type="button" id="merge-offline" data-write hidden>Merge via USB repack</button>
+      <button type="button" id="merge-back" hidden>Back</button>
+      <button type="button" id="merge-cancel">Cancel</button>
+    </div>
+  </dialog>
 </body>
 </html>

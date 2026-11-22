@@ -17,7 +17,7 @@ from compile_dict import parse_outline
 from hybrid import compact_entries
 from native_layout import validate_compact_layout
 from native_recovery import capture, digest, reconstruct, recover_usb, save_atomic, sync_directory
-from native_snapshot import CompactImage, compile_snapshot, inspect_free, plan_change
+from native_snapshot import CompactImage, compile_snapshot, inspect_free, merge_rows, merged_entries, plan_change
 from native_update import EXTENT, NoSpace, Snapshot, effective_entries, row_name
 
 RESERVE = 3
@@ -176,9 +176,10 @@ def choose_conversions(source, operations, compact_segments, names):
     return converted, refusals, current
 
 
-def pack_layout(source_image, source, operations, converted, expected_segments):
+def pack_layout(source_image, source, operations, converted, expected_segments, *, merge=None):
     if expected_segments + 2 > 255 - RESERVE:
         raise ValueError("The packed target cannot retain the three-segment maintenance reserve")
+    rows_to_pack, omitted_extents = merge_layout(source, merge)
     image = bytearray(b"\xff" * LIMIT)
     extents = []
     remap, new_bases = {}, {}
@@ -202,7 +203,7 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
         if 2 <= identity <= 7 and base != 65535:
             factory[base] = min(identity, factory.get(base, identity))
     compact_extents = sorted(
-        (index for index, extent in enumerate(source.extents) if extent[4] == 1),
+        (index for index, extent in enumerate(source.extents) if extent[4] == 1 and index not in omitted_extents),
         key=lambda index: (factory.get(index, 8), index),
     )
     journal_segment = None
@@ -228,7 +229,7 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
         new_bases[identity] = place(compiled.at(XIP + next_segment * SEGMENT))
 
     rows = []
-    for original in source.rows:
+    for original in rows_to_pack:
         row = bytearray(original)
         identity, _, base = struct.unpack_from("<IIH", row)
         if identity in new_bases:
@@ -251,23 +252,43 @@ def pack_layout(source_image, source, operations, converted, expected_segments):
     return data, view
 
 
-def verify_effective(source_image, source, target_image, target, expected_operations, converted):
+def merge_layout(source, merge):
+    if merge is None:
+        return source.rows, set()
+    upper, lower = merge_rows(source, *merge)
+    omitted = {struct.unpack_from("<H", row, 8)[0] for row in (upper, lower)}
+    if any(struct.unpack_from("<H", row, 8)[0] in omitted
+           for row in source.rows if row is not upper and row is not lower):
+        raise ValueError("A merge source shares its compact image.")
+    return [row for row in source.rows if row is not lower], omitted
+
+
+def verify_effective(source_image, source, target_image, target, expected_operations, converted, merge):
     if source.next_id != target.next_id or source.personal != target.personal:
         raise ValueError("Packed target changed a catalog identity counter")
-    if [row[:8] + row[12:] for row in source.rows] != [row[:8] + row[12:] for row in target.rows]:
+    rows, _ = merge_layout(source, merge)
+    if [row[:8] + row[12:] for row in rows] != [row[:8] + row[12:] for row in target.rows]:
         raise ValueError("Packed target changed priority, flags, names or pinned provenance")
-    for before, after in zip(source.rows, target.rows, strict=True):
+    for before, after in zip(rows, target.rows, strict=True):
         identity = struct.unpack_from("<I", before)[0]
         if after[10:12] != (b"\x00\x01" if identity in converted else before[10:12]):
             raise ValueError("Packed target changed an unrelated dictionary representation")
     if overlay_operations(target) != expected_operations:
         raise ValueError("Packed target changed shared edits or tombstones")
+
+    lower_entries = {}
+    if merge:
+        _, lower = merge_rows(source, *merge)
+        lower_entries = effective_entries(source, row_name(lower), lambda at, n: source_image[at:at + n])
     source_winners, target_winners = {}, {}
     per_dictionary = {}
-    for row in source.rows:
+    for row in rows:
+        identity = struct.unpack_from("<I", row)[0]
         name = row_name(row)
-        old = effective_entries(source, name, lambda address, n: source_image[address:address + n])
-        new = effective_entries(target, name, lambda address, n: target_image[address:address + n])
+        old = effective_entries(source, name, lambda at, n: source_image[at:at + n])
+        if merge and identity == merge[0]:
+            old = lower_entries | old
+        new = effective_entries(target, name, lambda at, n: target_image[at:at + n])
         if old != new:
             raise ValueError(f"Packed target changed effective translations in {name}")
         per_dictionary[name] = dict(entries=len(new), export_sha256=hashlib.sha256(
@@ -284,10 +305,11 @@ def verify_effective(source_image, source, target_image, target, expected_operat
                 retained_overlay_records=len(expected_operations))
 
 
-def verify_relocated(source_image, source, target_image, target, converted):
+def verify_relocated(source_image, source, target_image, target, converted, merge):
     """Existing baselines and SHI1 survive verbatim after normalizing pointers."""
     checked = set()
-    for before, after in zip(source.rows, target.rows, strict=True):
+    rows, _ = merge_layout(source, merge)
+    for before, after in zip(rows, target.rows, strict=True):
         identity, _, old_base = struct.unpack_from("<IIH", before)
         new_base = struct.unpack_from("<H", after, 8)[0]
         if new_base == 65535:
@@ -304,7 +326,7 @@ def verify_relocated(source_image, source, target_image, target, converted):
         if new_base not in checked:
             verify_hints(blob, XIP + address)
             checked.add(new_base)
-        if old_base != 65535:
+        if old_base != 65535 and (merge is None or identity != merge[0]):
             old_start, _, old_size, _, _, _ = source.extents[old_base]
             old_address = old_start * SEGMENT
             if relocate_compact(blob, XIP + address, XIP + old_address) != source_image[old_address:old_address + old_size]:
@@ -352,9 +374,17 @@ def validate_pair(source_backup, target_backup, original, repacked):
     if set(names) - candidates.keys():
         raise ValueError("Optimized bundle converted an ineligible dictionary")
     converted = {candidates[name] for name in names}
-    verify_relocated(source_image, source, target_image, target, converted)
+    merge = metadata.get("merged")
+    operations = overlay_operations(source)
+    if "merged" in metadata:
+        if (names or not isinstance(merge, list) or len(merge) != 2
+                or any(type(identity) is not int or not 0 < identity <= 0xffffffff for identity in merge)):
+            raise ValueError("Invalid optimized bundle merge pair")
+        merge_layout(source, merge)
+        operations = {key: value for key, value in operations.items() if key[0] not in merge}
+    verify_relocated(source_image, source, target_image, target, converted, merge)
     verification = verify_effective(source_image, source, target_image, target,
-                                    operations_after(overlay_operations(source), converted), converted)
+                                    operations_after(operations, converted), converted, merge)
     before, after = layout_stats(source), layout_stats(target)
     if after["free_segments"] < RESERVE:
         raise ValueError("Optimized bundle does not retain the maintenance reserve")
@@ -390,6 +420,26 @@ def build_repack(backup, names=None):
     bundle["sha256"] = digest(bundle)
     report = validate_pair(backup, bundle, (source_image, source), (target_image, target))
     return target_image, bundle, {**report, "refused": refused}
+
+
+def build_merge_repack(backup, original, upper_id, lower_id):
+    source_image, source = original
+    merge = [upper_id, lower_id]
+    upper, lower = merge_rows(source, *merge)
+    entries, _ = merged_entries(source, upper, lower, lambda address, size: source_image[address:address + size])
+    compiled = compile_snapshot(row_name(upper), {parse_outline(outline): text.encode() for outline, text in entries.items()})
+    _, omitted = merge_layout(source, merge)
+    operations = {key: value for key, value in overlay_operations(source).items() if key[0] not in merge}
+    segments = sum(segment_count(size) for index, (_, _, size, _, kind, _) in enumerate(source.extents)
+                   if kind == 1 and index not in omitted)
+    segments += segment_count(len(compiled.data)) + sum(overlay_geometry(operations))
+    target_image, target = pack_layout(source_image, source, operations, {upper_id: compiled}, segments, merge=merge)
+    bundle = capture(lambda address, n: target_image[address:address + n], target, backup["host_layout"])
+    bundle["repack"] = dict(source_bundle_sha256=backup["sha256"],
+                            target_image_sha256=hashlib.sha256(target_image).hexdigest(), converted=[], merged=merge)
+    bundle["sha256"] = digest(bundle)
+    validate_pair(backup, bundle, original, (target_image, target))
+    return bundle, row_name(upper)
 
 
 def repack(backup, names=None):

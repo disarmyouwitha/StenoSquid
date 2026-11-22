@@ -25,6 +25,7 @@ const jobMessages = {
   backup: "Preparing backup…", export: "Exporting dictionary…",
   preview_package: "Checking factory dictionary space…", apply_package: "Saving factory dictionary…",
   preview_merge: "Preparing the compact merge…", apply_merge: "Merging compact dictionaries…",
+  apply_offline_merge: "Preparing the USB merge…",
   preview_repack: "Preparing the USB repack preview…", apply_repack: "Preparing to repack dictionary flash…",
   restore_repack_backup: "Restoring the original dictionary backup…",
   preview_compact: "Finding blocks to reclaim…", compact: "Reclaiming flash space…", clear_personal: "Clearing personal dictionary…"
@@ -45,6 +46,14 @@ function notify(text, error = false) {
   const percent = /^Writing .*?(?:… (\d+)%| \((\d+)%\))$/.exec(text);
   progress.hidden = !percent;
   if (percent) progress.value = Number(percent[1] ?? percent[2]);
+  if (node("merge-dialog").open) {
+    node("merge-job").hidden = !text;
+    node("merge-job").querySelector(".job-spinner").hidden = !busy || error;
+    node("merge-status").textContent = text;
+    node("merge-status").dataset.error = error;
+    node("merge-progress").hidden = progress.hidden;
+    node("merge-progress").value = progress.value;
+  }
 }
 function selection() {
   return state?.catalog.find((row) => row.id === selectedId);
@@ -63,6 +72,7 @@ function setConnection(isConnected, lost = false, transport = connectionTranspor
   button.textContent = isConnected ? "Reconnect" : "Connect";
   button.toggleAttribute("data-connected", isConnected);
   if (!isConnected) {
+    node("merge-dialog").close();
     clearImportPlan();
     state = undefined;
     setup = undefined;
@@ -100,9 +110,11 @@ function controls() {
   const row = selection();
   const rank = state.catalog.indexOf(row);
   const editable = !busy && !state.read_only;
-  for (const id of ["merge-pair", "merge-preview", "merge-apply", "merge-cancel"]) {
-    node(id).disabled = !editable || connectionTransport !== "usb";
+  const mergeDisabled = !editable || connectionTransport !== "usb";
+  for (const id of ["merge-open", "merge-pairs", "merge-preview", "merge-apply", "merge-offline"]) {
+    node(id).disabled = mergeDisabled;
   }
+  node("merge-back").disabled = node("merge-cancel").disabled = busy;
   node("up").disabled = !editable || rank <= 0;
   node("down").disabled = !editable || rank < 0 || rank >= state.catalog.length - 1;
   const independent = row?.name !== "user_dictionary" && ["named", "snapshot"].includes(row?.kind);
@@ -308,6 +320,7 @@ async function watch(id) {
     } else if (result.cleared) {
       notify("Personal dictionary cleared.");
     } else if (result.merged) {
+      node("merge-dialog").close();
       notify(`Merged into ${result.merged}. One dictionary slot is now available.`);
     } else if (result.optimized) {
       notify(`Saved the compact baseline for ${result.optimized}. The keyboard is ready.`);
@@ -576,6 +589,9 @@ function confirmRepack(action, serial, token) {
 function clearMergePlan() {
   mergePlan = undefined;
   node("merge-plan").hidden = true;
+  node("merge-choose").hidden = false;
+  node("merge-preview").hidden = false;
+  for (const id of ["merge-apply", "merge-offline", "merge-back", "merge-job"]) node(id).hidden = true;
 }
 
 function renderMergeOptions() {
@@ -592,7 +608,7 @@ function renderMergeOptions() {
   const options = catalog.flatMap((upper, i) => {
     const lower = catalog[i + 1];
     return compact(upper) && compact(lower) && upper.enabled === lower.enabled
-      ? [new Option(`${upper.name} + ${lower.name}`, `${upper.id},${lower.id}`)] : [];
+      ? [mergePair(upper, lower, i + 1)] : [];
   });
   const full = limit && catalog.length >= limit;
   const offer = Boolean(limit && (full || (manyActive && options.length)));
@@ -607,33 +623,71 @@ function renderMergeOptions() {
   }
   node("merge-capacity").textContent = message.trim();
   node("merge-capacity").hidden = !message;
-  node("merge-pair").parentElement.hidden = !options.length;
-  node("merge-preview").hidden = !options.length;
-  node("merge-pair").replaceChildren(...options);
+  node("merge-open").hidden = !options.length;
+  node("merge-pairs").replaceChildren(...options);
+  if (options.length) options[0].querySelector("input").checked = true;
+}
+
+function mergePair(upper, lower, priority) {
+  const label = document.createElement("label");
+  label.className = "merge-pair import-format";
+  const radio = document.createElement("input");
+  radio.type = "radio";
+  radio.name = "merge-pair";
+  radio.value = `${upper.id},${lower.id}`;
+  const names = document.createElement("span");
+  const first = document.createElement("strong");
+  first.textContent = `${priority}. ${upper.name}`;
+  const second = document.createElement("small");
+  second.textContent = `${priority + 1}. ${lower.name}`;
+  names.append(first, second);
+  label.append(radio, names);
+  return label;
 }
 
 function showMergePlan(plan) {
   mergePlan = plan;
   const [upper, lower] = plan.names;
-  let text = `Keep ${upper} and fold ${lower} into it. ${number.format(plan.entries)} entries in ${plan.image_segments} blocks.`;
-  if (plan.duplicates) text += ` ${number.format(plan.duplicates)} overlapping outlines keep the higher-priority translation.`;
-  if (plan.token) {
-    const blocks = Math.abs(plan.segment_delta);
-    const change = plan.segment_delta < 0 ? `${blocks} fewer used` : plan.segment_delta > 0
-      ? `${blocks} more used` : "same space used";
-    text += ` Free one slot · ${change} · ${plan.staging_segments} blocks to stage. The left half will reboot.`;
-  } else {
-    text += ` ${plan.reason}`;
-  }
-  node("merge-summary").textContent = text;
+  const sources = [upper, lower].map((name, index) => {
+    const card = document.createElement("div");
+    card.className = "import-format";
+    card.dataset.format = "snapshot";
+    const title = document.createElement("strong");
+    title.textContent = name;
+    const role = document.createElement("small");
+    role.textContent = index === 0 ? "Keeps its name and priority" : "Folds into the first dictionary";
+    const blocks = plan.source_image_segments?.[index];
+    card.append(title, role, ...(blocks ? segmentCost(blocks, null, "image blocks") : []));
+    return card;
+  });
+  node("merge-before").replaceChildren(...sources);
+  node("merge-name").textContent = upper;
+  node("merge-entries").textContent = `${number.format(plan.entries)} entries · 1 slot freed`;
+  node("merge-blocks").replaceChildren(...segmentCost(
+    plan.image_segments, plan.staging_segments ?? null, "image blocks"));
+  node("merge-overlaps").hidden = !plan.duplicates;
+  node("merge-overlaps").textContent = `${number.format(plan.duplicates)} overlapping outlines keep the higher-priority translation.`;
+  const blocks = Math.abs(plan.segment_delta);
+  const change = plan.segment_delta < 0 ? `${blocks} fewer blocks used` : plan.segment_delta > 0
+    ? `${blocks} more blocks used` : "Same number of blocks used";
+  node("merge-space").textContent = plan.token
+    ? `${change} · ${plan.staging_segments} blocks needed during merge`
+    : `${plan.free_segments} free blocks · ${plan.largest_free_run} in the largest run`;
+  node("merge-note").textContent = plan.token
+    ? "Saved edits are folded in. Keep USB connected while the left half reboots."
+    : plan.offline_token ? "USB repack backs up your dictionaries, then rewrites the dictionary flash with the merged layout." : "";
+  node("merge-error").hidden = Boolean(plan.token);
+  node("merge-error").textContent = plan.reason ?? "";
   node("merge-apply").hidden = !plan.token;
-  node("merge-plan").hidden = false;
-  notify(plan.token ? "Review the compact merge." : "The merge cannot be staged.");
+  node("merge-offline").hidden = !plan.offline_token;
+  node("merge-choose").hidden = node("merge-preview").hidden = true;
+  node("merge-plan").hidden = node("merge-back").hidden = false;
+  notify("");
 }
 
 async function run(payload) {
   if (busy) return;
-  clearMergePlan();
+  if (!["apply_merge", "apply_offline_merge"].includes(payload.action)) clearMergePlan();
   const importing = ["import", "preview_import", "apply_import"].includes(payload.action);
   if (importing) showImportError();
   clearRepackPlan();
@@ -659,7 +713,7 @@ async function run(payload) {
     if (connected && /^(No reply to |HID (?:read|write) failed|Connect one Steno Squid left half|Pair and connect one Steno Squid left half|The paired keyboard’s Bluetooth Manager console)/.test(error.message)) {
       setConnection(false, true);
     }
-    if (["apply_repack", "restore_repack_backup"].includes(payload.action)) {
+    if (["apply_repack", "restore_repack_backup", "apply_offline_merge"].includes(payload.action)) {
       setConnection(false, true);
       notify(`${error.message} Select Connect to check the keyboard and recover if needed.`, true);
     } else if (importing) {
@@ -682,24 +736,48 @@ async function run(payload) {
     }
   } finally {
     busy = false;
-    node("job-progress").hidden = true;
+    node("job-progress").hidden = node("merge-progress").hidden = true;
+    node("merge-job").querySelector(".job-spinner").hidden = true;
     controls();
+    if (payload.action === "preview_merge" && mergePlan && node("merge-dialog").open) {
+      node(mergePlan.token ? "merge-apply" : mergePlan.offline_token ? "merge-offline" : "merge-back").focus();
+    }
   }
 }
 node("refresh").onclick = () => run({action: "refresh", transport: "auto"});
 node("backup").onclick = () => run({action: "backup"});
 node("reprovision").onclick = node("emergency-provision").onclick = () => run({action: "open_installer"});
 node("setup-cancel").onclick = () => run({action: "refresh"});
-node("merge-pair").onchange = clearMergePlan;
-node("merge-cancel").onclick = clearMergePlan;
+node("merge-open").onclick = () => {
+  clearMergePlan();
+  node("merge-dialog").showModal();
+  node("merge-pairs").querySelector(":checked")?.focus();
+};
+node("merge-dialog").addEventListener("cancel", (event) => {
+  if (busy) event.preventDefault();
+});
+node("merge-cancel").onclick = () => node("merge-dialog").close();
+node("merge-back").onclick = () => {
+  clearMergePlan();
+  node("merge-pairs").querySelector(":checked")?.focus();
+};
 node("merge-preview").onclick = () => {
-  const [upper, lower] = node("merge-pair").value.split(",").map(Number);
-  if (upper && lower) run({action: "preview_merge", upper, lower});
+  const pair = node("merge-pairs").querySelector(":checked");
+  if (!pair) return;
+  const [upper, lower] = pair.value.split(",").map(Number);
+  run({action: "preview_merge", upper, lower});
 };
 node("merge-apply").onclick = () => {
   if (!mergePlan?.token) return;
   const [upper, lower] = mergePlan.ids;
   run({action: "apply_merge", upper, lower, token: mergePlan.token});
+};
+node("merge-offline").onclick = () => {
+  if (!mergePlan?.offline_token) return;
+  if (!window.confirm("Back up this keyboard, then erase and rewrite its dictionary flash with the merged layout? Keep USB connected.")) return;
+  const [upper, lower] = mergePlan.ids;
+  const {serial, offline_token: token} = mergePlan;
+  run({action: "apply_offline_merge", upper, lower, token, serial, confirm: serial});
 };
 node("repack-preview").onclick = () => run({action: "preview_repack"});
 node("repack-cancel").onclick = () => {
@@ -910,7 +988,8 @@ request("/api/job").then(async (job) => {
     notify(error.message, true);
   } finally {
     busy = false;
-    node("job-progress").hidden = true;
+    node("job-progress").hidden = node("merge-progress").hidden = true;
+    node("merge-job").querySelector(".job-spinner").hidden = true;
     controls();
   }
 }).catch((error) => notify(error.message, true));

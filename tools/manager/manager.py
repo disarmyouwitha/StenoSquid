@@ -25,10 +25,13 @@ from native_base_update import factory_package
 from native_snapshot import change_snapshot, clear_personal, merge_limit, merge_snapshots
 from native_import_plan import named_import
 from native_layout import read_images, read_layout
-from manager_repack import capture_approved_repack, install_repack, last_repack_backup, preview_repack, restore_original
+from manager_repack import (
+    capture_approved_merge, capture_approved_repack, install_offline_merge, install_repack, last_repack_backup,
+    preview_repack, restore_original,
+)
 
 REPACK_ACTIONS = {"preview_repack", "apply_repack", "restore_repack_backup"}
-MERGE_ACTIONS = {"preview_merge", "apply_merge"}
+MERGE_ACTIONS = {"preview_merge", "apply_merge", "apply_offline_merge"}
 IMPORT_ACTIONS = {"preview_import", "apply_import", "import"}
 USB_ONLY_ACTIONS = REPACK_ACTIONS | IMPORT_ACTIONS | MERGE_ACTIONS
 MAX_REQUEST = 48 * 1024 * 1024
@@ -37,7 +40,7 @@ FACTORY_CHOICES = {key: row[1] for key, row in FACTORY_KEYS.items()}
 FACTORY_ACTIONS = {str(row[0]): key for key, row in FACTORY_KEYS.items()}
 MAP_REFRESH_ACTIONS = {"refresh", "layout_map", "setup", "import", "apply_import", "compact", "apply_package",
                        "apply_optimize", "clear_personal", "delete", "set", "remove", "reset", "apply_repack",
-                       "restore_repack_backup", "apply_merge"}
+                       "restore_repack_backup", "apply_merge", "apply_offline_merge"}
 INSTALLABLE_STATUS = re.compile(r"NATIVE2 (?:READY [0-9]+|UNPROVISIONED [0-9]+(?: .*)?)")
 
 
@@ -243,6 +246,13 @@ def run_job(serial, request, progress, show_view=None, *, transport="usb"):
             install_repack(source, plan, progress)
         with opener(serial) as console:
             return {**load_view(console, action, progress, show_view), "repacked": not restore, "restored": restore}
+    if action == "apply_offline_merge":
+        with opener(serial) as console:
+            source, original = capture_approved_merge(console, request, progress)
+            serial = console.serial
+        name = install_offline_merge(source, original, request, progress)
+        with opener(serial) as console:
+            return {**load_view(console, action, progress, show_view), "merged": name}
     published = False
     report = {}
     with opener(serial) as console:

@@ -17,9 +17,9 @@ from build_native_image import SEGMENT, SOURCES, build
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import digest, reconstruct, save_atomic
-from native_repack import check_live, pack_layout, repack, restore_repack, validate_pair
+from native_repack import build_merge_repack, check_live, pack_layout, repack, restore_repack, validate_pair
 from native_snapshot import compile_snapshot, plan_named_snapshot
-from native_update import backup_all, row_name
+from native_update import backup_all, effective_entries, row_name
 
 
 def refuse(function, *values):
@@ -59,12 +59,33 @@ def main():
         update = plan_named_snapshot(old, layout(old) | set(range(3, 110)), "Keep Compact", existing)
         data = publish_image(data, update, 3)
         old = opened(data)
-        more = compile_snapshot("Second Compact", {(16,): b"other hint", (16, 8): b"second multistroke"})
+        more = compile_snapshot("Second Compact", {
+            (8,): b"higher priority", (16,): b"other hint", (16, 8): b"second multistroke",
+        })
         data = publish_image(data, plan_named_snapshot(old, layout(old) | set(range(3, 200)), "Second Compact", more), 5)
         old = opened(data)
         complete = backup_all(Console(data, old.payload))
         complete["host_layout"] = "Windows U.S. (plain text)"
         complete["sha256"] = digest(complete)
+
+        original = reconstruct(complete)
+        merged_bundle, name = build_merge_repack(complete, original, 24, 23)
+        merged_image, merged = reconstruct(merged_bundle)
+        assert name == "Second Compact"
+        assert merged_bundle["repack"]["merged"] == [24, 23]
+        assert [row_name(row) for row in merged.rows] == [
+            row_name(row) for row in old.rows if row_name(row) != "Keep Compact"
+        ]
+        expected = {**effective_entries(old, "Keep Compact", lambda at, n: data[at:at + n]),
+                    **effective_entries(old, "Second Compact", lambda at, n: data[at:at + n])}
+        assert "higher priority" in expected.values() and "stay compact" not in expected.values()
+        assert effective_entries(merged, name, lambda at, n: merged_image[at:at + n]) == expected
+        assert merged.entries[2, kat].text == b"pinned override"
+        assert merged.entries[20, bob].operation == 1
+        refuse(build_merge_repack, complete, original, 23, 24)
+        forged = {**merged_bundle, "repack": {**merged_bundle["repack"], "merged": [23, 24]}}
+        forged["sha256"] = digest(forged)
+        refuse(validate_pair, complete, forged, original, reconstruct(forged))
 
         target, report = repack(complete)
         again, second = repack(complete)
