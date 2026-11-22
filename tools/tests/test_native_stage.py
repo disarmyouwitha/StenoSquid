@@ -17,7 +17,7 @@ from hostlib import compiler
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/storage"))
-from build_native_image import build, catalog_header, SEGMENT, SOURCES, write_journal_header
+from build_native_image import build, catalog_header, OUTLINE_FIRST, SEGMENT, SOURCES, write_journal_header
 from native_update import Edit, Snapshot, NoSpace, encode_record, export_dictionary, plan, transfer, EXTENT
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from native_base_update import Image, plan_replacements
@@ -58,11 +58,12 @@ def fixture(path):
             if epoch == 1:
                 checkpoint.append(edit)
             offset += edit.span
-    for index, records in enumerate((checkpoint, sorted(checkpoint, key=lambda edit: (edit.text, edit.key)))):
+    for index, records in enumerate((sorted(checkpoint, key=lambda edit: edit.outline_key),
+                                     sorted(checkpoint, key=lambda edit: (edit.text, edit.key)))):
         table = b"".join(struct.pack("<I", edit.address) for edit in records)
         segment = first_free + 2 + index
         image[segment * SEGMENT:segment * SEGMENT + len(table)] = table
-        payload.extend(EXTENT.pack(segment, 1, len(table), zlib.crc32(table), 3 + index, 0))
+        payload.extend(EXTENT.pack(segment, 1, len(table), zlib.crc32(table), 3 + index, 0 if index else OUTLINE_FIRST))
     count = struct.unpack_from("<H", payload, 6)[0]
     struct.pack_into("<HQ", payload, 6, count + 4, len(checkpoint))
     for slot in range(2):

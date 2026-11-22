@@ -52,7 +52,6 @@ public:
             const uint32_t start=uint16_t(row[0]) | uint16_t(row[1])<<8,kind=Word(row+12);
             if(kind==3) {
                 view.forward_address=start*kSegmentBytes;view.forward_count=Word(row+4)/4;
-                view.outline_first=Word(row+16)==kOutlineFirst;
             }
             if(kind==4){reverse_address=start*kSegmentBytes;reverse_count=Word(row+4)/4;}
             if(kind!=2)continue;

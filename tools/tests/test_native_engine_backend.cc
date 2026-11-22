@@ -85,7 +85,7 @@ static void GroupedReads() {
     assert(fixture.store.Start(NativeStore<NativeDevice>::Work::Checkpoint) == JobResult::More);
     fixture.Finish();
     fixture.Open();
-    assert(live.CurrentView().outline_first && !live.TailCount());
+    assert(!live.TailCount());
     run(missing, 1, "checkpoint miss");
     run(last, 2, "checkpoint low-priority hit");
     LiveView pin;

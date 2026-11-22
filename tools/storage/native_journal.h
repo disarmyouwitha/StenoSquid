@@ -67,7 +67,8 @@ inline int CompareOutline(const JournalKey &key, const uint32_t *strokes, uint8_
     }
     return key.count == count ? 0 : key.count < count ? -1 : 1;
 }
-inline int CompareJournalKey(const JournalKey &key, uint32_t id,
+// Tie-break for the reverse index after comparing translation text.
+inline int CompareReverseKeyTie(const JournalKey &key, uint32_t id,
                              const uint32_t *strokes, uint8_t count) {
     if (key.identity != id) return key.identity < id ? -1 : 1;
     return CompareOutline(key, strokes, count);

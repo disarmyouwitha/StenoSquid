@@ -18,8 +18,6 @@ struct LiveView {
     uint16_t outline_lengths[64]{};
     uint32_t dictionary_count=0,forward_address=0,forward_count=0,token=0,highwater_address=0;
     uint64_t through=0,highwater=0;
-    // An empty checkpoint can always be published in outline order.
-    bool outline_first=true;
 };
 
 // One lookup is offered to successive dictionaries in priority order. Cache
@@ -106,7 +104,7 @@ class LiveJournal {
         if (status == JournalResult::IoError) return LiveResult::IoError;
         if (status != JournalResult::Ok || record.sequence > view.highwater ||
             (record.sequence <= view.through) != indexed ||
-            CompareJournalKey(key, id, strokes, count)) return LiveResult::Corrupt;
+            CompareOutlineKey(key, id, strokes, count)) return LiveResult::Corrupt;
         result = {static_cast<Operation>(key.operation), address + 40u + 4u * key.count, key.text_bytes};
         return LiveResult::Ok;
     }
@@ -200,8 +198,7 @@ class LiveJournal {
                 corrupt = !io;
                 return 2;
             }
-            return !indexed || view.outline_first ? CompareOutlineKey(key, id, strokes, count)
-                                                 : CompareJournalKey(key, id, strokes, count);
+            return CompareOutlineKey(key, id, strokes, count);
         };
         auto read=[&](uint32_t offset,uint8_t *out,size_t n) {
             indexed=true;
@@ -304,7 +301,6 @@ public:
                 uint32_t bytes=Word(extent+4);
                 if(live.forward_count || bytes%4 || bytes/4>kMaxEntries)return Fail(LiveResult::Corrupt);
                 live.forward_address=start*kSegmentBytes;live.forward_count=bytes/4;
-                live.outline_first=Word(extent+16)==kOutlineFirst;
             }
             if(kind!=uint32_t(ExtentKind::Journal))return LiveResult::More;
             const uint64_t epoch=uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32;
@@ -442,7 +438,6 @@ public:
         const uint32_t recent = edits.addresses[slot];
         if (recent && !(recent & kIndexedAddress))
             return VerifyLookup(view, recent, false, id, strokes, count, result);
-        if (!view.outline_first) return FindIn(view, id, strokes, count, result, true);
 
         const bool first_forward = edits.forward == State::Unloaded;
         const auto forward = load(edits.forward, true);

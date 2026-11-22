@@ -52,11 +52,13 @@ def descriptors(payload):
     used, kinds = {0, 1, 255}, set()
     result = list(EXTENT.iter_unpack(payload[end:]))
     for start, span, size, crc, kind, epoch in result:
+        if kind == 3 and epoch != OUTLINE_FIRST:
+            raise ValueError("Unsupported forward journal checkpoint in recovery bundle")
         run = set(range(start, start + span))
         if (not 2 <= start < 255 or not 1 <= span <= 255 - start
                 or not 0 < size <= span * SEGMENT or run & used or kind not in (1, 2, 3, 4)
                 or (kind == 2 and (span != 1 or size != SEGMENT or not epoch or crc))
-                or (kind != 2 and epoch and not (kind == 3 and epoch == OUTLINE_FIRST))
+                or (kind in (1, 4) and epoch)
                 or (kind in (3, 4) and (size % 4 or kind in kinds))):
             raise ValueError("Invalid or overlapping recovery extent")
         used.update(run)
