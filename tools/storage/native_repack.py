@@ -486,7 +486,7 @@ def check_live(console, bundle, *, target=False):
     return report
 
 
-def restore_repack(source_path, target_path, serial, confirmation, progress=print, *, live=False):
+def restore_repack(source_path, target_path, serial, confirmation, progress=print, *, live=False, show_hashes=True):
     if source_path.samefile(target_path):
         raise ValueError("Provide the original and optimized bundles as separate files.")
     source, source_file_hash = read_bundle(source_path, durable=True)
@@ -500,8 +500,11 @@ def restore_repack(source_path, target_path, serial, confirmation, progress=prin
         raise ValueError("Live repack requires a fresh backup from the selected keyboard.")
     if not live and captured_serial == serial:
         raise ValueError("Use guarded live repack for the capture device.")
-    progress(f"Confirmed device {serial}. Original file SHA-256 {source_file_hash}. "
-             f"Optimized file SHA-256 {file_hash}. Recovery erases the entire external dictionary pool.")
+    if show_hashes:
+        progress(f"Confirmed device {serial}. Original file SHA-256 {source_file_hash}. "
+                 f"Optimized file SHA-256 {file_hash}. Recovery erases the entire external dictionary pool.")
+    else:
+        progress("Backup verified. Preparing USB restore…")
     if live:
         recover_usb(target, serial, serial, progress, live_source=(source, original[1]))
     else:

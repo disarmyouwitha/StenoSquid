@@ -269,7 +269,7 @@ class ManagerTest(unittest.TestCase):
             self.assertEqual(json.loads((saved / "original.json").read_text()), source)
             _, target_hash = manager_repack.read_bundle(saved / "optimized.json")
             self.assertEqual(install.call_args.args[3], serial + ":" + target_hash)
-            self.assertTrue(install.call_args.kwargs["live"])
+            self.assertEqual(install.call_args.kwargs, {"live": True, "show_hashes": False})
 
             self.keyboard.install_status = "NATIVE2 UNPROVISIONED 3"
             self.assertEqual(manager.read_state(self.keyboard)["setup"]["repack_backup"], saved.name)

@@ -182,8 +182,13 @@ def main():
             refuse(restore_repack, bundle, optimized, "spare", "spare")
             refuse(restore_repack, bundle, bundle, "spare", confirmation)
             recover.assert_not_called()
-            restore_repack(bundle, optimized, "spare", confirmation, lambda _: None)
+            progress = []
+            restore_repack(bundle, optimized, "spare", confirmation, progress.append)
             assert recover.call_args.kwargs == {"repack_spare": True}
+            assert saved["target_file_sha256"] in progress[0]
+            progress.clear()
+            restore_repack(bundle, optimized, "spare", confirmation, progress.append, show_hashes=False)
+            assert progress == ["Backup verified. Preparing USB restore…"]
         originals = bundle.read_bytes(), optimized.read_bytes()
         refuse(save_atomic, bundle, {"bad": True})
         assert (bundle.read_bytes(), optimized.read_bytes()) == originals

@@ -172,7 +172,7 @@ def install_verified_bundle(source, target, serial, progress):
     _, target_hash = read_bundle(optimized, durable=True)
     save_atomic(directory / "attempt.json", {"original_sha256": source["sha256"],
                                             "optimized_file_sha256": target_hash})
-    restore_repack(original, optimized, serial, f"{serial}:{target_hash}", progress, live=True)
+    restore_repack(original, optimized, serial, f"{serial}:{target_hash}", progress, live=True, show_hashes=False)
 
 
 def last_repack_backup(serial):
