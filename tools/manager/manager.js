@@ -635,15 +635,15 @@ function mergePair(upper, lower, priority) {
   radio.type = "radio";
   radio.name = "merge-pair";
   radio.value = `${upper.id},${lower.id}`;
-  const first = document.createElement("strong");
-  first.textContent = `${priority}. ${upper.name}`;
+  const source = document.createElement("strong");
+  source.textContent = `${priority + 1}. ${lower.name}`;
   const arrow = document.createElement("span");
   arrow.className = "merge-pair-arrow";
   arrow.setAttribute("aria-hidden", "true");
-  arrow.textContent = "←";
-  const second = document.createElement("strong");
-  second.textContent = `${priority + 1}. ${lower.name}`;
-  label.append(radio, first, arrow, second);
+  arrow.textContent = "→";
+  const destination = document.createElement("strong");
+  destination.textContent = `${priority}. ${upper.name}`;
+  label.append(radio, source, arrow, destination);
   return label;
 }
 
