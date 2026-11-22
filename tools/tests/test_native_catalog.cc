@@ -76,9 +76,40 @@ void ShrinkThenGrow() {
     assert(std::memcmp(nor.data.data() + grown.root.address, replacement.data(), replacement.size()) == 0);
 }
 
+void RefuseUnsupportedForwardOrder() {
+    Nor nor;
+    NativeCatalog<Nor> catalog(nor);
+    CatalogSelection empty, selected;
+    auto data = payload();
+    data[6] = 1;
+    data.resize(data.size() + 24);
+    const auto offset = data.size() - 24;
+    auto *extent = data.data() + offset;
+    extent[0] = 2;
+    extent[2] = 1;
+    PutWord(extent + 4, 4);
+    PutWord(extent + 12, 3);
+    PutWord(extent + 16, kOutlineFirst);
+    assert(catalog.Publish(empty, data.size(), Source{data}, accept, selected) == CatalogResult::Ok);
+
+    // Make a committed catalog with correct CRCs and the old zero marker.
+    auto *header = nor.data.data();
+    auto *stored = header + 32;
+    PutWord(stored + offset + 16, 0);
+    PutWord(header + 20, Crc(0, stored, data.size()));
+    PutWord(header + 24, Crc(0, header, 24));
+    const auto bytes = nor.data;
+    NativeCatalog<Nor> reopened(nor);
+    CatalogRoot root;
+    assert(reopened.Inspect(0, root) == CatalogResult::Ok);
+    assert(reopened.Open(selected, accept) == CatalogResult::Corrupt);
+    assert(nor.data == bytes);
+}
+
 int main() {
     faults(1);faults(64);
     ShrinkThenGrow();
+    RefuseUnsupportedForwardOrder();
     // First provisioning can leave no committed root, never a fabricated root.
     auto initial=payload();Nor dryInitial;NativeCatalog<Nor> initialCatalog(dryInitial);
     CatalogSelection virgin,initialized;

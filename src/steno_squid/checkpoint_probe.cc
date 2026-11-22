@@ -95,16 +95,11 @@ struct BuildOps {
         return probe_device.Read(address+32,prefix,8)?prefix[4]:-1;
     }
     int CompareKey(uint32_t a,uint32_t b) {
-        uint8_t prefix[72];
-        if(!probe_device.Read(b+32,prefix,8) || prefix[5]<1 || prefix[5]>16)return 2;
-        const uint8_t count=prefix[5];
-        if(!probe_device.Read(b+40,prefix+8,count*4))return 2;
-        uint32_t strokes[16];for(unsigned i=0;i<count;++i)strokes[i]=Word(prefix+8+4*i);
-        uint8_t header[32];
-        if(!probe_device.Read(a,header,32))return 2;
-        RecordView view;
-        return CompareOutline(a+32,Word(header+16),Word(prefix),strokes,count,
-            [](uint32_t at,uint8_t *out,size_t n){return probe_device.Read(at,out,n);},view);
+        JournalRecord record;
+        JournalKey left, right;
+        if(probe_journal.ReadKey(a,record,left)!=JournalResult::Ok ||
+           probe_journal.ReadKey(b,record,right)!=JournalResult::Ok)return 2;
+        return CompareOutlineKey(left,right.identity,right.strokes,right.count);
     }
     int CompareReverse(uint32_t a,uint32_t b) {
         uint8_t x[32],y[32];
@@ -118,7 +113,12 @@ struct BuildOps {
             for(uint32_t i=0;i<n;++i)if(x[i]!=y[i])return x[i]<y[i]?-1:1;
             offset+=n;
         }
-        return an==bn?CompareKey(a,b):an<bn?-1:1;
+        if(an!=bn)return an<bn?-1:1;
+        JournalRecord record;
+        JournalKey left, right;
+        if(probe_journal.ReadKey(a,record,left)!=JournalResult::Ok ||
+           probe_journal.ReadKey(b,record,right)!=JournalResult::Ok)return 2;
+        return CompareReverseKeyTie(left,right.identity,right.strokes,right.count);
     }
     bool ReadIndex(bool reverse,uint32_t position,uint32_t &address) {
         uint8_t bytes[4];
@@ -172,6 +172,25 @@ bool Source(uint32_t at,uint8_t *out,uint32_t n) {
     std::memcpy(out,payload+at,n);return true;
 }
 
+Result FindProbeRecord(uint32_t dictionary,const uint32_t *strokes,uint8_t count,RecordView &view) {
+    auto read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(selected_forward+offset,out,n);};
+    auto compare=[&](uint32_t address) {
+        JournalRecord record;
+        JournalKey key;
+        return probe_journal.ReadKey(address,record,key)==JournalResult::Ok ?
+            CompareOutlineKey(key,dictionary,strokes,count):2;
+    };
+    uint32_t address=0;
+    const auto result=FindOrdered(2,read,compare,address);
+    if(result!=Result::Found)return result;
+    JournalRecord record;
+    JournalKey key;
+    if(probe_journal.Read(address,record,&key)!=JournalResult::Ok ||
+       CompareOutlineKey(key,dictionary,strokes,count))return Result::Corrupt;
+    view={static_cast<Operation>(key.operation),address+40u+4u*key.count,key.text_bytes};
+    return Result::Found;
+}
+
 class ProbeBackend final : public DictionaryBackend {
 public:
     bool Acquire(uint32_t dictionary,uint32_t &token)override {
@@ -180,14 +199,8 @@ public:
     void Release(uint32_t token)override{probe_catalog.ReleasePin(token);}
     EditState Find(uint32_t,uint32_t dictionary,const StenoDictionaryLookup &lookup,EditText &text)override {
         uint32_t strokes[16];for(size_t i=0;i<lookup.length;++i)strokes[i]=lookup.strokes[i].GetKeyState();
-        RecordView view;uint32_t address=0;
-        auto read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(selected_forward+offset,out,n);};
-        auto compare=[&](uint32_t at) {
-            uint8_t header[32];if(!probe_device.Read(at,header,32))return 2;
-            return CompareOutline(at+32,Word(header+16),dictionary,strokes,lookup.length,
-                [](uint32_t p,uint8_t *out,size_t n){return probe_device.Read(p,out,n);},view);
-        };
-        const auto result=FindOrdered(2,read,compare,address);
+        RecordView view;
+        const auto result=FindProbeRecord(dictionary,strokes,lookup.length,view);
         if(result==Result::Missing)return EditState::Missing;
         if(result!=Result::Found)return EditState::Error;
         text={view.text_address,view.text_bytes};
@@ -219,14 +232,8 @@ bool Verify() {
     const char *expected=selected.root.generation>=3?"live":"newer";
     // Generation 3 checkpoints the live tail using the native transaction job.
     probe_device.mapped=true;
-    auto table_read=[](uint32_t offset,uint8_t *out,size_t n){return probe_device.Read(selected_forward+offset,out,n);};
-    uint32_t query=8,found=0;RecordView view;
-    auto compare=[&](uint32_t address) {
-        uint8_t header[32];if(!probe_device.Read(address,header,32))return 2;
-        return CompareOutline(address+32,Word(header+16),1,&query,1,
-            [](uint32_t at,uint8_t *out,size_t n){return probe_device.Read(at,out,n);},view);
-    };
-    if(FindOrdered(2,table_read,compare,found)!=Result::Found || view.text_bytes!=std::strlen(expected))return false;
+    uint32_t query=8;RecordView view;
+    if(FindProbeRecord(1,&query,1,view)!=Result::Found || view.text_bytes!=std::strlen(expected))return false;
     uint8_t text[5];if(!probe_device.Read(view.text_address,text,view.text_bytes) || std::memcmp(text,expected,view.text_bytes))return false;
     const StenoStroke stroke(8);
     auto translated=probe_dictionary.Lookup(StenoDictionaryLookup(&stroke,1));
@@ -272,6 +279,7 @@ bool Prepare() {
         PutWord(extent+8,i==0?0:i==1?forward_sink.Checksum():reverse_sink.Checksum());
         PutWord(extent+12,i==0?2:i==1?3:4);
         if(!i){PutWord(extent+16,uint32_t(Epoch));PutWord(extent+20,uint32_t(Epoch>>32));}
+        if(i==1)PutWord(extent+16,kOutlineFirst);
     }
     CatalogSelection empty,first;
     if(probe_catalog.Publish(empty,sizeof(payload),Source,CheckExtent,first)!=CatalogResult::Ok)return false;

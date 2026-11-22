@@ -14,6 +14,7 @@ std::vector<uint8_t> catalog_payload(uint32_t forward,uint32_t reverse,uint32_t 
         PutWord(extent+4,i==0?65536:i==1?8:through==2?8:4);
         PutWord(extent+8,i==0?0:i==1?fcrc:rcrc);PutWord(extent+12,i==0?2:i==1?3:4);
         if(!i)PutWord(extent+16,1);
+        if(i==1)PutWord(extent+16,kOutlineFirst);
     }
     return data;
 }

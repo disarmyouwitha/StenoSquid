@@ -85,6 +85,11 @@ class Snapshot:
         if len(personal) != 1 or (personal[0][8:10] != b"\xff\xff" and personal[0][11] != 1):
             raise ValueError("Expected one personal dictionary")
         self.personal = struct.unpack_from("<I", personal[0])[0]
+        for _, _, _, _, kind, auxiliary in self.extents:
+            if kind == 3 and auxiliary != OUTLINE_FIRST:
+                raise ValueError("Unsupported forward journal checkpoint. Reprovision with current firmware and Manager.")
+            if kind == 4 and auxiliary:
+                raise ValueError("Unsupported reverse journal checkpoint")
         if metadata_only:
             return
         self.journals = [item for item in self.extents if item[4] == 2]
@@ -129,11 +134,9 @@ class Snapshot:
         if strict and not boundary:
             raise ValueError("Recovery checkpoint boundary is missing")
         indexed = {}
-        for start, _, length, expected, kind, auxiliary in self.extents:
+        for start, _, length, expected, kind, _ in self.extents:
             if kind != 3 and (not strict or kind != 4):
                 continue
-            if auxiliary not in ((0, OUTLINE_FIRST) if kind == 3 else (0,)):
-                raise ValueError("Unsupported journal index order")
             data = read(start * SEGMENT, length)
             if len(data) != length or zlib.crc32(data) != expected:
                 raise ValueError("Source forward index failed checksum")
@@ -146,10 +149,7 @@ class Snapshot:
                     sequence = sequences[address]
                     if entry.identity >= self.next_id or sequence > through or (kind == 4 and entry.operation):
                         raise ValueError("Invalid recovery index record")
-                    if kind == 3:
-                        key = entry.outline_key if auxiliary == OUTLINE_FIRST else entry.key
-                    else:
-                        key = entry.text, entry.key
+                    key = entry.outline_key if kind == 3 else (entry.text, entry.key)
                     if previous is not None and key <= previous:
                         raise ValueError("Recovery index is out of order")
                     previous = key

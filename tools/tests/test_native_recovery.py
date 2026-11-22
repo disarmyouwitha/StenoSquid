@@ -21,7 +21,7 @@ from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import FORMAT, digest, pack, reconstruct, save_atomic, unpack
 from native_snapshot import CompactImage, compile_snapshot, plan_change, plan_named_snapshot
-from native_update import backup_all, effective_entries, encode_record, Edit, export_dictionary, overlay_usage, plan, row_name
+from native_update import Snapshot, backup_all, effective_entries, encode_record, Edit, export_dictionary, overlay_usage, plan, row_name
 
 
 def reject(call, *args):
@@ -160,6 +160,16 @@ def main():
         bad_bundle["catalog"] = pack(payload)
         bad_bundle["sha256"] = digest(bad_bundle)
         reject(reconstruct, bad_bundle)
+
+        old_bundle = deepcopy(backup)
+        old_payload = bytearray(unpack(old_bundle["catalog"]))
+        forward = next(i for i, extent in enumerate(restored.extents) if extent[4] == 3)
+        struct.pack_into("<Q", old_payload, 32 + len(restored.rows) * 96 + 24 * forward + 16, 0)
+        old_bundle["catalog"] = pack(old_payload)
+        old_bundle["sha256"] = digest(old_bundle)
+        reject(reconstruct, old_bundle)
+        reject(lambda: Snapshot(lambda at, size: old_payload[at:at + size], 0,
+                                len(old_payload), zlib.crc32(old_payload), metadata_only=True))
 
         protected = {0, 1, 255}
         for segment, count, *_ in restored.extents:
