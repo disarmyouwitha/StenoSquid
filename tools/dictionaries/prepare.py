@@ -1,7 +1,6 @@
 """Fetch and hash-check the pinned factory dictionary sources."""
 import argparse
 import hashlib
-import ssl
 import sys
 from pathlib import Path
 from urllib.request import urlopen
@@ -12,6 +11,8 @@ from manifest import BASES, ROOT
 def fetch(url, path, sha):
     if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == sha:
         return
+    import ssl
+
     context = None
     system_certs = Path('/etc/ssl/cert.pem')
     if sys.platform == 'darwin' and not ssl.get_default_verify_paths().cafile and system_certs.is_file():

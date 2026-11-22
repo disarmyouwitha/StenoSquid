@@ -79,7 +79,14 @@ If your board still has the shared Lapwing image from v0.1.2, export any diction
 
 StenoSquid Manager offers full dictionary management! You can Import/Export, Edit, Rename and Delete dictionaries 
 
-Download `StenoSquidManager.zip` from the release and extract it. Run these commands from the extracted folder to open Manager in your browser.
+Download and extract `StenoSquidManager.zip` for both the offline HTML app and Python tools.
+The offline browser version needs no Python: open **StenoSquidManager.html** in desktop Chrome or Edge 137+. Everything is
+bundled, including factory dictionaries, so it works without internet on first
+launch. Safari and Firefox do not support the required WebHID connection.
+See [offline browser Manager](tools/manager/browser/README.md) for build and recovery details.
+
+The Python version stays available and shares the same UI and dictionary code.
+For the Python version, run these commands from the extracted folder to open Manager in your browser.
 
 ```sh
 python3 -m pip install hidapi

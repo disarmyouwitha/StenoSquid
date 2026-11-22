@@ -39,8 +39,8 @@ jobs:
             build/extras/
             build/native-store/
 
-  host-tests:
-    name: host tests
+  offline-manager:
+    name: Offline browser Manager
     needs: dictionaries
     runs-on: ubuntu-latest
     steps:
@@ -49,6 +49,32 @@ jobs:
         with:
           name: dictionary-images
           path: build
+      - name: Build the standalone offline HTML app
+        run: python3 tools/ci/package_web_manager.py build/offline-manager
+      - name: Test opening from disk with networking disabled
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser-tests" playwright@1.62.1
+          "$RUNNER_TEMP/browser-tests/node_modules/.bin/playwright" install --with-deps chromium
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/browser-tests/node_modules/playwright" node tools/manager/browser/test_browser.mjs build/offline-manager/StenoSquidManager.html
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: StenoSquidManagerOffline
+          path: build/offline-manager/StenoSquidManagerOffline.zip
+
+  host-tests:
+    name: host tests
+    needs: [dictionaries, offline-manager]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dictionary-images
+          path: build
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: StenoSquidManagerOffline
+          path: build/offline-manager
       - name: Fetch native test dependencies at pinned revisions
         run: |
           python3 tools/ci/fetch_pinned.py javelin-steno javelin-steno
@@ -60,7 +86,7 @@ jobs:
           python3 -m pip install -r requirements-dev.txt
           python3 -m ruff check
           python3 tools/render_keymap.py --check
-          python3 tools/ci/package_manager.py build/StenoSquidManager.zip
+          python3 tools/ci/package_manager.py build/StenoSquidManager.zip --offline-bundle build/offline-manager/StenoSquidManagerOffline.zip
       - name: Run every native regression and display renderer
         run: python3 tools/tests/run_all.py
       - name: Sanitize candidate-B native storage core
@@ -296,7 +322,7 @@ jobs:
   release:
     name: Publish firmware release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [host-tests, build]
+    needs: [host-tests, offline-manager, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -325,8 +351,14 @@ jobs:
             done
           done
 
-      - name: Package Steno Squid Manager
-        run: python3 tools/ci/package_manager.py release/StenoSquidManager.zip
+      - name: Download offline browser Manager
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: StenoSquidManagerOffline
+          path: release
+
+      - name: Package Python tools and offline HTML together
+        run: python3 tools/ci/package_manager.py release/StenoSquidManager.zip --offline-bundle release/StenoSquidManagerOffline.zip
 
       - name: Publish tested release assets
         shell: bash
@@ -346,7 +378,7 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft \
               --title "$RELEASE_TAG" --generate-notes
           fi
-          gh release upload "$RELEASE_TAG" release/*.uf2 release/StenoSquidManager.zip --clobber
+          gh release upload "$RELEASE_TAG" release/*.uf2 release/StenoSquidManager.zip release/StenoSquidManagerOffline.zip --clobber
           prerelease=false
           if [[ "$RELEASE_TAG" == *-* ]]; then
             prerelease=true

@@ -1272,6 +1272,10 @@ const char *Install(const char *command,char *reply,size_t bytes) {
 }
 }
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes,uint32_t bluetooth_session) {
+    if (!std::strcmp(command, "connection\n")) {
+        snprintk(reply, bytes, "%s", bluetooth_session ? "OK BLUETOOTH" : "OK USB");
+        return;
+    }
     if (!std::strcmp(command, "identity\n")) {
         // Format the same hardware ID as Zephyr's USB serial descriptor,
         // so reconnecting wirelessly never depends on the OS's HID path.

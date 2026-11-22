@@ -1,6 +1,8 @@
 const node = (id) => document.getElementById(id);
 const status = node("status");
-const token = document.querySelector('[name="manager-token"]').content;
+const token = document.querySelector('[name="manager-token"]')?.content;
+const browserBackend = document.documentElement.dataset.backend === "browser"
+  ? new (await import("./backend.js")).BrowserBackend() : null;
 let state;
 let setup;
 let selectedId;
@@ -214,6 +216,7 @@ function render(newState, usage = {}) {
   node("workspace").hidden = false;
 }
 async function request(path, payload) {
+  if (browserBackend) return browserBackend.request(path, payload);
   const options = {headers: {"X-StenoSquid-Token": token}};
   if (payload) {
     options.method = "POST";
@@ -961,6 +964,10 @@ node("import").onsubmit = async (event) => {
 };
 
 controls();
+if (browserBackend?.reason) {
+  notify(browserBackend.reason, true);
+  node("refresh").disabled = true;
+}
 setInterval(async () => {
   if (!connected || busy) return;
   let lost = false;
@@ -975,7 +982,7 @@ setInterval(async () => {
     notify("Keyboard disconnected. Select Connect to try again.", true);
   }
 }, 2000);
-request("/api/job").then(async (job) => {
+if (!browserBackend?.reason) request("/api/job").then(async (job) => {
   if (busy) return;
   if (job.status !== "running") {
     await run({action: "refresh", transport: "auto", initial: true});
