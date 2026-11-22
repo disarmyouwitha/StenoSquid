@@ -39,7 +39,7 @@ static void GroupedReads() {
     Bases bases;
     NativeEngineBackend<NativeDevice> backend(fixture.store, bases);
     auto &live = fixture.store.live;
-    static_assert(sizeof(OutlineEdits) <= 360);
+    static_assert(sizeof(OutlineEdits) <= 880);
 
     auto run = [&](const uint32_t *keys, uint8_t length, const char *phase) {
         LiveView pin;
@@ -88,6 +88,21 @@ static void GroupedReads() {
     assert(live.CurrentView().outline_first && !live.TailCount());
     run(missing, 1, "checkpoint miss");
     run(last, 2, "checkpoint low-priority hit");
+    LiveView pin;
+    OutlineEdits misses;
+    RecordView record;
+    assert(fixture.store.Snapshot(pin));
+    assert(live.FindOutline(pin, misses, 1, missing, 1, record) == LiveResult::Missing);
+    assert(live.FindOutline(pin, misses, dictionaries, last, 2, record) == LiveResult::Ok);
+    const auto reads = fixture.nor.reads;
+    assert(live.FindOutline(pin, misses, 1, missing, 1, record) == LiveResult::Missing);
+    assert(fixture.nor.reads == reads);
+    fixture.store.Release(pin);
+    assert(fixture.Edit(1, missing[0], "now present") == LiveResult::Ok);
+    assert(fixture.store.Snapshot(pin));
+    assert(live.FindOutline(pin, misses, 1, missing, 1, record) == LiveResult::Ok);
+    fixture.store.Release(pin);
+
     for (uint32_t id = 1; id <= dictionaries; ++id)
         assert(fixture.Edit(id, 8, "shared") == LiveResult::Ok);
     const uint32_t shared[] = {8};
@@ -100,7 +115,6 @@ static void GroupedReads() {
     // Earlier catalog pins retain their old answers even after a newer edit.
     LiveView old, newer;
     OutlineEdits cache;
-    RecordView record;
     assert(fixture.store.Snapshot(old));
     assert(live.FindOutline(old, cache, 3, shared, 1, record) == LiveResult::Ok);
     const auto old_address = record.text_address;

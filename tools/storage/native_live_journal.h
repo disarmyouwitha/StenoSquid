@@ -31,6 +31,12 @@ struct OutlineEdits {
     uint8_t count=0;
     enum class State : uint8_t { Unloaded, Loaded, Dense };
     State tail=State::Unloaded, forward=State::Unloaded;
+
+    // Javelin revisits recent outlines while resegmenting a passage. Retain a
+    // few exact misses across those queries, under the same pinned version.
+    static constexpr unsigned kMissCount=8;
+    uint32_t misses[kMissCount][16]{};
+    uint8_t miss_lengths[kMissCount]{}, next_miss=0;
 };
 
 template <class Device>
@@ -400,14 +406,22 @@ public:
             if (!strokes[i] || strokes[i] >> 25) return LiveResult::Invalid;
 
         const auto &root = view.root;
-        if (edits.count != count || edits.root.generation != root.generation ||
-            edits.root.address != root.address || edits.root.crc != root.crc ||
-            edits.root.bytes != root.bytes || edits.highwater != view.highwater ||
-            std::memcmp(edits.strokes, strokes, count * sizeof(*strokes))) {
+        const auto bytes = count * sizeof(*strokes);
+        if (edits.root.generation != root.generation || edits.root.address != root.address ||
+            edits.root.crc != root.crc || edits.root.bytes != root.bytes ||
+            edits.highwater != view.highwater) {
             edits.root = root;
             edits.highwater = view.highwater;
+            edits.count = 0;
+            edits.next_miss = 0;
+            std::memset(edits.miss_lengths, 0, sizeof(edits.miss_lengths));
+        }
+        if (edits.count != count || std::memcmp(edits.strokes, strokes, bytes)) {
+            for (unsigned i = 0; i < OutlineEdits::kMissCount; ++i)
+                if (edits.miss_lengths[i] == count && !std::memcmp(edits.misses[i], strokes, bytes))
+                    return LiveResult::Missing;
             edits.count = count;
-            std::memcpy(edits.strokes, strokes, count * sizeof(*strokes));
+            std::memcpy(edits.strokes, strokes, bytes);
             std::memset(edits.addresses, 0, sizeof(edits.addresses));
             edits.tail = edits.forward = OutlineEdits::State::Unloaded;
         }
@@ -430,9 +444,20 @@ public:
             return VerifyLookup(view, recent, false, id, strokes, count, result);
         if (!view.outline_first) return FindIn(view, id, strokes, count, result, true);
 
+        const bool first_forward = edits.forward == State::Unloaded;
         const auto forward = load(edits.forward, true);
         if (forward != LiveResult::Ok) return forward;
         if (edits.forward == State::Dense) return FindIn(view, id, strokes, count, result, true);
+        if (first_forward) {
+            bool any_edit = false;
+            for (uint32_t address : edits.addresses) any_edit |= address != 0;
+            if (!any_edit) {
+                const unsigned miss = edits.next_miss;
+                std::memcpy(edits.misses[miss], strokes, bytes);
+                edits.miss_lengths[miss] = count;
+                edits.next_miss = (miss + 1) % OutlineEdits::kMissCount;
+            }
+        }
         const uint32_t address = edits.addresses[slot] & ~kIndexedAddress;
         return address ? VerifyLookup(view, address, true, id, strokes, count, result) : LiveResult::Missing;
     }
