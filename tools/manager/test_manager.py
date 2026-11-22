@@ -26,6 +26,7 @@ class Keyboard:
         self.commands = []
         self.enabled = True
         self.layout = "Windows U.S. (plain text)"
+        self.hints = None
         self.kind = "named"
         self.adaptive = False
         self.name = "Medical"
@@ -42,6 +43,11 @@ class Keyboard:
             return json.dumps([{"id": 8, "name": self.name, "enabled": self.enabled, "kind": self.kind}])
         if command == "user_dictionary_status":
             return '{"format":"SQBCAT02","ready":true,"read_only":false,"tail":64,"generation":3,"auto_checkpoints":2}'
+        if command == "stroke_hints":
+            return self.hints or "ERR Command unavailable on this keyboard"
+        if command in ("stroke_hints auto", "stroke_hints off") and self.hints is not None:
+            self.hints = command.split()[1]
+            return "OK"
         if command == "get_parameter host_layout":
             return self.layout
         if command == "get_parameter available_host_layouts":
@@ -100,6 +106,15 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(self.run_job("refresh")["state"]["auto_checkpoints"], 2)
         self.assertFalse(self.run_job("enable", id=8, enabled=False)["state"]["catalog"][0]["enabled"])
         self.assertEqual(self.run_job("layout", layout="Mac U.S.")["state"]["layout"], "Mac U.S.")
+
+    def test_read_and_save_stroke_hints(self):
+        self.assertIsNone(self.run_job("refresh")["state"]["hints"])
+        self.keyboard.hints = "auto"
+        self.assertEqual(self.run_job("refresh")["state"]["hints"], "auto")
+        self.assertEqual(self.run_job("hints", mode="off")["state"]["hints"], "off")
+        with self.assertRaisesRegex(ValueError, "Choose Auto or Off"):
+            self.run_job("hints", mode=["invalid"])
+        self.assertEqual(self.run_job("hints", mode="auto")["state"]["hints"], "auto")
 
     def test_bluetooth_opener_checks_firmware_identity_not_hid_path(self):
         devices = [dict(path=b"first", bus_type=2), dict(path=b"second", bus_type=2),

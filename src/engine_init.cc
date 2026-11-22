@@ -167,6 +167,31 @@ static void set_host_profile(void *, const char *line) {
 #endif
 
 #ifdef CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
+// The stored byte is validated before becoming the live hint setting.
+static uint8_t stroke_hints = 1;
+
+static void manage_stroke_hints(void *, const char *line) {
+  const char *mode = strchr(line, ' ');
+  if (!mode) {
+    Console::Printf("%s\n\n", stroke_hints ? "auto" : "off");
+    return;
+  }
+  if (strcmp(mode + 1, "auto") && strcmp(mode + 1, "off")) {
+    Console::Printf("ERR Choose auto or off\n\n");
+    return;
+  }
+  const uint8_t enabled = strcmp(mode + 1, "off") != 0;
+  if (stroke_hints != enabled) {
+    if (settings_save_one("javelin/stroke_hints", &enabled, sizeof(enabled)) != 0) {
+      Console::Printf("ERR Unable to save stroke hints\n\n");
+      return;
+    }
+    stroke_hints = enabled;
+  }
+  Console::SendOk();
+}
+#endif
 #include "steno_squid/engine_settings.h"
 
 SETTINGS_STATIC_HANDLER_DEFINE(javelin, "javelin", nullptr, javelin_settings_set,
@@ -323,7 +348,16 @@ void zmk_javelin_steno_process_key(int steno_key_index, bool is_press) {
   LOG_DBG("[JAV] key %d %s", steno_key_index, is_press ? "down" : "up");
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_TAPE
   // Catch the engine's stroke events for the right display's stroke tape.
-  steno_squid_stroke_feed_begin();
+#if defined(CONFIG_ZMK_STENO_SQUID_STROKE_HINT) && defined(CONFIG_ZMK_JAVELIN_STENO_BROWSER_DICTIONARY)
+  const bool hints = stroke_hints;
+#else
+  const bool hints = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  steno_squid_stroke_feed_begin(when, hints);
+#else
+  steno_squid_stroke_feed_begin(k_uptime_get_32(), hints);
+#endif
 #endif
   processor->Process(static_cast<StenoKey>(steno_key_index), is_press);
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_TAPE

@@ -8,6 +8,9 @@ ENGINE_COMMAND("toggle_dictionary", "Toggle and save selection", select_dictiona
 ENGINE_COMMAND("get_parameter", "Read host layout parameters", get_host_parameter)
 ENGINE_COMMAND("set_host_layout", "Set and save the host layout", set_host_profile)
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
+ENGINE_COMMAND("stroke_hints", "Read or save automatic stroke hints", manage_stroke_hints)
+#endif
 USER_COMMAND("lookup_stroke", "Look up an outline in the dictionaries", lookup_outline, false)
 USER_COMMAND("user_dictionary_status", "Read personal dictionary usage", store_status, false)
 USER_COMMAND("user_dictionary_verify", "Check every personal dictionary record", store_verify, false)

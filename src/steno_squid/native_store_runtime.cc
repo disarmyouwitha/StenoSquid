@@ -502,22 +502,33 @@ void Cell::PrintEntriesWithPartialOutline(PrintPartialOutlineContext &context)co
 }
 void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
     if (factory_absent || (user_snapshot && !enabled)) return;
+    bool yielded=false;
+    auto stop=[&] {
+#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
+        yielded = yielded || steno_squid_hint_should_yield();
+#endif
+        return yielded;
+    };
+    if (stop()) return;
     ExportGuard guard;if(!guard.ok || lookup.definitionLength>2047)return;
     auto matches=[&](uint32_t address) {
+        if (stop()) return 0;
         MergeRecord record;if(!iter_ops.Record(address,record))return -1;
         if(record.identity!=identity || record.operation || record.count>=lookup.ignoreStrokeThreshold)return 0;
         RecordView current;
         const auto result=store.live.FindSnapshot(export_view,identity,record.strokes,record.count,current);
         if(result!=LiveResult::Ok && result!=LiveResult::Missing)return -1;
         if(result!=LiveResult::Ok || current.operation!=Operation::Set || current.text_address!=record.text_address)return 0;
+        if (stop()) return 0;
         StenoStroke outline[16];for(unsigned i=0;i<record.count;++i)outline[i]=StenoStroke(record.strokes[i]);
         return !parent || parent->GetDictionaryForOutline(outline,record.count)==this?1:0;
     };
     auto compare=[&](uint32_t address) {
+        if (stop()) return 2;
         MergeRecord record;if(!iter_ops.Record(address,record))return 2;
         return CompareText(address+32,record.record.payload_bytes,
             reinterpret_cast<const uint8_t *>(lookup.definition),lookup.definitionLength,
-            [](uint32_t at,uint8_t *out,size_t n){return flash_device.Read(at,out,n);});
+            [&](uint32_t at,uint8_t *out,size_t n){return !stop() && flash_device.Read(at,out,n);});
     };
     auto emit=[&](uint32_t address) {
         MergeRecord record;if(!iter_ops.Record(address,record)){base_provider.Fault();return;}
@@ -526,35 +537,39 @@ void Cell::ReverseLookup(StenoReverseDictionaryLookup &lookup)const {
     };
     for(unsigned i=0;i<export_view.tail.count;++i) {
         const uint32_t address=export_view.tail.addresses[i];const int order=compare(address);
+        if (yielded) return;
         // Only sets belong in a reverse search. Remove/reset records are valid
         // tail inputs but CompareText intentionally rejects their empty payload.
         const int op=iter_ops.Operation(address);if(op<0){base_provider.Fault();return;}if(op)continue;
         if(order==2){base_provider.Fault();return;}if(order)continue;
         const int accepted=matches(address);if(accepted<0){base_provider.Fault();return;}if(accepted)emit(address);
     }
+    if (stop()) return;
     uint8_t prefix[8];if(!flash_device.Read(export_view.root.address,prefix,8)){base_provider.Fault();return;}
     uint32_t reverse=0,count=0;const uint32_t extents=uint16_t(prefix[6]) | uint16_t(prefix[7])<<8;
     for(unsigned i=0;i<extents;++i) {
+        if (stop()) return;
         uint8_t row[24];if(!flash_device.Read(export_view.root.address+32+export_view.dictionary_count*96+i*24,row,24)){base_provider.Fault();return;}
         if(Word(row+12)==4){reverse=(uint16_t(row[0]) | uint16_t(row[1])<<8)*kSegmentBytes;count=Word(row+4)/4;}
     }
-    auto read=[&](uint32_t at,uint8_t *out,size_t n){return at<=count*4 && n<=count*4-at && flash_device.Read(reverse+at,out,n);};
+    auto read=[&](uint32_t at,uint8_t *out,size_t n){return !stop() && at<=count*4 && n<=count*4-at && flash_device.Read(reverse+at,out,n);};
     ReverseCursor cursor;
-    if(SeekReverse(count,read,compare,cursor)!=Result::Found){base_provider.Fault();return;}
+    if(SeekReverse(count,read,compare,cursor)!=Result::Found){if(!yielded)base_provider.Fault();return;}
     while(cursor.next<cursor.end) {
         uint32_t page[16];unsigned used=0;
         const auto result=NextReverse(cursor,16,read,compare,matches,[&](uint32_t address){page[used++]=address;});
+        if (yielded) return;
         if(result==PageResult::Corrupt || result==PageResult::IoError){base_provider.Fault();return;}
         for(unsigned i=0;i<used;++i)emit(page[i]);
         if(result==PageResult::Done)break;
     }
     uint32_t mask;
-    if(healthy && hint && lookup.ignoreStrokeThreshold>1 && hint->Find(lookup.definition,mask)) {
+    if(!stop() && healthy && hint && lookup.ignoreStrokeThreshold>1 && hint->Find(lookup.definition,mask)) {
         const StenoStroke stroke(mask);
-        if (NativeBaselineVisible(store.live, export_view, identity, &mask, 1, enabled,
+        if (!stop() && NativeBaselineVisible(store.live, export_view, identity, &mask, 1, enabled,
                 [&] { return !parent || parent->GetDictionaryForOutline(&stroke,1)==this; },
                 [] { base_provider.Fault(); }))
-            lookup.AddResult(&stroke,1,this);
+            if (!stop()) lookup.AddResult(&stroke,1,this);
     }
 }
 void ReplyEdit(LiveResult result) {

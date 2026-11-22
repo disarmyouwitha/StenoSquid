@@ -23,7 +23,8 @@ void steno_squid_tape_publish(const struct steno_squid_tape *tape);
 /* Wrap one key event given to the engine: the engine's stroke events are
  * caught between the two calls and published.
  */
-void steno_squid_stroke_feed_begin(void);
+void steno_squid_stroke_feed_begin(uint32_t when, bool hints);
+bool steno_squid_hint_should_yield(void);
 void steno_squid_stroke_feed_end(void);
 #ifdef __cplusplus
 }
