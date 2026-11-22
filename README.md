@@ -27,15 +27,17 @@
 
 ## Factory dictionaries
 
-| Dictionary | Size |
-| --- | --- |
-| Personal dictionary | —— |
-| Lapwing Commands | kb |
-| Lapwing Numbers | kb |
-| Lapwing UK Additions | kb |
-| Lapwing Proper Nouns | kb |
-| Lapwing Base | mb |
-| Plover Base | mb |
+| Dictionary | Compiled size |
+| --- | ---: |
+| Personal dictionary | Live journal (varies) |
+| Lapwing Commands | 3.4 KiB |
+| Lapwing Numbers | 2.6 KiB |
+| Lapwing UK Additions | 199.5 KiB |
+| Lapwing Proper Nouns | 253.4 KiB |
+| Lapwing Base | 1.75 MiB |
+| Plover Base | 2.23 MiB |
+
+Sizes are measured JSC4 images including SHI1 hints, not the original JSON files or the flash blocks reserved for them.
 
 The full factory set contains 291,403 entries. A Boardsource test stored 918,000 compiled entries across 16 dictionaries on 16 MiB of flash.
 
