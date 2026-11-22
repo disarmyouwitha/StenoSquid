@@ -1,7 +1,6 @@
 # Offline StenoSquid Manager
 
-Download and extract `StenoSquidManager.zip` (or the browser-only
-`StenoSquidManagerOffline.zip`), then open
+Download and extract `StenoSquidManager.zip`, which includes both interfaces, then open
 **StenoSquidManager.html in desktop Chrome or Edge 137 or newer**. Connect the
 left half and choose **Connect**. You can also drag the HTML file into Chrome.
 

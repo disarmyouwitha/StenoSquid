@@ -378,7 +378,7 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft \
               --title "$RELEASE_TAG" --generate-notes
           fi
-          gh release upload "$RELEASE_TAG" release/*.uf2 release/StenoSquidManager.zip release/StenoSquidManagerOffline.zip --clobber
+          gh release upload "$RELEASE_TAG" release/*.uf2 release/StenoSquidManager.zip --clobber
           prerelease=false
           if [[ "$RELEASE_TAG" == *-* ]]; then
             prerelease=true
