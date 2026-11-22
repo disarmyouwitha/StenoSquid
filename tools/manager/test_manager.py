@@ -66,6 +66,8 @@ class Keyboard:
             return "OK MANAGE1"
         if command == "native_install update snapshot-capabilities":
             return "OK SNAPSHOT2" if self.adaptive else "ERR Unsupported"
+        if command == "native_install update snapshot-merge-capabilities":
+            return "OK MERGE1 16" if self.adaptive else "ERR Unsupported"
         if command == "native_install update personal-snapshot-capabilities":
             return "OK PERSONAL1"
         if command == "native_install update journal-snapshot-capabilities":
@@ -500,6 +502,22 @@ class ManagerTest(unittest.TestCase):
             jobs.check_connection()
         self.assertIsNone(jobs.connected_serial)
         self.assertTrue(jobs.snapshot()["connection_lost"])
+
+    def test_compact_merge_previews_and_requires_usb_and_approval(self):
+        self.keyboard.adaptive = True
+        self.assertEqual(self.run_job("refresh")["state"]["merge_limit"], 16)
+        with self.assertRaisesRegex(ValueError, "Connect over USB"):
+            manager.run_job(None, {"action": "preview_merge"}, lambda _: None, transport="bluetooth")
+        with patch.object(manager, "merge_snapshots", return_value={"token": "a" * 64}) as merge:
+            self.assertEqual(self.run_job("preview_merge", upper=8, lower=9)["merge_plan"]["token"], "a" * 64)
+            self.assertEqual(merge.call_args.args[1:], (8, 9))
+            with self.assertRaisesRegex(ValueError, "Preview the merge"):
+                self.run_job("apply_merge", upper=8, lower=9)
+            merge.assert_called_once()
+        with patch.object(manager, "merge_snapshots", return_value="Upper") as merge, \
+                patch.object(manager, "wait_ready", return_value={"state": {}}):
+            self.assertEqual(self.run_job("apply_merge", upper=8, lower=9, token="a" * 64)["merged"], "Upper")
+            self.assertEqual(merge.call_args.kwargs["expected"], "a" * 64)
 
     def test_named_journal_can_preview_conversion(self):
         self.keyboard.adaptive = True

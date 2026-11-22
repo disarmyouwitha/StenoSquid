@@ -20,6 +20,11 @@ operations available over USB and Bluetooth.
   entries into a new compact baseline, preserving the ID, priority, and enabled
   state. Future edits go into the journal. Factory dictionaries keep their
   pinned baselines. **Delete** on the personal dictionary clears its contents.
+- When all dictionary slots are in use, connect over USB and use **Merge compact dictionaries**.
+  Choose two adjacent added compact dictionaries with the same Active setting.
+  The higher-priority dictionary keeps its name, slot, and translations for
+  overlapping outlines. The lower-priority dictionary's remaining entries move
+  into it, freeing one slot. The preview shows staging space before you confirm.
 - Compact JSC4 + SHI1 supports forward translation, Practice, and one-stroke
   hints. For exhaustive text or outline searches, export the dictionary and
   search on your computer.

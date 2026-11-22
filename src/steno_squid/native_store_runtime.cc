@@ -979,6 +979,10 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "manage-capabilities\n")) return "OK MANAGE1";
     if (!std::strcmp(command, "snapshot-capabilities\n"))
         return "OK SNAPSHOT2";
+    if (!std::strcmp(command, "snapshot-merge-capabilities\n")) {
+        snprintk(reply, bytes, "OK MERGE1 %u", unsigned(MaxDictionaries));
+        return nullptr;
+    }
     if (!std::strcmp(command, "personal-snapshot-capabilities\n"))
         return "OK PERSONAL1";
     if (!std::strcmp(command, "journal-snapshot-capabilities\n"))
@@ -997,7 +1001,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     if (!std::strcmp(command, "factory-member-capabilities\n")) return "OK FACTORY2";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
-    uint32_t snapshot_id = 0;
+    uint32_t snapshot_id = 0, lower_id = 0;
     const bool metadata_read = !std::strcmp(command, "begin metadata\n");
     if (!std::strcmp(command, "begin import\n")) kind = NativeUpdateKind::Personal;
     else if (!std::strcmp(command, "begin named\n")) kind = NativeUpdateKind::Named;
@@ -1008,6 +1012,9 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         if (!std::strncmp(p, "consolidate ", 12)) {
             p += 12;
             kind = NativeUpdateKind::SnapshotConsolidate;
+        } else if (!std::strncmp(p, "merge ", 6)) {
+            p += 6;
+            kind = NativeUpdateKind::SnapshotMerge;
         } else if (!std::strncmp(p, "delete ", 7)) {
             p += 7;
             kind = NativeUpdateKind::SnapshotDelete;
@@ -1021,8 +1028,11 @@ const char *Update(const char *command, char *reply, size_t bytes) {
             p += 6;
             kind = NativeUpdateKind::SnapshotClear;
         } else return "ERR Invalid snapshot action";
-        if (!Number(p, snapshot_id) || !snapshot_id || !End(p))
+        if (!Number(p, snapshot_id) || !snapshot_id)
             return "ERR Invalid snapshot dictionary ID";
+        if (kind == NativeUpdateKind::SnapshotMerge && (*p++ != ' ' || !Number(p, lower_id) || !lower_id))
+            return "ERR Invalid second snapshot dictionary ID";
+        if (!End(p)) return "ERR Invalid snapshot dictionary ID";
     }
     else if (!std::strcmp(command, "begin reorder\n")) kind = NativeUpdateKind::Reorder;
     else if (!std::strcmp(command, "begin rename\n")) kind = NativeUpdateKind::Rename;
@@ -1036,7 +1046,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         kind = NativeUpdateKind::FactoryMember;
     }
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
-        if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id))
+        if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id, lower_id))
             return "ERR Native store cannot stage an update";
         dictionary_flash_read_session(true);
         TouchInstall();

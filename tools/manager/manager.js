@@ -14,6 +14,7 @@ let importToApply;
 let optimizationToApply;
 let cleanupToken;
 let repackPlan;
+let mergePlan;
 const number = new Intl.NumberFormat();
 const jobMessages = {
   open_installer: "Checking the dictionary installer…",
@@ -23,6 +24,7 @@ const jobMessages = {
   preview_import: "Calculating import size…", apply_import: "Importing dictionary…", import: "Importing dictionary…",
   backup: "Preparing backup…", export: "Exporting dictionary…",
   preview_package: "Checking factory dictionary space…", apply_package: "Saving factory dictionary…",
+  preview_merge: "Preparing the compact merge…", apply_merge: "Merging compact dictionaries…",
   preview_repack: "Preparing the USB repack preview…", apply_repack: "Preparing to repack dictionary flash…",
   restore_repack_backup: "Restoring the original dictionary backup…",
   preview_compact: "Finding blocks to reclaim…", compact: "Reclaiming flash space…", clear_personal: "Clearing personal dictionary…"
@@ -98,6 +100,9 @@ function controls() {
   const row = selection();
   const rank = state.catalog.indexOf(row);
   const editable = !busy && !state.read_only;
+  for (const id of ["merge-pair", "merge-preview", "merge-apply", "merge-cancel"]) {
+    node(id).disabled = !editable || connectionTransport !== "usb";
+  }
   node("up").disabled = !editable || rank <= 0;
   node("down").disabled = !editable || rank < 0 || rank >= state.catalog.length - 1;
   const independent = row?.name !== "user_dictionary" && ["named", "snapshot"].includes(row?.kind);
@@ -130,6 +135,7 @@ function controls() {
 }
 function render(newState, usage = {}) {
   state = newState;
+  renderMergeOptions();
   setup = undefined;
   node("setup-panel").hidden = true;
   clearImportPlan();
@@ -301,6 +307,8 @@ async function watch(id) {
       notify(`Imported ${number.format(result.imported)} ${result.imported === 1 ? "entry" : "entries"}.`);
     } else if (result.cleared) {
       notify("Personal dictionary cleared.");
+    } else if (result.merged) {
+      notify(`Merged into ${result.merged}. One dictionary slot is now available.`);
     } else if (result.optimized) {
       notify(`Saved the compact baseline for ${result.optimized}. The keyboard is ready.`);
     } else {
@@ -315,6 +323,8 @@ async function watch(id) {
     showFactoryPlan(result.package_plan);
   } else if (result.repack_plan) {
     showRepackPlan(result.repack_plan);
+  } else if (result.merge_plan) {
+    showMergePlan(result.merge_plan);
   } else if (result.optimization_plan) {
     showOptimizationPlan(result.optimization_plan);
   } else if (result.cleanup) {
@@ -563,8 +573,57 @@ function confirmRepack(action, serial, token) {
     : "Restore the original backup to this keyboard? This rewrites the dictionary flash. Keep USB connected.";
   if (window.confirm(message)) run({action, serial, token, confirm: serial});
 }
+function clearMergePlan() {
+  mergePlan = undefined;
+  node("merge-plan").hidden = true;
+}
+
+function renderMergeOptions() {
+  clearMergePlan();
+  const {catalog, merge_limit: limit} = state;
+  const compact = (row) => row?.kind === "snapshot" && row.name !== "user_dictionary";
+  const options = catalog.flatMap((upper, i) => {
+    const lower = catalog[i + 1];
+    return compact(upper) && compact(lower) && upper.enabled === lower.enabled
+      ? [new Option(`${upper.name} + ${lower.name}`, `${upper.id},${lower.id}`)] : [];
+  });
+  const full = limit && catalog.length >= limit;
+  node("merge-panel").hidden = !full;
+  let message = `All ${limit} dictionary slots are in use.`;
+  if (!options.length) {
+    message += " To merge, put two added compact dictionaries next to each other with the same Active setting.";
+  } else {
+    message += state.transport === "usb" ? " Merge two compact dictionaries to free one."
+      : " Connect over USB to merge two compact dictionaries and free one.";
+  }
+  node("merge-capacity").textContent = message;
+  node("merge-pair").parentElement.hidden = !options.length;
+  node("merge-preview").hidden = !options.length;
+  node("merge-pair").replaceChildren(...options);
+}
+
+function showMergePlan(plan) {
+  mergePlan = plan;
+  const [upper, lower] = plan.names;
+  let text = `Keep ${upper} and fold ${lower} into it. ${number.format(plan.entries)} entries in ${plan.image_segments} blocks.`;
+  if (plan.duplicates) text += ` ${number.format(plan.duplicates)} overlapping outlines keep the higher-priority translation.`;
+  if (plan.token) {
+    const blocks = Math.abs(plan.segment_delta);
+    const change = plan.segment_delta < 0 ? `${blocks} fewer used` : plan.segment_delta > 0
+      ? `${blocks} more used` : "same space used";
+    text += ` Free one slot · ${change} · ${plan.staging_segments} blocks to stage. The left half will reboot.`;
+  } else {
+    text += ` ${plan.reason}`;
+  }
+  node("merge-summary").textContent = text;
+  node("merge-apply").hidden = !plan.token;
+  node("merge-plan").hidden = false;
+  notify(plan.token ? "Review the compact merge." : "The merge cannot be staged.");
+}
+
 async function run(payload) {
   if (busy) return;
+  clearMergePlan();
   const importing = ["import", "preview_import", "apply_import"].includes(payload.action);
   if (importing) showImportError();
   clearRepackPlan();
@@ -621,6 +680,17 @@ node("refresh").onclick = () => run({action: "refresh", transport: "auto"});
 node("backup").onclick = () => run({action: "backup"});
 node("reprovision").onclick = node("emergency-provision").onclick = () => run({action: "open_installer"});
 node("setup-cancel").onclick = () => run({action: "refresh"});
+node("merge-pair").onchange = clearMergePlan;
+node("merge-cancel").onclick = clearMergePlan;
+node("merge-preview").onclick = () => {
+  const [upper, lower] = node("merge-pair").value.split(",").map(Number);
+  if (upper && lower) run({action: "preview_merge", upper, lower});
+};
+node("merge-apply").onclick = () => {
+  if (!mergePlan?.token) return;
+  const [upper, lower] = mergePlan.ids;
+  run({action: "apply_merge", upper, lower, token: mergePlan.token});
+};
 node("repack-preview").onclick = () => run({action: "preview_repack"});
 node("repack-cancel").onclick = () => {
   clearRepackPlan();

@@ -22,21 +22,22 @@ from native_update import backup_all, export_dictionary, overlay_usage, transfer
 from import_personal import bluetooth_console_devices, open_bluetooth_console, open_console, parse_named, usb_console_devices
 from compile_dict import parse_outline
 from native_base_update import factory_package
-from native_snapshot import change_snapshot, clear_personal
+from native_snapshot import change_snapshot, clear_personal, merge_limit, merge_snapshots
 from native_import_plan import named_import
 from native_layout import read_images, read_layout
 from manager_repack import capture_approved_repack, install_repack, last_repack_backup, preview_repack, restore_original
 
 REPACK_ACTIONS = {"preview_repack", "apply_repack", "restore_repack_backup"}
+MERGE_ACTIONS = {"preview_merge", "apply_merge"}
 IMPORT_ACTIONS = {"preview_import", "apply_import", "import"}
-USB_ONLY_ACTIONS = REPACK_ACTIONS | IMPORT_ACTIONS
+USB_ONLY_ACTIONS = REPACK_ACTIONS | IMPORT_ACTIONS | MERGE_ACTIONS
 MAX_REQUEST = 48 * 1024 * 1024
 LARGE_JOURNAL_RECORDS = 4096
 FACTORY_CHOICES = {key: row[1] for key, row in FACTORY_KEYS.items()}
 FACTORY_ACTIONS = {str(row[0]): key for key, row in FACTORY_KEYS.items()}
 MAP_REFRESH_ACTIONS = {"refresh", "layout_map", "setup", "import", "apply_import", "compact", "apply_package",
                        "apply_optimize", "clear_personal", "delete", "set", "remove", "reset", "apply_repack",
-                       "restore_repack_backup"}
+                       "restore_repack_backup", "apply_merge"}
 INSTALLABLE_STATUS = re.compile(r"NATIVE2 (?:READY [0-9]+|UNPROVISIONED [0-9]+(?: .*)?)")
 
 
@@ -159,6 +160,7 @@ def read_state(console):
         "personal_clear": adaptive and console.command(
             "native_install update snapshot-clear-capabilities") == "OK CLEAR1",
         "adaptive_imports": adaptive,
+        "merge_limit": merge_limit(console) if adaptive and not status["read_only"] else None,
         "factory_actions": FACTORY_ACTIONS if factory else {},
         "repack": transport == "usb" and adaptive and not status["read_only"] and console.command(
             "native_install update repack-capabilities") == "OK REPACK1",
@@ -220,6 +222,8 @@ def setup_keyboard(serial, request, progress, show_view=None, *, transport="usb"
 def run_job(serial, request, progress, show_view=None, *, transport="usb"):
     action = request["action"]
     if transport == "bluetooth" and action in USB_ONLY_ACTIONS:
+        if action in MERGE_ACTIONS:
+            raise ValueError("Connect over USB to merge compact dictionaries.")
         if action in IMPORT_ACTIONS:
             raise ValueError("Connect over USB to import JSON.")
         raise ValueError("Connect over USB to repack or restore a repack backup.")
@@ -346,15 +350,30 @@ def run_job(serial, request, progress, show_view=None, *, transport="usb"):
                 return {"optimization_plan": outcome}
             published = outcome
             report = {"optimized": name}
+        elif action in MERGE_ACTIONS:
+            applying = action == "apply_merge"
+            token = request.get("token")
+            if applying and (not isinstance(token, str) or len(token) != 64):
+                raise ValueError("Preview the merge before staging.")
+            result = merge_snapshots(console, request.get("upper"), request.get("lower"),
+                                     expected=token if applying else None, progress=progress)
+            if not applying:
+                return {"merge_plan": result}
+            published = True
+            report = {"merged": result}
         elif action in {"preview_import", "apply_import"}:
             entries, _ = read_import(request["source"])
             staging = action == "apply_import"
             expected = request.get("token")
             if staging and (not isinstance(expected, str) or len(expected) != 64):
                 raise ValueError("Preview the import before staging.")
-            import_report = named_import(console, safe_name(request["name"]), entries,
-                                         stage=staging,
-                                         expected=expected, progress=progress)
+            try:
+                import_report = named_import(console, safe_name(request["name"]), entries, stage=staging,
+                                             expected=expected, progress=progress)
+            except ValueError as error:
+                if str(error) == "The keyboard has reached its dictionary limit" and merge_limit(console):
+                    raise ValueError("The keyboard has reached its dictionary limit. Choose Merge compact dictionaries above to free a slot.") from error
+                raise
             if not staging:
                 return {"import_plan": import_report}
             published = True

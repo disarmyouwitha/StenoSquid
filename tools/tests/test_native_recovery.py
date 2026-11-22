@@ -20,7 +20,7 @@ from build_native_image import SEGMENT, catalog_header
 from compile_dict import parse_outline
 from native_install import check_image
 from native_recovery import FORMAT, digest, pack, reconstruct, save_atomic, unpack
-from native_snapshot import CompactImage, compile_snapshot, plan_change, plan_named_snapshot
+from native_snapshot import CompactImage, compile_snapshot, merge_snapshots, plan_change, plan_named_snapshot
 from native_update import Snapshot, backup_all, effective_entries, encode_record, Edit, export_dictionary, overlay_usage, plan, row_name
 
 
@@ -214,6 +214,75 @@ def main():
             file = path / f"{name}.stage"
             write_plan(file, candidate)
             files.append(file)
+        higher = compile_snapshot("Higher", {kat: b"upper cat", bob: b"Bob restored by higher priority"})
+        both = cold(plan_named_snapshot(restored, protected, "Higher", higher))
+        # Fill the remaining slots with journal-only rows to exercise a merge
+        # that cannot allocate a new dictionary ID or use a temporary slot.
+        current = bytearray(both.payload)
+        next_id, row_count = struct.unpack_from("<IH", current)
+        extra_rows = []
+        for dictionary_id in range(next_id, next_id + 16 - row_count):
+            row = bytearray(96)
+            label = f"Journal {dictionary_id}".encode()
+            struct.pack_into("<IIH", row, 0, dictionary_id, 1, 65535)
+            row[12] = len(label)
+            row[16:16 + len(label)] = label
+            extra_rows.append(row)
+        end = 32 + 96 * row_count
+        current[end:end] = b"".join(extra_rows)
+        struct.pack_into("<IH", current, 0, next_id + len(extra_rows), 16)
+        both.image[SEGMENT + 32:SEGMENT + 32 + len(current)] = current
+        both = Console(both.image, bytes(current))
+        before_merge, merge_view = reconstruct(backup_all(both))
+        assert len(merge_view.rows) == 16
+        published = []
+
+        class MergeConsole(Console):
+            serial = "test-left"
+
+            def command(self, command, timeout=30):
+                if command == "native_install update snapshot-merge-capabilities":
+                    return "OK MERGE1 16"
+                if command == "native_install update begin snapshot-merge 9 8":
+                    answer = super().command("native_install update begin backup", timeout)
+                    occupied = {0, 1, 255}
+                    for start, count, *_ in merge_view.extents:
+                        occupied.update(range(start, start + count))
+                    words = [sum(1 << (segment % 32) for segment in occupied
+                                 if segment // 32 == index) for index in range(8)]
+                    return answer[:-64] + "".join(f"{word:08x}" for word in words)
+                return super().command(command, timeout)
+
+        merge_console = MergeConsole(before_merge, merge_view.payload)
+        with patch("native_snapshot.publish", side_effect=lambda console, update, progress: published.append(update)):
+            preview = merge_snapshots(merge_console, 9, 8, progress=lambda _: None)
+            assert preview["entries"] == 4 and preview["duplicates"] == 1
+            assert not published and not merge_console.active
+            try:
+                merge_snapshots(merge_console, 9, 8, expected="stale", progress=lambda _: None)
+            except ValueError as error:
+                assert "Preview the merge again" in str(error)
+            else:
+                raise AssertionError("A stale merge preview was accepted")
+            assert not published and not merge_console.active
+            assert merge_snapshots(merge_console, 9, 8, expected=preview["token"],
+                                   progress=lambda _: None) == "Higher"
+        merged_plan, = published
+        merged_image = bytearray(before_merge)
+        for segment, block in merged_plan.segments.items():
+            start = segment * SEGMENT
+            merged_image[start:start + len(block)] = block
+        merged_image[SEGMENT + 32:SEGMENT + 32 + len(merged_plan.payload)] = merged_plan.payload
+        assert struct.unpack_from("<IH", merged_plan.payload) == (merge_view.next_id, 15)
+        merged_console = Console(merged_image, merged_plan.payload)
+        assert export_dictionary(merged_console, "Higher") == exported | {
+            "KAT": "upper cat", "PWOB": "Bob restored by higher priority"}
+        reject(export_dictionary, merged_console, "Smoke")
+        merge_image_file, merge_plan_file = path / "merge-before.bin", path / "merge.stage"
+        merge_image_file.write_bytes(before_merge)
+        write_plan(merge_plan_file, merged_plan)
+        files.extend([merge_image_file, merge_plan_file])
+
         binary = path / "validate"
         subprocess.run([*compiler(), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-I", str(ROOT / "tools/storage"),

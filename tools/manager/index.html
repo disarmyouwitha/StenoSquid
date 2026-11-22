@@ -79,6 +79,18 @@
           <button type="button" id="optimization-apply" data-write>Compact</button>
           <button type="button" id="optimization-cancel">Cancel</button>
         </div>
+        <div id="merge-panel" hidden>
+          <p id="merge-capacity"></p>
+          <div class="toolbar">
+            <label>Merge compact dictionaries <select id="merge-pair" data-write></select></label>
+            <button type="button" id="merge-preview" data-write>Preview merge</button>
+          </div>
+          <div id="merge-plan" hidden aria-live="polite">
+            <p id="merge-summary"></p>
+            <button type="button" id="merge-apply" data-write>Merge</button>
+            <button type="button" id="merge-cancel">Cancel</button>
+          </div>
+        </div>
       </section>
       <div class="forms">
         <section aria-labelledby="edit-title">
