@@ -90,6 +90,15 @@ def main():
         assert overlay_usage(UsageConsole(image, snapshot.payload)) == expected_usage
         prior = backup_all(Console(image, snapshot.payload))
         assert prior["format"] == "stenosquid-backup-2" and "capture" not in prior
+        updates = []
+        reported = backup_all(Console(image, snapshot.payload),
+                              on_progress=lambda received, total: updates.append((received, total)))
+        extent_bytes = sum(extent[2] for extent in snapshot.extents)
+        assert reported == prior
+        assert updates[0] == (0, extent_bytes) and updates[-1] == (extent_bytes, extent_bytes)
+        assert all(total == extent_bytes for _, total in updates)
+        percentages = [received * 100 // total for received, total in updates]
+        assert len(percentages) > 2 and percentages == sorted(set(percentages))
 
         class IdentifiedConsole(Console):
             serial = "test-left"

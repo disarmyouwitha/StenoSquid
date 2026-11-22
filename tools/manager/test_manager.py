@@ -263,7 +263,7 @@ class ManagerTest(unittest.TestCase):
             backup.assert_not_called()
             install.assert_not_called()
             self.assertTrue(self.run_job("apply_repack", **fields, confirm=serial)["repacked"])
-            backup.assert_called_once_with(self.keyboard)
+            backup.assert_called_once_with(self.keyboard, on_progress=unittest.mock.ANY)
             build.assert_called_once_with(source, [])
             saved = manager_repack.last_repack_backup(serial)
             self.assertEqual(json.loads((saved / "original.json").read_text()), source)

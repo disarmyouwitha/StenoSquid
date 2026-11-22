@@ -43,7 +43,7 @@ function notify(text, error = false) {
   status.textContent = text;
   status.dataset.error = error;
   const progress = node("job-progress");
-  const percent = /^Writing .*?(?:… (\d+)%| \((\d+)%\))$/.exec(text);
+  const percent = /^(?:Writing .*?|Backing up dictionaries and saved edits: .*?)(?:… (\d+)%| \((\d+)%\))$/.exec(text);
   progress.hidden = !percent;
   if (percent) progress.value = Number(percent[1] ?? percent[2]);
   if (node("merge-dialog").open) {

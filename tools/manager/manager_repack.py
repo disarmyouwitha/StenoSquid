@@ -94,6 +94,16 @@ def preview_repack(console, progress):
     return result
 
 
+def backup_for_rewrite(console, progress):
+    label = "Backing up dictionaries and saved edits"
+    progress(f"{label}…")
+
+    def report(received, total):
+        progress(f"{label}: {received / 1024:,.1f} / {total / 1024:,.1f} KiB ({received * 100 // total}%)")
+
+    return backup_all(console, on_progress=report)
+
+
 def capture_approved_repack(console, request, progress):
     serial = console.serial
     if request.get("serial") != serial or request.get("confirm") != serial:
@@ -102,8 +112,7 @@ def capture_approved_repack(console, request, progress):
     if not plan.get("token") or request.get("token") != plan["token"]:
         raise ValueError("Flash changed since the approved preview. Preview USB repack again.")
 
-    progress("Backing up dictionaries and saved edits…")
-    source = backup_all(console)
+    source = backup_for_rewrite(console, progress)
     status = json.loads(console.command("user_dictionary_status"))
     if (source["capture"]["generation"] != plan["state"]["generation"] or
             any(status[key] != value for key, value in plan["state"].items())):
@@ -135,8 +144,7 @@ def capture_approved_merge(console, request, progress):
             or console.command("native_install update recovery-capabilities") != "OK RECOVERY1"):
         raise RuntimeError("This keyboard does not offer guarded USB repacking.")
 
-    progress("Backing up dictionaries and saved edits…")
-    source = backup_all(console)
+    source = backup_for_rewrite(console, progress)
     original = reconstruct(source)
     if token != offline_merge_token(original[1], serial, upper, lower):
         raise ValueError("The dictionaries changed after the preview. No erase was started. Preview the merge again.")
