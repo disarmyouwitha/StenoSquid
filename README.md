@@ -58,44 +58,37 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ## How to install
 
-⭐️ **[Download firmware](https://github.com/disarmyouwitha/StenoSquid/releases)** —  Download the UF2s for your board and install the matching left and right halves.
+⭐ **Preferred: use [StenoSquid Manager](#stenosquid-manager) to install and edit dictionaries.** No command-line setup required!
 
 ### Provision a new keyboard
 
-1. Flash the matching **Left** and **Right** UF2s for your board. Use the same pair with or without a nice!view. Practice uses the right display.
-2. Plug the left half in over USB, close any Javelin browser connection, and run these commands from this repository.
+1. **[Download firmware](https://github.com/disarmyouwitha/StenoSquid/releases/latest)** and flash the matching **Left** and **Right** UF2s for your board. Use the same pair with or without a nice!view. Practice uses the right display.
+2. From the same release, download and extract **`StenoSquidManagerOffline.zip`**. Open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). No installation, Python, or terminal needed.
+3. Plug the **left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
+4. In **Set up dictionaries**, choose the factory dictionaries you want and click **Install selected dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
 
-   ```sh
-   python3 -m pip install hidapi
-   python3 stenosquid.py --install --confirm-erase
-   ```
+That's it! Use Manager to edit translations, import/export dictionaries, enable or reorder them, and install more factory dictionaries later.
 
-   This prepares the pinned dictionaries, replaces the external dictionary pool, and verifies the result. If a fresh install is interrupted, reconnect USB and rerun the same command. On a provisioned board, use `--install` without `--confirm-erase` to check that it is already installed.
-
-If your board still has the shared Lapwing image from v0.1.2, export any dictionaries you want to keep as JSON before flashing. After flashing, use **Reprovision** in Manager to install the factory dictionaries, then import your exported JSON files.
-
+**Existing v0.1.2 installations:** If your keyboard still uses the shared Lapwing image, export any dictionaries you want to keep as JSON before flashing newer firmware. Then use **Reprovision** in Manager and import your saved JSON files. Reprovision erases the current external dictionary pool.
 
 ## StenoSquid Manager
 
-StenoSquid Manager offers full dictionary management! You can Import/Export, Edit, Rename and Delete dictionaries 
+StenoSquid Manager is the home for dictionary installation, importing, exporting, editing, renaming, deleting, priorities, backups, and flash management.
 
-Download and extract `StenoSquidManager.zip` for both the offline HTML app and Python tools.
-The offline browser version needs no Python: open **StenoSquidManager.html** in desktop Chrome or Edge 137+. Everything is
-bundled, including factory dictionaries, so it works without internet on first
-launch. Safari and Firefox do not support the required WebHID connection.
-See [offline browser Manager](tools/manager/browser/README.md) for build and recovery details.
+⭐ **Recommended, no-install browser version:** Download **`StenoSquidManagerOffline.zip`** from [Releases](https://github.com/disarmyouwitha/StenoSquid/releases/latest), extract it, and open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). It includes the factory dictionaries and works offline, even on first launch. Safari and Firefox do not support the required WebHID connection.
 
-The Python version stays available and shares the same UI and dictionary code.
-For the Python version, run these commands from the extracted folder to open Manager in your browser.
+**Python alternative:** `StenoSquidManager.zip` includes both the offline HTML app and Python tools. From its extracted folder, run:
 
 ```sh
 python3 -m pip install hidapi
 python3 stenosquid.py
 ```
 
-Plug in the left half or pair it in your computer’s Bluetooth settings and choose **Connect**. Manager prefers USB when both connections are available. Bluetooth requires matching left firmware and a recent version of `hidapi`. Manager shows which connection is active. JSON imports, **USB Repack**, and restoring a repack backup require USB.
+Connect the left half over USB, or pair it in your computer's Bluetooth settings and choose **Connect**. Manager prefers USB when both connections are available and shows the active connection. JSON imports, **USB Repack**, and restoring a repack backup require USB.
 
-<sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools. </sub>
+See [offline browser Manager](tools/manager/browser/README.md) for additional details and recovery instructions.
+
+<sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
 ## Default Keymap 
 Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-studio)
