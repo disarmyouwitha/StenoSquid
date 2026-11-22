@@ -635,13 +635,15 @@ function mergePair(upper, lower, priority) {
   radio.type = "radio";
   radio.name = "merge-pair";
   radio.value = `${upper.id},${lower.id}`;
-  const names = document.createElement("span");
   const first = document.createElement("strong");
   first.textContent = `${priority}. ${upper.name}`;
-  const second = document.createElement("small");
+  const arrow = document.createElement("span");
+  arrow.className = "merge-pair-arrow";
+  arrow.setAttribute("aria-hidden", "true");
+  arrow.textContent = "←";
+  const second = document.createElement("strong");
   second.textContent = `${priority + 1}. ${lower.name}`;
-  names.append(first, second);
-  label.append(radio, names);
+  label.append(radio, first, arrow, second);
   return label;
 }
 
@@ -674,7 +676,7 @@ function showMergePlan(plan) {
     ? `${change} · ${plan.staging_segments} blocks needed during merge`
     : `${plan.free_segments} free blocks · ${plan.largest_free_run} in the largest run`;
   node("merge-note").textContent = plan.token
-    ? "Saved edits are folded in. Keep USB connected while the left half reboots."
+    ? "Keep USB connected while the left half reboots."
     : plan.offline_token ? "USB repack backs up your dictionaries, then rewrites the dictionary flash with the merged layout." : "";
   node("merge-error").hidden = Boolean(plan.token);
   node("merge-error").textContent = plan.reason ?? "";

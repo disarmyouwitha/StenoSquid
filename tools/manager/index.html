@@ -174,7 +174,7 @@
   <dialog id="merge-dialog" aria-labelledby="merge-title">
     <h2 id="merge-title">Merge compact dictionaries</h2>
     <div id="merge-choose">
-      <p>Choose two adjacent dictionaries. The higher-priority dictionary keeps its name and position.</p>
+      <p>Choose two adjacent dictionaries. The dictionary on the right merges into the one on the left, which keeps its name and priority.</p>
       <fieldset id="merge-pairs" aria-label="Dictionary pairs"></fieldset>
     </div>
     <div id="merge-plan" hidden>
@@ -194,6 +194,7 @@
         </div>
       </div>
       <p id="merge-overlaps" hidden></p>
+      <p>Saved edits and deletions from both dictionaries are folded into the result.</p>
       <p id="merge-space"></p>
       <p id="merge-note"></p>
       <p id="merge-error" class="inline-error" hidden></p>
