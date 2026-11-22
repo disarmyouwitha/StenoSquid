@@ -3,7 +3,8 @@
 Start Manager with `python3 stenosquid.py`. Plug in the left half over USB
 or pair the keyboard in your computer's Bluetooth settings, then click
 **Connect**. Manager uses the existing HID pairing, shows the active
-connection, and prefers USB when both are available.
+connection, and prefers USB when both are available. Select **Reconnect** after
+plugging in or unplugging USB to switch transports.
 
 | Operation | USB | Bluetooth |
 | --- | --- | --- |

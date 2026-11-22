@@ -152,19 +152,21 @@ class ManagerTest(unittest.TestCase):
     def test_connect_prefers_usb_and_can_reconnect_over_bluetooth(self):
         jobs = manager.Jobs(None)
         connect = {"action": "refresh", "transport": "auto"}
-        with patch.object(manager, "usb_console_devices", side_effect=[[{}], []]), \
+        with patch.object(manager, "usb_console_devices", side_effect=[[{}], [], [{}]]) as discover_usb, \
                 patch.object(manager, "bluetooth_console_devices", return_value=[{}]) as discover_ble, \
                 patch.object(manager, "open_bluetooth_console", side_effect=lambda _: nullcontext(self.keyboard)):
             jobs.run(connect)
             self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "usb")
             discover_ble.assert_not_called()
-            jobs.run({"action": "disconnect"})
-            self.assertTrue(jobs.snapshot()["result"]["disconnected"])
-            self.assertIsNone(jobs.connected_serial)
             self.keyboard.transport = "bluetooth"
             jobs.run(connect)
             self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "bluetooth")
             self.assertEqual(jobs.connected_serial, self.keyboard.serial)
+            self.keyboard.transport = "usb"
+            jobs.run(connect)
+            self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "usb")
+            discover_usb.assert_called_with(self.keyboard.serial)
+            discover_ble.assert_called_once()
 
     def test_auto_connect_keeps_initial_screen_when_keyboard_is_absent(self):
         jobs = manager.Jobs(None)

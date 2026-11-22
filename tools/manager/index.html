@@ -97,11 +97,11 @@
         </section>
         <section aria-labelledby="import-title">
           <h2 id="import-title">Import JSON</h2>
-          <p id="import-usb-note" class="transfer-warning" hidden>To import JSON, plug in USB, then disconnect and reconnect in Manager.</p>
+          <p id="import-usb-note" class="transfer-warning" hidden>To import JSON, plug in USB, then select Reconnect.</p>
           <form id="import" aria-describedby="import-usb-note">
             <label>Dictionary file <input name="file" type="file" accept=".json,application/json" required></label>
             <label>Dictionary name (optional) <input name="name" maxlength="44" aria-describedby="import-name-help"></label>
-            <p id="import-name-help">(Clear to import into your personal dictionary.)</p>
+            <p id="import-name-help"><button id="import-clear-name" type="button">(Clear name to import into your personal dictionary.)</button></p>
             <button id="import-preview" data-write>Import</button>
           </form>
           <div id="import-plan" hidden aria-live="polite">
