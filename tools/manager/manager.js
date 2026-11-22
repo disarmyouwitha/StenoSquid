@@ -581,6 +581,13 @@ function clearMergePlan() {
 function renderMergeOptions() {
   clearMergePlan();
   const {catalog, merge_limit: limit} = state;
+  const active = catalog.filter((row) => row.enabled).length;
+  const manyActive = active >= 16;
+  const warning = node("active-dictionary-warning");
+  warning.hidden = !manyActive;
+  warning.textContent = manyActive
+    ? `${number.format(active)} dictionaries are active. Large active stacks can slow fast typing. Uncheck dictionaries you’re not using.`
+    : "";
   const compact = (row) => row?.kind === "snapshot" && row.name !== "user_dictionary";
   const options = catalog.flatMap((upper, i) => {
     const lower = catalog[i + 1];
@@ -588,15 +595,18 @@ function renderMergeOptions() {
       ? [new Option(`${upper.name} + ${lower.name}`, `${upper.id},${lower.id}`)] : [];
   });
   const full = limit && catalog.length >= limit;
-  node("merge-panel").hidden = !full;
-  let message = `All ${limit} dictionary slots are in use.`;
+  const offer = Boolean(limit && (full || (manyActive && options.length)));
+  node("merge-panel").hidden = !offer;
+  let message = full ? `All ${limit} dictionary slots are in use. ` : "";
   if (!options.length) {
-    message += " To merge, put two added compact dictionaries next to each other with the same Active setting.";
+    message += "To merge, put two added compact dictionaries next to each other with the same Active setting.";
   } else {
-    message += state.transport === "usb" ? " Merge two compact dictionaries to free one."
-      : " Connect over USB to merge two compact dictionaries and free one.";
+    message += state.transport === "usb" ? ""
+      : "Connect over USB to merge compact dictionaries.";
+    if (full && state.transport === "usb") message += "Merge two compact dictionaries to free one.";
   }
-  node("merge-capacity").textContent = message;
+  node("merge-capacity").textContent = message.trim();
+  node("merge-capacity").hidden = !message;
   node("merge-pair").parentElement.hidden = !options.length;
   node("merge-preview").hidden = !options.length;
   node("merge-pair").replaceChildren(...options);
