@@ -19,7 +19,7 @@ const jobMessages = {
   open_installer: "Checking the dictionary installer…",
   setup: "Preparing the selected factory dictionaries…",
   preview_optimize: "Calculating compact storage…",
-  apply_optimize: "Saving compact dictionary…", layout_map: "Scanning memory…",
+  hints: "Saving hint preference…", apply_optimize: "Saving compact dictionary…", layout_map: "Scanning memory…",
   preview_import: "Calculating import size…", apply_import: "Importing dictionary…", import: "Importing dictionary…",
   backup: "Preparing backup…", export: "Exporting dictionary…",
   preview_package: "Checking factory dictionary space…", apply_package: "Saving factory dictionary…",
@@ -189,6 +189,8 @@ function render(newState, usage = {}) {
   }
   node("layout").replaceChildren(...state.layouts.map((layout) => new Option(layout, layout)));
   node("layout").value = state.layout;
+  node("hints-setting").hidden = state.hints == null;
+  node("hints").value = state.hints ?? "auto";
   setConnection(true, false, state.transport ?? "usb", state.serial);
   node("workspace").hidden = false;
 }
@@ -709,6 +711,11 @@ node("factory-apply").onclick = () => {
 node("factory-cancel").onclick = () => {
   clearFactoryPlan();
   notify("Keyboard ready.");
+};
+node("hints").onchange = () => {
+  const mode = node("hints").value;
+  node("hints").value = state.hints;
+  run({action: "hints", mode});
 };
 node("layout").onchange = () => {
   const layout = node("layout").value;

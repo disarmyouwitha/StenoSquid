@@ -10,6 +10,10 @@
 #include "writer.h"
 #include "split_status.h"
 #include "stroke_feed.h"
+#include "stroke_hint_policy.h"
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+#include "native_input.h"
+#endif
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -43,6 +47,19 @@ TapeWriter tapeWriter;
 bool paperTapeWasEnabled;
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
 bool suggestionWasEnabled;
+bool hintBudgetActive;
+bool hintBudgetStarted;
+int64_t hintDeadline;
+StenoSquidStrokeHintPolicy hintPolicy;
+uint32_t keyTime;
+
+bool InputWaiting() {
+#ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE
+  return steno_squid_native_input_waiting();
+#else
+  return false;
+#endif
+}
 #endif
 #ifdef STENO_SQUID_TAPE_TIMING
 uint32_t startCycles;
@@ -86,7 +103,21 @@ void Publish(const steno_squid_tape_event &event) {
 
 } // namespace
 
-extern "C" void steno_squid_stroke_feed_begin(void) {
+extern "C" bool steno_squid_hint_should_yield(void) {
+#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
+  if (hintBudgetActive) {
+    const int64_t now = k_uptime_get();
+    if (!hintBudgetStarted) {
+      hintDeadline = now + 8;
+      hintBudgetStarted = true;
+    }
+    return now >= hintDeadline || InputWaiting();
+  }
+#endif
+  return false;
+}
+
+extern "C" void steno_squid_stroke_feed_begin(uint32_t when, bool hints) {
   if (active) {
     return; // Never nested. A second begin would lose the first one's flags.
   }
@@ -96,7 +127,17 @@ extern "C" void steno_squid_stroke_feed_begin(void) {
   Console::EnableEvent(ConsoleEvent::PAPER_TAPE);
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
   suggestionWasEnabled = Console::IsEventEnabled(ConsoleEvent::SUGGESTION);
-  Console::EnableEvent(ConsoleEvent::SUGGESTION);
+  keyTime = when;
+  hintBudgetActive = hints && hintPolicy.Allow(when) && !InputWaiting();
+  hintBudgetStarted = false;
+  if (hintBudgetActive) {
+    Console::EnableEvent(ConsoleEvent::SUGGESTION);
+  } else {
+    Console::DisableEvent(ConsoleEvent::SUGGESTION);
+  }
+#else
+  (void)when;
+  (void)hints;
 #endif
 #ifdef STENO_SQUID_TAPE_TIMING
   startCycles = k_cycle_get_32();
@@ -114,7 +155,10 @@ extern "C" void steno_squid_stroke_feed_end(void) {
     Console::DisableEvent(ConsoleEvent::PAPER_TAPE);
   }
 #ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
-  if (!suggestionWasEnabled) {
+  hintBudgetActive = false;
+  if (suggestionWasEnabled) {
+    Console::EnableEvent(ConsoleEvent::SUGGESTION);
+  } else {
     Console::DisableEvent(ConsoleEvent::SUGGESTION);
   }
 #endif
@@ -129,6 +173,9 @@ extern "C" void steno_squid_stroke_feed_end(void) {
   if (!steno_squid_tape_parse(tapeWriter.buffer, tapeWriter.count, &event)) {
     return;
   }
+#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
+  hintPolicy.Record(keyTime);
+#endif
 #ifdef STENO_SQUID_TAPE_TIMING
   // How long a stroke takes with suggestions on. This runs on the thread that
   // handles keys, so watch for anything over a few milliseconds.

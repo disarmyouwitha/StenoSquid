@@ -138,12 +138,14 @@ def read_state(console):
     adaptive = console.command("native_install update snapshot-capabilities") == "OK SNAPSHOT2"
     catalog = read_catalog(console)
     factory = console.command(FACTORY_CAPABILITIES) == "OK FACTORY2"
+    hints = console.command("stroke_hints")
     return {
         "serial": console.serial,
         "transport": transport,
         "catalog": catalog,
         "layouts": layouts,
         "layout": console.command("get_parameter host_layout"),
+        "hints": hints if hints in {"auto", "off"} else None,
         "read_only": status["read_only"],
         "auto_checkpoints": status.get("auto_checkpoints", 0),
         "auto_reclaimed": status.get("auto_reclaimed", 0),
@@ -289,6 +291,11 @@ def run_job(serial, request, progress, show_view=None, *, transport="usb"):
                 raise ValueError("Expected an enabled checkbox value")
             verb = "enable" if request["enabled"] else "disable"
             checked(console, f"{verb}_dictionary {name}")
+        elif action == "hints":
+            mode = request.get("mode")
+            if mode not in ("auto", "off"):
+                raise ValueError("Choose Auto or Off for shorter-outline hints.")
+            checked(console, f"stroke_hints {mode}")
         elif action == "layout":
             layout = request["layout"]
             if layout not in json.loads(console.command("get_parameter available_host_layouts")):

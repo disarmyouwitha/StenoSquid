@@ -14,5 +14,16 @@ static int javelin_settings_set(const char *name, size_t length,
     return 0;
   }
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_STROKE_HINT
+  if (strcmp(name, "stroke_hints") == 0) {
+    uint8_t enabled;
+    if (length != sizeof(enabled) || read(argument, &enabled, sizeof(enabled)) != sizeof(enabled) ||
+        enabled > 1) {
+      return -EINVAL;
+    }
+    stroke_hints = enabled;
+    return 0;
+  }
+#endif
   return -ENOENT;
 }
