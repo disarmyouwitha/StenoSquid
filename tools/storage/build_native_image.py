@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "tools/dict_compiler"))
 from compile_dict import DictionaryCollectionBuilder
 
 SEGMENT = 65536
+OUTLINE_FIRST = 1
 LIMIT = 255 * SEGMENT
 XIP = 0x12000000
 SOURCES = [
@@ -81,7 +82,8 @@ def seed_entries(image, extents, journal_segment, next_segment, entries):
         address += span
     reverse = sorted((key for key, (operation, _) in entries.items() if not operation),
                      key=lambda key: (entries[key][1], key))
-    for kind, order in ((3, sorted(entries)), (4, reverse)):
+    forward = sorted(entries, key=lambda key: (key[1], key[0]))
+    for kind, order in ((3, forward), (4, reverse)):
         if not order:
             continue
         index = b"".join(struct.pack("<I", records[key]) for key in order)
@@ -91,7 +93,7 @@ def seed_entries(image, extents, journal_segment, next_segment, entries):
         start = next_segment * SEGMENT
         image[start : start + len(index)] = index
         extents.append(struct.pack("<HHIIIQ", next_segment, count, len(index),
-                                   zlib.crc32(index), kind, 0))
+                                   zlib.crc32(index), kind, OUTLINE_FIRST if kind == 3 else 0))
         next_segment += count
     return next_segment
 

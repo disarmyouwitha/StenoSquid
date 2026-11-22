@@ -104,6 +104,7 @@ struct LiveFixture {
         uint32_t nd=prefix[4],ne=prefix[6];uint64_t through=uint64_t(Word(prefix+8)) | uint64_t(Word(prefix+12))<<32;
         std::map<LiveKey,uint32_t> expected;
         std::vector<uint32_t> tables[2];
+        bool outline_first = false;
         for(unsigned i=0;i<ne;++i) {
             uint8_t extent[24];assert(device.Read(root.address+32+nd*96+i*24,extent,24));
             uint32_t start=extent[0],kind=Word(extent+12);
@@ -115,6 +116,7 @@ struct LiveFixture {
                     if(row.operation==2)expected.erase(row.key);else expected[row.key]=record.address;
                 }
             } else if(kind==3 || kind==4) {
+                if (kind == 3) outline_first = Word(extent + 16) == kOutlineFirst;
                 for(unsigned offset=0;offset<Word(extent+4);offset+=4) {
                     uint8_t address[4];assert(device.Read(start*65536+offset,address,4));tables[kind==4].push_back(Word(address));
                 }
@@ -122,6 +124,10 @@ struct LiveFixture {
         }
         std::vector<uint32_t> f,r;
         for(auto entry:expected){f.push_back(entry.second);if(Row(entry.second).operation==0)r.push_back(entry.second);}
+        if (outline_first) std::sort(f.begin(), f.end(), [&](uint32_t a, uint32_t b) {
+            const auto x = Row(a), y = Row(b);
+            return std::tie(x.key.second, x.key.first) < std::tie(y.key.second, y.key.first);
+        });
         std::sort(r.begin(),r.end(),[&](uint32_t a,uint32_t b){auto x=Row(a),y=Row(b);return std::make_pair(x.text,x.key)<std::make_pair(y.text,y.key);});
         return tables[0]==f && tables[1]==r?CatalogResult::Ok:CatalogResult::Corrupt;
     }

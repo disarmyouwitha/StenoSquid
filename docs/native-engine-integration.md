@@ -24,6 +24,26 @@ operations available over USB and Bluetooth.
   hints. For exhaustive text or outline searches, export the dictionary and
   search on your computer.
 
+### Shared journal lookup
+
+Forward translation groups journal records by outline, then uses dictionary
+priority to choose a translation. A journal edit or tombstone affects only its
+own dictionary. Enabled compact baselines still have separate forward tables.
+The journal reverse index and compact one-stroke hint data keep their existing
+formats.
+
+Current firmware reads existing dictionary-first checkpoints and groups their
+uncheckpointed edits immediately. A host operation that rebuilds the journal
+indexes, such as a personal import with changes or dictionary consolidation,
+writes the forward pointer table in outline order. Empty journals use outline
+order on their first checkpoint. The pointer table uses the same four bytes per
+row and the same flash allocation.
+
+Use matching firmware and Manager. Earlier firmware cannot open an
+outline-first checkpoint. If you need to return to an earlier build, keep a
+version 2 backup captured before the first outline-first checkpoint. A UF2
+flash alone leaves the external checkpoint in place.
+
 ## Memory and capacity
 
 The 16 MiB external flash is divided into 64 KiB blocks. Two retained catalog

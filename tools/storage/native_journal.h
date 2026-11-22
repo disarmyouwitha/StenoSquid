@@ -61,13 +61,22 @@ struct JournalKey {
     uint16_t text_bytes = 0;
     uint8_t operation = 0, count = 0;
 };
-inline int CompareJournalKey(const JournalKey &key, uint32_t id,
-                             const uint32_t *strokes, uint8_t count) {
-    if (key.identity != id) return key.identity < id ? -1 : 1;
+inline int CompareOutline(const JournalKey &key, const uint32_t *strokes, uint8_t count) {
     for (uint8_t i = 0; i < key.count && i < count; ++i) {
         if (key.strokes[i] != strokes[i]) return key.strokes[i] < strokes[i] ? -1 : 1;
     }
     return key.count == count ? 0 : key.count < count ? -1 : 1;
+}
+inline int CompareJournalKey(const JournalKey &key, uint32_t id,
+                             const uint32_t *strokes, uint8_t count) {
+    if (key.identity != id) return key.identity < id ? -1 : 1;
+    return CompareOutline(key, strokes, count);
+}
+inline int CompareOutlineKey(const JournalKey &key, uint32_t id,
+                             const uint32_t *strokes, uint8_t count) {
+    const int order = CompareOutline(key, strokes, count);
+    if (order || key.identity == id) return order;
+    return key.identity < id ? -1 : 1;
 }
 struct JournalScan {
     uint64_t previous = 0;

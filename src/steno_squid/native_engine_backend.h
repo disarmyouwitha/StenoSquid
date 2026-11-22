@@ -33,6 +33,7 @@ class NativeEngineBackend final : public DictionaryBackend {
     NativeStore<Device> &store;
     NativeBaseProvider &bases;
     LiveView view{};
+    OutlineEdits edits{};
 public:
     NativeEngineBackend(NativeStore<Device> &value,NativeBaseProvider &provider):store(value),bases(provider){}
     bool Acquire(uint32_t,uint32_t &token)override {
@@ -45,7 +46,7 @@ public:
         if(!token || token!=view.token || !lookup.strokes || !lookup.length || lookup.length>16)return EditState::Error;
         uint32_t strokes[16];for(size_t i=0;i<lookup.length;++i)strokes[i]=lookup.strokes[i].GetKeyState();
         RecordView record;
-        const auto result=store.live.FindSnapshot(view,id,strokes,lookup.length,record);
+        const auto result=store.live.FindOutline(view,edits,id,strokes,lookup.length,record);
         if(result==LiveResult::Missing)return EditState::Missing;
         if(result!=LiveResult::Ok){bases.Fault();return EditState::Error;}
         text={record.text_address,record.text_bytes};

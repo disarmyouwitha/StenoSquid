@@ -8,7 +8,7 @@ import struct
 import sys
 import zlib
 
-from build_native_image import SEGMENT, XIP
+from build_native_image import OUTLINE_FIRST, SEGMENT, XIP
 from compile_dict import DictionaryCollectionBuilder, parse_outline
 from hybrid import format_stroke
 from native_update import (
@@ -80,7 +80,8 @@ def stage_allocation(protected):
         data = contents.at(XIP + segment * SEGMENT) if isinstance(contents, CompactImage) else contents
         blocks.update({segment + i: data[i * SEGMENT:(i + 1) * SEGMENT] for i in range(count)})
         if kind:
-            extents.append(EXTENT.pack(segment, count, size, zlib.crc32(data), kind, 0))
+            extents.append(EXTENT.pack(segment, count, size, zlib.crc32(data), kind,
+                                       OUTLINE_FIRST if kind == 3 else 0))
         return segment
 
     return blocks, extents, write
@@ -137,7 +138,7 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
     if consolidate:
         retained = [entry for entry in snapshot.entries.values()
                     if entry.identity != identity or (convert and entry.operation == 1)]
-        for kind, entries in ((3, sorted(retained, key=lambda entry: entry.key)),
+        for kind, entries in ((3, sorted(retained, key=lambda entry: entry.outline_key)),
                               (4, sorted((entry for entry in retained if not entry.operation),
                                          key=lambda entry: (entry.text, entry.key)))):
             if entries:
