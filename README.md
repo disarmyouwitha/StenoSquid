@@ -59,7 +59,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 ## How to Install
 1. ⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use with or without a nice!view. (Practice uses the display.)
 2. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
-3. Plug the **left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
+3. Plug the **Left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
 4. In **Set up Dictionaries**, choose the factory dictionaries you want and click **Install selected Dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
 
 #### Use offline `StenoSquidManager.html` to edit translations, import/export dictionaries and manage memory~
