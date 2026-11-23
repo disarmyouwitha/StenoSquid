@@ -15,7 +15,7 @@
 [ZMK](https://github.com/zmkfirmware/zmk) handles the keyboard, Bluetooth, power management, and keymap editing. \
 [Javelin](https://github.com/jthlim/javelin-steno) handles onboard steno translation.
 
-## Keyboard modes
+## Keyboard Modes
 
 | Mode | Output |
 | --- | --- |
@@ -25,7 +25,7 @@
 | **Plover** | Raw steno strokes sent over Plover HID to Plover on the computer, using Plover's dictionaries. |
 | **Practice** | Offline practice drills using only your keyboard, no PC required! |
 
-## Factory dictionaries
+## Factory Dictionaries
 
 | Dictionary | Compiled size |
 | --- | ---: |
@@ -56,12 +56,12 @@ From the Javelin or Plover layer, tap the outer right thumb
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
-## How to install
+## How to Install
 
 ⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**
-**&& Use `StenoSquidManager.html` to install and edit dictionaries.**
+**&& Use `StenoSquidManager.html` to install and edit dictionaries!**
 
-### Provision a new keyboard
+### Provision a new Keyboard
 
 1. **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use the same pair with or without a nice!view. (Practice uses the right display.)
 2. Open the included **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
@@ -70,11 +70,16 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 That's it! Use Manager to edit translations, import/export dictionaries, enable or reorder them, and install more factory dictionaries later.
 
-## StenoSquid Manager
-
-`StenoSquidManager.html` is the home for dictionary AND memory management! Just open the included .html file in Chrome or Edge~
-
 <sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
+
+## ZMK Studio
+ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
+
+Javelin and Plover HID bindings have separate parameters for the visible key label and the actual steno key. Change the steno identity to change what a key sends.
+
+Saved Studio keymaps take precedence over the source keymap. To load updated defaults, use **Restore stock settings**, which replaces saved keymap edits. Renamed layers appear on the nice!view after a layer change. Only the first nine characters are sent across the split, and only plain ASCII.
+
+https://zmk.studio/
 
 ## Default Keymap 
 Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-studio)
@@ -90,15 +95,6 @@ Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-s
 ### Javelin
 
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](assets/keymap/javelin-68ed47c7832b.svg)
-
-## ZMK Studio
-ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
-
-Javelin and Plover HID bindings have separate parameters for the visible key label and the actual steno key. Change the steno identity to change what a key sends.
-
-Saved Studio keymaps take precedence over the source keymap. To load updated defaults, use **Restore stock settings**, which replaces saved keymap edits. Renamed layers appear on the nice!view after a layer change. Only the first nine characters are sent across the split, and only plain ASCII.
-
-https://zmk.studio/
 
 ## External Memory Map
 Lapwing Base, Commands, Numbers, UK Additions, Proper Nouns, and Plover Base each have a separate compact image. **External flash map** in Manager shows the current layout. A fresh install with every factory dictionary leaves 178 free 64 KiB blocks, including the three-block maintenance reserve.
