@@ -37,7 +37,7 @@
 | Lapwing Base | 1.75 MiB |
 | Plover Base | 2.23 MiB |
 
-The full factory set contains 291,403 entries. A Boardsource test stored 918,000 compiled entries across 16 dictionaries on 16 MiB of flash.
+The full factory set contains 291,403 entries. A test stored 918,000 compiled entries across 16 dictionaries on 16 MiB of flash.
 
 You can set active dictionary and priorities in `StenoSquidManager.html`. Selections and personal edits survive reboot and firmware updates. With every dictionary disabled, Javelin outputs literal outlines such as `KAT`.
 
