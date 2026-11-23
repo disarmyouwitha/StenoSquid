@@ -95,18 +95,23 @@ https://zmk.studio/
 <img width="1166" height="568" alt="image" src="https://github.com/user-attachments/assets/a951050e-f7cb-4e96-8e83-7bb13f1018c6" />
 
 
-## NiceNano Wiring Diagram
+## Handwired Nice!Nano Wiring
+This diagram shows my tested handwired nice!nano configuration.
+
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)
 
-**Components used in handwired build**
-* [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
-* [10K ohm Resistor](https://www.amazon.com/dp/B07HDGX5LM)
-* [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
+**Flash requires six unused, high-frequency-capable GPIOs** for QSPI (CS#, CLK, IO0–IO3), a GND connection, and a suitable switched 3.3 V supply.
 
-The 10 kΩ resistor connects CS# to the flash's switched 3.3 V supply.
-The 100 nF ceramic capacitor connects across flash VCC/GND. Both are nonpolarized.
-Wire the Adafruit #5634's exposed IO2 and IO3 pads directly.
-[Adafruit pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts)
+The GPIO assignments are configurable in firmware, so **you don't have to use the exact pins shown**. However, your wiring must match your firmware configuration. Other keyboards may not expose enough suitable pins.
+
+**Components used in the handwired build**
+- [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
+- [10 kΩ resistor](https://www.amazon.com/dp/B07HDGX5LM)
+- [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
+
+The 10 kΩ resistor connects CS# to the flash's switched 3.3 V supply. The 100 nF capacitor connects across flash VCC and GND, close to the flash chip. Both are nonpolarized.
+
+Wire the Adafruit #5634's exposed IO2 and IO3 pads directly. [Adafruit pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts)
 
 [Technical documentation](docs/README.md) covers the storage design, hardware results, and development checks.
 
