@@ -58,33 +58,21 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ## How to install
 
-⭐ **Preferred: [Download your board bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**
-- **Use StenoSquidManager.html to install and edit dictionaries.**
+⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**
+**&& Use `StenoSquidManager.html` to install and edit dictionaries.**
 
 ### Provision a new keyboard
 
-1. **[Download your board bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use the same pair with or without a nice!view. Practice uses the right display.
+1. **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use the same pair with or without a nice!view. (Practice uses the right display.)
 2. Open the included **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
 3. Plug the **left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
 4. In **Set up dictionaries**, choose the factory dictionaries you want and click **Install selected dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
 
 That's it! Use Manager to edit translations, import/export dictionaries, enable or reorder them, and install more factory dictionaries later.
 
-**Existing v0.1.2 installations:** If your keyboard still uses the shared Lapwing image, export any dictionaries you want to keep as JSON before flashing newer firmware. Then use **Reprovision** in Manager and import your saved JSON files. Reprovision erases the current external dictionary pool.
-
 ## StenoSquid Manager
 
-StenoSquid Manager is the home for dictionary installation, importing, exporting, editing, renaming, deleting, priorities, backups, and flash management.
-
-Download **`boardsource.zip`** or **`nicenano.zip`** for your board from [Releases](https://github.com/disarmyouwitha/StenoSquid/releases/latest). Each contains `Left.uf2`, `Right.uf2`, and the offline Manager. Extract your bundle and open **`StenoSquidManager.html` in desktop Chrome** (or Edge 137+). The app includes its runtime and factory dictionaries and works offline, even on first launch. No Python installation is needed. Safari and Firefox do not support the required WebHID connection.
-
-Select a dictionary and choose **View / Edit JSON** to edit its entries in a searchable text editor. Preview shows additions, changes, and removals before saving. Factory dictionary changes are stored as overrides.
-
-`stenosquid.py` remains in the repository for command-line use and diagnostics.
-
-Connect the left half over USB, or pair it in your computer's Bluetooth settings and choose **Connect**. Manager prefers USB when both connections are available and shows the active connection. JSON imports, **USB Repack**, and restoring a repack backup require USB.
-
-See [offline browser Manager](tools/manager/browser/README.md) for additional details and recovery instructions.
+StenoSquidManager.html is the home for dictionary installation, importing, exporting, editing, renaming, deleting, priorities, backups, and flash management.
 
 <sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
