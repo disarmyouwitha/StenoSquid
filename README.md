@@ -57,13 +57,8 @@ From the Javelin or Plover layer, tap the outer right thumb
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
 ## How to Install
-
-⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest) and open `StenoSquidManager.html` in Chrome to install and edit dictionaries!**
-
-### Provision a new Keyboard
-
-1. **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use the same pair with or without a nice!view. (Practice uses the right display.)
-2. Open the included **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
+1. ⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use the same pair with or without a nice!view. (Practice uses the right display.)
+2. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
 3. Plug the **left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
 4. In **Set up dictionaries**, choose the factory dictionaries you want and click **Install selected dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
 
