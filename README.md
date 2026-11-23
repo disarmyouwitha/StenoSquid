@@ -58,7 +58,8 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ## How to install
 
-⭐ **Preferred: use [StenoSquid Manager](#stenosquid-manager) to install and edit dictionaries.** No command-line setup required!
+⭐ **Preferred: [Download your board bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**
+- **Use StenoSquidManager.html to install and edit dictionaries.**
 
 ### Provision a new keyboard
 
