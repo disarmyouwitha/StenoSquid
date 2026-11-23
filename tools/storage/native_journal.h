@@ -42,11 +42,14 @@ struct Utf8 {
         return true;
     }
 };
+inline bool ValidNativeStroke(uint32_t stroke) {
+    return stroke && !(stroke >> 25);
+}
 inline bool ValidEdit(uint32_t identity,uint8_t operation,const uint32_t *strokes,uint8_t count,
                       const uint8_t *text,uint16_t length) {
     if(!identity || operation>2 || count<1 || count>16 || !strokes || length>2047 ||
        (length && !text) || (operation && length))return false;
-    for(uint8_t i=0;i<count;++i)if(!strokes[i] || strokes[i]>>25)return false;
+    for(uint8_t i=0;i<count;++i)if(!ValidNativeStroke(strokes[i]))return false;
     Utf8 utf;
     for(uint16_t i=0;i<length;++i)if(!utf.Push(text[i]))return false;
     return !utf.remaining;

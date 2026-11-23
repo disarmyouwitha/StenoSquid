@@ -12,7 +12,7 @@ public:
     LiveResult Begin(uint32_t id,const uint32_t *strokes,uint8_t length,uint32_t text_bytes) {
         if(active && !committed)return LiveResult::Busy;
         if(!id || !strokes || !length || length>16 || text_bytes>2047)return LiveResult::Invalid;
-        for(unsigned i=0;i<length;++i)if(!strokes[i] || strokes[i]>>25)return LiveResult::Invalid;
+        for(unsigned i=0;i<length;++i)if(!ValidNativeStroke(strokes[i]))return LiveResult::Invalid;
         identity=id;count=length;bytes=text_bytes;received=0;
         for(unsigned i=0;i<count;++i)outline[i]=strokes[i];
         active=true;committed=false;return LiveResult::Ok;

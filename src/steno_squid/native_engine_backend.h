@@ -24,7 +24,7 @@ class NativeBaseProvider {
 public:
     virtual bool Ready()const=0;
     virtual void Fault()=0;
-    virtual StenoDictionaryLookupResult Lookup(uint32_t,const StenoDictionaryLookup &)=0;
+    virtual const StenoDictionary *FindBase(uint32_t) const=0;
 protected:
     ~NativeBaseProvider()=default;
 };
@@ -44,11 +44,19 @@ public:
     void Release(uint32_t token)override{if(token && token==view.token)store.Release(view);}
     EditState Find(uint32_t token,uint32_t id,const StenoDictionaryLookup &lookup,EditText &text)override {
         if(!token || token!=view.token || !lookup.strokes || !lookup.length || lookup.length>16)return EditState::Error;
-        uint32_t strokes[16];for(size_t i=0;i<lookup.length;++i)strokes[i]=lookup.strokes[i].GetKeyState();
+        uint32_t strokes[16];
+        for (size_t i = 0; i < lookup.length; ++i) {
+            strokes[i] = lookup.strokes[i].GetKeyState();
+            // Resegmentation can query synthetic strokes, including an empty
+            // one. These outlines cannot match any stored dictionary entry.
+            if (!ValidNativeStroke(strokes[i])) return EditState::Error;
+        }
         RecordView record;
         const auto result=store.live.FindOutline(view,edits,id,strokes,lookup.length,record);
         if(result==LiveResult::Missing)return EditState::Missing;
-        if(result!=LiveResult::Ok){bases.Fault();return EditState::Error;}
+        if(result!=LiveResult::Ok){
+            bases.Fault();return EditState::Error;
+        }
         text={record.text_address,record.text_bytes};
         return record.operation==Operation::Set?EditState::Set:record.operation==Operation::Remove?EditState::Remove:EditState::Reset;
     }
@@ -60,7 +68,14 @@ public:
         return ok;
     }
     StenoDictionaryLookupResult Base(uint32_t token,uint32_t id,const StenoDictionaryLookup &lookup)override {
-        return bases.Ready() && token && token==view.token?bases.Lookup(id,lookup):StenoDictionaryLookupResult::CreateInvalid();
+        if (!bases.Ready() || !token || token != view.token)
+            return StenoDictionaryLookupResult::CreateInvalid();
+        // A longer journal edit raises the combined dictionary limit. The
+        // compact base only has stroke groups through its own limit.
+        const auto *base = bases.FindBase(id);
+        if (!base || !lookup.length || lookup.length > base->GetMaximumOutlineLength())
+            return StenoDictionaryLookupResult::CreateInvalid();
+        return base->Lookup(lookup);
     }
 };
 }

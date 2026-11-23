@@ -150,7 +150,7 @@ public:
     void Fault()override {
         (void)ForgetBaseTrust();healthy=store.opened=false;atomic_clear(&lf_mapped_ready);atomic_set(&lf_checked,1);dictionary_flash_ready_changed();
     }
-    StenoDictionaryLookupResult Lookup(uint32_t,const StenoDictionaryLookup &)override;
+    const StenoDictionary *FindBase(uint32_t) const override;
 } base_provider;
 NativeEngineBackend<FlashDevice> backend(store,base_provider);
 class Cell final : public StenoDictionary {
@@ -247,9 +247,9 @@ bool Cell::Probe()const {
     }
     return false;
 }
-StenoDictionaryLookupResult BaseProvider::Lookup(uint32_t id,const StenoDictionaryLookup &lookup) {
+const StenoDictionary *BaseProvider::FindBase(uint32_t id) const {
     const auto *cell=ById(id);
-    return cell && cell->base?cell->base->Lookup(lookup):StenoDictionaryLookupResult::CreateInvalid();
+    return cell ? cell->base : nullptr;
 }
 void StepWork(k_work *);
 K_WORK_DELAYABLE_DEFINE(maintenance_work,StepWork);

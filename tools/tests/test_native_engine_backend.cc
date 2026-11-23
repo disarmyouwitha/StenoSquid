@@ -1,15 +1,39 @@
 #include "native_engine_backend.h"
 #include "native_store_fixture.h"
 #include <iostream>
+#include <vector>
 struct Bases : candidate_b::NativeBaseProvider {
-    bool ready=true;unsigned calls=0;
+    struct BaseDictionary final : StenoDictionary {
+        mutable unsigned calls=0;
+        explicit BaseDictionary(size_t limit):StenoDictionary(limit){}
+        const char *GetName()const override{return "compact base";}
+        StenoDictionaryLookupResult Lookup(const StenoDictionaryLookup &lookup)const override {
+            assert(lookup.length && lookup.length<=GetMaximumOutlineLength());
+            ++calls;char *text=static_cast<char *>(std::malloc(4));std::memcpy(text,"cat",4);
+            return StenoDictionaryLookupResult::CreateDynamicString(text);
+        }
+    } base;
+    bool ready=true;
+    explicit Bases(size_t limit=1):base(limit){}
     bool Ready()const override{return ready;}
     void Fault()override{ready=false;}
-    StenoDictionaryLookupResult Lookup(uint32_t,const StenoDictionaryLookup &)override {
-        ++calls;char *text=static_cast<char *>(std::malloc(4));std::memcpy(text,"cat",4);
-        return StenoDictionaryLookupResult::CreateDynamicString(text);
-    }
+    const StenoDictionary *FindBase(uint32_t)const override{return &base;}
 };
+static void CompactLengthBoundaries() {
+    NativeFixture fixture;
+    const std::vector<StenoStroke> outline(17, StenoStroke(8));
+    for (size_t limit = 1; limit <= 16; ++limit) {
+        Bases bases(limit);
+        NativeEngineBackend<NativeDevice> backend(fixture.store, bases);
+        NativeOverlayDictionary dictionary(backend,2,"Upper");
+        for (size_t length = 0; length <= 17; ++length) {
+            auto result = dictionary.Lookup(StenoDictionaryLookup(outline.data(),length));
+            assert(result.IsValid() == (length >= 1 && length <= limit));
+            result.Destroy();
+        }
+        assert(bases.base.calls==limit);
+    }
+}
 static void SearchVisibility() {
     NativeFixture fixture;
     constexpr uint32_t target = 2, key = 8;
@@ -133,11 +157,28 @@ static void GroupedReads() {
 }
 
 int main() {
+    CompactLengthBoundaries();
     SearchVisibility();
     GroupedReads();
     NativeFixture f;Bases bases;NativeEngineBackend<NativeDevice> backend(f.store,bases);
     NativeOverlayDictionary dictionary(backend,2,"Upper");const StenoStroke stroke(8);const StenoDictionaryLookup lookup(&stroke,1);
     auto base=dictionary.Lookup(lookup);assert(base.IsValid() && !std::strcmp(base.GetText(),"cat"));base.Destroy();
+    const uint32_t edited_outline[] = {8, 16, 32};
+    const uint8_t edit[] = {'l', 'o', 'n', 'g'};
+    assert(f.store.Edit(2,0,edited_outline,3,edit,sizeof(edit))==LiveResult::Ok);
+    const StenoStroke hit[] = {StenoStroke(8), StenoStroke(16), StenoStroke(32)};
+    const StenoStroke miss[] = {StenoStroke(8), StenoStroke(16), StenoStroke(64)};
+    auto edited=dictionary.Lookup(StenoDictionaryLookup(hit,3));
+    assert(edited.IsValid() && !std::strcmp(edited.GetText(),"long"));edited.Destroy();
+    assert(!dictionary.Lookup(StenoDictionaryLookup(miss,3)).IsValid() && bases.base.calls==1);
+    for (uint32_t special : {0u, 1u << 25, 1u << 31}) {
+        for (size_t position = 0; position < 3; ++position) {
+            StenoStroke invalid[] = {hit[0], hit[1], hit[2]};
+            invalid[position] = StenoStroke(special);
+            assert(!dictionary.Lookup(StenoDictionaryLookup(invalid,3)).IsValid());
+            assert(bases.ready && bases.base.calls==1);
+        }
+    }
     assert(f.Edit(2,8,"native")==LiveResult::Ok);auto old=dictionary.Lookup(lookup);
     assert(old.IsValid() && !std::strcmp(old.GetText(),"native"));
     assert(f.Edit(2,8,"newer")==LiveResult::Ok && !std::strcmp(old.GetText(),"native"));
@@ -147,10 +188,15 @@ int main() {
         const auto step=f.store.Step(f.Check());if(step==JobResult::Done)break;assert(step==JobResult::More);
     }
     old.Destroy();f.Open();
+    edited=dictionary.Lookup(StenoDictionaryLookup(hit,3));
+    assert(edited.IsValid() && !std::strcmp(edited.GetText(),"long"));edited.Destroy();
+    assert(!dictionary.Lookup(StenoDictionaryLookup(miss,3)).IsValid() && bases.base.calls==1);
+    assert(f.store.Edit(2,2,edited_outline,3,nullptr,0)==LiveResult::Ok);
+    assert(!dictionary.Lookup(StenoDictionaryLookup(hit,3)).IsValid() && bases.base.calls==1);
     uint32_t token=0,other=0;assert(backend.Acquire(2,token) && !backend.Acquire(2,other) && !other && bases.ready);backend.Release(token);
-    f.nor.fail_read=true;const auto calls=bases.calls;
-    auto failed=dictionary.Lookup(lookup);assert(!failed.IsValid() && !bases.ready && bases.calls==calls);failed.Destroy();
+    f.nor.fail_read=true;const auto calls=bases.base.calls;
+    auto failed=dictionary.Lookup(lookup);assert(!failed.IsValid() && !bases.ready && bases.base.calls==calls);failed.Destroy();
     f.nor.fail_read=false;
-    failed=dictionary.Lookup(lookup);assert(!failed.IsValid() && bases.calls==calls);failed.Destroy();
+    failed=dictionary.Lookup(lookup);assert(!failed.IsValid() && bases.base.calls==calls);failed.Destroy();
     std::cout<<"Native engine backend: owned text, maintenance snapshots, bounded pin nesting and no base fallback after IO failure passed\n";
 }

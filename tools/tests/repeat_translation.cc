@@ -75,13 +75,21 @@ void check_disabled_dictionaries() {
 void check_native_store_engine() {
   NativeFixture storage;
   struct Bases final : candidate_b::NativeBaseProvider {
+    struct Lower final : StenoDictionary {
+      Lower() : StenoDictionary(1) {}
+      const char *GetName() const override { return "lower fixture"; }
+      StenoDictionaryLookupResult Lookup(const StenoDictionaryLookup &query) const override {
+        if(query.strokes[0]==StenoStroke("KAT"))return StenoDictionaryLookupResult::CreateStaticString("lower");
+        return StenoDictionaryLookupResult::CreateInvalid();
+      }
+    } lower;
     bool ready=true;Fixture upper;
     bool Ready()const override{return ready;}
     void Fault()override{ready=false;}
-    StenoDictionaryLookupResult Lookup(uint32_t id,const StenoDictionaryLookup &query)override {
-      if(id==2)return upper.Lookup(query);
-      if(id==3 && query.length==1 && query.strokes[0]==StenoStroke("KAT"))return StenoDictionaryLookupResult::CreateStaticString("lower");
-      return StenoDictionaryLookupResult::CreateInvalid();
+    const StenoDictionary *FindBase(uint32_t id)const override {
+      if(id==2)return &upper;
+      if(id==3)return &lower;
+      return nullptr;
     }
   } bases;
   candidate_b::NativeEngineBackend<NativeDevice> backend(storage.store,bases);

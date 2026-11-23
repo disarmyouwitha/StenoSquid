@@ -65,11 +65,8 @@ public:
         return definition.maximumOutlineLength;
     }
 
-    StenoDictionaryLookupResult Lookup(uint32_t id, const StenoDictionaryLookup &query) override {
-        const auto &member = members.at(id);
-        if (member.dictionary && query.length <= member.definition.maximumOutlineLength)
-            return member.dictionary->Lookup(query);
-        return StenoDictionaryLookupResult::CreateInvalid();
+    const StenoDictionary *FindBase(uint32_t id) const override {
+        return id < members.size() ? members[id].dictionary.get() : nullptr;
     }
 };
 

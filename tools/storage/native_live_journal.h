@@ -187,7 +187,7 @@ class LiveJournal {
                       RecordView &result, bool skip_tail=false) {
         if(!id || !strokes || !count || count>16 || view.tail.count>256 || view.dictionary_count>64 ||
            view.forward_count>kMaxEntries || !HasIdentity(view,id))return LiveResult::Invalid;
-        for(uint8_t i=0;i<count;++i)if(!strokes[i] || strokes[i]>>25)return LiveResult::Invalid;
+        for(uint8_t i=0;i<count;++i)if(!ValidNativeStroke(strokes[i]))return LiveResult::Invalid;
         if(!HasLength(view,id,count))return LiveResult::Missing;
         bool io=false,corrupt=false,indexed=false;
         auto compare=[&](uint32_t address) {
@@ -399,7 +399,7 @@ public:
         if (slot == view.dictionary_count) return LiveResult::Invalid;
         if (!(view.outline_lengths[slot] & (uint16_t(1) << (count - 1)))) return LiveResult::Missing;
         for (unsigned i = 0; i < count; ++i)
-            if (!strokes[i] || strokes[i] >> 25) return LiveResult::Invalid;
+            if (!ValidNativeStroke(strokes[i])) return LiveResult::Invalid;
 
         const auto &root = view.root;
         const auto bytes = count * sizeof(*strokes);

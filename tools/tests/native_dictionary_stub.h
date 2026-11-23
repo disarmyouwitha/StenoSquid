@@ -20,8 +20,10 @@ public:
     static StenoDictionaryLookupResult CreateDynamicString(char *text){return {text};}
 };
 class StenoDictionary {
+    size_t maximumOutlineLength;
 public:
-    explicit StenoDictionary(size_t){}
+    explicit StenoDictionary(size_t maximum):maximumOutlineLength(maximum){}
+    size_t GetMaximumOutlineLength() const{return maximumOutlineLength;}
     virtual StenoDictionaryLookupResult Lookup(const StenoDictionaryLookup &)const=0;
     virtual const char *GetName()const=0;
     virtual ~StenoDictionary()=default;
