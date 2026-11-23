@@ -72,7 +72,7 @@ That's it! Use Manager to edit translations, import/export dictionaries, enable 
 
 ## StenoSquid Manager
 
-StenoSquidManager.html is the home for dictionary installation, importing, exporting, editing, renaming, deleting, priorities, backups, and flash management.
+`StenoSquidManager.html` is the home for dictionary AND memory management! Just open the included .html file in Chrome or Edge~
 
 <sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
