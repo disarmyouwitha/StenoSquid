@@ -81,7 +81,6 @@ Saved Studio keymaps take precedence over the source keymap. To load updated def
 https://zmk.studio/
 
 ## Default Keymap 
-Edit keymap with [ZMK Studio](https://github.com/disarmyouwitha/StenoSquid#zmk-studio)
 
 ### Qwerty
 
