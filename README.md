@@ -113,8 +113,6 @@ The 10 kΩ resistor connects CS# to the flash's switched 3.3 V supply. The 100 n
 
 Wire the Adafruit #5634's exposed IO2 and IO3 pads directly. [Adafruit pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts)
 
-[Technical documentation](docs/README.md) covers the storage design, hardware results, and development checks.
-
 ## License
 
 StenoSquid’s own code is available under the [0BSD license](LICENSE).
