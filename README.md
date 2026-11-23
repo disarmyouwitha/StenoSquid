@@ -58,7 +58,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 
 ## How to Install
 
-⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest), Flash the firmware, and Open `StenoSquidManager.html` in Chrome to install and edit dictionaries!**
+⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest) and Open `StenoSquidManager.html` in Chrome to install and edit dictionaries!**
 
 ### Provision a new Keyboard
 
