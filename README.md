@@ -95,7 +95,7 @@ https://zmk.studio/
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](assets/keymap/javelin-68ed47c7832b.svg)
 
 ## External Flash Map
-In **`StenoSquidManager.html`** shows the current memory layout.
+**`StenoSquidManager.html`** shows the current memory layout.
 
 <img width="1166" height="568" alt="image" src="https://github.com/user-attachments/assets/a951050e-f7cb-4e96-8e83-7bb13f1018c6" />
 
