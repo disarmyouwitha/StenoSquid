@@ -69,7 +69,6 @@ From the Javelin or Plover layer, tap the outer right thumb
 4. In **Set up dictionaries**, choose the factory dictionaries you want and click **Install selected dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
 
 #### Use `StenoSquidManager.html` to edit translations, import/export dictionaries and manage memory~
-
 <sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
 ## ZMK Studio
