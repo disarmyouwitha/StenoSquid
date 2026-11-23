@@ -94,8 +94,11 @@ https://zmk.studio/
 
 ![Onboard Javelin layer with Lapwing number key and Practice toggle](assets/keymap/javelin-68ed47c7832b.svg)
 
-## External Memory Map
-Lapwing Base, Commands, Numbers, UK Additions, Proper Nouns, and Plover Base each have a separate compact image. **External flash map** in Manager shows the current layout. A fresh install with every factory dictionary leaves 178 free 64 KiB blocks, including the three-block maintenance reserve.
+## External Flash Map
+In **`StenoSquidManager.html`** shows the current memory layout.
+
+<img width="1166" height="568" alt="image" src="https://github.com/user-attachments/assets/a951050e-f7cb-4e96-8e83-7bb13f1018c6" />
+
 
 ## NiceNano Wiring Diagram
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)
