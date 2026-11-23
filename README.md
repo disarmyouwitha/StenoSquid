@@ -95,12 +95,12 @@ https://zmk.studio/
 <img width="1166" height="568" alt="image" src="https://github.com/user-attachments/assets/a951050e-f7cb-4e96-8e83-7bb13f1018c6" />
 
 
-## Handwired Nice!Nano Wiring
+## Handwired Nice!Nano Diagram
 This diagram shows my tested handwired nice!nano configuration.
 
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)
 
-**Flash requires six unused, high-frequency-capable GPIOs** for QSPI (CS#, CLK, IO0–IO3), a GND connection, and a suitable switched 3.3 V supply.
+**External flash requires six unused, high-frequency-capable GPIOs** for QSPI (CS#, CLK, IO0–IO3), a GND connection, and a suitable switched 3.3 V supply.
 
 The GPIO assignments are configurable in firmware, so **you don't have to use the exact pins shown**. However, your wiring must match your firmware configuration. Other keyboards may not expose enough suitable pins.
 
