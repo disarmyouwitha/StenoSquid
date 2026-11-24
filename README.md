@@ -66,6 +66,7 @@ From the Javelin or Plover layer, tap the outer right thumb
 *(Also available online @ [https://ranna.ink/StenoSquidManager.html](https://ranna.ink/StenoSquidManager.html))*\
 <sub>We also offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
+
 ## ZMK Studio
 ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
 
