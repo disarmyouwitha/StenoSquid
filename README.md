@@ -14,16 +14,6 @@
 [ZMK](https://github.com/zmkfirmware/zmk) handles the keyboard, Bluetooth, power management, and keymap editing. \
 [Javelin](https://github.com/jthlim/javelin-steno) handles onboard steno translation.
 
-## Keyboard Modes
-
-| Mode | Output |
-| --- | --- |
-| **Qwerty** | Ordinary keyboard input through ZMK. |
-| **Numpad** | Arrow keys, a number pad, and Bluetooth controls. Hold the middle left thumb to use it. |
-| **Javelin** | Onboard dictionary translation, including spelling rules, repeat, and undo. Works with Plover closed. |
-| **Plover** | Raw steno strokes sent over Plover HID to Plover on the computer, using Plover's dictionaries. |
-| **Practice** | Offline practice drills using only your keyboard, no PC required! |
-
 ## How to Install
 1. ⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use with or without a nice!view. (Practice uses the display.)
 2. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
@@ -33,6 +23,16 @@
 #### Use offline `StenoSquidManager.html` to edit translations, import/export dictionaries and manage memory~
 *(Also available online @ [https://ranna.ink/StenoSquidManager.html](https://ranna.ink/StenoSquidManager.html))*\
 <sub>We also offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
+
+## Keyboard Modes
+
+| Mode | Output |
+| --- | --- |
+| **Qwerty** | Ordinary keyboard input through ZMK. |
+| **Numpad** | Arrow keys, a number pad, and Bluetooth controls. Hold the middle left thumb to use it. |
+| **Javelin** | Onboard dictionary translation, including spelling rules, repeat, and undo. Works with Plover closed. |
+| **Plover** | Raw steno strokes sent over Plover HID to Plover on the computer, using Plover's dictionaries. |
+| **Practice** | Offline practice drills using only your keyboard, no PC required! |
 
 ## Factory Dictionaries
 
