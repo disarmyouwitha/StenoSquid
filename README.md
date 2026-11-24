@@ -1,8 +1,7 @@
 # StenoSquid
 
 ✅ZMK Wireless Keyboard\
-✅PloverHID\
-✅Javelin onboard steno\
+✅Javelin / PloverHID steno\
 🤌🍇 Wireless dictionary editing\
 🦑 Practice with just your keyboard!\
 📚 Tested: 900,000+ total stored entries on 16 MiB!
