@@ -111,7 +111,7 @@ def main():
         for name in ("Keep Compact", "Second Compact"):
             assert compact_position(after, name) < compact_position(old, name)
         assert report["target_same_size_consolidation"]["user_dictionary"]["fits"]
-        refuse(pack_layout, None, None, None, None, 251)
+        refuse(pack_layout, data, old, {}, {}, 251)
         _, keep = repack(complete, [])
         assert keep["saved_segments"] == 0 and not keep["converted"]
         assert keep["recommendation"] == "contiguous-space-only"

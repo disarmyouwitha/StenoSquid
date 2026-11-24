@@ -67,7 +67,7 @@ class LiveJournal {
         }
     }
     bool Owns(const LiveView &view,uint32_t at)const {
-        return at/kSegmentBytes<255 && at%kSegmentBytes>=256 && !(at%4) && view.journals.Contains(at/kSegmentBytes);
+        return at/kSegmentBytes<kLargePoolEnd && at%kSegmentBytes>=256 && !(at%4) && view.journals.Contains(at/kSegmentBytes);
     }
     LiveResult AppendTail(uint32_t address,uint32_t id,const uint32_t *strokes,uint8_t count) {
         if(live.tail.count==Tail::kCapacity)return LiveResult::NeedRebuild;
@@ -304,7 +304,7 @@ public:
             }
             if(kind!=uint32_t(ExtentKind::Journal))return LiveResult::More;
             const uint64_t epoch=uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32;
-            if(!epoch || epoch<=last_epoch || start<2 || start>=255 || live.journals.Contains(start))return Fail(LiveResult::Corrupt);
+            if(!epoch || epoch<=last_epoch || start<2 || start>=NativePoolEnd(device) || live.journals.Contains(start))return Fail(LiveResult::Corrupt);
             const auto status=journal.BeginScan(start,epoch,live.highwater,scan);
             if(status!=JournalResult::Ok)return Fail(status==JournalResult::IoError?LiveResult::IoError:LiveResult::Corrupt);
             live.journals.Add(start,1);last_epoch=epoch;scanning=true;return LiveResult::More;

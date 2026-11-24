@@ -170,7 +170,7 @@ class NativeStage {
             uint8_t extent[24];
             if (!ReadExtent(candidate, new_dictionaries, i, extent)) return false;
             const unsigned start = extent[0] | extent[1] << 8, count = extent[2] | extent[3] << 8;
-            if (start < 2 || start >= 255 || !count || count > 255 - start) return false;
+            if (start < 2 || start >= NativePoolEnd(store.device) || !count || count > NativePoolEnd(store.device) - start) return false;
             bool staged = true;
             for (unsigned j = start; j < start + count; ++j) {
                 if (j == metadata_segment) return false;
@@ -192,7 +192,7 @@ class NativeStage {
     bool StagedExtent(const uint8_t *extent, uint32_t metadata, uint32_t kind) {
         const unsigned start = extent[0] | extent[1] << 8, count = extent[2] | extent[3] << 8;
         const uint32_t bytes = Word(extent + 4);
-        if (Word(extent + 12) != kind || start < 2 || start >= 255 || !count || count > 255 - start ||
+        if (Word(extent + 12) != kind || start < 2 || start >= NativePoolEnd(store.device) || !count || count > NativePoolEnd(store.device) - start ||
             !bytes || bytes % 4 || bytes > count * kSegmentBytes || (kind == 1 && bytes < 40))
             return false;
         for (unsigned i = start; i < start + count; ++i)
@@ -352,7 +352,7 @@ class NativeStage {
             if (Word(before + 12) != 1 || Word(after + 12) != 1) return false;
             const unsigned start = after[0] | after[1] << 8, segments = after[2] | after[3] << 8;
             const uint32_t bytes = Word(after + 4);
-            if (start < 2 || start >= 255 || !segments || segments > 255 - start ||
+            if (start < 2 || start >= NativePoolEnd(store.device) || !segments || segments > NativePoolEnd(store.device) - start ||
                 bytes < 40 || bytes > segments * kSegmentBytes || bytes % 4 ||
                 Word(after + 16) || Word(after + 20)) return false;
             for (unsigned j = start; j < start + segments; ++j)
@@ -408,7 +408,7 @@ class NativeStage {
             const unsigned start = extent[0] | extent[1] << 8;
             const unsigned count = extent[2] | extent[3] << 8;
             const uint32_t bytes = Word(extent + 4);
-            if (start < 2 || start >= 255 || !count || count > 255 - start ||
+            if (start < 2 || start >= NativePoolEnd(store.device) || !count || count > NativePoolEnd(store.device) - start ||
                 bytes < 40 || bytes > count * kSegmentBytes || bytes % 4) return false;
             for (unsigned segment = start; segment < start + count; ++segment)
                 if (segment == metadata || !erased.Contains(segment)) return false;
@@ -566,7 +566,7 @@ public:
         added_id = personal_id = 0;
         dictionary_limit = limit;
         erased = {};
-        remaining = AllocationPlan(protected_segments).Free();
+        remaining = AllocationPlan(protected_segments, NativePoolEnd(store.device)).Free();
         active = true;
         store.external_update = true;
         return true;
@@ -578,8 +578,8 @@ public:
     }
 
     bool Read(uint32_t address, uint8_t *out, uint32_t bytes) {
-        if (!active || !bytes || bytes > 512 || address >= 255 * kSegmentBytes ||
-            bytes > 255 * kSegmentBytes - address) return false;
+        if (!active || !bytes || bytes > 512 || address >= NativePoolEnd(store.device) * kSegmentBytes ||
+            bytes > NativePoolEnd(store.device) * kSegmentBytes - address) return false;
         if (address >= original.root.address && address - original.root.address <= original.root.bytes &&
             bytes <= original.root.bytes - (address - original.root.address))
             return store.device.Read(address, out, bytes);
@@ -592,7 +592,7 @@ public:
     }
 
     bool Erase(uint32_t segment) {
-        if (kind == NativeUpdateKind::Backup || !active || segment < 2 || segment >= 255 || protected_segments.Contains(segment))
+        if (kind == NativeUpdateKind::Backup || !active || segment < 2 || segment >= NativePoolEnd(store.device) || protected_segments.Contains(segment))
             return false;
         if (erased.Contains(segment)) return true;
         if (remaining <= 3 || !store.device.Erase(segment)) return false;
@@ -602,7 +602,7 @@ public:
 
     bool Write(uint32_t address, const uint8_t *data, uint32_t bytes) {
         if (kind == NativeUpdateKind::Backup || !active || !bytes || bytes > 512 || address % 256 || bytes % 4 ||
-            address >= 255 * kSegmentBytes || bytes > kSegmentBytes - address % kSegmentBytes ||
+            address >= NativePoolEnd(store.device) * kSegmentBytes || bytes > kSegmentBytes - address % kSegmentBytes ||
             !erased.Contains(address / kSegmentBytes)) return false;
         uint8_t verify[256];
         for (uint32_t offset = 0; offset < bytes; offset += sizeof(verify)) {
@@ -623,7 +623,7 @@ public:
     CatalogResult Commit(uint32_t segment, uint32_t bytes, uint32_t crc, bool &reopen,
                          BaseProbe probe = nullptr) {
         reopen = false;
-        if (kind == NativeUpdateKind::Backup || !active || segment < 2 || segment >= 255 || !erased.Contains(segment) ||
+        if (kind == NativeUpdateKind::Backup || !active || segment < 2 || segment >= NativePoolEnd(store.device) || !erased.Contains(segment) ||
             bytes < 32 || bytes > store.catalog.PayloadCapacity() ||
             store.selected.root.generation != original.root.generation) return CatalogResult::Invalid;
         bool pinned = false;

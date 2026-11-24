@@ -8,7 +8,7 @@ import struct
 import sys
 import zlib
 
-from build_native_image import OUTLINE_FIRST, SEGMENT, XIP
+from build_native_image import OUTLINE_FIRST, SEGMENT, SMALL_POOL_END, XIP
 from compile_dict import DictionaryCollectionBuilder, parse_outline
 from hybrid import format_stroke
 from native_update import (
@@ -52,8 +52,8 @@ def compile_snapshot(name, entries):
     return CompactImage(image, builder.pointer_offsets)
 
 
-def stage_allocator(protected):
-    free = set(range(2, 255)) - set(protected)
+def stage_allocator(protected, pool_end=SMALL_POOL_END):
+    free = set(range(2, pool_end)) - set(protected)
 
     def allocate(count):
         if len(free) < count + 3:
@@ -68,8 +68,8 @@ def stage_allocator(protected):
     return allocate
 
 
-def stage_allocation(protected):
-    allocate = stage_allocator(protected)
+def stage_allocation(protected, pool_end=SMALL_POOL_END):
+    allocate = stage_allocator(protected, pool_end)
     blocks = {}
     extents = []
 
@@ -95,7 +95,7 @@ def plan_named_snapshot(snapshot, protected, name, compiled, limit=16):
         raise ValueError("Dictionary name already exists")
     if len(snapshot.extents) == 253:
         raise NoSpace("Catalog extent limit")
-    blocks, extents, write = stage_allocation(protected)
+    blocks, extents, write = stage_allocation(protected, snapshot.pool_end)
     write(compiled, 1)
     row = bytearray(96)
     struct.pack_into("<IIHBB", row, 0, snapshot.next_id, 1, len(snapshot.extents), 0, SNAPSHOT_MARKER)
@@ -137,7 +137,7 @@ def plan_change(snapshot, protected, identity, compiled=None, *, consolidate=Fal
         if i not in (old_base, retiring_base) and (not consolidate or extent[4] < 3):
             remap[i] = len(kept)
             kept.append(EXTENT.pack(*extent))
-    blocks, added, write = stage_allocation(protected)
+    blocks, added, write = stage_allocation(protected, snapshot.pool_end)
     if compiled is not None:
         remap[old_base] = len(kept)
         write(compiled, 1)
@@ -230,7 +230,7 @@ def merge_snapshots(console, upper_id, lower_id, *, expected=None, progress=prin
         progress("Compiling the merged dictionary…")
         compiled = compile_snapshot(names[0], {parse_outline(key): value.encode("utf-8")
                                               for key, value in merged.items()})
-        free, largest = inspect_free(protected)
+        free, largest = inspect_free(protected, snapshot.pool_end)
         report = dict(names=names, ids=[upper_id, lower_id], entries=len(merged),
                       duplicates=duplicates, source_image_segments=[
                           snapshot.extents[struct.unpack_from("<H", row, 8)[0]][1] for row in (upper, lower)
@@ -356,7 +356,7 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
             compiled = compile_snapshot(name, {parse_outline(outline): text.encode("utf-8")
                                                for outline, text in entries.items()})
         if compiled is not None:
-            free, largest = inspect_free(protected)
+            free, largest = inspect_free(protected, snapshot.pool_end)
             sectors = (len(compiled.data) + SEGMENT - 1) // SEGMENT
             progress(f"{len(compiled.data):,} compact bytes · {sectors} contiguous segments needed · "
                      f"{free} free, largest run {largest}, reserve 3")
@@ -392,10 +392,10 @@ def change_snapshot(console, operation, name, *, source=None, stage=False, progr
             abort(console)
 
 
-def inspect_free(protected):
-    free = set(range(2, 255)) - set(protected)
+def inspect_free(protected, pool_end=SMALL_POOL_END):
+    free = set(range(2, pool_end)) - set(protected)
     largest = run = 0
-    for segment in range(2, 255):
+    for segment in range(2, pool_end):
         run = run + 1 if segment in free else 0
         largest = max(largest, run)
     return len(free), largest

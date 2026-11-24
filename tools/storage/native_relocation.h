@@ -8,7 +8,7 @@ struct NativeRelocationMap {
     static constexpr unsigned MaxVictims = 4, MaxMoves = CopyBudget / 64;
     struct Move { uint16_t source, offset; };
     Move moves[MaxMoves]{};
-    uint8_t victims[MaxVictims]{};
+    uint16_t victims[MaxVictims]{};
     uint32_t destination = 0, cursor = kPageBytes, count = 0;
     uint64_t through = 0, epoch = 0;
 

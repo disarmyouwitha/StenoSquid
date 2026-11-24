@@ -403,7 +403,8 @@ function showFlashMap(map, reclaimable = []) {
   summary.hidden = !summary.textContent;
   const grid = node("flash-map-grid");
   const legend = node("flash-map-legend");
-  grid.setAttribute("aria-label", map.projected ? "Projected flash layout, 256 blocks" : "Current flash layout, 256 blocks");
+  grid.style.setProperty("--flash-columns", map.segments.length > 256 ? 32 : 16);
+  grid.setAttribute("aria-label", `${map.projected ? "Projected" : "Current"} flash layout, ${map.segments.length} blocks`);
   const result = node("flash-map-result");
   result.toggleAttribute("data-projected", !!map.projected);
   const labels = {c: "Catalog roots", x: "Reserved", b: "Unidentified pinned image", s: "Unidentified user snapshot",

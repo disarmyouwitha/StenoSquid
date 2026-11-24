@@ -65,7 +65,7 @@ def plan_replacements(snapshot, protected, compiled, read_original=None):
     """Keep everything except the selected compiled extents and source digests."""
     rows = [bytearray(row) for row in snapshot.rows]
     extents = list(snapshot.extents)
-    free = set(range(2, 255)) - set(protected)
+    free = set(range(2, snapshot.pool_end)) - set(protected)
     blocks, changed, conflicts = {}, [], []
 
     def allocate(count):
@@ -167,7 +167,7 @@ def plan_package(snapshot, protected, package, restore=False, compiled=None):
     if row is None or row_name(row) != name:
         raise ValueError("Pinned dictionary row is missing")
     extents = list(snapshot.extents)
-    blocks, added, write = stage_allocation(protected)
+    blocks, added, write = stage_allocation(protected, snapshot.pool_end)
     if restore:
         if row[11] != FACTORY_ABSENT:
             raise ValueError("The factory dictionary is already installed")
@@ -199,23 +199,23 @@ def plan_package(snapshot, protected, package, restore=False, compiled=None):
     struct.pack_into("<H", prefix, 6, len(extents))
     payload = bytes(prefix) + b"".join(rows) + b"".join(EXTENT.pack(*extent) for extent in extents)
     metadata = write(payload, 0)
-    current = {0, 1, 255}
+    current = {0, 1, snapshot.pool_end}
     for start, count, *_ in snapshot.extents:
         current.update(range(start, start + count))
-    target = {0, 1, 255}
+    target = {0, 1, snapshot.pool_end}
     for start, count, *_ in extents:
         target.update(range(start, start + count))
     confirmed = hashlib.sha256(snapshot.payload)
-    confirmed.update(bytes(sorted(protected)))
+    confirmed.update(b"".join(struct.pack("<H", segment) for segment in sorted(protected)))
     confirmed.update(payload)
     for segment in sorted(blocks):
         confirmed.update(blocks[segment])
-    free, run = inspect_free(protected)
-    after, after_run = inspect_free(target)
+    free, run = inspect_free(protected, snapshot.pool_end)
+    after, after_run = inspect_free(target, snapshot.pool_end)
     report = dict(package=package, name=name, dictionary_id=identity,
                   restoring=restore, package_segments=package_segments,
                   staging_segments=len(blocks), free_now=free, largest_run_now=run,
-                  free_after_one_root=inspect_free(current | target)[0],
+                  free_after_one_root=inspect_free(current | target, snapshot.pool_end)[0],
                   free_after_both_roots=after, largest_run_after_both_roots=after_run,
                   package_segments_released=0 if restore else package_segments,
                   retained_only_segments=len(set(protected) - current),

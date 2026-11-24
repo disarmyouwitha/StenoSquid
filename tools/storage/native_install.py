@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Provision the Native dictionary store over USB HID from one firmware.
 
---install --confirm-erase explicitly replaces all 255 shared-pool segments.
+--install --confirm-erase explicitly replaces the connected dictionary pool.
 The reserved final 64 KiB, pairings, keymap and Practice settings are untouched.
 """
 
@@ -20,7 +20,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from import_personal import open_console
-from build_native_image import build, read_personal, LIMIT, SEGMENT, SOURCES
+from build_native_image import build, read_personal, LARGE_POOL_END, POOL_ENDS, SEGMENT, SMALL_POOL_END, SOURCES
 
 UNPROVISIONED = "NATIVE2 UNPROVISIONED 0"
 FACTORY_CAPABILITIES = "native_install update factory-member-capabilities"
@@ -29,7 +29,8 @@ FACTORY_CAPABILITIES = "native_install update factory-member-capabilities"
 def check_image(image, manifest):
     from native_update import Snapshot
 
-    if len(image) != LIMIT or manifest.get("format") != "SQBCAT02":
+    pool_end = len(image) // SEGMENT
+    if (pool_end not in POOL_ENDS or len(image) % SEGMENT or manifest.get("format") != "SQBCAT02"):
         raise ValueError("Not a native shared-pool image")
     if (
         zlib.crc32(image) != manifest["crc32"]
@@ -58,7 +59,7 @@ def check_image(image, manifest):
                     if member or base >= extents or base in factory_extents:
                         raise ValueError("Factory dictionaries must have individual flash images.")
                     start, span, size, _, kind, _ = struct.unpack_from("<HHIIIQ", payload, extent_offset + base * 24)
-                    if (not 2 <= start < 255 or not 1 <= span <= 255 - start or not 8 <= size <= span * SEGMENT
+                    if (not 2 <= start < pool_end or not 1 <= span <= pool_end - start or not 8 <= size <= span * SEGMENT
                             or kind != 1 or image[start * SEGMENT:start * SEGMENT + 8] != b"JSC4\x01\x00\x00\x00"):
                         raise ValueError("Invalid individual factory image")
                     factory_extents.add(base)
@@ -73,7 +74,7 @@ def check_image(image, manifest):
         if absent is not None and absent != omitted:
             raise ValueError("Native catalogs disagree about factory dictionaries")
         absent = omitted
-        Snapshot(lambda at, size: image[at:at + size], root + 32, payload_bytes, crc, strict=True)
+        Snapshot(lambda at, size: image[at:at + size], root + 32, payload_bytes, crc, strict=True, pool_end=pool_end)
     return absent
 
 
@@ -82,6 +83,21 @@ def command(console, text, timeout=30):
     if not result.startswith("OK"):
         raise RuntimeError(result)
     return result
+
+
+def read_pool_end(console):
+    reply = console.command("native_install geometry")
+    if reply in ("ERR No native installation active", "ERR Command unavailable on this keyboard"):
+        return SMALL_POOL_END
+    if reply == f"OK POOL1 {SMALL_POOL_END}":
+        return SMALL_POOL_END
+    if reply == f"OK POOL1 {LARGE_POOL_END}":
+        return LARGE_POOL_END
+    raise RuntimeError(f"Cannot determine the external flash geometry. {reply}")
+
+
+def begin_for_pool(command_text, pool_end):
+    return f"large {pool_end} {command_text}" if pool_end == LARGE_POOL_END else command_text
 
 
 def provision(console, image, manifest, progress=print, *, expected_status=None):
@@ -93,7 +109,13 @@ def provision(console, image, manifest, progress=print, *, expected_status=None)
         raise RuntimeError("Flash the matching Native firmware before installing: " + status)
     if expected_status is not None and status != expected_status:
         raise RuntimeError("The keyboard’s dictionary status changed. Reconnect before setting up.")
-    command(console, f"begin CLEAR {manifest['crc32']}")
+    pool_end = read_pool_end(console)
+    expected_length = pool_end * SEGMENT
+    if len(image) > expected_length:
+        raise ValueError("The Native image is larger than this keyboard's flash.")
+    if len(image) < expected_length:
+        image += b"\xff" * (expected_length - len(image))
+    command(console, begin_for_pool(f"begin CLEAR {zlib.crc32(image)}", pool_end))
     try:
         write_pool(console, image, progress, write_label="Writing base dictionaries")
     except BaseException:
@@ -114,10 +136,11 @@ def write_pool(console, image, progress, *, finish=True, write_label="Writing na
         if image[at : at + block_size] != erased
     ]
     total = len(offsets) * block_size
-    for segment in range(255):
+    pool_end = len(image) // SEGMENT
+    for segment in range(pool_end):
         command(console, f"erase {segment}")
-        if segment % 16 == 0:
-            progress(f"Erasing shared pool: {segment + 1}/255")
+        if segment % 16 == 0 or segment + 1 == pool_end:
+            progress(f"Erasing shared pool: {segment + 1}/{pool_end}")
     if total:
         progress(f"{write_label}: 0 / {total / 1024:,.1f} KiB (0%)")
     for count, at in enumerate(offsets, 1):

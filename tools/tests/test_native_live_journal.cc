@@ -2,7 +2,7 @@
 #include <iostream>
 void basic_and_snapshots() {
     LiveFixture fixture;
-    static_assert(sizeof(LiveView)<=1536);
+    static_assert(sizeof(LiveView)<=1632); // Includes the 1,024-bit journal map.
     assert(fixture.live.Ready() && fixture.live.TailCount()==0);
     assert(fixture.Edit(1,1,"old")==LiveResult::Ok);
     LiveView old;assert(fixture.live.Snapshot(old)==LiveResult::Ok);

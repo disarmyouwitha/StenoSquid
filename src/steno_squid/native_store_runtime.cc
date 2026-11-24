@@ -52,11 +52,12 @@ extern "C" {
 extern struct k_mutex flash_lock;
 extern atomic_t lf_mapped_ready,lf_checked;
 extern bool lf_suspended,lf_provisioning_ready;
+extern uint32_t lf_flash_bytes;
 }
 namespace {
 using namespace candidate_b;
 constexpr uintptr_t Xip=DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi),qspi_mm);
-constexpr uint32_t Limit=255*kSegmentBytes;
+static_assert(DT_REG_SIZE_BY_NAME(DT_NODELABEL(qspi),qspi_mm) >= kMaxSegments*kSegmentBytes);
 bool ForgetBaseTrust();
 extern int64_t scrub_due;
 constexpr size_t MaxDictionaries=CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES;
@@ -66,10 +67,12 @@ struct FlashDevice {
     alignas(4) uint8_t dma[256];
     struct Cached {uint32_t at=0,bytes=0,crc=0;} cached[32];
     unsigned cache_next=0;
+    uint32_t PoolEnd() const { return lf_flash_bytes ? lf_flash_bytes/kSegmentBytes-1 : 0; }
+    uint32_t Limit() const { return PoolEnd()*kSegmentBytes; }
     void Invalidate(){for(auto &c:cached)c.bytes=0;}
     void Dirty(uint32_t at,uint32_t n){for(auto &c:cached)if(c.bytes && at<c.at+c.bytes && c.at<at+n)c.bytes=0;}
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
-        if(at>0x1000000 || n>0x1000000-at)return false;
+        if(at>lf_flash_bytes || n>lf_flash_bytes-at)return false;
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
         if (squid_bench_count_reads) {
             ++squid_bench_personal_reads;
@@ -89,12 +92,13 @@ struct FlashDevice {
         return true;
     }
     bool Program(uint32_t at,const uint8_t *data,uint32_t n) {
-        if(mapped || !n || n>256 || at%4 || at>=Limit || n>Limit-at || at/256!=(at+n-1)/256)return false;
+        if(mapped || !n || n>256 || at%4 || at>=Limit() || n>Limit()-at || at/256!=(at+n-1)/256)return false;
         Dirty(at,(n+3)&~3u);std::memset(dma,255,256);std::memcpy(dma,data,n);
         return nrfx_qspi_write(dma,(n+3)&~3u,at)==NRFX_SUCCESS && squid_qspi_wait_ready(2000)==NRFX_SUCCESS;
     }
     bool EraseBlock(uint32_t at, uint32_t bytes) {
-        if (mapped || (bytes != kEraseSectorBytes && bytes != kSegmentBytes)) return false;
+        if (mapped || at >= Limit() || bytes > Limit()-at ||
+            (bytes != kEraseSectorBytes && bytes != kSegmentBytes)) return false;
         Dirty(at, bytes);
         const auto length = bytes == kEraseSectorBytes ? NRF_QSPI_ERASE_LEN_4KB
                                                       : NRF_QSPI_ERASE_LEN_64KB;
@@ -103,10 +107,10 @@ struct FlashDevice {
     }
     bool Erase(uint32_t segment) { return EraseIndex(segment, kSegmentBytes); }
     bool EraseIndex(uint32_t segment, uint32_t bytes) {
-        return segment >= 2 && segment < 255 && EraseBlock(segment * kSegmentBytes, bytes);
+        return segment >= 2 && segment < PoolEnd() && EraseBlock(segment * kSegmentBytes, bytes);
     }
     bool ErasePoolSector(uint32_t at) {
-        return at >= 2 * kSegmentBytes && at < Limit && !(at % kEraseSectorBytes) &&
+        return at >= 2 * kSegmentBytes && at < Limit() && !(at % kEraseSectorBytes) &&
                EraseBlock(at, kEraseSectorBytes);
     }
     bool EraseCatalog(uint32_t at, uint32_t bytes) {
@@ -747,6 +751,7 @@ void native_edit_key(void *,const char *line) {
 
 constexpr const char *TrustKey="native_store/bases";
 uint32_t verified_fingerprint=0;
+uint32_t last_open_pool_end=0;
 bool trust_loaded=false;
 int ReadNativeTrust(const char *,size_t bytes,settings_read_cb read,void *argument,void *output) {
     uint32_t value=0;if(bytes==sizeof(value) && read(argument,&value,sizeof(value))==sizeof(value))*static_cast<uint32_t *>(output)=value;
@@ -767,6 +772,10 @@ uint32_t BaseFingerprint(const CatalogRoot &root) {
     if(dictionaries>64 || extents>253 || root.bytes!=32+dictionaries*96+extents*24)return 0;
     const uint8_t domain[]="SQBCAT02/native-bases";
     uint32_t crc=crc32_ieee(domain,sizeof(domain));
+    if (flash_device.PoolEnd() == kLargePoolEnd) {
+        const uint8_t geometry[] = {64};
+        crc = crc32_ieee_update(crc, geometry, sizeof(geometry));
+    }
     for(unsigned i=0;i<extents;++i) {
         uint8_t row[24];if(!flash_device.Read(root.address+32+dictionaries*96+i*24,row,24))return 0;
         if(Word(row+12)==1)crc=crc32_ieee_update(crc,row,24);
@@ -783,12 +792,13 @@ extern "C" bool steno_squid_native_flash_open(void) {
     // Only a same-boot, previously healthy mapper can retain its validated
     // layout. Metadata must be read from DMA before trusting mapped pointers.
     flash_device.mapped=false;
-    if(healthy && loaded && NativeWarmResumeEligible(store)) {
+    if(healthy && loaded && last_open_pool_end == flash_device.PoolEnd() && NativeWarmResumeEligible(store)) {
         flash_device.mapped=true;
         for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
         NoteIdleMaintenance();
         ++warm_resumes;return true;
     }
+    last_open_pool_end=flash_device.PoolEnd();
     healthy=false;snapshot_format_rejected=false;++full_opens;
     LoadNativeTrust();
     // QSPI is in mapped quad mode here. Compare both root headers against
@@ -939,7 +949,7 @@ bool ProbeStagedBase(const uint8_t *extent, const uint8_t *row) {
     }
     return true;
 }
-const char *LayoutMap(char *reply, size_t bytes) {
+const char *LayoutMap(char *reply, size_t bytes, unsigned first) {
     if (lf_suspended || !healthy || !store.opened || exporting || transfer.Active() || staged.Active() ||
         store.work != NativeStore<FlashDevice>::Work::None)
         return "ERR Layout scan deferred until flash is available";
@@ -947,22 +957,29 @@ const char *LayoutMap(char *reply, size_t bytes) {
     const auto stop = [&] { return k_uptime_get() >= deadline; };
     const bool writable = store.catalog.CanWrite(store.selected.root);
     const char access = !writable ? 'r' : store.catalog.DestinationPinned(store.selected) ? 'p' : 'w';
-    const int prefix = snprintk(reply, bytes, "OK MAP1 %u %c -- ", unsigned(store.selected.slot), access);
+    const unsigned end = flash_device.PoolEnd();
+    if (first % 256 || first > end) return "ERR Invalid layout page";
+    const int prefix = end == kSmallPoolEnd
+        ? snprintk(reply, bytes, "OK MAP1 %u %c -- ", unsigned(store.selected.slot), access)
+        : snprintk(reply, bytes, "OK MAP2 %u %u %llu %llu %u %c -- ", end + 1, first,
+                   (unsigned long long)store.catalog.TrustedRoot(0).generation,
+                   (unsigned long long)store.catalog.TrustedRoot(1).generation,
+                   unsigned(store.selected.slot), access);
     if (prefix < 3 || size_t(prefix) + 514 > bytes) return "ERR Layout reply too small";
     for (unsigned slot = 0; slot < 2; ++slot) {
         char *map = reply + prefix + slot * 257;
         const auto root = store.catalog.TrustedRoot(slot);
         char state = 'e';
         if (root.generation) {
-            state = ReadLayout(flash_device, root, map, stop) ? 'v' : '?';
+            state = ReadLayout(flash_device, root, map, stop, first) ? 'v' : '?';
             if (stop()) return "ERR Layout scan timed out";
         } else if (!writable) {
             state = '?';
         }
         if (state != 'v') {
             std::memset(map, state == 'e' ? '.' : '?', 256);
-            map[0] = map[1] = 'c';
-            map[255] = 'x';
+            if (!first) map[0] = map[1] = 'c';
+            if (end - first < 256) map[end - first] = 'x';
         }
         reply[prefix - 3 + slot] = state;
         map[256] = slot == 0 ? ' ' : 0;
@@ -998,7 +1015,13 @@ const char *Update(const char *command, char *reply, size_t bytes) {
 #endif
     if (!std::strcmp(command, "layout-capabilities\n")) return "OK MAP1";
     if (!std::strcmp(command, "journal-usage-capabilities\n")) return "OK USAGE2";
-    if (!std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
+    if (!std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes, 0);
+    if (!std::strncmp(command, "layout-map ", 11)) {
+        const char *p = command + 11;
+        uint32_t first;
+        if (!Number(p, first) || !End(p)) return "ERR Invalid layout page";
+        return LayoutMap(reply, bytes, first);
+    }
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
     if (!std::strcmp(command, "factory-member-capabilities\n")) return "OK FACTORY2";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
@@ -1057,8 +1080,8 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         steno_squid_upload_status(stage_mode, 60000);
         const auto &root = staged.Root();
         int length = snprintk(reply, bytes, "OK %u %u %u ", root.address, root.bytes, root.crc);
-        for (const auto word : staged.Protected().words)
-            length += snprintk(reply + length, bytes - length, "%08x", word);
+        for (unsigned i = 0; i <= flash_device.PoolEnd()/32; ++i)
+            length += snprintk(reply + length, bytes - length, "%08x", staged.Protected().words[i]);
         return nullptr;
     }
     if (!staged.Active()) return "ERR No native update active";
@@ -1178,6 +1201,21 @@ const char *Update(const char *command, char *reply, size_t bytes) {
 }
 const char *Install(const char *command,char *reply,size_t bytes) {
     if (!std::strncmp(command, "update ", 7)) return Update(command + 7, reply, bytes);
+    if (!std::strcmp(command, "geometry\n")) {
+        if (!flash_device.PoolEnd()) return "ERR Unsupported external flash";
+        snprintk(reply, bytes, "OK POOL1 %u", unsigned(flash_device.PoolEnd()));
+        return nullptr;
+    }
+    bool explicit_large = false;
+    if (!std::strncmp(command, "large ", 6)) {
+        const char *p = command + 6;
+        uint32_t pool_end;
+        if (!Number(p, pool_end) || *p++ != ' ' || pool_end != kLargePoolEnd ||
+            pool_end != flash_device.PoolEnd() || std::strncmp(p, "begin ", 6))
+            return "ERR Native pool geometry does not match";
+        explicit_large = true;
+        command = p;
+    }
     if(!std::strcmp(command,"status\n")) {
         const bool installing=transfer.Active();
         const char *detail = snapshot_format_rejected && !installing ?
@@ -1196,7 +1234,7 @@ const char *Install(const char *command,char *reply,size_t bytes) {
         const NativeInputPause pause(true);
         const bool mapped = flash_device.mapped;
         flash_device.mapped = false;
-        const bool match = flash_device.Checksum(0, Limit, actual) && actual == expected;
+        const bool match = flash_device.Checksum(0, flash_device.Limit(), actual) && actual == expected;
         flash_device.mapped = mapped;
         return match ? "OK MATCH" : "ERR Recovery contents differ";
     }
@@ -1204,6 +1242,8 @@ const char *Install(const char *command,char *reply,size_t bytes) {
     const bool guarded_recovery = !std::strncmp(command,"begin REPACK ",13);
     const bool recovering = ordinary_recovery || guarded_recovery;
     if (recovering || !std::strncmp(command,"begin CLEAR ",12)) {
+        if (flash_device.PoolEnd() == kLargePoolEnd && !explicit_large)
+            return "ERR 64 MiB pool requires a matching installer";
         const char *p = command + (ordinary_recovery ? 15 : guarded_recovery ? 13 : 12);
         uint32_t crc, final_crc = 0;
         if (!Number(p, crc) || (recovering && (*p++ != ' ' || !Number(p, final_crc))))
@@ -1251,16 +1291,16 @@ const char *Install(const char *command,char *reply,size_t bytes) {
     }
     if(!std::strncmp(command,"erase ",6)) {
         const char *p=command+6;uint32_t segment;
-        if(!Number(p,segment) || segment>=255 || !End(p))return "ERR Invalid native segment";
+        if(!Number(p,segment) || segment>=flash_device.PoolEnd() || !End(p))return "ERR Invalid native segment";
         if(transfer.Erase(segment)!=ProvisionResult::Ok)return "ERR Native erase failed";
         steno_squid_upload_status(STENO_SQUID_MODE_INSTALL,30000);return "OK";
     }
     if(!std::strncmp(command,"write ",6)) {
         const char *p=command+6;uint32_t at;size_t decoded=0;
-        if(!Number(p,at) || *p++!=' ' || at%4 || at>=Limit)return "ERR Invalid native write";
+        if(!Number(p,at) || *p++!=' ' || at%4 || at>=flash_device.Limit())return "ERR Invalid native write";
         const size_t encoded=std::strcspn(p,"\n");
         if(!End(p+encoded) || base64_decode(incoming,sizeof(incoming),&decoded,reinterpret_cast<const uint8_t *>(p),encoded) ||
-           !decoded || decoded%4 || decoded>Limit-at)return "ERR Invalid native data";
+           !decoded || decoded%4 || decoded>flash_device.Limit()-at)return "ERR Invalid native data";
         if(transfer.Write(at,incoming,decoded)!=ProvisionResult::Ok)return "ERR Native write or readback refused";
         steno_squid_upload_status(STENO_SQUID_MODE_INSTALL,30000);return "OK";
     }
@@ -1299,7 +1339,7 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
         return;
     }
     if (!dictionary_flash_try_service()) {
-        snprintk(reply, bytes, "%s", !std::strcmp(command, "update layout-map\n")
+        snprintk(reply, bytes, "%s", !std::strncmp(command, "update layout-map", 17)
                 ? "ERR Layout scan deferred until flash is available" : "ERR Native flash busy");
         return;
     }

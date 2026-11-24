@@ -85,12 +85,12 @@ def main():
         assert setup_console.command.call_count == 2
 
         console = Mock(serial="factory-test")
-        console.command.side_effect = ["OK RECOVERY1", "ERR Unknown command"]
+        console.command.side_effect = ["ERR No native installation active", "OK RECOVERY1", "ERR Unknown command"]
         from contextlib import nullcontext
 
         with patch("native_install.open_console", return_value=nullcontext(console)):
             assert "Update the target firmware" in refused(recover_usb, bundle, console.serial, console.serial)
-        assert console.command.call_count == 2
+        assert console.command.call_count == 3
 
         console.command.side_effect = lambda text, **_: "OK FACTORY2" if text.endswith("-capabilities") else "OK"
         with patch("native_base_update.read_snapshot", return_value=(view, protected)), patch(

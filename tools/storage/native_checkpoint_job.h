@@ -29,7 +29,7 @@ class NativeCheckpointJob {
     unsigned retired_journals=0;
     NativeRelocationMap relocate;
     JournalScan scan{};
-    uint8_t live_units[255]{};
+    uint8_t live_units[kMaxSegments]{};
     uint32_t victim_row=0;
     uint64_t last_epoch=0;
     Phase phase=Phase::Idle;
@@ -143,7 +143,7 @@ class NativeCheckpointJob {
     }
     void ChooseVictims(AllocationPlan &plan) {
         uint32_t budget=NativeRelocationMap::CopyBudget/NativeRelocationMap::Granularity,count=0;
-        for(uint32_t segment=2;segment<255 && count<NativeRelocationMap::MaxVictims;++segment) {
+        for(uint32_t segment=2;segment<NativePoolEnd(device) && count<NativeRelocationMap::MaxVictims;++segment) {
             const unsigned units=live_units[segment];
             if(segment!=last_journal && units && units<=budget && !needed_journals.Contains(segment)) {
                 relocate.victims[count++]=segment;budget-=units;
@@ -266,7 +266,7 @@ public:
         if(phase==Phase::Plan) {
             SegmentMap protected_segments;
             if(CollectOwnership(device,catalog,frozen.root,protected_segments)!=CatalogResult::Ok)return Stop(JobResult::RecoveryRequired,true);
-            protected_segments.Union(unavailable);AllocationPlan plan(protected_segments);
+            protected_segments.Union(unavailable);AllocationPlan plan(protected_segments, NativePoolEnd(device));
             for(unsigned i=0;i<2;++i) {
                 const uint32_t count=(i?old_reverse_count:frozen.forward_count)+frozen.tail.count;
                 segments[i]=(count*4+kSegmentBytes-1)/kSegmentBytes;if(!segments[i])segments[i]=1;

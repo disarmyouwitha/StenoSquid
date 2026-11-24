@@ -20,9 +20,11 @@
 #include <nrfx.h>
 #include <cstring>
 
+extern "C" uint32_t lf_flash_bytes;
+
 namespace {
 using namespace candidate_b;
-constexpr uint32_t Physical=0xff4000, Virtual=2*kSegmentBytes;
+constexpr uint32_t Virtual=2*kSegmentBytes, ProbeSectors=12, SectorBytes=4096;
 constexpr uint64_t Epoch=0x435050524f424532ULL;
 constexpr uintptr_t Xip=DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi),qspi_mm);
 struct ProbeDevice {
@@ -30,8 +32,8 @@ struct ProbeDevice {
     alignas(4) uint8_t dma[256];
     bool Translate(uint32_t at,uint32_t n,uint32_t &physical) {
         uint32_t segment=at/kSegmentBytes,offset=at%kSegmentBytes;
-        if(segment>=12 || offset>4096 || n>4096-offset)return false;
-        physical=Physical+segment*4096+offset;return true;
+        if(segment>=ProbeSectors || offset>SectorBytes || n>SectorBytes-offset)return false;
+        physical=lf_flash_bytes-(ProbeSectors-segment)*SectorBytes+offset;return true;
     }
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
         uint32_t physical;
@@ -401,7 +403,7 @@ void steno_squid_checkpoint_probe(void *,const char *line) {
         Console::Printf("ERR Expected run, hold, check, live, job, rollover, live_check, clean or reboot\n\n");return;
     }
     const JavelinEngineLock lock;
-    if(!lock || !squid_qspi_reactivate()){Console::Printf("ERR Flash unavailable\n\n");return;}
+    if(!lock || lf_flash_bytes<kSegmentBytes || !squid_qspi_reactivate()){Console::Printf("ERR Flash unavailable\n\n");return;}
     probe_device.mapped=false;
     if((!std::strcmp(command,"run") || !std::strcmp(command,"hold")) && !probe_device.Blank()) {
         Console::Printf("ERR Checkpoint test region nonblank or unreadable; nothing changed\n\n");return;

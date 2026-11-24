@@ -19,7 +19,10 @@ from compile_dict import DictionaryCollectionBuilder
 
 SEGMENT = 65536
 OUTLINE_FIRST = 1
-LIMIT = 255 * SEGMENT
+SMALL_POOL_END = 255
+LARGE_POOL_END = 1023
+POOL_ENDS = (SMALL_POOL_END, LARGE_POOL_END)
+LIMIT = SMALL_POOL_END * SEGMENT
 XIP = 0x12000000
 SOURCES = [
     (1, "user_dictionary", True, None),
@@ -60,6 +63,7 @@ def seed_entries(image, extents, journal_segment, next_segment, entries):
     """Build both indexes for a validated overlay collection before USB writes."""
     if not entries:
         return next_segment
+    pool_end = len(image) // SEGMENT
     epoch, segment = 1, journal_segment
     address = segment * SEGMENT + 256
     records = {}
@@ -69,7 +73,7 @@ def seed_entries(image, extents, journal_segment, next_segment, entries):
         span = overlay_record_span(strokes, text)
         if address + span > (segment + 1) * SEGMENT:
             segment, next_segment = next_segment, next_segment + 1
-            if next_segment > 252:
+            if next_segment > pool_end - 3:
                 raise ValueError("Saved dictionary entries exhaust the three-segment reserve")
             epoch += 1
             extents.append(write_journal_header(image, segment, epoch))
@@ -88,7 +92,7 @@ def seed_entries(image, extents, journal_segment, next_segment, entries):
             continue
         index = b"".join(struct.pack("<I", records[key]) for key in order)
         count = (len(index) + SEGMENT - 1) // SEGMENT
-        if next_segment + count > 252:
+        if next_segment + count > pool_end - 3:
             raise ValueError("Saved dictionary indexes exhaust the three-segment reserve")
         start = next_segment * SEGMENT
         image[start : start + len(index)] = index
@@ -105,12 +109,14 @@ def read_personal(path):
     return parse_named(path.read_text(encoding="utf-8"))[0]
 
 
-def build(source_root, personal=None, *, collection=None, packages=None):
+def build(source_root, personal=None, *, collection=None, packages=None, pool_end=SMALL_POOL_END):
+    if pool_end not in POOL_ENDS:
+        raise ValueError("Unsupported flash geometry")
     packages = set(FACTORY_KEYS if packages is None else packages)
     if not packages or not packages <= FACTORY_KEYS.keys():
         raise ValueError("Select at least one factory dictionary.")
     installed = {FACTORY_KEYS[key][0] for key in packages}
-    image = bytearray(b"\xff" * LIMIT)
+    image = bytearray(b"\xff" * (pool_end * SEGMENT))
     extents = []
     dictionaries = []
     manifest = []
@@ -126,7 +132,7 @@ def build(source_root, personal=None, *, collection=None, packages=None):
         address = next_segment * SEGMENT
         binary = DictionaryCollectionBuilder(XIP + address).build([(name, json.loads(raw))])
         count = (len(binary) + SEGMENT - 1) // SEGMENT
-        if next_segment + count > 252:
+        if next_segment + count > pool_end - 3:
             raise ValueError("Base images exhaust the three-segment reserve")
         image[address : address + len(binary)] = binary
         crc = zlib.crc32(binary)
@@ -156,10 +162,12 @@ def build(source_root, personal=None, *, collection=None, packages=None):
         row[64:96] = digest
         dictionaries.append(row)
     journal_segment = next_segment
-    if journal_segment >= 252:
+    if journal_segment >= pool_end - 3:
         raise ValueError("The initial journal must leave the three-segment reserve")
     extents.append(write_journal_header(image, journal_segment, 1))
     next_segment = seed_entries(image, extents, journal_segment, journal_segment + 1, entries)
+    if next_segment > pool_end - 3 or len(extents) > 253:
+        raise ValueError("The initial journal exceeds catalog capacity or the maintenance reserve")
     prefix = bytearray(32)
     struct.pack_into("<IHHQ", prefix, 0, next_id, len(dictionaries), len(extents), len(entries))
     payload = bytes(prefix) + b"".join(dictionaries) + b"".join(extents)
@@ -169,12 +177,12 @@ def build(source_root, personal=None, *, collection=None, packages=None):
     report = dict(
         schema=2,
         format="SQBCAT02",
-        bytes=LIMIT,
+        bytes=len(image),
         crc32=zlib.crc32(image),
         sha256=hashlib.sha256(image).hexdigest(),
         catalog_bytes=len(payload),
         base_images=manifest,
-        free_segments=255 - next_segment,
+        free_segments=pool_end - next_segment,
         provision="explicit clean erase; no migration",
         personal_id=personal_id,
         personal_entries=sum(identity == personal_id and op == 0

@@ -46,7 +46,7 @@ int main(int argc,char **argv) {
     SegmentMap protectedMap;
     assert(protectedMap.Add(10,4));
     const auto unchangedMap=protectedMap;
-    assert(!protectedMap.Add(255,2));
+    assert(!protectedMap.Add(kMaxSegments-1,2));
     assert(!protectedMap.Add(UINT32_MAX,2));
     assert(std::memcmp(&unchangedMap,&protectedMap,sizeof(protectedMap))==0);
     SegmentMap pinned; assert(pinned.Add(2,3)); protectedMap.Union(pinned);
