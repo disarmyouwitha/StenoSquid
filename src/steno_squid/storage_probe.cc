@@ -13,6 +13,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <nrfx.h>
+#include <array>
 #include <cstring>
 
 extern "C" uint32_t lf_flash_bytes;
@@ -63,10 +64,15 @@ struct Scratch {
     }
 };
 // Command runs on the serialized console under engine lock, never key thread.
-// Static workspaces avoid consuming the small HID task stack.
+// Keep the long fixture in internal flash to leave the HID stack and RAM free.
 Scratch scratch_device;
 NativeJournal<Scratch> journal(scratch_device);
-alignas(4) uint8_t long_text[2047];
+constexpr auto LongText() {
+    std::array<uint8_t, 2047> text{};
+    for (auto &byte : text) byte = 'x';
+    return text;
+}
+constexpr auto long_text = LongText();
 uint32_t table[3];
 uint32_t timings[32];
 
@@ -74,7 +80,6 @@ bool execute(uint32_t &max_us,uint32_t &min_us,uint32_t &records) {
     if(journal.Initialize(2,Epoch)!=JournalResult::Ok) return false;
     const uint32_t strokes[]={8,256};
     const uint8_t cat[]={'c','a','t'}, accent[]={0xc3,0xa7,'a',' ','v','a'};
-    std::memset(long_text,'x',sizeof(long_text));
     uint32_t at=Virtual+256;
     table[0]=at;
     if(journal.Append(at,1,1,0,strokes,1,cat,3)!=JournalResult::Ok) return false;
@@ -86,7 +91,7 @@ bool execute(uint32_t &max_us,uint32_t &min_us,uint32_t &records) {
     if(journal.Read(at,record)!=JournalResult::Ok) return false;
     at+=record.span;
     table[2]=at;
-    if(journal.Append(at,3,3,0,strokes,1,long_text,sizeof(long_text))!=JournalResult::Ok) return false;
+    if(journal.Append(at,3,3,0,strokes,1,long_text.data(),long_text.size())!=JournalResult::Ok) return false;
     if(journal.Read(at,record)!=JournalResult::Ok) return false;
     at+=record.span;
     if(journal.Append(at,4,4,1,strokes,1,nullptr,0)!=JournalResult::Ok) return false;
@@ -132,7 +137,7 @@ bool execute(uint32_t &max_us,uint32_t &min_us,uint32_t &records) {
     }
     auto data_read=[&](uint32_t p,uint8_t *out,size_t size){return scratch_device.Read(p,out,size);};
     if(CompareText(table[1]+32,22,accent,6,data_read)!=0 ||
-       CompareText(table[2]+32,2059,long_text,sizeof(long_text),data_read)!=0) return false;
+       CompareText(table[2]+32,2059,long_text.data(),long_text.size(),data_read)!=0) return false;
     auto reverse_read=[&](uint32_t offset,uint8_t *out,size_t size) {
         return offset<=sizeof(reverse_table) && size<=sizeof(reverse_table)-offset && scratch_device.Read(reverse_index+offset,out,size);
     };

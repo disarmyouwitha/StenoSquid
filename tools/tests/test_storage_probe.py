@@ -16,6 +16,7 @@ STUBS = r"""
 #include <cstdio>
 #include <string>
 #include <algorithm>
+#include <array>
 #define DT_NODELABEL(x) x
 #define DT_REG_ADDR_BY_NAME(x,y) 0x12000000u
 #define NRF_QSPI_ERASE_LEN_4KB 0

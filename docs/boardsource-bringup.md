@@ -126,5 +126,7 @@ The scratch blocks were erased again, Native verification passed, and
 `KAT` resolved to `cat`. The map reported 992 free 64 KiB blocks with three
 held in reserve.
 
-The larger PCB still needs a battery cold boot and sleep/wake check. The new
-dual-capacity UF2 still needs a physical regression run on the 16 MiB PCB.
+The dual-capacity firmware also reopened the existing catalog on the 16 MiB
+PCB without reprovisioning. Native integrity verification passed, the map
+reported 224 free blocks, and `KAT` resolved to `cat`. Battery cold boot and
+sleep/wake on the 64 MiB PCB still need qualification.
