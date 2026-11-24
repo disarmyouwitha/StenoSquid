@@ -25,6 +25,16 @@
 | **Plover** | Raw steno strokes sent over Plover HID to Plover on the computer, using Plover's dictionaries. |
 | **Practice** | Offline practice drills using only your keyboard, no PC required! |
 
+## How to Install
+1. ⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use with or without a nice!view. (Practice uses the display.)
+2. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
+3. Plug the **Left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
+4. In **Set up Dictionaries**, choose the factory dictionaries you want and click **Install selected Dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
+
+#### Use offline `StenoSquidManager.html` to edit translations, import/export dictionaries and manage memory~
+*(Also available online @ [https://ranna.ink/StenoSquidManager.html](https://ranna.ink/StenoSquidManager.html))*\
+<sub>We also offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
+
 ## Factory Dictionaries
 
 | Dictionary | Compiled size |
@@ -55,16 +65,6 @@ From the Javelin or Plover layer, tap the outer right thumb
 | Multi- | 10 | Ten distinct two-stroke words from 20 verified common Lapwing outlines. |
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
-
-## How to Install
-1. ⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use with or without a nice!view. (Practice uses the display.)
-2. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
-3. Plug the **Left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
-4. In **Set up Dictionaries**, choose the factory dictionaries you want and click **Install selected Dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
-
-#### Use offline `StenoSquidManager.html` to edit translations, import/export dictionaries and manage memory~
-*(Also available online @ [https://ranna.ink/StenoSquidManager.html](https://ranna.ink/StenoSquidManager.html))*\
-<sub>We also offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
 
 ## ZMK Studio
