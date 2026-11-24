@@ -2,8 +2,7 @@
 
 The Boardsource Wireless Corne SMT pair passed the functional tests below with
 an Adafruit #5634 W25Q128 breakout, 100 nF supply decoupling, and a 10 kΩ CS
-pull-up. The right half has a nice!view. QSPI remains at **2 MHz**. These results
-cover the wired 16 MB prototype, not the final daughterboard or larger chips.
+pull-up. The right half has a nice!view. These wired-prototype tests used **2 MHz**.
 
 ## Verified results
 
@@ -90,3 +89,27 @@ session evidence; they are not downloadable release artifacts.
 [Breakout wiring illustration](images/boardsource-wiring/boardsource-adafruit-breadboard.png)
 uses component-side orientation and net labels; its breadboard holes are
 illustrative, not a hole-by-hole placement prescription.
+
+## 32 MHz qualification on the 16 MiB PCB
+
+On 2026-11-23, the assembled W25Q128JV daughterboard passed single-line and
+quad-read comparison at 2, 8, 16, and 32 MHz. Each 256-byte sample exercised
+both logic states on all four IO lanes. At 32 MHz the everyday left firmware
+passed USB and Bluetooth typing, a battery cold boot, and Bluetooth wake after
+16 minutes idle. Full Native verification passed after each boot and wake
+with the 1,830,444-byte Lapwing Base installed.
+
+The production driver programmed a 1 KiB pattern in a blank unowned 64 KiB
+block and verified its bytes. It erased the block, verified all 64 KiB blank,
+and passed another full Native integrity check. Catalog generation and contents
+were unchanged. Page-program, readback, and erase commands use the same clock
+divider. The flash chip's internal program and erase times are independent of
+that divider.
+
+A temporary 32 MHz diagnostic build replayed 132 strokes at 299.95 WPM and
+a 44-stroke burst at 349.95 WPM. Both USB captures matched the expected text
+and stroke order with zero input overflows and zero deadline overruns.
+Lapwing Base and the personal dictionary were active, with hints enabled.
+The everyday firmware was restored and verified afterward. These replays
+inject chords on the left, so physical key scanning, split and BLE delivery at
+these speeds, and the 16-dictionary worst case remain separate tests.

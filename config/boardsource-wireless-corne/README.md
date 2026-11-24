@@ -27,7 +27,7 @@ The right display works with the same polarity setting, although its header was
 not measured independently. Precise discharge timing and transient/load margin
 remain unqualified. [Verified bringup record](../../docs/boardsource-bringup.md)
 
-The owner locked the Steno Squid pin map on 2026-11-11. Clock uses Nordic’s recommended P0.19 QSPI/SCK pin. IO0 and IO1 use P0.21 and P0.23, which Nordic marks for QSPI. IO2 remains on P0.05, IO3 moves to P0.12, and CS# stays on P0.07. Both active and sleep pinctrl states use this map. Begin hardware tests at the configured 2 MHz. [Nordic nRF52840 pin assignments](https://docs.nordicsemi.com/bundle/ps_nrf52840/page/pin.html)
+The owner locked the Steno Squid pin map on 2026-11-11. Clock uses Nordic’s recommended P0.19 QSPI/SCK pin. IO0 and IO1 use P0.21 and P0.23, which Nordic marks for QSPI. IO2 remains on P0.05, IO3 moves to P0.12, and CS# stays on P0.07. Both active and sleep pinctrl states use this map. Start with the 2 MHz probes on hand-wired setups. The Boardsource left firmware uses 32 MHz for the populated 16 MiB Steno Squid PCB. [Nordic nRF52840 pin assignments](https://docs.nordicsemi.com/bundle/ps_nrf52840/page/pin.html)
 
 The Adafruit #5634 schematic routes IO2 and IO3 to separate pads. Check continuity on the actual breakout and confirm neither pad is shorted to VCC. Use eight jumper connections to the locked table above for the Adafruit proof of concept. Confirm orientation, pitch and clearance before mounting. [Adafruit breakout pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts) · [Adafruit breakout schematic](https://github.com/adafruit/Adafruit-QSPI-DIP-Breakout-PCB)
 
@@ -133,6 +133,6 @@ Use the Boardsource artifacts from one successful workflow run:
    run `python3 stenosquid.py --install --confirm-erase` to provision the dictionaries.
    For an existing board, follow the [backup and update instructions](../../README.md#update-firmware).
 
-The corrected everyday pair and wired Adafruit breakout passed the functional
-checks recorded above. Higher QSPI speeds and the populated daughterboard need
-separate tests; the 32/64 MB variants are not qualified by these 16 MB results.
+The [32 MHz PCB qualification](../../docs/boardsource-bringup.md#32-mhz-qualification-on-the-16-mib-pcb)
+covers the populated 16 MiB PCB. The wired Adafruit breakout results above
+are from 2 MHz tests. The 32/64 MB flash variants still require qualification.
