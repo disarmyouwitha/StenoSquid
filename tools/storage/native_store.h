@@ -80,12 +80,12 @@ private:
             SegmentMap current_map,alternate_map;uint32_t forward=0,reverse=0;
             if(RootOwnership(device,catalog,selected.root,current_map,&forward,&reverse)!=CatalogResult::Ok ||
                RootOwnership(device,catalog,alternate,alternate_map)!=CatalogResult::Ok)return JobResult::RecoveryRequired;
-            for(unsigned i=0;i<8;++i)obsolete |= (alternate_map.words[i]&~current_map.words[i])!=0;
+            for(unsigned i=0;i<kMaxSegments / 32;++i)obsolete |= (alternate_map.words[i]&~current_map.words[i])!=0;
             if(obsolete) {
                 const uint32_t tail=live.TailCount();
                 if(checkpoint_next && (forward>kMaxEntries-tail || reverse>kMaxEntries-tail))return JobResult::NoSpace;
-                auto room=[&](SegmentMap owned) {
-                    AllocationPlan plan(owned);uint32_t start=0;
+                auto room=[&](const SegmentMap &owned) {
+                    AllocationPlan plan(owned, NativePoolEnd(device));uint32_t start=0;
                     if(!checkpoint_next)return plan.Reserve(1,start);
                     const uint32_t f=(4*(forward+tail)+kSegmentBytes-1)/kSegmentBytes;
                     const uint32_t r=(4*(reverse+tail)+kSegmentBytes-1)/kSegmentBytes;

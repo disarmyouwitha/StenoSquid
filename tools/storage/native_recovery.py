@@ -14,7 +14,7 @@ import struct
 import tempfile
 import zlib
 
-from build_native_image import LIMIT, OUTLINE_FIRST, SEGMENT, SOURCES, XIP, catalog_header
+from build_native_image import LARGE_POOL_END, OUTLINE_FIRST, POOL_ENDS, SEGMENT, SMALL_POOL_END, SOURCES, XIP, catalog_header
 from hybrid import compact_entries
 from jsc4 import reader, require_snapshot_hint
 from native_update import EXTENT, Snapshot, row_name, validate_name
@@ -34,7 +34,7 @@ def pack(data):
 
 
 def unpack(encoded, expected=None):
-    if not isinstance(encoded, str) or len(encoded) > (LIMIT + 2) // 3 * 4:
+    if not isinstance(encoded, str) or len(encoded) > (LARGE_POOL_END * SEGMENT + 2) // 3 * 4:
         raise ValueError("Invalid recovery data size")
     data = base64.b64decode(encoded, validate=True)
     if expected is not None and len(data) != expected:
@@ -42,20 +42,20 @@ def unpack(encoded, expected=None):
     return data
 
 
-def descriptors(payload):
+def descriptors(payload, pool_end=SMALL_POOL_END):
     if not 32 <= len(payload) <= 32 + 64 * 96 + 253 * 24:
         raise ValueError("Invalid recovery catalog size")
     next_id, rows, count = struct.unpack_from("<IHH", payload)
     end = 32 + rows * 96
     if next_id < 8 or rows > 64 or count > 253 or any(payload[16:32]) or len(payload) != end + count * 24:
         raise ValueError("Invalid recovery catalog shape")
-    used, kinds = {0, 1, 255}, set()
+    used, kinds = {0, 1, pool_end}, set()
     result = list(EXTENT.iter_unpack(payload[end:]))
     for start, span, size, crc, kind, epoch in result:
         if kind == 3 and epoch != OUTLINE_FIRST:
             raise ValueError("Unsupported forward journal checkpoint in recovery bundle")
         run = set(range(start, start + span))
-        if (not 2 <= start < 255 or not 1 <= span <= 255 - start
+        if (not 2 <= start < pool_end or not 1 <= span <= pool_end - start
                 or not 0 < size <= span * SEGMENT or run & used or kind not in (1, 2, 3, 4)
                 or (kind == 2 and (span != 1 or size != SEGMENT or not epoch or crc))
                 or (kind in (1, 4) and epoch)
@@ -70,9 +70,12 @@ def descriptors(payload):
 
 def capture(console_read, snapshot, layout):
     payload = snapshot.payload
+    pool_end = snapshot.pool_end
     backup = dict(format=FORMAT, host_layout=layout, catalog=pack(payload), extents=[
-        pack(console_read(start * SEGMENT, size)) for start, _, size, _, _, _ in descriptors(payload)
+        pack(console_read(start * SEGMENT, size)) for start, _, size, _, _, _ in descriptors(payload, pool_end)
     ])
+    if pool_end != SMALL_POOL_END:
+        backup['pool_segments'] = pool_end
     backup["sha256"] = digest(backup)
     reconstruct(backup)
     return backup
@@ -154,12 +157,15 @@ def reconstruct(backup):
                 or type(source.get("generation")) is not int or source["generation"] < 1
                 or not isinstance(source.get("timestamp"), str) or not source["timestamp"]):
             raise ValueError("Invalid recovery capture identity")
+    pool_end = backup.get("pool_segments", SMALL_POOL_END)
+    if type(pool_end) is not int or pool_end not in POOL_ENDS:
+        raise ValueError("Unsupported recovery flash geometry")
     payload = unpack(backup.get("catalog"))
-    extents = descriptors(payload)
+    extents = descriptors(payload, pool_end)
     chunks = backup.get("extents")
     if not isinstance(chunks, list) or len(chunks) != len(extents):
         raise ValueError("Recovery bundle is missing an extent")
-    image = bytearray(b"\xff" * LIMIT)
+    image = bytearray(b"\xff" * (pool_end * SEGMENT))
     for (start, _, size, crc, kind, _), data in zip(extents, chunks):
         blob = unpack(data, size)
         if kind != 2 and zlib.crc32(blob) != crc:
@@ -173,7 +179,7 @@ def reconstruct(backup):
     def read(address, size):
         return bytes(image[address:address + size])
 
-    snapshot = Snapshot(read, 32, len(payload), zlib.crc32(payload), strict=True)
+    snapshot = Snapshot(read, 32, len(payload), zlib.crc32(payload), strict=True, pool_end=pool_end)
     validate_rows(snapshot, image)
     return bytes(image), snapshot
 
@@ -220,7 +226,7 @@ def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=Fa
         raise ValueError("Optimized bundles require the repack workflow with both backup files.")
     image, snapshot = reconstruct(backup)
     staged, staged_crc, final_crc = recovery_images(image)
-    from native_install import FACTORY_CAPABILITIES, command, open_console, wait_ready, write_pool
+    from native_install import FACTORY_CAPABILITIES, begin_for_pool, command, open_console, read_pool_end, wait_ready, write_pool
     from native_manage import checked
 
     def matches(console):
@@ -232,6 +238,8 @@ def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=Fa
     with open_console(serial) as console:
         if console.serial != serial:
             raise RuntimeError("The connected USB serial differs from the confirmed recovery target.")
+        if read_pool_end(console) != snapshot.pool_end:
+            raise ValueError("The recovery bundle and keyboard have different flash capacities. No erase was started.")
         if console.command("native_install update recovery-capabilities") != "OK RECOVERY1":
             raise RuntimeError("Flash firmware with Native USB recovery support first.")
         if any(row[11] == 2 for row in snapshot.rows) and console.command(FACTORY_CAPABILITIES) != "OK FACTORY2":
@@ -264,7 +272,7 @@ def recover_usb(backup, serial, confirmation, progress=print, *, repack_spare=Fa
                 begin = (f"begin REPACK {staged_crc} {final_crc} "
                          f"{generation & 0xffffffff} {generation >> 32} {zlib.crc32(view.payload)} "
                          f"{sequence & 0xffffffff} {sequence >> 32} {layout}")
-            command(console, begin)
+            command(console, begin_for_pool(begin, snapshot.pool_end))
             try:
                 write_pool(console, staged, progress, finish=False)
             except BaseException:

@@ -74,6 +74,20 @@ nrfx_err_t w25q128_enable_volatile_quad(void)
 	return w25q_set_volatile_sr2(status | W25Q_QUAD_ENABLE);
 }
 
+nrfx_err_t w25q_enable_4byte_addressing(void)
+{
+	uint8_t status;
+	nrfx_err_t rc = w25q_status_command(0xb7, NULL, NULL);
+	if (rc != NRFX_SUCCESS) {
+		return rc;
+	}
+	rc = w25q_status_command(0x15, NULL, &status);
+	if (rc != NRFX_SUCCESS) {
+		return rc;
+	}
+	return status != 0xff && (status & BIT(0)) ? NRFX_SUCCESS : NRFX_ERROR_INTERNAL;
+}
+
 nrfx_err_t squid_qspi_wait_ready(uint32_t timeout_ms)
 {
     const int64_t deadline = k_uptime_get() + timeout_ms;

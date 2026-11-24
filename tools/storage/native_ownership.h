@@ -24,7 +24,7 @@ CatalogResult RootOwnership(Device &device,NativeCatalog<Device> &catalog,
         uint8_t row[24];
         if(!device.Read(root.address+32+dictionaries*96+i*24,row,24))return CatalogResult::IoError;
         const uint32_t start=uint16_t(row[0]) | uint16_t(row[1])<<8,count=uint16_t(row[2]) | uint16_t(row[3])<<8;
-        if(start<2 || start>=255 || !count || count>255-start || !pending.Add(start,count))return CatalogResult::Corrupt;
+        if(start<2 || start>=NativePoolEnd(device) || !count || count>NativePoolEnd(device)-start || !pending.Add(start,count))return CatalogResult::Corrupt;
         if(Word(row+12)==3 && forward_count)*forward_count=Word(row+4)/4;
         if(Word(row+12)==4 && reverse_count)*reverse_count=Word(row+4)/4;
     }
@@ -35,7 +35,7 @@ template <class Device>
 CatalogResult CollectOwnership(Device &device,NativeCatalog<Device> &catalog,
                               const CatalogRoot &current,SegmentMap &result) {
     for(auto &word:result.words)word=UINT32_MAX;
-    SegmentMap pending;pending.Add(0,2);pending.Add(255,1);
+    SegmentMap pending;pending.Add(0,2);pending.Add(NativePoolEnd(device),1);
     if(!catalog.CanWrite(current))return CatalogResult::Quarantined;
     auto collect=[&](const CatalogRoot &root) {
         SegmentMap owned;

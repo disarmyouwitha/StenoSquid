@@ -20,6 +20,7 @@ STUBS = r"""
 #define DT_REG_ADDR_BY_NAME(x,y) 0x12000000u
 #define NRF_QSPI_ERASE_LEN_4KB 0
 #define NRFX_SUCCESS 0
+extern "C" { uint32_t lf_flash_bytes=0x1000000; }
 bool locked=true;
 struct JavelinEngineLock { explicit operator bool()const{return locked;} };
 std::string output;

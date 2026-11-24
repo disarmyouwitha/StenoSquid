@@ -113,3 +113,18 @@ Lapwing Base and the personal dictionary were active, with hints enabled.
 The everyday firmware was restored and verified afterward. These replays
 inject chords on the left, so physical key scanning, split and BLE delivery at
 these speeds, and the 16-dictionary worst case remain separate tests.
+
+## 64 MiB PCB address check at 32 MHz
+
+The same Boardsource left firmware detects the W25Q128JV (16 MiB) and
+W25Q512JV (64 MiB) by JEDEC ID. The larger flash uses four-byte addresses.
+On the 64 MiB PCB, USB provisioning installed Lapwing Base, verified the
+full pool, and reopened the catalog after reboot. Eight unique write/readback
+patterns across the four 16 MiB address regions matched, including the last
+usable block at `0x03fe0000`. The last physical block refused a staged erase.
+The scratch blocks were erased again, Native verification passed, and
+`KAT` resolved to `cat`. The map reported 992 free 64 KiB blocks with three
+held in reserve.
+
+The larger PCB still needs a battery cold boot and sleep/wake check. The new
+dual-capacity UF2 still needs a physical regression run on the 16 MiB PCB.

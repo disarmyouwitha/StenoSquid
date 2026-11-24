@@ -3,18 +3,18 @@ import hashlib
 import json
 import zlib
 
-from build_native_image import SEGMENT
+from build_native_image import SEGMENT, SMALL_POOL_END
 from native_snapshot import compile_snapshot, plan_named_snapshot, stage_allocator
 from native_update import NoSpace, Snapshot, abort, publish, read_snapshot, update_command, validate_name
 
 
-def metadata(payload):
+def metadata(payload, pool_end=SMALL_POOL_END):
     return Snapshot(lambda address, size: payload[:size], 0, len(payload), zlib.crc32(payload),
-                    metadata_only=True)
+                    metadata_only=True, pool_end=pool_end)
 
 
 def owned(view):
-    return {0, 1, 255} | {segment for start, count, *_ in view.extents for segment in range(start, start + count)}
+    return {0, 1, view.pool_end} | {segment for start, count, *_ in view.extents for segment in range(start, start + count)}
 
 
 def consolidation_cost(after, image_segments, index_records):
@@ -23,7 +23,7 @@ def consolidation_cost(after, image_segments, index_records):
     # those files or relocating the image a second time.
     if sum(extent[4] < 3 for extent in after.extents) + sum(bool(count) for count in index_records) > 253:
         raise NoSpace("Catalog extent limit")
-    allocate = stage_allocator(owned(after))
+    allocate = stage_allocator(owned(after), after.pool_end)
     allocate(image_segments)
     total = image_segments
     for count in index_records:
@@ -69,7 +69,7 @@ def named_import(console, name, entries, *, stage=False, expected=None, progress
         report, update = plan_compact_import(snapshot, protected, name, compiled, limit)
         report["entries"] = len(entries)
         if update is not None:
-            after = metadata(update.payload)
+            after = metadata(update.payload, snapshot.pool_end)
             # Each uncheckpointed edit can add at most one record to each
             # index. If this bound cannot fit, check the exact live counts.
             sizes = {kind: size // 4 for _, _, size, _, kind, _ in snapshot.extents if kind in (3, 4)}

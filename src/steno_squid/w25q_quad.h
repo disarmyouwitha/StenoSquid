@@ -22,6 +22,9 @@ bool squid_qspi_reactivate(void);
 /* Sets the volatile Quad Enable bit unless it is already set. */
 nrfx_err_t w25q128_enable_volatile_quad(void);
 
+/* Enters the W25Q512JV's volatile 4-byte address mode and verifies ADS. */
+nrfx_err_t w25q_enable_4byte_addressing(void);
+
 /* One-byte opcode, or two bytes when tx or rx is given. */
 nrfx_err_t w25q_status_command(uint8_t opcode, const uint8_t *tx, uint8_t *rx);
 

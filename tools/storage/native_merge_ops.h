@@ -32,7 +32,7 @@ public:
     bool Record(uint32_t address,MergeRecord &out,bool full=false) {
         const uint32_t segment = address / kSegmentBytes;
         const bool staged = relocation && relocation->destination == segment;
-        if(segment>=255 || address%kSegmentBytes<256 || address%4 ||
+        if(segment>=kLargePoolEnd || address%kSegmentBytes<256 || address%4 ||
            (!staged && !view.journals.Contains(segment)))return false;
         const auto status = full ? journal.Read(address, out.record, &out)
                                  : journal.ReadKey(address, out.record, out);

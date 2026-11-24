@@ -6,7 +6,7 @@ import re
 import struct
 import zlib
 
-from build_native_image import OUTLINE_FIRST, SEGMENT, write_journal_header
+from build_native_image import LARGE_POOL_END, OUTLINE_FIRST, SEGMENT, SMALL_POOL_END, write_journal_header
 
 EXTENT = struct.Struct("<HHIIIQ")
 RECORD = struct.Struct("<4sIQIIII")
@@ -69,7 +69,8 @@ def encode_record(edit, sequence):
 
 
 class Snapshot:
-    def __init__(self, read, catalog_address, catalog_bytes, crc, *, metadata_only=False, strict=False):
+    def __init__(self, read, catalog_address, catalog_bytes, crc, *, metadata_only=False, strict=False, pool_end=SMALL_POOL_END):
+        self.pool_end = pool_end
         payload = read(catalog_address, catalog_bytes)
         if len(payload) != catalog_bytes or zlib.crc32(payload) != crc:
             raise ValueError("Catalog changed or failed its checksum")
@@ -224,7 +225,7 @@ def metadata_payload(snapshot, *, move=None, rename=None, delete=None):
 
 def plan(snapshot, protected, incoming=None, *, name=None, limit=64, move=None, rename=None, delete=None):
     """Stage replacements in free segments. None selects live-record cleaning."""
-    free = set(range(2, 255)) - set(protected)
+    free = set(range(2, snapshot.pool_end)) - set(protected)
     segments = {}
 
     def allocate(count=1):
@@ -355,10 +356,11 @@ def update_command(console, text, timeout=30):
 
 def read_snapshot(console, answer, *, metadata_only=False, on_read=None, trim_journals=False):
     _, address, length, checksum, ownership = answer.split()
-    if len(ownership) != 64:
+    if len(ownership) not in (64, 256):
         raise ValueError("Invalid ownership bitmap")
-    words = [int(ownership[i:i + 8], 16) for i in range(0, 64, 8)]
-    protected = {i for i in range(256) if words[i // 32] & (1 << (i % 32))}
+    words = [int(ownership[i:i + 8], 16) for i in range(0, len(ownership), 8)]
+    pool_end = LARGE_POOL_END if len(words) == 32 else SMALL_POOL_END
+    protected = {i for i in range(pool_end + 1) if words[i // 32] & (1 << (i % 32))}
 
     address, length, checksum = int(address), int(length), int(checksum)
     catalog = None
@@ -375,9 +377,9 @@ def read_snapshot(console, answer, *, metadata_only=False, on_read=None, trim_jo
         return read_flash(console, start, size, on_read=on_read)
 
     if trim_journals and not metadata_only:
-        metadata = Snapshot(read, address, length, checksum, metadata_only=True)
+        metadata = Snapshot(read, address, length, checksum, metadata_only=True, pool_end=pool_end)
         journals = {segment * SEGMENT for segment, _, _, _, kind, _ in metadata.extents if kind == 2}
-    return Snapshot(read, address, length, checksum, metadata_only=metadata_only), protected
+    return Snapshot(read, address, length, checksum, metadata_only=metadata_only, pool_end=pool_end), protected
 
 
 def read_live_journal(console, start, *, on_read=None):
