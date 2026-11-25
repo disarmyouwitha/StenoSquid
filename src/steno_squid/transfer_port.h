@@ -57,7 +57,12 @@ public:
 
 private:
     Reply HandleFrame(const Frame &f, uint32_t source) {
-        if (!env_.TryService()) return Nak(f, kNakSinkBusy); // Flash busy: host retries the same frame.
+        if (!env_.TryService()) {
+            // Flash busy: the host retries. The NAK must carry the RECEIVER's confirmed offset, never the
+            // refused frame's: the host rewinds to it, so anything larger would skip unaccepted data.
+            const bool ours = receiver_.active() && source == session_source_;
+            return Nak(f, kNakSinkBusy, ours ? receiver_.next_offset() : 0);
+        }
         const Reply reply = Locked(f, source);
         env_.Unlock();
         return reply;
@@ -86,8 +91,8 @@ private:
         return reply;
     }
 
-    static Reply Nak(const Frame &f, uint8_t reason) {
-        Reply r; r.type = kNak; r.session = f.session; r.offset = f.offset;
+    static Reply Nak(const Frame &f, uint8_t reason, uint32_t confirmed) {
+        Reply r; r.type = kNak; r.session = f.session; r.offset = confirmed;
         r.payload[0] = reason; r.length = 1;
         return r;
     }

@@ -333,6 +333,98 @@ class ScriptedProtocolTests(unittest.TestCase):
         data_frames = [f for f in device.seen if f[0] == nt.DATA]
         self.assertLess(len(data_frames), 40)  # One rewind, not a retransmission storm.
 
+    def run_guarded(self, handler, seconds=10, **options):
+        """Run an upload but fail the test (instead of hanging) if it does not return."""
+        import signal
+        device = ScriptDevice(handler)
+
+        def timeout(*_):
+            raise AssertionError("upload did not return: no stall detection")
+        signal.signal(signal.SIGALRM, timeout)
+        signal.alarm(seconds)
+        try:
+            nt.upload(Console(device, 0), FakeUpdate, lambda _: None, **options)
+        finally:
+            signal.alarm(0)
+        return device
+
+    def test_endless_busy_naks_are_not_progress(self):
+        class Flood(ScriptDevice):
+            """A keyboard that answers every read with a busy NAK, whatever the host sent."""
+
+            def read(self, size, timeout):
+                if not self.queue:
+                    self.queue.append(nt.encode(nt.NAK, self.session, 0, bytes([nt.NAK_SINK_BUSY])).ljust(63, b"\0"))
+                return super().read(size, timeout)
+
+        def handler(frame):
+            return [ack(nt.STATE_OPEN, 0)] if frame[0] == nt.BEGIN else []
+        device = Flood(handler)
+        original = device.write
+
+        def write(data):  # The flood frames carry the session the client chose.
+            for frame in nt.Decoder().push(bytes(data[1:])):
+                device.session = frame[1]
+            return original(data)
+        device.write = write
+        import signal
+
+        def timeout(*_):
+            raise AssertionError("upload did not return: NAKs were treated as progress")
+        signal.signal(signal.SIGALRM, timeout)
+        signal.alarm(10)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "stopped responding"):
+                nt.upload(Console(device, 0), FakeUpdate, lambda _: None, stall_seconds=0.05, retries=3)
+        finally:
+            signal.alarm(0)
+    def test_a_nak_offset_beyond_what_was_sent_is_ignored(self):
+        state = {"next": 0, "lied": False}
+
+        def handler(frame):
+            kind, _, offset, payload = frame
+            if kind == nt.BEGIN:
+                return [ack(nt.STATE_OPEN, 0, 4)]
+            if kind == nt.DATA:
+                if not state["lied"]:
+                    state["lied"] = True
+                    return [(nt.NAK, 500, bytes([nt.NAK_SINK_BUSY]))]  # In range but impossible: far beyond anything sent yet.
+                if offset != state["next"]:
+                    return [(nt.NAK, state["next"], bytes([nt.NAK_OUT_OF_ORDER]))]
+                state["next"] = offset + len(payload)
+                return [ack(nt.STATE_RECEIVING, state["next"], 4)]
+            if kind == nt.END:
+                total = len(nt.records(FakeUpdate))
+                if state["next"] != total:
+                    return [(nt.ERROR, 0, bytes([4]))]  # The client claimed completion too early.
+                return [ack(nt.STATE_VERIFIED, offset)]
+            return [(nt.DONE, offset, b"")]
+        self.run_guarded(handler, window=4, stall_seconds=0.2)
+        self.assertEqual(state["next"], len(nt.records(FakeUpdate)))
+
+    def test_busy_nak_carrying_the_receivers_offset_resumes_exactly_there(self):
+        state = {"next": 0, "busy_once": True}
+        seen = []
+
+        def handler(frame):
+            kind, _, offset, payload = frame
+            if kind == nt.BEGIN:
+                return [ack(nt.STATE_OPEN, 0, 4)]
+            if kind == nt.DATA:
+                seen.append(offset)
+                if offset == 49 and state["busy_once"]:
+                    state["busy_once"] = False
+                    return [(nt.NAK, state["next"], bytes([nt.NAK_SINK_BUSY]))]  # Correct: receiver offset, not 49.
+                if offset != state["next"]:
+                    return [(nt.NAK, state["next"], bytes([nt.NAK_OUT_OF_ORDER]))]
+                state["next"] = offset + len(payload)
+                return [ack(nt.STATE_RECEIVING, state["next"], 4)]
+            if kind == nt.END:
+                return [ack(nt.STATE_VERIFIED, offset)] if state["next"] == len(nt.records(FakeUpdate)) else [(nt.ERROR, 0, bytes([4]))]
+            return [(nt.DONE, offset, b"")]
+        self.run_guarded(handler, window=4, stall_seconds=5.0)
+        self.assertEqual(state["next"], len(nt.records(FakeUpdate)))
+
     def test_error_frame_aborts_and_is_reported(self):
         def handler(frame):
             kind, _, offset, payload = frame
