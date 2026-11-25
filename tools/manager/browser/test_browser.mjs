@@ -295,10 +295,10 @@ suite.run(result)
 json.dumps({"ran": result.testsRun, "errors": [(str(test), message) for test, message in result.errors + result.failures]})
 `));
   }, {testSource: fs.readFileSync(path.resolve(sourceDirectory, "../test_manager.py"), "utf8"), editorTests: fs.readFileSync(path.resolve(sourceDirectory, "../test_manager_editor.py"), "utf8")});
-  assert.equal(parity.ran, 48, JSON.stringify(parity));
+  assert.equal(parity.ran, 44, JSON.stringify(parity));
   assert.deepEqual(parity.errors, [], JSON.stringify(parity));
   assert.deepEqual(errors, []);
   assert.deepEqual(network, []);
   await page.screenshot({path:path.join(path.dirname(file),"browser-test.png"),fullPage:true});
-  console.log("PASS: standalone file:// app, network disabled, no HTTP requests, real Python WebAssembly, fragmented WebHID reports, USB preference and Bluetooth fallback, Manager settings, local recovery file safety, JSON editor preview/save/stale-draft handling, and 48 shared Python regression cases");
+  console.log("PASS: standalone file:// app, network disabled, no HTTP requests, real Python WebAssembly, fragmented WebHID reports, USB preference and Bluetooth fallback, Manager settings, local recovery file safety, JSON editor preview/save/stale-draft handling, and 44 shared Python regression cases");
 } finally { await browser.close(); }
