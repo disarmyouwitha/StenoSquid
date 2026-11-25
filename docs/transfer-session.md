@@ -147,7 +147,9 @@ browser WebHID, any hardware.
 
 ## Not yet done (needs approval or hardware)
 
-1. Browser UI: a user-visible indicator and an opt-out switch (the client already honours console.binary_transfer);\n   not exercised in a real browser (needs WebHID and a keyboard). The JS codec 	ransfer_frame.js is kept for a\n   future JS-native path and is not used by the Python client.
+1. Browser UI: a user-visible indicator and an opt-out switch (the client already honours `console.binary_transfer`).
+   Not exercised in a real browser (needs WebHID and a keyboard). The JS codec `transfer_frame.js` is kept for a
+   future JS-native path and is not used by the Python client.
 2. CDC (Web Serial) mapping; this build carries frames on the HID console report only.
 3. Hardware bring-up of the opt-in build (flash `Left.uf2` built with `transfer.conf`) once the board is free.
 4. Instrumentation and throughput/RAM measurements (do not quote any figure
