@@ -23,10 +23,10 @@ public:
         checkpoint(value,catalog,live),rollover(value,catalog,live){}
     NativeStore(const NativeStore &)=delete;
     template<class Validate>
-    CatalogResult Open(Validate validate) {
+    CatalogResult Open(Validate validate, CatalogValidation mode = CatalogValidation::Independent) {
         if(work!=Work::None)return CatalogResult::Busy;
         opened=false;
-        const auto result=catalog.OpenValidated(selected,validate);
+        const auto result=catalog.OpenValidated(selected,validate,mode);
         if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined)return result;
         if(live.Begin(selected)!=LiveResult::More)return CatalogResult::Corrupt;
         for(;;) {

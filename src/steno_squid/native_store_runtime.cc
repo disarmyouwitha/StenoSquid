@@ -831,7 +831,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         const uint32_t fingerprint=BaseFingerprint(root);
         flash_device.trust_bases=fingerprint && fingerprint==verified_fingerprint;
         const auto status=validator.Validate(root, false);flash_device.trust_bases=false;return status;
-    });
+    }, CatalogValidation::ReuseIdenticalPayload);
     flash_device.cold_read_yield_at = 0;
     flash_device.mapped = false;
     if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined){base_provider.Fault();return false;}

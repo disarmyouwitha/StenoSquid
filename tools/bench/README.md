@@ -177,6 +177,23 @@ with a new report path to publish a replacement checkpoint. This changes
 the fixture's catalog and journal state. The check records the physical
 replacement index blocks, rechecks integrity, and repeats the lookup oracle.
 
+### Full-pool boot timing
+
+Start the timer with the everyday firmware and the 32-dictionary pool in place,
+then reboot or power-cycle the left half. The report measures from USB console
+enumeration to Javelin reporting ready and verifies the `KAT` lookup. Record cold
+boot separately from idle wake within the same boot.
+
+```sh
+python3 tools/bench/phase1_boot.py --serial SERIAL \
+  --report build/phase1-boot.json
+```
+
+In the host replay of the full pool, reusing extent validation for byte-identical
+catalog payloads reduced logical flash reads from 2,162,470 to 1,201,627. Time the
+candidate on hardware both with identical catalog payloads and after a catalog
+update leaves two distinct payloads.
+
 ### 64 MiB hardware results
 
 - The Boardsource pool used 1,006 of 1,023 blocks, with 17 contiguous

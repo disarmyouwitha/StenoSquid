@@ -22,6 +22,7 @@ inline const char *FactoryName(uint32_t id) {
     }
 }
 enum class CatalogResult { Ok, Empty, Corrupt, IoError, Invalid, Quarantined, Busy };
+enum class CatalogValidation { Independent, ReuseIdenticalPayload };
 enum class ExtentKind : uint32_t { Base=1, Journal=2, Forward=3, Reverse=4 };
 // Required marker in the forward extent's 64-bit auxiliary field.
 constexpr uint32_t kOutlineFirst = 1;
@@ -63,6 +64,19 @@ class NativeCatalog {
             uint32_t n=256-at%256; if(n>size)n=size;
             if(!device.Program(at,data,n))return false;
             at+=n; data+=n; size-=n;
+        }
+        return true;
+    }
+    bool SamePayload(const CatalogRoot &first, const CatalogRoot &second) {
+        if (first.bytes != second.bytes || first.crc != second.crc) return false;
+        // Inspect already checked both headers and payload CRCs. Compare the
+        // bytes as well so a CRC collision cannot skip validation.
+        constexpr uint32_t granule = sizeof(buffer) / 2;
+        for (uint32_t offset = 0; offset < first.bytes; offset += granule) {
+            const uint32_t count = first.bytes - offset < granule ? first.bytes - offset : granule;
+            if (!device.Read(first.address + offset, buffer, count) ||
+                !device.Read(second.address + offset, buffer + granule, count) ||
+                std::memcmp(buffer, buffer + granule, count) != 0) return false;
         }
         return true;
     }
@@ -267,7 +281,8 @@ public:
     }
 
     template <class ValidateRoot>
-    CatalogResult OpenValidated(CatalogSelection &selection,ValidateRoot validate) {
+    CatalogResult OpenValidated(CatalogSelection &selection,ValidateRoot validate,
+                                CatalogValidation mode = CatalogValidation::Independent) {
         selection={};
         write_blocked=true;
         trusted[0]={};trusted[1]={};
@@ -277,7 +292,12 @@ public:
             states[i]=Inspect(i,roots[i]);
             if(states[i]==CatalogResult::IoError || states[i]==CatalogResult::Invalid)return states[i];
             if(states[i]==CatalogResult::Ok) {
-                states[i]=validate(roots[i]);
+                // Opt-in validators certify the extents described by the
+                // payload. Matching mirrors describe the same flash bytes.
+                if (i != 1 || mode != CatalogValidation::ReuseIdenticalPayload ||
+                    !valid[0] || !SamePayload(roots[0], roots[1])) {
+                    states[i]=validate(roots[i]);
+                }
                 if(states[i]==CatalogResult::IoError)return states[i];
                 valid[i]=states[i]==CatalogResult::Ok;
             }

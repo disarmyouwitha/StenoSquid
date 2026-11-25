@@ -106,9 +106,45 @@ void RefuseUnsupportedForwardOrder() {
     assert(nor.data == bytes);
 }
 
+void ReuseIdenticalCatalogValidation() {
+    Nor nor;
+    NativeCatalog<Nor> catalog(nor);
+    CatalogSelection empty, first, second, selected;
+    auto data = payload();
+    assert(catalog.Publish(empty, data.size(), Source{data}, accept, first) == CatalogResult::Ok);
+    assert(catalog.Publish(first, data.size(), Source{data}, accept, second) == CatalogResult::Ok);
+    unsigned validations = 0;
+    auto validate = [&](const CatalogRoot &root) {
+        ++validations;
+        return catalog.Validate(root, accept);
+    };
+
+    assert(catalog.OpenValidated(selected, validate) == CatalogResult::Ok && validations == 2);
+    validations = 0;
+    const auto reopen = [&] {
+        return catalog.OpenValidated(selected, validate, CatalogValidation::ReuseIdenticalPayload);
+    };
+    assert(reopen() == CatalogResult::Ok && validations == 1);
+    assert(selected.root.generation == second.root.generation);
+    assert(catalog.IsTrusted(first.root) && catalog.IsTrusted(second.root));
+
+    data[32 + 16] = 'N';
+    CatalogSelection third;
+    assert(catalog.Publish(second, data.size(), Source{data}, accept, third) == CatalogResult::Ok);
+    validations = 0;
+    assert(reopen() == CatalogResult::Ok && validations == 2);
+    assert(selected.root.generation == third.root.generation);
+    nor.data[third.root.address + 32 + 16] ^= 1;
+    validations = 0;
+    assert(reopen() == CatalogResult::Quarantined && validations == 1);
+    assert(selected.quarantine && selected.root.generation == second.root.generation);
+    assert(!catalog.CanWrite(selected.root));
+}
+
 int main() {
     faults(1);faults(64);
     ShrinkThenGrow();
+    ReuseIdenticalCatalogValidation();
     RefuseUnsupportedForwardOrder();
     // First provisioning can leave no committed root, never a fabricated root.
     auto initial=payload();Nor dryInitial;NativeCatalog<Nor> initialCatalog(dryInitial);
