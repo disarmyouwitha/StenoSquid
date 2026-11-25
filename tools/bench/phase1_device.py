@@ -24,7 +24,19 @@ def check_probes(console, fixture, report):
             raise RuntimeError(f"Lookup differs for {outline}: {actual}")
 
 
-def check(console, fixture, report):
+def integrity_scan(console, report, timeout):
+    if not timeout:
+        report["integrity"] = "deferred"
+        return
+    started = monotonic()
+    report["integrity"] = console.command("user_dictionary_verify", timeout=timeout)
+    report["integrity_seconds"] = monotonic() - started
+    if report["integrity"] != "OK":
+        raise RuntimeError(report["integrity"])
+    print("Full Native integrity passed on hardware.", flush=True)
+
+
+def check(console, fixture, report, timeout):
     deadline = monotonic() + 60
     while monotonic() < deadline:
         try:
@@ -47,10 +59,6 @@ def check(console, fixture, report):
     report["layout"] = read_layout(console)
     if report["layout"]["free_segments"] != fixture["free_segments"]:
         raise RuntimeError("Occupied blocks differ from the fixture")
-    report["integrity"] = console.command("user_dictionary_verify", timeout=180)
-    if report["integrity"] != "OK":
-        raise RuntimeError(report["integrity"])
-    print("Full Native integrity passed on hardware.", flush=True)
     check_probes(console, fixture, report)
     print(f"Verified {len(report['probes'])} on-device lookups against the fixture.", flush=True)
     # Snapshotted bytes can be compared with the planned image directly.
@@ -91,9 +99,10 @@ def check(console, fixture, report):
     if report["after"]["input_overflows"] != report["before"]["input_overflows"]:
         raise RuntimeError("Keyboard reported input overflow")
     print("Rotating-miss benchmark and high-address readback complete.", flush=True)
+    integrity_scan(console, report, timeout)
 
 
-def checkpoint(console, fixture, report):
+def checkpoint(console, fixture, report, timeout):
     report["geometry"] = console.command("native_install geometry")
     if report["geometry"] != f"OK POOL1 {fixture['pool_segments']}":
         raise RuntimeError("Unexpected pool geometry")
@@ -126,11 +135,9 @@ def checkpoint(console, fixture, report):
                               for label, kind in (("forward", "f"), ("reverse", "r"))}
     if any(not blocks or min(blocks) < 256 for blocks in report["index_blocks"].values()):
         raise RuntimeError("The replacement indexes did not land above 16 MiB")
-    report["integrity"] = console.command("user_dictionary_verify", timeout=180)
-    if report["integrity"] != "OK":
-        raise RuntimeError(report["integrity"])
     check_probes(console, fixture, report)
-    print("High-address checkpoint, full integrity and lookup oracle passed.", flush=True)
+    print("High-address checkpoint and lookup oracle passed.", flush=True)
+    integrity_scan(console, report, timeout)
 
 
 def main():
@@ -139,14 +146,18 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--serial", required=True)
     parser.add_argument("--checkpoint", action="store_true", help="Run and verify a checkpoint on the loaded fixture")
+    parser.add_argument("--integrity-timeout", type=int, default=600,
+                        help="Seconds to allow for the firmware integrity scan; 0 defers it")
     args = parser.parse_args()
+    if args.integrity_timeout < 0:
+        parser.error("--integrity-timeout cannot be negative")
     report = dict(fixture=str(args.fixture.resolve()), result="fail")
     try:
         fixture = json.loads(args.fixture.read_bytes())
         with open_console(args.serial) as console:
             operation = checkpoint if args.checkpoint else check
-            operation(console, fixture, report)
-        report["result"] = "pass"
+            operation(console, fixture, report, args.integrity_timeout)
+        report["result"] = "pass" if args.integrity_timeout else "partial"
     except Exception as error:
         report["error"] = str(error)
         raise
