@@ -337,5 +337,6 @@ Base images receive an opportunistic CRC scrub in small slices while flash is
 already powered. A trusted quick boot schedules the first scrub after a minute;
 a full check/scrub delays the next pass for 24 hours of uptime. An idle flash is
 not powered or held awake for this work. A mismatch clears trust and marks the
-base unavailable for repair. The proven 2 MHz clock and 50 ms settle time remain
-the defaults; use the probe's `-DQSPI_SCK_DIVIDER=N` only for measured bench tests.
+base unavailable for repair. Both left firmware builds use a 32 MHz QSPI
+clock and a 50 ms flash rail settle time. Set `-DQSPI_SCK_DIVIDER=N` when
+building the standalone probe to test other clock speeds.

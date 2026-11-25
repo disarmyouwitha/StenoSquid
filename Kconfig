@@ -59,12 +59,11 @@ config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
     int "External flash clock divider (32 MHz / n)"
     depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH
     range 1 16
-    default 16
+    default 1
     help
-      16 gives the 2 MHz clock proven on the handwired left half. A routed
-      PCB should tolerate a much smaller divider, which shortens the full
-      dictionary check after a cold boot. Confirm each new value with
-      tools/qspi before relying on it.
+      The default divider of 1 runs the external flash at 32 MHz.
+      Increase the divider for hardware that needs a slower clock.
+      A divider of 16 gives 2 MHz.
 
 config ZMK_JAVELIN_STENO_FLASH_SETTLE_MS
     int "External flash rail settle time in milliseconds"
