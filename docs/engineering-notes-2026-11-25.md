@@ -42,28 +42,22 @@ budget and no pass/fail rule. This is now its own item, and it gates any further
   one for one).
 - **Gate.** Browser-measured useful payload rate, JS path versus Python path, on the same keyboard and fixture.
 
-### R3. Manager direction: one standalone HTML, shared core with the firmware
+### R3. Manager direction: one standalone HTML, no Python, no CLI
 
 **Decision recorded:** the Manager is a standalone HTML app run in Chrome. There is no command-line tool and no
 backward compatibility with one. The Python-in-browser design exists only because the Manager started as a Python
-program; it is not a requirement.
+program. It was audited and measured in `docs/manager-audit-2026-11-25.md`, which supersedes the earlier
+"compile the firmware's C++ to WASM" framing:
 
-**Goal (proposal): compile the firmware's own C++ storage code to WebAssembly** so the Manager and the firmware
-cannot diverge, then replace the Python planner and Pyodide entirely.
-
-| Milestone | Content | Gate |
-| --- | --- | --- |
-| W0 spike | Build `native_catalog/store/stage/validator` (about 3.9k lines, already host-compilable) to WASM behind a small C API; run an existing fixture test inside Node/WASM | Byte-identical results to the native test |
-| W1 device model | Read the keyboard's flash map into a WASM-hosted NOR model and dry-run the firmware's own validator and staged commit before any write | A plan the firmware would refuse is refused in the browser |
-| W2 planners | Port planning and compilation (import, snapshot, repack, recovery, dictionary compile) from Python to the shared C++ core; Python versions stay as oracles until parity, then go | Golden-vector parity on real dictionaries |
-| W3 new UI | Plain JS or TypeScript, no framework, one HTML file built with a bundler, WebHID plus the JS transfer loop (R2) | Startup, bundle size and planning time measured against the current app |
-| W4 retire | Delete Pyodide and the Python Manager code | Nothing in the release needs Python |
-
-Risks: effort; toolchain pinning; C++ exceptions and allocation inside WASM; planner semantics re-implemented
-wrongly (mitigated by the oracle-parity gate). Today's costs for comparison (measured): the embedded Pyodide runtime
-is about **11.6 MiB** (wasm 8.4, stdlib 2.3, loader 1.0), starts in 3.4 s in Node, and needs Chrome 137+ for JSPI.
-Code: about 8.4k lines of Python (storage 5.3k, manager 2.1k, compiler 0.6k, dictionaries 0.4k) against 1.5k of JS.
-
+- **Measured:** a typed-array JS compiler is byte-identical to the Python compiler on the real dictionaries and about
+  4-5x faster (0.4-0.6 s versus 1.7-2.5 s native, 2.6-3.0 s in Pyodide); the decoder is 10-13x faster and
+  identical entry for entry. Pyodide adds 2.5-3.4 s of startup and an 11.6 MiB runtime, runs on the UI thread, and
+  every HID report crosses a JSON bridge.
+- **Proposal:** a TypeScript Manager (existing HTML/CSS, workers for heavy work, a JS transfer session over a
+  pluggable transport), ported in gated steps M0-M6 with the Python code kept only as a test oracle until parity.
+  WebAssembly stays reserved for one justified use: the firmware's own validator as an in-browser dry run.
+- **Gate for every port step:** output byte-identical to Python or accepted by the C++ simulator
+  (`transfer_device_sim`, the real `NativeStage`).
 ## 2. Findings
 
 ### RAM by owner (measured, 32-slot everyday build with the transfer option, link map)
