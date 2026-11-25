@@ -153,10 +153,10 @@ journal reads and bytes, and compact provider calls. Host timing captures the
 simulated NOR and the pinned engine. It does not cover QSPI, device scheduling,
 BLE, or physical scan timing.
 
-To build the 32-slot Boardsource test firmware, add
-`config/boardsource-wireless-corne/phase1-replay.conf` to the everyday left
-build's extra configuration files. Flash the matching left target. Once the
-test pool is loaded, run the read-only device checks and the keyboard replay.
+Add `config/boardsource-wireless-corne/phase1-everyday.conf` to the everyday
+left build's extra configuration files to open the 32-slot qualification pool
+with normal firmware. Use `config/boardsource-wireless-corne/phase1-replay.conf`
+for the instrumented device checks and keyboard replay below.
 
 ```sh
 python3 tools/bench/phase1_device.py --serial SERIAL \
@@ -176,3 +176,19 @@ After collecting live-tail replay results, use `phase1_device.py --checkpoint`
 with a new report path to publish a replacement checkpoint. This changes
 the fixture's catalog and journal state. The check records the physical
 replacement index blocks, rechecks integrity, and repeats the lookup oracle.
+
+### 64 MiB hardware results
+
+- The Boardsource pool used 1,006 of 1,023 blocks, with 17 contiguous
+  blocks free. It held 32 dictionaries and 80,032 checkpoint records.
+- On the instrumented boot, validation traversed both catalog copies
+  and finished by 146 seconds of uptime. The earlier seven-minute
+  loading stall remains unexplained.
+- The everyday 32-slot build from `d8136ea` at 32 MHz reopened the same
+  pool 68 seconds after its USB console became reachable following a UF2
+  update. The catalog matched the fixture byte for byte, all 233 lookups
+  passed, and `KAT` returned `cat`.
+- Using injected chords and USB capture, the 44-stroke prose burst passed
+  at 349.90 WPM. The completed 300 WPM rerun processed all 1,400 strokes in
+  order with zero input overflows. It missed one completion deadline and
+  the host received one extra character.
