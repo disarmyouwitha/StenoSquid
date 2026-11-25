@@ -4,6 +4,10 @@ The question: the Manager is a standalone HTML app, yet its logic runs as Python
 its place, or is it a leftover from when the Manager was a Python program? This document audits the code, measures
 the real workloads, and designs the Manager as if Python did not exist, so the decision rests on numbers.
 
+> **Owner decisions after review (see the engineering notes, section 1 R3 and section 4):** the Manager language is
+> JavaScript. Where this document says TypeScript, read "JavaScript, with TypeScript optional". Python stays in the
+> laboratory (development and hardware-test scripts, independent oracles); only the shipped product loses it.
+
 Labels: **measured** (a number from a run), **from code** (read from source), **estimate** (computed from
 measurements, not observed), **proposal**.
 
