@@ -3,6 +3,9 @@
 #include "console_commands.h"
 #ifdef CONFIG_ZMK_JAVELIN_STENO_HID_PROVISIONING
 #include "native_store_runtime.h"
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+#include "transfer_frame.h"
+#endif
 #endif
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 #include "battery_log.h"
@@ -236,6 +239,18 @@ void hid_worker(void *, void *, void *) {
             continue;
         }
         HidWriter writer(report);
+
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+        // Binary transfer frames start with 0xB5, which console text and Base64 never
+        // produce, so routing needs no mode switch and the console is untouched.
+        if (report.bytes[0] == steno_transfer::kMagic) {
+            uint8_t reply[REPORT_BYTES];
+            const size_t length = steno_squid_native_transfer_report(
+                report.bytes, sizeof(report.bytes), report.bluetooth ? report.session : 0, reply, sizeof(reply));
+            if (length) writer.Write(reinterpret_cast<const char *>(reply), length);
+            continue;
+        }
+#endif
 
         const auto *bytes = report.bytes;
         size_t length = sizeof(report.bytes);

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the transfer frame/session host tests.
+"""Build and run the transfer frame/session host tests (and, with --port, the firmware glue policy).
 
 The golden frame is produced here with struct+zlib, independently of the C++
 codec, so a shared bug in encoder and decoder cannot hide.
@@ -20,11 +20,16 @@ def golden_frame():
 
 
 def main():
+    build_and_run("test_transfer_port.cc", [])
+    build_and_run("test_transfer_session.cc", [golden_frame()])
+
+
+def build_and_run(source, args):
     with tempfile.TemporaryDirectory(prefix='steno-transfer-') as folder:
-        binary = Path(folder) / 'test_transfer_session'
+        binary = Path(folder) / 'test_transfer'
         subprocess.run([*compiler(), '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
-                        ROOT / 'tools/tests/test_transfer_session.cc', '-o', binary], check=True)
-        subprocess.run([binary, golden_frame()], check=True)
+                        ROOT / 'tools/tests' / source, '-o', binary], check=True)
+        subprocess.run([binary, *args], check=True)
 
 
 if __name__ == '__main__':

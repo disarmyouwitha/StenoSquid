@@ -7,6 +7,9 @@
 #include "../../tools/storage/native_work_slice.h"
 #include "native_collection_sync.h"
 #include "native_dictionary_adapter.h"
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+#include "transfer_port.h"
+#endif
 #include "dictionary_benchmark.h"
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
@@ -901,6 +904,8 @@ namespace {
 NativeProvisioner<FlashDevice> transfer(flash_device);
 NativeStage<FlashDevice> staged(store, validator);
 enum steno_squid_mode stage_mode = STENO_SQUID_MODE_IMPORT;
+uint32_t owner_session;  // Connection that opened the active update (0 = USB).
+uint32_t stage_epoch;    // Changes each time a staged update begins; lets a lost session detect it.
 alignas(4) uint8_t incoming[512];
 void reboot_worker(k_work *){sys_reboot(SYS_REBOOT_COLD);}
 K_WORK_DELAYABLE_DEFINE(reboot_work,reboot_worker);
@@ -1000,6 +1005,10 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (!std::strcmp(command, "journal-usage-capabilities\n")) return "OK USAGE2";
     if (!std::strcmp(command, "layout-map\n")) return LayoutMap(reply, bytes);
     if (!std::strcmp(command, "base-capabilities\n")) return "OK BASE1";
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+    // Binary frames (first byte 0xB5) share the console report; 49 useful bytes per 63-byte report.
+    if (!std::strcmp(command, "transfer-capabilities\n")) return "OK XFER1 49";
+#endif
     if (!std::strcmp(command, "factory-member-capabilities\n")) return "OK FACTORY2";
     NativeUpdateKind kind = NativeUpdateKind::Compact;
     uint32_t snapshot_id = 0, lower_id = 0;
@@ -1049,6 +1058,7 @@ const char *Update(const char *command, char *reply, size_t bytes) {
     if (kind != NativeUpdateKind::Compact || !std::strcmp(command, "begin compact\n")) {
         if (!healthy || exporting || transfer.Active() || !staged.Begin(kind, MaxDictionaries, snapshot_id, lower_id))
             return "ERR Native store cannot stage an update";
+        ++stage_epoch;
         dictionary_flash_read_session(true);
         TouchInstall();
         stage_mode = kind == NativeUpdateKind::Backup ? STENO_SQUID_MODE_UNKNOWN : (kind == NativeUpdateKind::Personal || kind == NativeUpdateKind::Named || kind == NativeUpdateKind::Base || kind == NativeUpdateKind::SnapshotNamed)
@@ -1271,7 +1281,79 @@ const char *Install(const char *command,char *reply,size_t bytes) {
     }
     return "ERR Unknown native installation command";
 }
+
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+// Experimental binary transfer: policy lives in transfer_port.h and is host-tested;
+// this block only maps its hooks onto the existing locks, pause and reboot path.
+struct TransferBackend {
+    bool Active() const { return staged.Active(); }
+    uint8_t KindId() const { return static_cast<uint8_t>(staged.Kind()); }
+    uint32_t Epoch() const { return stage_epoch; }
+    bool Erase(uint32_t segment) { return staged.Erase(segment); }
+    bool Write(uint32_t address, const uint8_t *data, uint32_t size) { return staged.Write(address, data, size); }
+    bool Read(uint32_t address, uint8_t *out, uint32_t size) { return staged.Read(address, out, size); }
+    steno_transfer::StagedCommit Commit(uint32_t segment, uint32_t bytes, uint32_t crc, bool &reopen) {
+        switch (staged.Commit(segment, bytes, crc, reopen, ProbeStagedBase)) {
+        case CatalogResult::Ok: return steno_transfer::StagedCommit::kOk;
+        case CatalogResult::Busy: return steno_transfer::StagedCommit::kBusy;
+        case CatalogResult::Quarantined: return steno_transfer::StagedCommit::kQuarantined;
+        default: return steno_transfer::StagedCommit::kRefused;
+        }
+    }
+    void Abort() { // Same as the console "abort"; the read session is reference counted, so only once.
+        if (!staged.Active()) return;
+        staged.Abort();
+        dictionary_flash_read_session(false);
+        k_work_cancel_delayable(&install_timeout_work);
+        steno_squid_upload_status(stage_mode, 0);
+    }
+};
+struct TransferEnv {
+    bool TryService() { return dictionary_flash_try_service(); }
+    void Unlock() { k_mutex_unlock(&flash_lock); }
+    bool StageActive() { return staged.Active(); }
+    bool Owns(uint32_t source) { return owner_session == source; }
+    uint32_t Now() { return static_cast<uint32_t>(k_uptime_get()); }
+    void Touch() {
+        TouchInstall();
+        if (stage_mode == STENO_SQUID_MODE_BUSY && staged.Kind() != NativeUpdateKind::Backup) {
+            const auto operation = staged.Kind();
+            stage_mode = operation == NativeUpdateKind::Personal || operation == NativeUpdateKind::Named ||
+                         operation == NativeUpdateKind::Base || operation == NativeUpdateKind::SnapshotNamed
+                ? STENO_SQUID_MODE_IMPORT : STENO_SQUID_MODE_SAVING;
+        }
+        steno_squid_upload_status(stage_mode, 60000);
+    }
+    template <class F> void WithFlash(F f) {
+        const NativeInputPause input_pause(true);
+        flash_device.mapped = false;
+        if (!f()) {
+            flash_device.mapped = true;
+            return;
+        }
+        // Same sequence as the console commit: a published (or ambiguous) update needs a reopen.
+        if (staged.Active()) {
+            staged.Abort();
+            dictionary_flash_read_session(false);
+        }
+        k_work_cancel_delayable(&install_timeout_work);
+        healthy = store.opened = false;
+        atomic_clear(&lf_mapped_ready);
+        k_work_reschedule(&reboot_work, K_SECONDS(2));
+    }
+};
+TransferBackend transfer_backend;
+TransferEnv transfer_env;
+steno_transfer::FirmwarePort<TransferBackend, TransferEnv> transfer_port(transfer_backend, transfer_env);
+#endif
 }
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+// Called only by the HID worker, like steno_squid_native_install_command.
+extern "C" size_t steno_squid_native_transfer_report(const uint8_t *report, size_t size, uint32_t source,
+                                                       uint8_t *out, size_t capacity) {
+    return transfer_port.OnReport(report, size, source, out, capacity);
+}
+#endif
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes,uint32_t bluetooth_session) {
     if (!std::strcmp(command, "connection\n")) {
         snprintk(reply, bytes, "%s", bluetooth_session ? "OK BLUETOOTH" : "OK USB");
@@ -1303,7 +1385,6 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
                 ? "ERR Layout scan deferred until flash is available" : "ERR Native flash busy");
         return;
     }
-    static uint32_t owner_session;
     const bool was_active = transfer.Active() || staged.Active();
     const char *result;
     if (was_active && owner_session != bluetooth_session && std::strcmp(command, "status\n")) {

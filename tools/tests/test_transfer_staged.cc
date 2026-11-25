@@ -2,7 +2,7 @@
 // StagedSink, and require the same result as the legacy erase/write/commit path.
 // argv: before.bin import-plan.bin compact-plan.bin
 #include "native_stage_fixture.h"
-#include "../../src/steno_squid/transfer_staged_sink.h"
+#include "../../src/steno_squid/transfer_port.h"
 #include <iostream>
 
 using namespace steno_transfer;
@@ -11,6 +11,7 @@ struct StageBackend {
     NativeStage<NativeDevice> &stage;
     bool Active() const { return stage.Active(); }
     uint8_t KindId() const { return static_cast<uint8_t>(stage.Kind()); }
+    uint32_t Epoch() const { return 0; }
     bool Erase(uint32_t s) { return stage.Erase(s); }
     bool Write(uint32_t a, const uint8_t *d, uint32_t n) { return stage.Write(a, d, n); }
     bool Read(uint32_t a, uint8_t *o, uint32_t n) { return stage.Read(a, o, n); }
@@ -95,6 +96,49 @@ static Outcome Run(NativeStage<NativeDevice> &stage, const Plan &plan, uint32_t 
     return {d.type == kDone, receiver.state(), sink.reopen_required(), stage.Active()};
 }
 
+// The same upload, but delivered as zero-padded 63-byte reports through the firmware glue.
+struct PassiveEnv {
+    bool locked = false;
+    bool TryService() { locked = true; return true; }
+    void Unlock() { locked = false; }
+    bool StageActive() { return true; }
+    bool Owns(uint32_t) { return true; }
+    void Touch() {}
+    uint32_t Now() { return 0; }
+    template <class F> void WithFlash(F f) { f(); }
+};
+
+static bool PortRun(NativeStage<NativeDevice> &stage, const Plan &plan) {
+    StageBackend backend{stage};
+    PassiveEnv env;
+    FirmwarePort<StageBackend, PassiveEnv> port(backend, env);
+    auto stream = Records(plan);
+    uint8_t begin[13 + kStagedArgsBytes];
+    Put32(begin, stream.size()); Put32(begin + 4, Crc32(stream.data(), stream.size()));
+    Put16(begin + 8, 49); Put16(begin + 10, 8); begin[12] = static_cast<uint8_t>(stage.Kind());
+    Put32(begin + 13, plan.metadata); Put32(begin + 17, plan.bytes); Put32(begin + 21, plan.crc);
+    auto exchange = [&](const std::vector<uint8_t> &frame) {
+        uint8_t report[63] = {}, out[63];
+        assert(frame.size() <= sizeof report);
+        memcpy(report, frame.data(), frame.size());
+        const size_t n = port.OnReport(report, sizeof report, 0, out, sizeof out);
+        steno_transfer::Decoder d; d.Push(out, n);
+        steno_transfer::Frame f;
+        assert(d.Poll(f));
+        return std::make_pair(f.type, f.length ? f.payload[0] : uint8_t(0));
+    };
+    assert(exchange(MakeFrame(steno_transfer::kBegin, 1, 0, begin, sizeof begin)).first == steno_transfer::kAck);
+    for (size_t off = 0; off < stream.size(); off += 49) {
+        const size_t n = std::min<size_t>(49, stream.size() - off);
+        assert(exchange(MakeFrame(steno_transfer::kData, 1, off, stream.data() + off, n)).first == steno_transfer::kAck);
+    }
+    for (int i = 0; i < 1000; i++) {
+        const auto r = exchange(MakeFrame(steno_transfer::kEnd, 1, stream.size()));
+        if (r.first == steno_transfer::kAck) break;
+        assert(r.first == steno_transfer::kNak);
+    }
+    return exchange(MakeFrame(steno_transfer::kCommit, 1, stream.size())).first == steno_transfer::kDone;
+}
 struct Rig {
     Nor nor;
     NativeDevice dev{{nor}};
@@ -122,6 +166,12 @@ static void Equivalent(const std::vector<uint8_t> &image, const Plan &plan, Nati
     const Outcome ok = Run(rig.stage, plan, plan.crc);
     assert(ok.committed && ok.state == State::kCommitted && ok.reopen);
     assert(rig.nor.data == ref.nor.data);
+    { // And through the firmware glue, as 63-byte HID reports.
+        Rig via_port(image);
+        assert(via_port.stage.Begin(kind));
+        assert(PortRun(via_port.stage, plan));
+        assert(via_port.nor.data == ref.nor.data);
+    }
 
     // Every torn-write point: a cold open must succeed (or quarantine), and DONE implies a new root.
     for (unsigned cut = 1; cut <= total_ops + 8; ++cut) {

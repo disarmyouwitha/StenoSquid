@@ -22,6 +22,10 @@ void steno_squid_native_power_changed(void);
 int32_t steno_squid_native_scrub_wait(void);
 void steno_squid_native_scrub_step(void);
 void steno_squid_native_install_command(const char *command,char *reply,size_t bytes,uint32_t bluetooth_session);
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+// One binary-frame report in, packed reply frames out (bytes written). source: 0 USB, else BLE session.
+size_t steno_squid_native_transfer_report(const uint8_t *report, size_t size, uint32_t source, uint8_t *out, size_t capacity);
+#endif
 #ifdef __cplusplus
 }
 #endif

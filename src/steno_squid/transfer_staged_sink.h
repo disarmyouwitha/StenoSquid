@@ -21,6 +21,7 @@
  *
  * Backend requirements (NativeStage supplies these; firmware wraps it):
  *   bool Active() const;            uint8_t KindId() const;
+ *   uint32_t Epoch() const;         // changes every time a staged update begins
  *   bool Erase(uint32_t segment);   bool Write(uint32_t address, const uint8_t *, uint32_t);
  *   bool Read(uint32_t address, uint8_t *, uint32_t);
  *   StagedCommit Commit(uint32_t segment, uint32_t bytes, uint32_t crc, bool &reopen);
@@ -58,6 +59,7 @@ public:
         commit_status_ = StagedCommit::kOk;
         if (info.args_length != kStagedArgsBytes || !backend_.Active() || backend_.KindId() != info.kind)
             return SinkResult::kFail;
+        epoch_ = backend_.Epoch();
         commit_segment_ = Get32(info.args);
         commit_bytes_ = Get32(info.args + 4);
         commit_crc_ = Get32(info.args + 8);
@@ -73,7 +75,7 @@ public:
     }
 
     SinkResult Write(uint32_t, const uint8_t *data, size_t size) override {
-        if (!attached_) return SinkResult::kFail;
+        if (!Valid()) return SinkResult::kFail;
         while (size) {
             switch (state_) {
             case Parse::kType:
@@ -119,12 +121,12 @@ public:
 
     /* Flash readback of the commit payload, in bounded slices (kBusy until done). */
     SinkResult Verify() override {
-        if (!attached_ || state_ != Parse::kType || !commit_erased_) return SinkResult::kFail;
-        uint8_t block[kMaxWrite];
+        if (!Valid() || state_ != Parse::kType || !commit_erased_) return SinkResult::kFail;
+        uint8_t *const block = page_; // Parsing is idle here, so the record buffer is free: no stack cost.
         const uint32_t base = commit_segment_ * kSegmentBytes;
         uint32_t budget = kVerifySliceBytes;
         while (verify_offset_ < commit_bytes_ && budget) {
-            const uint32_t n = commit_bytes_ - verify_offset_ < sizeof block ? commit_bytes_ - verify_offset_ : sizeof block;
+            const uint32_t n = commit_bytes_ - verify_offset_ < kMaxWrite ? commit_bytes_ - verify_offset_ : kMaxWrite;
             if (!backend_.Read(base + verify_offset_, block, n)) return SinkResult::kFail;
             verify_crc_ = Crc32Update(verify_crc_, block, n);
             verify_offset_ += n;
@@ -135,7 +137,7 @@ public:
     }
 
     SinkResult Commit() override {
-        if (!attached_) return SinkResult::kFail;
+        if (!Valid()) return SinkResult::kFail;
         bool reopen = false;
         commit_status_ = backend_.Commit(commit_segment_, commit_bytes_, commit_crc_, reopen);
         reopen_ = reopen;
@@ -146,7 +148,8 @@ public:
     }
 
     void Abort() override {
-        if (attached_) backend_.Abort();
+        // Never abort a different update that began after ours was lost (timeout, legacy abort).
+        if (attached_ && backend_.Epoch() == epoch_) backend_.Abort();
         attached_ = false;
         state_ = Parse::kType;
     }
@@ -154,6 +157,8 @@ public:
 private:
     static constexpr uint32_t kSegmentBytes = 65536;
     enum class Parse : uint8_t { kType, kEraseBody, kWriteHeader, kWriteData };
+
+    bool Valid() const { return attached_ && backend_.Active() && backend_.Epoch() == epoch_; }
 
     size_t Take(const uint8_t *data, size_t size) {
         const size_t room = need_ - used_;
@@ -168,7 +173,7 @@ private:
     bool attached_ = false, commit_erased_ = false, reopen_ = false;
     StagedCommit commit_status_ = StagedCommit::kOk;
     uint32_t commit_segment_ = 0, commit_bytes_ = 0, commit_crc_ = 0;
-    uint32_t address_ = 0, verify_offset_ = 0, verify_crc_ = 0, writes_ = 0, erases_ = 0;
+    uint32_t epoch_ = 0, address_ = 0, verify_offset_ = 0, verify_crc_ = 0, writes_ = 0, erases_ = 0;
     size_t need_ = 0, used_ = 0;
     uint8_t page_[kMaxWrite]; // Also holds record headers (6 bytes).
 };

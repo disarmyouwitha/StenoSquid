@@ -112,6 +112,19 @@ config ZMK_JAVELIN_STENO_HID_PROVISIONING
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     default y
 
+config ZMK_STENO_SQUID_TRANSFER_SESSION
+    bool "Experimental binary transfer session for Native dictionary updates"
+    depends on ZMK_JAVELIN_STENO_HID_PROVISIONING && ZMK_STENO_SQUID_NATIVE_STORE
+    default n
+    help
+      Accept CRC-framed binary uploads (first byte 0xB5) on the existing Javelin
+      console report, USB and Bluetooth, and stream them into an already-open
+      staged Native update. The text console, Base64 commands, storage formats
+      and recovery paths are unchanged, and the Manager falls back to them when
+      "native_install update transfer-capabilities" is not answered. Costs about
+      0.9 KiB of SRAM (decoder, session, page buffer). Not for release builds
+      until reviewed; see docs/transfer-session.md.
+
 config ZMK_JAVELIN_STENO_BLE_HID
     bool "Expose the Javelin browser console over Bluetooth HID"
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY && ZMK_BLE
