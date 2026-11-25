@@ -10,11 +10,11 @@ namespace {
 uint64_t replay_keys[CAPACITY];
 uint32_t replay_times[CAPACITY];
 unsigned replay_count;
-unsigned replay_total, replay_interval, replay_mismatches, replay_overruns;
+unsigned replay_total, replay_interval, replay_mismatches, replay_overruns, replay_saturations;
 uint32_t replay_first_ms, replay_last_ms;
 constexpr unsigned REPLAY_LOOP_CAPACITY = 1536;
 struct LoopSample {
-    uint16_t engine_us, completion_ms;
+    uint16_t engine_4us, completion_ms;
 };
 LoopSample replay_loop_samples[REPLAY_LOOP_CAPACITY];
 atomic_t replay_sent, replay_active, replay_aborted, replay_hints = ATOMIC_INIT(1);
@@ -65,25 +65,29 @@ void RecordLoopChord(unsigned index, uint32_t outline, uint32_t elapsed, bool su
     const unsigned sent = atomic_get(&replay_sent);
     const bool timestamp_valid = index < sent && sent - index <= CAPACITY;
     const uint32_t delay = timestamp_valid ? k_uptime_get_32() - replay_times[index % CAPACITY] : UINT16_MAX;
-    const uint32_t engine_us = (elapsed + SystemCoreClock / 1000000u - 1u) / (SystemCoreClock / 1000000u);
+    const uint32_t cycles_per_quantum = SystemCoreClock / 250000u;
+    const uint32_t engine_4us = (elapsed + cycles_per_quantum - 1u) / cycles_per_quantum;
     if (!success || !timestamp_valid || index >= replay_total ||
         outline != StenoKeyState(replay_keys[index % replay_count]).ToStroke().GetKeyState())
         ++replay_mismatches;
-    if (delay > UINT16_MAX || engine_us > UINT16_MAX || delay * 1000u >= replay_interval)
+    if (delay > UINT16_MAX || delay * 1000u >= replay_interval)
         ++replay_overruns;
+    if (engine_4us > UINT16_MAX)
+        ++replay_saturations;
     if (index < REPLAY_LOOP_CAPACITY)
-        replay_loop_samples[index] = {uint16_t(MIN(engine_us, UINT16_MAX)), uint16_t(MIN(delay, UINT16_MAX))};
+        replay_loop_samples[index] = {uint16_t(MIN(engine_4us, UINT16_MAX)), uint16_t(MIN(delay, UINT16_MAX))};
     else
         ++overflow;
 }
 
 void PrintLoopCapture() {
     const unsigned completed = atomic_get(&completed_chords);
-    Console::Printf("{\"completed\":%u,\"overflow\":%u,\"mismatches\":%u,\"overruns\":%u,\"samples\":[",
-                    completed, overflow, replay_mismatches, replay_overruns);
+    Console::Printf("{\"completed\":%u,\"overflow\":%u,\"mismatches\":%u,\"overruns\":%u,"
+                    "\"engine_saturations\":%u,\"samples\":[",
+                    completed, overflow, replay_mismatches, replay_overruns, replay_saturations);
     for (unsigned i = 0; i < MIN(completed, REPLAY_LOOP_CAPACITY); ++i) {
         const auto &sample = replay_loop_samples[i];
-        Console::Printf("%s[%u,%u]", i ? "," : "", sample.engine_us, sample.completion_ms);
+        Console::Printf("%s[%u,%u]", i ? "," : "", 4u * sample.engine_4us, sample.completion_ms);
     }
     Console::Printf("]}\n\n");
 }
@@ -154,7 +158,7 @@ bool ReplayCommand(const char *args) {
             atomic_clear(&completed_chords);
             replay_total = replay_count * repeats;
             replay_interval = interval;
-            replay_mismatches = replay_overruns = 0;
+            replay_mismatches = replay_overruns = replay_saturations = 0;
             replay_fault.magic = 0;
             dictionary_flash_read_session(true);
             atomic_set(&replay_active, 1);

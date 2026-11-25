@@ -10,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import sys
+from time import monotonic
 import tkinter as tk
 
 from run_dictionary_benchmark import open_console, parse_outline, percentile
@@ -115,7 +116,9 @@ def summarize_loop(report, masks, expected, words, interval, status, replay, cap
     capitalized = expected[:1].upper() + expected[1:]
     text_matches = received in (expected, capitalized, " " + expected, " " + capitalized)
     cadence_matches = abs(observed - report["target_wpm"]) <= report["target_wpm"] / 100
-    passed = (strokes_match and text_matches and cadence_matches and not capture["overruns"]
+    overruns = sum(sample[1] * 1000 >= interval for sample in samples)
+    saturated = capture.get("engine_saturations", sum(sample[0] == 65535 for sample in samples))
+    passed = (strokes_match and text_matches and cadence_matches and not overruns
               and status["ready"] and not status["read_only"]
               and status["generation"] == report["state_before"]["generation"]
               and status["input_overflows"] == report["state_before"]["input_overflows"])
@@ -123,7 +126,8 @@ def summarize_loop(report, masks, expected, words, interval, status, replay, cap
                   expected_text=expected, captured_text=received, exact_text=text_matches,
                   verbatim_text=expected == received, exact_strokes=strokes_match,
                   cadence_matches=cadence_matches, observed_wpm=round(observed, 2),
-                  deadline_overruns=capture["overruns"], engine_ms=latency([sample[0] / 1000 for sample in samples]),
+                  deadline_overruns=overruns, engine_sample_saturations=saturated,
+                  engine_ms=latency([sample[0] / 1000 for sample in samples]),
                   emission_to_completion_ms=latency([sample[1] for sample in samples]),
                   device_replay=replay, device_trace=capture)
 
@@ -136,6 +140,7 @@ def capture_window(console, args, report, masks, expected, words, interval):
     editor = tk.Text(window, width=90, height=12, wrap="word")
     editor.pack(padx=10, pady=6)
     active = False
+    drain_deadline = 0.0
     app_active = foreground_check()
 
     def stop():
@@ -168,8 +173,19 @@ def capture_window(console, args, report, masks, expected, words, interval):
         message.set(f"Replay {report['result']}.")
         window.after(900, window.quit)
 
+    def wait_for_text():
+        if not active:
+            return
+        text = editor.get("1.0", "end-1c")
+        capitalized = expected[:1].upper() + expected[1:]
+        if text in (expected, capitalized, " " + expected, " " + capitalized) or monotonic() >= drain_deadline:
+            finish()
+        else:
+            message.set("Waiting for the final keyboard reports…")
+            window.after(150, wait_for_text)
+
     def start():
-        nonlocal active
+        nonlocal active, drain_deadline
         editor.delete("1.0", "end")
         editor.focus_set()
         if not in_foreground():
@@ -187,7 +203,9 @@ def capture_window(console, args, report, masks, expected, words, interval):
             cancel(str(error))
             return
         window.after(40, watch_focus)
-        window.after(math.ceil(3000 + strokes * interval / 1000), finish)
+        replay_ms = math.ceil(3000 + strokes * interval / 1000)
+        drain_deadline = monotonic() + replay_ms / 1000 + 15
+        window.after(replay_ms, wait_for_text)
 
     def in_foreground():
         return app_active() and editor.focus_displayof() is editor
