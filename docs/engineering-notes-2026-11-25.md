@@ -53,9 +53,11 @@ program. It was audited and measured in `docs/manager-audit-2026-11-25.md`, whic
   4-5x faster (0.4-0.6 s versus 1.7-2.5 s native, 2.6-3.0 s in Pyodide); the decoder is 10-13x faster and
   identical entry for entry. Pyodide adds 2.5-3.4 s of startup and an 11.6 MiB runtime, runs on the UI thread, and
   every HID report crosses a JSON bridge.
-- **Proposal:** a TypeScript Manager (existing HTML/CSS, workers for heavy work, a JS transfer session over a
-  pluggable transport), ported in gated steps M0-M6 with the Python code kept only as a test oracle until parity.
-  WebAssembly stays reserved for one justified use: the firmware's own validator as an in-browser dry run.
+- **Decision (owner, after review):** the Manager is written in **JavaScript**. TypeScript is optional, never a
+  requirement, so no build step is needed for the standalone HTML. The plan is the existing HTML/CSS, workers for
+  heavy work and a JS transfer session over a pluggable transport, ported in gated steps M0-M6. Python is removed
+  from the product, not from the laboratory (section 3). WebAssembly stays optional: the firmware's own validator
+  as an in-browser dry run, only if it shows value. There is no WASM-first milestone.
 - **Gate for every port step:** output byte-identical to Python or accepted by the C++ simulator
   (`transfer_device_sim`, the real `NativeStage`).
 ## 2. Findings
@@ -111,16 +113,19 @@ now point at `StenoSquidManager.html`. The serial diagnostics (`--diag`) moved t
 Still present, listed for a decision: (a) the `hidapi` USB console (`import_personal.open_console`) and the scripts in
 `tools/bench/` that drive hardware through it, including Codex's replay tooling; (b) dead local-server code in
 `manager.js` and `index.html` (a `fetch` backend and a session-token placeholder); (c) historical references in
-`docs/archive/`, left untouched as a record. Option for (a): replace the lab harness with a Node or in-browser
-instrument once R3 exists, rather than keep Python only for it.
+`docs/archive/`, left untouched as a record. **Decision (owner, after review):** (a) stays. Python development and
+hardware-testing scripts, and the independent test oracles, remain in the repository. Removing Python from the product
+does not remove it from the laboratory.
 
 ## 4. Open decisions
 
 1. Allow binary uploads over Bluetooth before Phase 4 proves them? (Today they inherit the console's rules: ordinary
    staged updates only; setup, repack and recovery stay USB-only.)
 2. Keep the transfer wire format (BEGIN fields, record format) labeled experimental until approved.
-3. What replaces the Python lab harness (section 3a)?
-4. Approve W0 (the WASM spike) as the first Manager milestone.
+
+Settled by the owner after review: JavaScript is the Manager language (TypeScript optional); the Python lab scripts
+and oracles stay; the memory diagnostics stay available permanently (off by default); final qualification is
+cross-tested on the saturated 64 MiB board. The earlier WASM-first milestone (W0) is withdrawn and not on the plan.
 
 ## 5. Cleanup after the first hardware tests (do not forget)
 
@@ -128,13 +133,13 @@ Nothing below is urgent and none of it should happen before the Boardsource resu
 
 | Item | What to do | When |
 | --- | --- | --- |
-| Memory diagnostics (`memory_report`, `memory.conf`, `run_memory_report.py`) | Off by default. After the heap and stack data is in and the RAM is right-sized, decide: keep as a permanent opt-in tool (costs nothing when off) or remove | After tonight's runs and the right-sizing |
+| Memory diagnostics (`memory_report`, `memory.conf`, `run_memory_report.py`) | **Keep permanently** (owner decision): off by default, and a standing tool for future firmware work. Nothing to remove; after the data is in, only right-size the RAM | After tonight's runs |
 | Transfer option (`CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION`) | Stays opt-in until ratified; decide its default and the Bluetooth question | After hardware results |
 | JS spikes (`tools/bench/js/`, `manager_workloads.*`, `test_js_compiler.py`) | **Keep.** They are the seed of the new Manager core. Delete only the superseded naive port (`compile_dict.mjs`) and `phases.mjs` once `compile_fast.mjs` moves into the Manager source | At M1 |
 | Dead Python (1,367 unreachable lines in the shipped bundle) | Delete | Now or at M6 |
 | `native_transfer.py` | Retire when the JS transfer session lands | M3 |
 | Pyodide, `manager.py`, `bridge.py`, remaining Python Manager code | Retire | M6 |
-| Lab scripts that use `hidapi` (`tools/bench/*.py`) | Decide: keep as the one remaining Python, or replace with a Node instrument | M6 |
+| Lab scripts that use `hidapi` (`tools/bench/*.py`) | **Keep** (owner decision), along with the Python test oracles | n/a |
 | Dead `fetch`/token branch in `manager.js` and `index.html` | Remove with the de-polling work | M5 |
 | `docs/archive/` references to the old CLI | Leave as a historical record, or mark them archived | Anytime |
 | Branches and worktrees (`claude/phase2-transfer`, `claude/phase2-integration`, `StenoSquid-phase2`, `StenoSquid-int`) | Delete once merged to `main` | After merge |
@@ -162,6 +167,11 @@ of release v0.1.8 (Left.uf2, Right.uf2, StenoSquidManager.html); that release pr
 baseline, not a transfer-capable build. A 16 MiB board covers everything
 except 64 MiB high-address behavior, which stays simulator-tested here and hardware-tested in the Codex phase.
 
+**Final qualification (owner decision):** the 16 MiB board alone cannot qualify the combined release. Once the
+transport (wired and Bluetooth) is complete, it is cross-tested on the saturated 64 MiB Boardsource board: upload,
+download, backup and repack against the near-full pool, with high addresses exercised, before any release claim.
+Results on the nice!nano count as development evidence only.
+
 ### 6.2 Codex phase
 
 | Item | Source | Gate |
@@ -179,7 +189,7 @@ except 64 MiB high-address behavior, which stays simulator-tested here and hardw
 | R1 memory report on a cold boot, idle, typing replay, import, binary transfer and Bluetooth. Record the post-boot idle marks separately from the boot spike. Pass: 25% minimum stack headroom, an explicit heap margin, no safety-queue reductions | Table plus raw JSON |
 | Throughput before anything else changes: raw WebHID to scratch region with a synthetic payload (no planner), then a staged upload, in real Chrome | Useful payload bytes per second, per stage |
 | R2 / M3: direct JS transfer session over WebHID, ported NAK-flood and busy-NAK regression tests, measured on the same fixture | Same results as the Python client |
-| M1 and M2: TypeScript-or-JS verify, lookup, catalog parsing, allocation and planners, with golden vectors and C++ NativeStage simulator acceptance. Decide the build step (TypeScript needs one for the standalone HTML) before M1 | Byte-identical plans |
+| M1 and M2: JavaScript verify, lookup, catalog parsing, allocation and planners, with golden vectors and C++ NativeStage simulator acceptance. JavaScript is approved as the implementation language; TypeScript is optional and not required | Byte-identical plans |
 | Phase 3 research: CDC-ACM with Web Serial, checked against ZMK Studio coexistence; WebUSB only if CDC falls short; no new USB configuration ships without approval | RAM-only, scratch-flash and end-to-end rates |
 | Phase 4A and 4B on the BLE path: binary over the 63-byte reports, a bounded asynchronous TX queue (today depth 1 with a busy guard; distinguish notify acceptance from completion; verify against source) | Same three rates, plus input latency |
 
