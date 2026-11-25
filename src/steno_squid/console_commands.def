@@ -19,6 +19,10 @@ USER_COMMAND("add_user_entry", "Save a personal translation", add_entry, false)
 USER_COMMAND("remove_user_entry", "Remove a personal translation", remove_entry, false)
 USER_COMMAND("reset_user_dictionary", "Clear personal translations", reset_entries, false)
 
+#ifdef CONFIG_ZMK_STENO_SQUID_MEMORY_DIAGNOSTICS
+USER_COMMAND("memory_report", "Read heap and stack high-water marks", steno_squid_memory_report, true)
+#endif
+
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
 USER_COMMAND("dictionary_benchmark", "Read-only diagnostic timing and key traces", steno_squid_dictionary_benchmark, true)
 USER_COMMAND("dictionary_storage_probe", "Test native storage in reserved scratch sector", steno_squid_storage_probe, true)
