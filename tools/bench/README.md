@@ -171,3 +171,8 @@ capture window and leave the keys alone during injection. The replay validates
 the injected chord sequence on the board and the final text on the host.
 `phase1_device.py` reports the first sample from each distinct miss and the
 subsequent same-outline samples separately.
+
+After collecting live-tail replay results, use `phase1_device.py --checkpoint`
+with a new report path to publish a replacement checkpoint. This changes
+the fixture's catalog and journal state. The check records the physical
+replacement index blocks, rechecks integrity, and repeats the lookup oracle.
