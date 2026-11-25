@@ -121,3 +121,21 @@ instrument once R3 exists, rather than keep Python only for it.
 2. Keep the transfer wire format (BEGIN fields, record format) labeled experimental until approved.
 3. What replaces the Python lab harness (section 3a)?
 4. Approve W0 (the WASM spike) as the first Manager milestone.
+
+## 5. Cleanup after the first hardware tests (do not forget)
+
+Nothing below is urgent and none of it should happen before the Boardsource results are in.
+
+| Item | What to do | When |
+| --- | --- | --- |
+| Memory diagnostics (`memory_report`, `memory.conf`, `run_memory_report.py`) | Off by default. After the heap and stack data is in and the RAM is right-sized, decide: keep as a permanent opt-in tool (costs nothing when off) or remove | After tonight's runs and the right-sizing |
+| Transfer option (`CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION`) | Stays opt-in until ratified; decide its default and the Bluetooth question | After hardware results |
+| JS spikes (`tools/bench/js/`, `manager_workloads.*`, `test_js_compiler.py`) | **Keep.** They are the seed of the new Manager core. Delete only the superseded naive port (`compile_dict.mjs`) and `phases.mjs` once `compile_fast.mjs` moves into the Manager source | At M1 |
+| Dead Python (1,367 unreachable lines in the shipped bundle) | Delete | Now or at M6 |
+| `native_transfer.py` | Retire when the JS transfer session lands | M3 |
+| Pyodide, `manager.py`, `bridge.py`, remaining Python Manager code | Retire | M6 |
+| Lab scripts that use `hidapi` (`tools/bench/*.py`) | Decide: keep as the one remaining Python, or replace with a Node instrument | M6 |
+| Dead `fetch`/token branch in `manager.js` and `index.html` | Remove with the de-polling work | M5 |
+| `docs/archive/` references to the old CLI | Leave as a historical record, or mark them archived | Anytime |
+| Branches and worktrees (`claude/phase2-transfer`, `claude/phase2-integration`, `StenoSquid-phase2`, `StenoSquid-int`) | Delete once merged to `main` | After merge |
+| Local UF2 files in `build/uf2/` | Untracked; delete when superseded | Anytime |
