@@ -151,51 +151,6 @@ class ManagerTest(unittest.TestCase):
                 self.assertEqual(console.transport, "bluetooth")
         self.assertEqual(Hid.closed, [b"first", b"second"])
 
-    def test_connect_prefers_usb_and_can_reconnect_over_bluetooth(self):
-        jobs = manager.Jobs(None)
-        connect = {"action": "refresh", "transport": "auto"}
-        with patch.object(manager, "usb_console_devices", side_effect=[[{}], [], [{}]]) as discover_usb, \
-                patch.object(manager, "bluetooth_console_devices", return_value=[{}]) as discover_ble, \
-                patch.object(manager, "open_bluetooth_console", side_effect=lambda _: nullcontext(self.keyboard)):
-            jobs.run(connect)
-            self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "usb")
-            discover_ble.assert_not_called()
-            self.keyboard.transport = "bluetooth"
-            jobs.run(connect)
-            self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "bluetooth")
-            self.assertEqual(jobs.connected_serial, self.keyboard.serial)
-            self.keyboard.transport = "usb"
-            jobs.run(connect)
-            self.assertEqual(jobs.snapshot()["result"]["state"]["transport"], "usb")
-            discover_usb.assert_called_with(self.keyboard.serial)
-            discover_ble.assert_called_once()
-
-    def test_auto_connect_keeps_initial_screen_when_keyboard_is_absent(self):
-        jobs = manager.Jobs(None)
-        connect = {"action": "refresh", "transport": "auto"}
-        with patch.object(manager, "usb_console_devices", return_value=[]), \
-                patch.object(manager, "bluetooth_console_devices", return_value=[]):
-            jobs.run({**connect, "initial": True})
-            self.assertTrue(jobs.snapshot()["result"]["disconnected"])
-            jobs.run(connect)
-            self.assertEqual(jobs.snapshot()["status"], "error")
-            self.assertIn("USB or pair", jobs.snapshot()["message"])
-
-    def test_bluetooth_connection_refresh_and_edits_pin_the_device(self):
-        self.keyboard.transport = "bluetooth"
-        self.keyboard.adaptive = True
-        jobs = manager.Jobs(None)
-        with patch.object(manager, "open_bluetooth_console", side_effect=lambda _: nullcontext(self.keyboard)) as opened:
-            jobs.run({"action": "refresh", "transport": "bluetooth"})
-            state = jobs.snapshot()["result"]["state"]
-            self.assertEqual(state["transport"], "bluetooth")
-            self.assertFalse(state["repack"])
-            self.assertNotIn("native_install update repack-capabilities", self.keyboard.commands)
-            jobs.run({"action": "set", "id": 8, "outline": "KAT", "translation": "cat"})
-            self.assertEqual(jobs.snapshot()["status"], "done")
-            self.assertIn("native_entry commit", self.keyboard.commands)
-            self.assertEqual(opened.call_args.args, (self.keyboard.serial,))
-
     def test_bluetooth_json_import_is_rejected_before_opening_console(self):
         with patch.object(manager, "open_bluetooth_console") as opened:
             for action in ("import", "preview_import", "apply_import"):
@@ -513,19 +468,6 @@ class ManagerTest(unittest.TestCase):
             self.assertTrue(self.run_job("clear_personal", id=8, confirm="CLEAR")["cleared"])
             clear.assert_called_once_with(self.keyboard, 8, unittest.mock.ANY)
 
-    def test_connection_probe_detects_removed_board(self):
-        jobs = manager.Jobs(self.keyboard.serial)
-        jobs.connected_serial = self.keyboard.serial
-        with patch.object(manager, "usb_console_devices", return_value=[{}]):
-            jobs.check_connection()
-        self.assertEqual(jobs.connected_serial, self.keyboard.serial)
-        self.assertEqual(self.keyboard.commands, [])
-        jobs.next_connection_check = 0
-        with patch.object(manager, "usb_console_devices", return_value=[]):
-            jobs.check_connection()
-        self.assertIsNone(jobs.connected_serial)
-        self.assertTrue(jobs.snapshot()["connection_lost"])
-
     def test_compact_merge_previews_and_requires_usb_and_approval(self):
         self.keyboard.adaptive = True
         self.assertEqual(self.run_job("refresh")["state"]["merge_limit"], 16)
@@ -606,52 +548,6 @@ class ManagerTest(unittest.TestCase):
         with patch.object(manager, "backup_all", return_value={"format": "stenosquid-backup-2"}) as backup:
             self.assertEqual(self.run_job("backup")["filename"], "stenosquid-backup.json")
             backup.assert_called_with(self.keyboard)
-
-    def test_local_http_routes_require_session_and_origin(self):
-        started = Queue()
-        server_type = manager.ThreadingHTTPServer
-        make_server = patch.object(manager, "ThreadingHTTPServer",
-                                   side_effect=lambda *args: _publish(server_type(*args), started))
-        with make_server, patch.object(manager.webbrowser, "open", side_effect=started.put):
-            server_thread = Thread(target=manager.serve, daemon=True)
-            server_thread.start()
-            server, url = started.get(timeout=2), started.get(timeout=2)
-            try:
-                with urlopen(url, timeout=2) as response:
-                    html = response.read()
-                token = re.search(rb'name="manager-token" content="([^"]+)"', html).group(1).decode()
-                with self.assertRaises(HTTPError) as unauthorized:
-                    urlopen(url + "/api/job", timeout=2)
-                self.assertEqual(unauthorized.exception.code, 403)
-                headers = {"X-StenoSquid-Token": token, "Content-Type": "application/json"}
-                task = b'{"action":"refresh"}'
-                with self.assertRaises(HTTPError) as wrong_origin:
-                    urlopen(Request(url + "/api/job", data=task, headers={**headers, "Origin": "https://example.org"}),
-                            timeout=2)
-                self.assertEqual(wrong_origin.exception.code, 403)
-                with urlopen(Request(url + "/api/job", data=task, headers={**headers, "Origin": url}), timeout=2) as response:
-                    self.assertEqual(response.status, 202)
-                    identity = json.load(response)["id"]
-                headers["Origin"] = url
-                deadline = time.monotonic() + 2
-                while True:
-                    with urlopen(Request(url + "/api/job", headers=headers), timeout=2) as response:
-                        job = json.load(response)
-                    self.assertEqual(job["id"], identity)
-                    if job["status"] != "running" or time.monotonic() >= deadline:
-                        break
-                    time.sleep(0.01)
-                self.assertEqual(job["status"], "done")
-                self.assertTrue(self.keyboard.command_threads)
-                self.assertEqual(set(self.keyboard.command_threads), {server_thread})
-            finally:
-                server.shutdown()
-                server_thread.join(timeout=2)
-
-
-def _publish(server, started):
-    started.put(server)
-    return server
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ reserve, staging and 50k/100k/190k/200k growth figures are explicitly **estimate
 allocator churn and fault recovery are not simulated by this tool.
 
 Measurement `.bin` files are compiled at one comparison address to measure
-space. They are not firmware installation files. Keep using `stenosquid.py`
+space. They are not firmware installation files. Use `StenoSquidManager.html`
 for ordinary setup and provisioning.
 
 ### Tightened Candidate A gate

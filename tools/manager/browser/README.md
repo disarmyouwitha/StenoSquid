@@ -9,16 +9,15 @@ The HTML contains the complete application, Python WebAssembly runtime, and
 pinned factory dictionaries. **It works on first launch with no internet.**
 There is no installation, Python dependency, local server, hosting, account,
 extension, or browser flag. License notices are embedded in the HTML.
-`stenosquid.py` stays in the repository for command-line use.
 
 Safari and Firefox cannot connect directly because they do not support WebHID.
-The Python Manager remains usable with those browsers. Use matching left firmware
+Use matching left firmware
 that supports the `native_install connection` query; older firmware gets an
 update message rather than guessing whether a connection is USB or Bluetooth.
 
-The offline app uses the same UI and Python dictionary code as `stenosquid.py`:
+The offline app's dictionary logic runs in the bundled Python runtime:
 imports, exports, edits, ordering, factory setup, compacting, merging, repacking,
-flash maps, and guarded recovery all use the shared backend. USB-only operations
+flash maps, and guarded recovery all run in that backend. USB-only operations
 keep their existing restrictions. OS-paired Bluetooth depends on the browser and
 OS exposing the keyboard's vendor HID console.
 

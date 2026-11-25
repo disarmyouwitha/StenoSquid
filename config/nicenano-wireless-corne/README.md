@@ -38,7 +38,7 @@ The Left-Diagnostic build combines `-S zmk-usb-logging` with `logging.conf` for
 diagnostics and battery logging. Both left builds use the Native pool and wired USB HID
 for [provisioning](../../README.md#provision-a-new-keyboard) and dictionary maintenance.
 
-On a Left-Diagnostic build, `python3 stenosquid.py --diag` detects the USB serial port and runs the status, boot log, rail test, and wake bench in one report. Use `--diag status`, `--diag log`, `--diag rail`, `--diag bench`, or `--diag clear` to run a single command. To select a port, put its path before `--diag`.
+On a Left-Diagnostic build, `python3 tools/bench/diag.py` detects the USB serial port and runs the status, boot log, rail test, and wake bench in one report. Add `status`, `log`, `rail`, `bench`, or `clear` to run a single command. To select a port, put its path first.
 
 - `S` (`--diag status`) prints the build commit and time, uptime, reset cause, whether USB is powering the board and the battery level, the flash state (mapped, checked, suspended, idle power-down, steno hold), the chip ID, the last Native open time, the counters below, and wake timing.
 - `D` (`--diag log`) prints the boot log kept in RAM, about 1 KiB of the flash lifecycle lines with boot number and uptime. It survives a soft reset, so a line printed before you opened the port is still there. It is empty after a power loss.
@@ -200,7 +200,7 @@ The existing website supplies these controls. Firmware support handles listing, 
 The left firmware uses the shared [external memory map](../../README.md#external-memory-map).
 Follow the [install and update steps](../../README.md#how-to-install) to provision
 it over USB HID. Use `--serial SERIAL_NUMBER` if multiple keyboards are connected.
-`python3 stenosquid.py --verify` checks the installed store and shows **Verify**
+Verifying the installed store shows **Verify**
 on the right display during the scan.
 
 Left-Diagnostic uses the original fixed layout for the serial benchmark tools.
@@ -224,7 +224,7 @@ have no effect in onboard Javelin.
 
 ## Flash and check
 
-Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. An existing Native store should verify and load at boot. Run `python3 stenosquid.py --status` to check the dictionaries without writing.
+Flash `build/split-right/zephyr/zmk.uf2` to the Ultralight first and keep the right half powered. Then flash `build/split-left/zephyr/zmk.uf2` to the handwired left half. Keep the left connected to the host over USB. An existing Native store should verify and load at boot. Open `StenoSquidManager.html` to check the dictionaries without writing.
 
 Check ordinary typing on both halves, then test `TP / -T / KAT / S / -T / KAT` in Javelin with host Plover closed. Use the right half for the final `-T`. Return to MAIN and check the same cross-half chords in Plover HID.
 
@@ -242,9 +242,9 @@ Use **Add Translation** to enter an outline and translation, then press Return i
 
 The left reads personal records and both lookup tables from QSPI. Single edits
 append a checked record. Large USB imports build indexes on the host and publish
-a new catalog only after validation. Run `python3 stenosquid.py --compact` to
+a new catalog only after validation. Use **Compact** in `StenoSquidManager.html` to
 reclaim space from partly obsolete journals. Keep a separate backup with
-`python3 stenosquid.py --backup personal.json`.
+the Manager's export.
 
 The first browser firmware passed its Javelin Web Serial handshake, personal dictionary export, add, replace, and outline lookup checks on the assembled keyboard. The official tools in Chrome displayed the personal dictionary and saved a replacement translation. That edit survived a controller reset. Removing the test entry restored the Lapwing translation. A host simulation of the storage code also checks power loss at every flash write, recovery from damaged tables, and write boundaries.
 
@@ -319,7 +319,7 @@ Javelin typing check. Bluetooth Studio worked on the earlier Studio build.
 ## Cleanup build testing
 
 The cleanup branch uses base-install protocol 2 and updated split display messages.
-Update both halves and use `stenosquid.py` from the same checkout. Older installer
+Update both halves and use the `StenoSquidManager.html` from the same release. Older installer
 versions fail the protocol check before starting a write.
 
 Practice progress now uses a small commit record and alternating 16-word blocks
