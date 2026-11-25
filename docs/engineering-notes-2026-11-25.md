@@ -139,3 +139,54 @@ Nothing below is urgent and none of it should happen before the Boardsource resu
 | `docs/archive/` references to the old CLI | Leave as a historical record, or mark them archived | Anytime |
 | Branches and worktrees (`claude/phase2-transfer`, `claude/phase2-integration`, `StenoSquid-phase2`, `StenoSquid-int`) | Delete once merged to `main` | After merge |
 | Local UF2 files in `build/uf2/` | Untracked; delete when superseded | Anytime |
+
+## 6. Work split: Codex phase and Claude phase
+
+Folded in from the GPT handoff (revision 5) after review. Items marked "from v5" are kept from that document.
+Everything is opt-in, nothing here changes a shipping default or a storage format, and nothing destructive runs on
+hardware without explicit approval. Report "passed", "failed" and "not run" separately, and keep RAM-only,
+scratch-flash and end-to-end numbers apart (the earlier 15-16 KiB/s BLE figure was RAM-only).
+
+### 6.1 Hardware, one owner at a time
+
+| Board | Flash | Owner | Used for |
+| --- | --- | --- | --- |
+| Boardsource Left/Right (daily driver) | 64 MiB | Codex phase | Boot time, near-full pool, sustained typing |
+| Handwired nice!nano Left (owner wired a W25Q128) | 16 MiB | Claude phase | Memory, transfer, JS client, throughput |
+
+Correction: an earlier note said the nice!nano has no dictionary flash. The owner's handwired build does (W25Q128,
+16 MiB; `config/nicenano-wireless-corne/qspi.dtsi`), and the transfer and memory options are not board-restricted.
+To do: build a nice!nano Left with `transfer.conf` and `memory.conf` appended and check its SRAM link map first (the
+nice!nano config differs, and no nice!nano transfer build has been made yet). The owner's build is the `nicenano.zip` asset
+of release v0.1.8 (Left.uf2, Right.uf2, StenoSquidManager.html); that release predates this work, so it is the
+baseline, not a transfer-capable build. A 16 MiB board covers everything
+except 64 MiB high-address behavior, which stays simulator-tested here and hardware-tested in the Codex phase.
+
+### 6.2 Codex phase
+
+| Item | Source | Gate |
+| --- | --- | --- |
+| Boot-time regression: 68 s and 38.8 s on the near-full pool against about 4 s recalled. Profile first, then fix. Targets 3-5 s normal and 10 s at most near-full. Never trade safety or the 512-event queue | v5 1D | Stage timings, five cold boots per configuration, before/after on the full fixture |
+| Near-full 64 MiB stress with exact per-stroke oracle (derived from the fixture manifest, not firmware output) | v5 1B | Integrity and translations before/after |
+| Dormant-library matrix, cases A to D: 32 installed with 4 enabled must perform like a minimal library (5% p95/p99 relative gate) | v5 1C | Identical output, zero disabled probes |
+| Active-stack sweep (4 to 32 active; large bases and edits) and 300 and 350 WPM replay | v5 1C | Zero loss, bounded backlog |
+| Harness rule: persist the raw trace, expected and actual text and status before the capture app tears down (it crashes at end of runs) | v5 | Distinguish harness from firmware failure |
+
+### 6.3 Claude phase
+
+| Item | Gate |
+| --- | --- |
+| R1 memory report on a cold boot, idle, typing replay, import, binary transfer and Bluetooth. Record the post-boot idle marks separately from the boot spike. Pass: 25% minimum stack headroom, an explicit heap margin, no safety-queue reductions | Table plus raw JSON |
+| Throughput before anything else changes: raw WebHID to scratch region with a synthetic payload (no planner), then a staged upload, in real Chrome | Useful payload bytes per second, per stage |
+| R2 / M3: direct JS transfer session over WebHID, ported NAK-flood and busy-NAK regression tests, measured on the same fixture | Same results as the Python client |
+| M1 and M2: TypeScript-or-JS verify, lookup, catalog parsing, allocation and planners, with golden vectors and C++ NativeStage simulator acceptance. Decide the build step (TypeScript needs one for the standalone HTML) before M1 | Byte-identical plans |
+| Phase 3 research: CDC-ACM with Web Serial, checked against ZMK Studio coexistence; WebUSB only if CDC falls short; no new USB configuration ships without approval | RAM-only, scratch-flash and end-to-end rates |
+| Phase 4A and 4B on the BLE path: binary over the 63-byte reports, a bounded asynchronous TX queue (today depth 1 with a busy guard; distinguish notify acceptance from completion; verify against source) | Same three rates, plus input latency |
+
+### 6.4 Shared and approval gates
+
+- Each phase hands back: commit and build config, reproducible instructions, before/after table, raw logs, tests
+  passed/failed/not run, memory and latency impact, remaining risks, and a recommendation.
+- Needs explicit approval first: any shipping default, storage format, destructive hardware action, reduced
+  CRC or queue guarantee, new production USB or BLE interface, and any no-RAM-regression exception.
+- Dropped from v5: its revision bookkeeping and duplicated links (stale on the next push).
