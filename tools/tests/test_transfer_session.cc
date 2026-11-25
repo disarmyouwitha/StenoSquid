@@ -19,7 +19,7 @@ struct MemSink : Sink {
     int begins = 0, aborts = 0, verifies = 0, commits = 0, busy_writes = 0;
     SinkResult begin_result = SinkResult::kOk, write_result = SinkResult::kOk,
                verify_result = SinkResult::kOk, commit_result = SinkResult::kOk;
-    SinkResult Begin(uint32_t, uint8_t) override { begins++; data.clear(); return begin_result; }
+    SinkResult Begin(const BeginInfo &) override { begins++; data.clear(); return begin_result; }
     SinkResult Write(uint32_t offset, const uint8_t *p, size_t n) override {
         if (write_result == SinkResult::kBusy) { busy_writes++; return write_result; }
         if (write_result != SinkResult::kOk) return write_result;

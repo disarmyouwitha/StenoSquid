@@ -19,10 +19,22 @@ namespace steno_transfer {
 
 enum class SinkResult : uint8_t { kOk, kBusy, kFail };
 
+constexpr size_t kBeginPayloadBytes = 13; // total u32, crc u32, max_chunk u16, window u16, kind u8
+constexpr size_t kMaxBeginArgs = 16;      // optional sink-defined bytes after the fixed fields
+constexpr uint16_t kMaxWindow = 16;
+
+struct BeginInfo {
+    uint32_t total;
+    uint32_t crc;          // CRC-32 of the whole payload stream
+    uint8_t kind;
+    const uint8_t *args;   // sink-defined, valid only during Begin
+    size_t args_length;
+};
+
 class Sink {
 public:
     virtual ~Sink() = default;
-    virtual SinkResult Begin(uint32_t total, uint8_t kind) = 0;
+    virtual SinkResult Begin(const BeginInfo &info) = 0;
     /* Offsets arrive strictly in order. kBusy means "not consumed, retry". */
     virtual SinkResult Write(uint32_t offset, const uint8_t *data, size_t size) = 0;
     virtual SinkResult Verify() = 0;  // e.g. staged flash readback + integrity
@@ -52,9 +64,6 @@ enum NakReason : uint8_t {
     kNakBadOffset = 2,  // overlaps accepted data without matching its boundary
     kNakSinkBusy = 3,   // backpressure: retry the same frame later
 };
-
-constexpr size_t kBeginPayloadBytes = 13; // total u32, crc u32, max_chunk u16, window u16, kind u8
-constexpr uint16_t kMaxWindow = 16;
 
 struct Reply {
     uint8_t type = 0; // 0 means "send nothing"
@@ -105,7 +114,8 @@ public:
 
 private:
     Reply Begin(const Frame &f, uint32_t now) {
-        if (f.length != kBeginPayloadBytes) return Error(f.session, kErrBadParams);
+        if (f.length < kBeginPayloadBytes || f.length > kBeginPayloadBytes + kMaxBeginArgs)
+            return Error(f.session, kErrBadParams);
         const uint32_t total = Get32(f.payload), crc = Get32(f.payload + 4);
         const uint16_t chunk = Get16(f.payload + 8), window = Get16(f.payload + 10);
         const uint8_t kind = f.payload[12];
@@ -113,6 +123,7 @@ private:
         if (active()) {
             // A retransmitted BEGIN is idempotent only while nothing was received.
             if (f.session == session_ && total == total_ && crc == crc_ && chunk == chunk_ && kind == kind_ &&
+                f.length == begin_length_ && !memcmp(f.payload + kBeginPayloadBytes, args_, f.length - kBeginPayloadBytes) &&
                 state_ == State::kOpen) {
                 last_activity_ = now;
                 return Ack(kStateOpen);
@@ -120,7 +131,8 @@ private:
             return Error(f.session, kErrBusy); // No silent session switching.
         }
         session_ = f.session;
-        if (sink_.Begin(total, kind) != SinkResult::kOk) {
+        if (sink_.Begin({total, crc, kind, f.payload + kBeginPayloadBytes, f.length - kBeginPayloadBytes}) !=
+            SinkResult::kOk) {
             sink_.Abort(); // Release anything a refused Begin left behind.
             state_ = State::kFailed;
             last_error_ = kErrSink;
@@ -129,6 +141,8 @@ private:
         }
         total_ = total; crc_ = crc; chunk_ = chunk; kind_ = kind;
         window_ = window > kMaxWindow ? kMaxWindow : window;
+        begin_length_ = f.length;
+        memcpy(args_, f.payload + kBeginPayloadBytes, f.length - kBeginPayloadBytes);
         next_ = 0;
         running_ = 0;
         last_error_ = kErrNone;
@@ -230,6 +244,7 @@ private:
     uint32_t total_ = 0, crc_ = 0, next_ = 0, running_ = 0, last_activity_ = 0;
     uint16_t chunk_ = 0, window_ = 0;
     uint8_t kind_ = 0, last_error_ = kErrNone;
+    uint8_t begin_length_ = 0, args_[kMaxBeginArgs] = {};
 };
 
 } // namespace steno_transfer
