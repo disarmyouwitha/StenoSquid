@@ -28,11 +28,14 @@ def open_image(image, payload=None):
         length, crc = struct.unpack_from("<II", image, address - 16)
     else:
         length, crc = len(payload), zlib.crc32(payload)
-    return Snapshot(lambda start, length: image[start:start + length], address, length, crc)
+    return Snapshot(lambda start, length: image[start:start + length], address, length, crc,
+                    pool_end=len(image) // SEGMENT)
 
 
 def occupied(view):
-    return {0, 1, 255} | {i for base, count, *_ in view.extents for i in range(base, base + count)}
+    return {0, 1, view.pool_end} | {
+        i for base, count, *_ in view.extents for i in range(base, base + count)
+    }
 
 
 def longest_free(used):

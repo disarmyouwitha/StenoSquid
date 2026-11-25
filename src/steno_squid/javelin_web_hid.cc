@@ -148,10 +148,12 @@ void dispatch(char *line, size_t size, HidWriter &writer) {
         const char *operation = command + sizeof(install_prefix) - 1;
         if (!writer.IsUsb() && (strcmp(operation, "update repack-capabilities\n") == 0 ||
                                strcmp(operation, "update recovery-capabilities\n") == 0 ||
+                               strncmp(operation, "large ", 6) == 0 ||
+                               strncmp(operation, "begin CLEAR ", 12) == 0 ||
                                strncmp(operation, "begin REPACK ", 13) == 0 ||
                                strncmp(operation, "begin RECOVERY ", 15) == 0 ||
                                strncmp(operation, "match RECOVERY ", 15) == 0)) {
-            reply_error(writer, line, channel, "ERR Connect over USB for repack or recovery\n\n");
+            reply_error(writer, line, channel, "ERR Connect over USB for setup, repack or recovery\n\n");
             return;
         }
         static char reply[704]; // Only the HID worker calls dispatch.

@@ -2,6 +2,7 @@
 // The catalog owns extents; caller serializes writes and pins reader generations.
 #pragma once
 #include <cstdint>
+#include "native_allocator.h"
 #include <cstring>
 
 namespace candidate_b {
@@ -128,13 +129,13 @@ public:
     explicit NativeJournal(Device &value) : device(value) {}
 
     JournalResult Initialize(uint32_t segment, uint64_t epoch) {
-        if (segment < 2 || segment >= 255 || !epoch) return JournalResult::Invalid;
+        if (segment < 2 || segment >= NativePoolEnd(device) || !epoch) return JournalResult::Invalid;
         if (!device.Erase(segment)) return JournalResult::IoError;
         return InitializeErased(segment,epoch);
     }
 
     JournalResult InitializeErased(uint32_t segment, uint64_t epoch) {
-        if (segment < 2 || segment >= 255 || !epoch) return JournalResult::Invalid;
+        if (segment < 2 || segment >= NativePoolEnd(device) || !epoch) return JournalResult::Invalid;
         uint8_t header[32]{};
         std::memcpy(header, "SQJSEG01", 8);
         PutWord(header+8, uint32_t(epoch)); PutWord(header+12, uint32_t(epoch>>32));
@@ -144,7 +145,7 @@ public:
     }
 
     JournalResult Open(uint32_t segment, uint64_t epoch) {
-        if (segment < 2 || segment >= 255 || !epoch) return JournalResult::Invalid;
+        if (segment < 2 || segment >= NativePoolEnd(device) || !epoch) return JournalResult::Invalid;
         uint8_t header[32];
         if (!device.Read(segment*kSegmentBytes, header, 32)) return JournalResult::IoError;
         if (std::memcmp(header, "SQJSEG01", 8) || Word(header+8) != uint32_t(epoch) ||
@@ -167,7 +168,7 @@ public:
     // cursor unchanged; committed corruption never looks like an unfinished tail.
     JournalResult Step(JournalScan &scan, JournalRecord &record) {
         if (!scan.ready || scan.next > scan.end || scan.end % kSegmentBytes ||
-            scan.end > 255*kSegmentBytes || scan.end < 3*kSegmentBytes ||
+            scan.end > NativePoolEnd(device)*kSegmentBytes || scan.end < 3*kSegmentBytes ||
             scan.next < scan.end-kSegmentBytes+kPageBytes) return JournalResult::Invalid;
         if (scan.end-scan.next < 32) return JournalResult::End;
         const auto status=Read(scan.next,record);
@@ -180,7 +181,7 @@ public:
 
     JournalResult ReadEnvelope(uint32_t address, JournalRecord &record,uint8_t (&header)[32]) {
         const uint32_t offset = address % kSegmentBytes;
-        if (address / kSegmentBytes < 2 || address / kSegmentBytes >= 255 || address % 4 ||
+        if (address / kSegmentBytes < 2 || address / kSegmentBytes >= NativePoolEnd(device) || address % 4 ||
             offset < kPageBytes || offset > kSegmentBytes-32) return JournalResult::Invalid;
         if (!device.Read(address, header, 32)) return JournalResult::IoError;
         bool blank = true;
@@ -245,7 +246,7 @@ public:
         if (loaded != JournalResult::Ok || old.sequence != source.sequence || old.span != source.span)
             return JournalResult::Corrupt;
         const uint32_t offset = address % kSegmentBytes;
-        if (address / kSegmentBytes < 2 || address / kSegmentBytes >= 255 || address % 4 ||
+        if (address / kSegmentBytes < 2 || address / kSegmentBytes >= NativePoolEnd(device) || address % 4 ||
             offset < kPageBytes || source.span > kSegmentBytes - offset || sequence <= source.sequence)
             return JournalResult::Invalid;
         const uint32_t original_crc = Word(header+20);
@@ -288,7 +289,7 @@ public:
                          const uint8_t *text, uint16_t length) {
         const uint32_t offset=address%kSegmentBytes, size=8u+4u*count+length;
         const uint32_t span=(32u+size+3)&~3u;
-        if (address/kSegmentBytes<2 || address/kSegmentBytes>=255 || address%4 ||
+        if (address/kSegmentBytes<2 || address/kSegmentBytes>=NativePoolEnd(device) || address%4 ||
             offset<256 || !sequence || !ValidEdit(identity,operation,strokes,count,text,length)) return JournalResult::Invalid;
         if (span>kSegmentBytes-offset) return JournalResult::Full;
         for (uint32_t at=0;at<span;) {

@@ -181,14 +181,15 @@ int main() {
     usb("c15 native_install status\n");
     run();
     assert(provision_command == "status\n" && provision_session == 0 && commands.empty());
-    ble("c15 native_install begin CLEAR 0\n");
+    ble("c15 native_install geometry\n");
     run();
-    assert(provision_command == "begin CLEAR 0\n" && provision_session == live_session);
+    assert(provision_command == "geometry\n" && provision_session == live_session);
     for (const auto *operation : {"update repack-capabilities", "update recovery-capabilities",
-                                  "begin REPACK 0", "begin RECOVERY 0", "match RECOVERY 0"}) {
+                                  "begin CLEAR 0", "begin REPACK 0", "begin RECOVERY 0", "match RECOVERY 0",
+                                  "large 1023 begin REPACK 0", "large 1023 begin RECOVERY 0"}) {
         ble("c16 native_install " + std::string(operation) + "\n");
         run();
-        assert(provision_command == "begin CLEAR 0\n");
+        assert(provision_command == "geometry\n");
     }
     usb_error.clear();ble_error.clear();
     for (const auto &report : usb_tx)
@@ -197,7 +198,7 @@ int main() {
         for (auto byte : report) if (byte) ble_error += char(byte);
     assert(usb_error == "c15 2 INSTALL\n\n");
     std::string expected_ble = "c15 2 INSTALL\n\n";
-    for (int i = 0; i < 5; ++i) expected_ble += "c16 ERR Connect over USB for repack or recovery\n\n";
+    for (int i = 0; i < 8; ++i) expected_ble += "c16 ERR Connect over USB for setup, repack or recovery\n\n";
     assert(ble_error == expected_ble);
 
     reset();ble("c04 add_user_entry KAT ");

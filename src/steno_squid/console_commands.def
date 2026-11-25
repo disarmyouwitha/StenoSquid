@@ -21,8 +21,10 @@ USER_COMMAND("reset_user_dictionary", "Clear personal translations", reset_entri
 
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
 USER_COMMAND("dictionary_benchmark", "Read-only diagnostic timing and key traces", steno_squid_dictionary_benchmark, true)
+#ifdef CONFIG_ZMK_JAVELIN_DIAG
 USER_COMMAND("dictionary_storage_probe", "Test native storage in reserved scratch sector", steno_squid_storage_probe, true)
 USER_COMMAND("dictionary_checkpoint_probe", "Test native catalog and bounded index construction", steno_squid_checkpoint_probe, true)
+#endif
 #endif
 
 #ifdef CONFIG_ZMK_STENO_SQUID_NATIVE_STORE

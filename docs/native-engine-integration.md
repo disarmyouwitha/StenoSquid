@@ -48,9 +48,11 @@ in place.
 
 ## Memory and capacity
 
-The 16 MiB external flash is divided into 64 KiB blocks. Two retained catalog
-roots protect the current and previous layouts. The last block is reserved
-for diagnostics, and staged operations leave three free blocks for maintenance.
+The firmware detects the Winbond W25Q128JV (16 MiB) or W25Q512JV (64 MiB)
+at boot. Both use 64 KiB blocks and two retained catalog roots that protect
+the current and previous layouts. The last physical block is reserved for
+diagnostics, and staged operations leave three free blocks for maintenance.
+Use the matching Manager or CLI with the 64 MiB PCB.
 
 **Scan Memory** shows which dictionaries and storage structures occupy each
 block. **Compact Memory** previews reclaimable journal blocks, and **Reclaim**

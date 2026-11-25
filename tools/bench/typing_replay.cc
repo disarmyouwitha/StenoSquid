@@ -12,6 +12,7 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -28,17 +29,20 @@ class Bases final : public candidate_b::NativeBaseProvider {
         StenoCompactMapDictionaryDefinition definition{};
         std::array<StenoCompactMapDictionaryStrokesDefinition, 16> groups{};
         std::unique_ptr<StenoCompactMapDictionary> dictionary;
+        bool enabled = false;
     };
-    std::array<Member, 8> members;
+    std::map<uint32_t, Member> members;
     bool ready = true;
 
 public:
+    mutable unsigned probes = 0, disabledProbes = 0;
     bool Ready() const override { return ready; }
     void Fault() override { ready = false; }
 
-    size_t Load(uint32_t id, const uint8_t *image, const uint8_t *extent, unsigned index) {
+    size_t Load(uint32_t id, const uint8_t *image, const uint8_t *extent, unsigned index, bool enabled) {
         if (extent == nullptr) return 0;
-        auto &member = members.at(id);
+        auto &member = members[id];
+        member.enabled = enabled;
         const auto address = uint32_t(extent[0] | unsigned(extent[1]) << 8) * kSegmentBytes;
         const auto *collection = image + address;
         const auto xipPointer = [&](const uint8_t *word) {
@@ -66,7 +70,11 @@ public:
     }
 
     const StenoDictionary *FindBase(uint32_t id) const override {
-        return id < members.size() ? members[id].dictionary.get() : nullptr;
+        const auto member = members.find(id);
+        if (member == members.end()) return nullptr;
+        ++probes;
+        if (!member->second.enabled) ++disabledProbes;
+        return member->second.dictionary.get();
     }
 };
 
@@ -111,7 +119,7 @@ void CheckProbes(const char *path, StenoDictionaryList &root) {
     assert(checks);
 }
 
-void Replay(const char *path, StenoDictionaryList &root, bool paced) {
+void Replay(const char *path, StenoDictionaryList &root, bool paced, const Nor &flash, const Bases &bases) {
     std::ifstream tape(path);
     StenoCompiledOrthography orthography(StenoOrthography::emptyOrthography);
     unsigned phase;
@@ -144,6 +152,8 @@ void Replay(const char *path, StenoDictionaryList &root, bool paced) {
             const auto milliseconds = uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(event.deadline).count());
             Clock::AdvanceMilliseconds(milliseconds - virtualMs);
             virtualMs = milliseconds;
+            const auto reads = flash.reads, bytes = flash.read_bytes;
+            const auto probes = bases.probes, disabled = bases.disabledProbes;
             const auto begin = Timer::now();
             engine.Process(event.stroke);
             finished = Timer::now();
@@ -155,7 +165,9 @@ void Replay(const char *path, StenoDictionaryList &root, bool paced) {
             }
             const auto ns = [](auto elapsed) { return std::chrono::duration_cast<Nanoseconds>(elapsed).count(); };
             std::cout << phase << '\t' << i + 1 << '\t' << ns(finished - begin) << '\t'
-                      << (paced ? ns(begin - scheduled) : 0) << '\t' << ns(finished - start) << '\n';
+                      << (paced ? ns(begin - scheduled) : 0) << '\t' << ns(finished - start)
+                      << '\t' << flash.reads - reads << '\t' << flash.read_bytes - bytes
+                      << '\t' << bases.probes - probes << '\t' << bases.disabledProbes - disabled << '\n';
         }
         engine.~StenoEngine();
     }
@@ -163,14 +175,17 @@ void Replay(const char *path, StenoDictionaryList &root, bool paced) {
 } // namespace
 
 int main(int argc, char **argv) {
-    assert(argc == 5);
+    assert(argc == 5 || argc == 6);
+    assert(argc == 5 || std::string(argv[5]) == "live-tail");
     alignas(4) static const uint8_t script[64] = {0x4a, 0x53, 0x53, 0x34};
     ButtonScriptManager::Initialize(script);
     std::ifstream pool(argv[1], std::ios::binary);
     NativeFixture storage;
     storage.nor.data.assign(std::istreambuf_iterator<char>(pool), {});
-    assert(storage.nor.data.size() == 255 * kSegmentBytes);
-    storage.nor.data.resize(256 * kSegmentBytes, 255);
+    assert(storage.nor.data.size() == kSmallPoolEnd * kSegmentBytes ||
+           storage.nor.data.size() == kLargePoolEnd * kSegmentBytes);
+    storage.device.pool_end = storage.nor.data.size() / kSegmentBytes;
+    storage.nor.data.resize(storage.nor.data.size() + kSegmentBytes, 255);
     storage.Open();
 
     Bases bases;
@@ -182,22 +197,25 @@ int main(int argc, char **argv) {
     const unsigned rows = catalog[4] | unsigned(catalog[5]) << 8;
     for (unsigned i = 0; i < rows; ++i) {
         const auto *row = catalog + 32 + 96 * i;
-        if (!Word(row + 4)) continue;
+        if (row[11] == 2) continue;
         const unsigned id = Word(row), base = row[8] | unsigned(row[9]) << 8;
         const auto *extent = base == 65535 ? nullptr : catalog + 32 + 96 * rows + 24 * base;
-        const auto length = bases.Load(id, image, extent, row[10]);
+        const bool enabled = Word(row + 4);
+        const auto length = bases.Load(id, image, extent, row[10], enabled);
         const size_t maximum = std::max<size_t>(length, storage.store.live.MaximumOutline(id));
         dictionaries.push_back(std::make_unique<CatalogDictionary>(backend, id,
             std::string(reinterpret_cast<const char *>(row + 16), row[12]), maximum));
-        entries.Add(StenoDictionaryListEntry(dictionaries.back().get(), true));
+        entries.Add(StenoDictionaryListEntry(dictionaries.back().get(), enabled));
     }
     StenoDictionaryList root(std::move(entries));
     CheckProbes(argv[2], root);
+    const bool replayLiveTail = argc == 6;
+    if (replayLiveTail) Replay(argv[3], root, std::string(argv[4]) == "paced", storage.nor, bases);
     assert(storage.store.Start(NativeStore<NativeDevice>::Work::Checkpoint) == JobResult::More);
     storage.Finish();
     storage.Open();
     root.OnLookupDataChanged();
     CheckProbes(argv[2], root);
-    Replay(argv[3], root, std::string(argv[4]) == "paced");
+    if (!replayLiveTail) Replay(argv[3], root, std::string(argv[4]) == "paced", storage.nor, bases);
     assert(bases.Ready());
 }

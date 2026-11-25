@@ -7,7 +7,9 @@
 #include "user_dictionary_store.h"
 #include "stroke_list_parser.h"
 #include "steno_key_state.h"
+#ifndef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
 #include "flash_diagnostics_build_id.h"
+#endif
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
 #include <nrfx.h>
@@ -16,7 +18,12 @@
 bool squid_bench_count_reads;
 uint32_t squid_bench_xip_words, squid_bench_personal_reads, squid_bench_personal_bytes;
 namespace {
-constexpr unsigned CAPACITY = 128, REPETITIONS = 32;
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+constexpr unsigned CAPACITY = 320;
+#else
+constexpr unsigned CAPACITY = 128;
+#endif
+constexpr unsigned REPETITIONS = 32;
 struct Sample { uint32_t outline, cycles, uptime_ms; uint8_t outcome; };
 Sample samples[CAPACITY];
 struct k_spinlock trace_lock;
@@ -56,6 +63,10 @@ StenoDictionary *target(const char *name) {
 void reset_reads() { squid_bench_xip_words=squid_bench_personal_reads=squid_bench_personal_bytes=0; }
 }
 
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+#include "dictionary_replay.inc"
+#endif
+
 StenoSquidKeyBenchmark::StenoSquidKeyBenchmark(int index, bool pressed) {
     if (!atomic_get(&capturing) || index<0 || index>=64) return;
     started=cycles();
@@ -68,6 +79,9 @@ StenoSquidKeyBenchmark::StenoSquidKeyBenchmark(int index, bool pressed) {
         complete=!pressed && !held && chord;
         if (complete) {
             outline=StenoKeyState(chord).ToStroke().GetKeyState();
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+            atomic_set(&processing_outline, outline);
+#endif
             failed=chord_failed;
             chord=0;chord_failed=false;
         }
@@ -85,8 +99,19 @@ StenoSquidKeyBenchmark::~StenoSquidKeyBenchmark() {
     const uint32_t elapsed=cycles()-started;
     auto key=k_spin_lock(&trace_lock);
     if (atomic_get(&capturing)) {
-        if (count<CAPACITY) samples[count++]={outline,elapsed,k_uptime_get_32(),uint8_t(failed?0:outcome)};
-        else overflow++;
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        if (ReplayingLoop()) {
+            RecordLoopChord(atomic_get(&completed_chords), outline, elapsed, !failed && outcome == 1);
+        } else
+#endif
+        {
+            if (count<CAPACITY) samples[count++]={outline,elapsed,k_uptime_get_32(),uint8_t(failed?0:outcome)};
+            else overflow++;
+        }
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        atomic_inc(&completed_chords);
+        atomic_clear(&processing_outline);
+#endif
     }
     k_spin_unlock(&trace_lock,key);
 }
@@ -95,12 +120,26 @@ void steno_squid_dictionary_benchmark(void *, const char *line) {
     const char *args=strchr(line,' ');
     if (!args) { Console::Printf("ERR Expected meta, lookup, reverse or capture command\n\n");return; }
     ++args;
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+    if (ReplayCommand(args)) return;
+#endif
     if (!strcmp(args,"meta")) {
         size_t free_stack=0;
         const int stack_rc=k_thread_stack_space_get(k_current_get(),&free_stack);
-        Console::Printf("{\"version\":1,\"firmware\":\"%s\",\"compiler\":\"%s\",\"timer\":\"DWT CYCCNT\",\"timer_hz\":%u,\"qspi_hz\":%u,\"jedec\":%u,\"capture_capacity\":%u,\"hid_stack_free_bytes\":%d}\n\n",
-                        JAVELIN_BUILD_ID,__VERSION__,SystemCoreClock,32000000u/CONFIG_ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER,
-                        steno_squid_benchmark_jedec(),CAPACITY,stack_rc? -1:int(free_stack));
+        Console::Printf("{\"version\":1,\"firmware\":\"%s\",\"compiler\":\"%s\",\"timer\":\"DWT CYCCNT\",\"timer_hz\":%u,\"qspi_hz\":%u,\"jedec\":%u,\"capture_capacity\":%u,\"replay_loop_capacity\":%u,\"hid_stack_free_bytes\":%d}\n\n",
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+                        "hardware-typing-replay",__VERSION__,
+#else
+                        JAVELIN_BUILD_ID,__VERSION__,
+#endif
+                        SystemCoreClock,32000000u/CONFIG_ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER,
+                        steno_squid_benchmark_jedec(),CAPACITY,
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+                        REPLAY_LOOP_CAPACITY,
+#else
+                        0u,
+#endif
+                        stack_rc? -1:int(free_stack));
         return;
     }
     if (!strcmp(args,"capture start")) {
@@ -117,6 +156,9 @@ void steno_squid_dictionary_benchmark(void *, const char *line) {
     }
     if (!strcmp(args,"capture read")) {
         if (atomic_get(&capturing)) { Console::Printf("ERR Stop capture before reading\n\n");return; }
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        if (ReplayingLoop()) { PrintLoopCapture(); return; }
+#endif
         Console::Printf("{\"timer_hz\":%u,\"overflow\":%u,\"samples\":[",SystemCoreClock,overflow);
         for (unsigned i=0;i<count;i++) {
             const auto &s=samples[i];

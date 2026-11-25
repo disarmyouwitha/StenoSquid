@@ -33,7 +33,8 @@ void SmallIndexErase() {
 void basic() {
     LiveFixture fixture;
     Job job(fixture.device,fixture.catalog,fixture.live);
-    assert(sizeof(job)<6000);
+    // The shared 64 MiB build keeps one byte of cleanup accounting per block.
+    assert(sizeof(job)<7200);
     assert(fixture.Edit(1,1,"first")==LiveResult::Ok);
     assert(fixture.Edit(1,2,"second")==LiveResult::Ok);
     assert(fixture.Edit(2,1,"ç utf8")==LiveResult::Ok);

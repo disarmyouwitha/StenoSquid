@@ -1,7 +1,7 @@
 """Decode the experimental flash map, based only on catalog ownership."""
 import struct
 
-from build_native_image import SEGMENT, XIP
+from build_native_image import LARGE_POOL_END, SEGMENT, SMALL_POOL_END, XIP
 from native_snapshot import inspect_free
 from native_update import read_snapshot, row_name, update_command
 
@@ -21,16 +21,23 @@ REGIONS = {
 
 def parse_layout(response):
     parts = response.split()
-    if len(parts) != 7 or parts[:2] != ["OK", "MAP1"]:
+    if (len(parts) != 7 or parts[:2] != ["OK", "MAP1"]
+            or any(len(row) != SMALL_POOL_END + 1 for row in parts[5:])):
         raise ValueError("Invalid flash map response")
-    _, _, selected, access, states, first, second = parts
+    return parse_maps(*parts[2:])
+
+
+def parse_maps(selected, access, states, first, second):
     if selected not in ("0", "1") or access not in ("w", "r", "p") or len(states) != 2 or set(states) - set("ve?"):
         raise ValueError("Invalid flash map status")
     maps = first, second
+    pool_end = len(first) - 1
+    if pool_end not in (SMALL_POOL_END, LARGE_POOL_END):
+        raise ValueError("Invalid flash map size")
     for state, data in zip(states, maps):
-        if len(data) != 256 or data[:2] != "cc" or data[-1] != "x" or set(data) - REGIONS.keys():
+        if len(data) != pool_end + 1 or data[:2] != "cc" or data[-1] != "x" or set(data) - REGIONS.keys():
             raise ValueError("Invalid flash map geometry")
-        if (state == "e" and set(data[2:255]) != {"."}) or (state == "?" and set(data[2:255]) != {"?"}):
+        if (state == "e" and set(data[2:pool_end]) != {"."}) or (state == "?" and set(data[2:pool_end]) != {"?"}):
             raise ValueError("Invalid catalog region")
         if state == "v" and "?" in data:
             raise ValueError("Incomplete catalog region")
@@ -40,10 +47,10 @@ def parse_layout(response):
         raise ValueError("Active catalog is missing")
     whole = "?" not in states and access != "r"
     protected = {i for i, (primary, old) in enumerate(zip(active, alternate)) if primary != "." or old != "."}
-    free, longest = inspect_free(protected) if whole else (None, None)
+    free, longest = inspect_free(protected, pool_end) if whole else (None, None)
     segments = []
     for idx, (primary, old) in enumerate(zip(active, alternate)):
-        if idx in (0, 1, 255):
+        if idx in (0, 1, pool_end):
             kind = primary
         elif primary != ".":
             kind = primary
@@ -54,13 +61,31 @@ def parse_layout(response):
         else:
             kind = "." if whole else "?"
         segments.append(dict(index=idx, kind=kind, active=REGIONS[primary], alternate=REGIONS[old],
-                             shared=primary not in ".?" and old not in ".?" and 2 <= idx < 255))
+                             shared=primary not in ".?" and old not in ".?" and 2 <= idx < pool_end))
     return dict(segments=segments, active_slot=active_slot, states=list(states), free_segments=free,
                 largest_free_run=longest, reserve=3, staging_blocked=access != "w")
 
 
 def read_layout(console):
-    return parse_layout(update_command(console, "layout-map"))
+    reply = update_command(console, "layout-map")
+    if not reply.startswith("OK MAP2 "):
+        return parse_layout(reply)
+    maps = ["", ""]
+    expected_header = None
+    for first in range(0, LARGE_POOL_END + 1, 256):
+        if first:
+            reply = update_command(console, f"layout-map {first}")
+        page = reply.split()
+        if (len(page) != 11 or page[:4] != ["OK", "MAP2", str(LARGE_POOL_END + 1), str(first)]
+                or any(len(data) != 256 for data in page[9:])):
+            raise ValueError("Invalid flash map page")
+        if expected_header is None:
+            expected_header = page[4:9]
+        elif page[4:9] != expected_header:
+            raise RuntimeError("The catalog changed during the flash map scan. Scan again.")
+        for slot in range(2):
+            maps[slot] += page[9 + slot]
+    return parse_maps(*expected_header[2:], *maps)
 
 
 def validate_compact_layout(read, start, size):

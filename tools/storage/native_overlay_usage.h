@@ -13,7 +13,7 @@ bool MeasureOverlay(Device &device, const LiveView &view, uint32_t &position,
                     Emit emit, Stop stop) {
     NativeJournal<Device> journal(device);
     auto read_key = [&](uint32_t address, bool indexed, JournalRecord &record, JournalKey &key) {
-        return address < 255 * kSegmentBytes && !(address % 4) &&
+        return address < kLargePoolEnd * kSegmentBytes && !(address % 4) &&
                view.journals.Contains(address / kSegmentBytes) &&
                address % kSegmentBytes >= 256 &&
                journal.ReadKey(address, record, key) == JournalResult::Ok &&

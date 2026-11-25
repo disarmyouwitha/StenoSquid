@@ -86,7 +86,7 @@ def latency(values):
         "max": max(values) / 1e3}
 
 
-def execute(binary, output, corpus, phases, virtual, *, verify_negative):
+def execute(binary, output, corpus, phases, virtual, *, verify_negative, live_tail=False):
     probes = output / "probes.tsv"
     probes.write_text("".join(f"{outline}\t{owner}\t{text or ''}\n" for outline, text, owner in corpus["probes"]),
                       encoding="ascii")
@@ -97,36 +97,39 @@ def execute(binary, output, corpus, phases, virtual, *, verify_negative):
             for deadline, stroke, expected in phase["events"]:
                 stream.write(f"{deadline}\t{stroke}\t{expected}\n")
     command = [str(binary), str(output / "simulated-pool.bin"), str(probes), str(tape)]
+    options = ["live-tail"] if live_tail else []
     if verify_negative:
         bad = output / "bad-output.tsv"
         first, row, rest = tape.read_text(encoding="ascii").split("\n", 2)
         bad.write_text(first + "\n" + row + " WRONG\n" + rest, encoding="ascii")
-        refusal = subprocess.run([*command[:-1], str(bad), "virtual"], capture_output=True, text=True)
-        if refusal.returncode != 1 or "100 WPM stroke 1" not in refusal.stderr:
+        refusal = subprocess.run([*command[:-1], str(bad), "virtual", *options], capture_output=True, text=True)
+        if refusal.returncode != 1 or f"{next(iter(phases))} WPM stroke 1" not in refusal.stderr:
             raise RuntimeError(f"A corrupted output oracle did not fail at the first stroke "
                                f"(exit {refusal.returncode}): {refusal.stderr.strip()}")
     with (output / "samples.tsv").open("w", encoding="ascii") as samples:
-        replay = subprocess.run([*command, "virtual" if virtual else "paced"], stdout=samples,
+        replay = subprocess.run([*command, "virtual" if virtual else "paced", *options], stdout=samples,
                                 stderr=subprocess.PIPE, text=True)
     if replay.returncode:
         raise RuntimeError(f"Replay exited with {replay.returncode}: {replay.stderr.strip()}")
     measurements = {rate: [] for rate in phases}
     with (output / "samples.tsv").open(encoding="ascii") as samples:
         for row in samples:
-            rate, index, process, lateness, finished = map(int, row.split())
+            rate, index, *sample = map(int, row.split())
             values = measurements[rate]
             if index != len(values) + 1:
                 raise ValueError("Missing or out-of-order replay sample.")
-            values.append((process, lateness, finished))
+            values.append(sample)
     for rate, phase in phases.items():
         values = measurements[rate]
         if len(values) != phase["chords"]:
             raise ValueError(f"Incomplete replay at {rate} WPM.")
-        process, lateness, finished = zip(*values)
+        process, lateness, finished, reads, read_bytes, probes, disabled_probes = zip(*values)
         interval = phase["active_ns"] / phase["chords"]
         phase.update(
             planned_strokes_per_second=phase["chords"] * 1e9 / phase["active_ns"],
             verified_chords=len(values), errors=0, engine_us=latency(process),
+            journal_reads=sum(reads), journal_bytes=sum(read_bytes),
+            compact_provider_calls=sum(probes), disabled_compact_provider_calls=sum(disabled_probes),
             deadline_lateness_us=None if virtual else latency(lateness),
             deadline_overruns=None if virtual else sum(p + lag >= interval for p, lag in zip(process, lateness)),
             achieved_wpm=None if virtual else phase["words"] * 60e9 / (finished[-1] - phase["idle_ns"]),

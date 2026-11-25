@@ -34,6 +34,8 @@ class Console:
         self.repack_guard = None
 
     def command(self, line, timeout=30):
+        if line == "native_install geometry":
+            return f"OK POOL1 {len(self.data) // SEGMENT}"
         if line == "native_install update recovery-capabilities":
             return "OK RECOVERY1" if self.supported else "ERR Unknown"
         if line == "native_install update repack-capabilities":

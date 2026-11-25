@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import secrets
 
-from build_native_image import SEGMENT, overlay_record_span
+from build_native_image import SEGMENT, SMALL_POOL_END, overlay_record_span
 from native_layout import read_images, read_layout
 from native_recovery import reconstruct, recover_usb, save_atomic, sync_directory
 from native_repack import RESERVE, build_merge_repack, build_repack, read_bundle, restore_repack, segment_count
@@ -27,9 +27,9 @@ def plan_directory(serial, token):
     return backup_directory(serial) / token
 
 
-def project_layout(images, usage):
+def project_layout(images, usage, pool_end=SMALL_POOL_END):
     """Place the existing compact images and a conservative journal estimate."""
-    kinds = ["c", "c"] + ["."] * 253 + ["x"]
+    kinds = ["c", "c"] + ["."] * (pool_end - 2) + ["x"]
     next_block = 2
     projected = []
 
@@ -37,7 +37,7 @@ def project_layout(images, usage):
         nonlocal next_block
         start = next_block
         next_block += blocks
-        if next_block > 255 - RESERVE:
+        if next_block > pool_end - RESERVE:
             raise ValueError("The projected repack could use the maintenance reserve.")
         kinds[start:next_block] = [kind] * blocks
         return start
@@ -63,8 +63,8 @@ def project_layout(images, usage):
     place("f", segment_count(4 * sum(row["count"] for row in usage.values())))
     place("r", segment_count(4 * sum(row["entries"] for row in usage.values())))
     return {"segments": [{"index": index, "kind": kind} for index, kind in enumerate(kinds)],
-            "images": projected, "projected": True, "free_segments": 255 - next_block,
-            "largest_free_run": 255 - next_block}
+            "images": projected, "projected": True, "free_segments": pool_end - next_block,
+            "largest_free_run": pool_end - next_block}
 
 
 def preview_repack(console, progress):
@@ -84,7 +84,7 @@ def preview_repack(console, progress):
     if (any(end[key] != state[key] for key in keys) or
             console.command("native_install status") != f"NATIVE2 READY {state['generation']}"):
         raise RuntimeError("Flash changed during the preview. Scan and preview again.")
-    after = project_layout(images, usage)
+    after = project_layout(images, usage, len(before.get("segments") or range(SMALL_POOL_END + 1)) - 1)
     keys = ("largest_free_run", "free_segments")
     result = {"serial": console.serial, "state": state,
               "before": {key: before[key] for key in keys}, "after": after}

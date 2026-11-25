@@ -22,6 +22,7 @@ inline const char *FactoryName(uint32_t id) {
     }
 }
 enum class CatalogResult { Ok, Empty, Corrupt, IoError, Invalid, Quarantined, Busy };
+enum class CatalogValidation { Independent, ReuseIdenticalPayload };
 enum class ExtentKind : uint32_t { Base=1, Journal=2, Forward=3, Reverse=4 };
 // Required marker in the forward extent's 64-bit auxiliary field.
 constexpr uint32_t kOutlineFirst = 1;
@@ -52,9 +53,10 @@ class NativeCatalog {
     bool write_blocked=true;
     uint32_t next_token=1;
     bool Bounds() const {
+        const uint32_t end = NativePoolEnd(device)*kSegmentBytes;
         return capacity>=256 && capacity<=65536 && !(capacity%256) &&
             !(slots[0]%256) && !(slots[1]%256) &&
-            slots[0]<=0x1000000-capacity && slots[1]<=0x1000000-capacity &&
+            capacity<=end && slots[0]<=end-capacity && slots[1]<=end-capacity &&
             (slots[0]+capacity<=slots[1] || slots[1]+capacity<=slots[0]);
     }
     bool Write(uint32_t at,const uint8_t *data,uint32_t size) {
@@ -62,6 +64,19 @@ class NativeCatalog {
             uint32_t n=256-at%256; if(n>size)n=size;
             if(!device.Program(at,data,n))return false;
             at+=n; data+=n; size-=n;
+        }
+        return true;
+    }
+    bool SamePayload(const CatalogRoot &first, const CatalogRoot &second) {
+        if (first.bytes != second.bytes || first.crc != second.crc) return false;
+        // Inspect already checked both headers and payload CRCs. Compare the
+        // bytes as well so a CRC collision cannot skip validation.
+        constexpr uint32_t granule = sizeof(buffer) / 2;
+        for (uint32_t offset = 0; offset < first.bytes; offset += granule) {
+            const uint32_t count = first.bytes - offset < granule ? first.bytes - offset : granule;
+            if (!device.Read(first.address + offset, buffer, count) ||
+                !device.Read(second.address + offset, buffer + granule, count) ||
+                std::memcmp(buffer, buffer + granule, count) != 0) return false;
         }
         return true;
     }
@@ -163,8 +178,11 @@ public:
     // CheckExtent must verify actual extent hash/content/type and journal/index
     // cross references before this catalog may drive engine lookups or writes.
     template <class Reader,class CheckExtent>
-    static CatalogResult ValidatePayload(Reader &input,uint32_t limit,const CatalogRoot &root,CheckExtent check,CatalogShape *shape=nullptr) {
-        if(limit<256 || limit>65536 || !root.generation || root.bytes<32 || root.bytes>limit-32 || root.address>0x1000000-root.bytes)return CatalogResult::Invalid;
+    static CatalogResult ValidatePayload(Reader &input,uint32_t limit,const CatalogRoot &root,CheckExtent check,CatalogShape *shape=nullptr,
+                                         uint32_t pool_end=kSmallPoolEnd) {
+        const uint32_t end=pool_end*kSegmentBytes;
+        if(limit<256 || limit>65536 || !root.generation || root.bytes<32 ||
+           root.bytes>limit-32 || root.bytes>end || root.address>end-root.bytes)return CatalogResult::Invalid;
         uint8_t prefix[32];
         if(!input.Read(root.address,prefix,32))return CatalogResult::IoError;
         CatalogShape header;
@@ -178,7 +196,7 @@ public:
         uint32_t ids[64]{};
         uint16_t base_members[64]{};
         SegmentMap occupied, bases;
-        occupied.Add(0,2);occupied.Add(255,1);
+        occupied.Add(0,2);occupied.Add(pool_end,1);
         unsigned forwards=0,reverses=0;
         const uint32_t extent_start=root.address+32+header.dictionaries*kDictionaryBytes;
         for(uint32_t i=0;i<header.extents;++i) {
@@ -188,7 +206,7 @@ public:
             uint32_t count=uint16_t(extent[2]) | uint16_t(extent[3])<<8;
             uint32_t bytes=Word(extent+4),kind=Word(extent+12);
             uint64_t epoch=uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32;
-            if(start<2 || start>=255 || !count || count>255-start || !bytes || bytes>count*kSegmentBytes ||
+            if(start<2 || start>=pool_end || !count || count>pool_end-start || !bytes || bytes>count*kSegmentBytes ||
                kind<1 || kind>4 || (kind==2 && (count!=1 || !epoch)) ||
                (kind!=2 && epoch!=(kind==3 ? kOutlineFirst : 0)) ||
                ((kind==3 || kind==4) && bytes%4))return CatalogResult::Corrupt;
@@ -259,11 +277,12 @@ public:
     template <class CheckExtent>
     CatalogResult Validate(const CatalogRoot &root,CheckExtent check,CatalogShape *shape=nullptr) {
         if(!Bounds())return CatalogResult::Invalid;
-        return ValidatePayload(device,capacity,root,check,shape);
+        return ValidatePayload(device,capacity,root,check,shape,NativePoolEnd(device));
     }
 
     template <class ValidateRoot>
-    CatalogResult OpenValidated(CatalogSelection &selection,ValidateRoot validate) {
+    CatalogResult OpenValidated(CatalogSelection &selection,ValidateRoot validate,
+                                CatalogValidation mode = CatalogValidation::Independent) {
         selection={};
         write_blocked=true;
         trusted[0]={};trusted[1]={};
@@ -273,7 +292,12 @@ public:
             states[i]=Inspect(i,roots[i]);
             if(states[i]==CatalogResult::IoError || states[i]==CatalogResult::Invalid)return states[i];
             if(states[i]==CatalogResult::Ok) {
-                states[i]=validate(roots[i]);
+                // Opt-in validators certify the extents described by the
+                // payload. Matching mirrors describe the same flash bytes.
+                if (i != 1 || mode != CatalogValidation::ReuseIdenticalPayload ||
+                    !valid[0] || !SamePayload(roots[0], roots[1])) {
+                    states[i]=validate(roots[i]);
+                }
                 if(states[i]==CatalogResult::IoError)return states[i];
                 valid[i]=states[i]==CatalogResult::Ok;
             }
@@ -313,7 +337,7 @@ public:
             }
         } input{source,bytes};
         CatalogShape wanted;
-        auto preflight_status=ValidatePayload(input,capacity,{1,0,bytes,0},check,&wanted);
+        auto preflight_status=ValidatePayload(input,capacity,{1,0,bytes,0},check,&wanted,NativePoolEnd(device));
         if(preflight_status!=CatalogResult::Ok)return preflight_status;
         if(!current.root.generation) {
             for(unsigned i=0;i<2;++i)for(uint32_t at=0;at<capacity;at+=256) {

@@ -34,6 +34,7 @@
 
 /* All accesses are under flash_lock. */
 extern bool lf_provisioning_ready;
+extern uint32_t lf_flash_bytes;
 
 /* dictionary_flash.c */
 extern atomic_t lf_mapped_ready;

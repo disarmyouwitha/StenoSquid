@@ -50,7 +50,7 @@ form input, form textarea { width: 100%; min-width: 0; }
 textarea { resize: vertical; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 42rem) { .forms { grid-template-columns: minmax(0, 1fr); gap: 0; } }
-.flash-map-grid { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; margin: .85rem 0; }
+.flash-map-grid { display: grid; grid-template-columns: repeat(var(--flash-columns, 16), minmax(0, 1fr)); gap: 3px; margin: .85rem 0; }
 .flash-map-grid span { width: 100%; aspect-ratio: 1.35; max-height: 1.5rem; border-radius: 2px; }
 .flash-map-legend { display: flex; flex-wrap: wrap; gap: .45rem 1rem; list-style: none; padding: 0; margin: .7rem 0 0; }
 .flash-map-legend li { display: flex; align-items: center; gap: .4rem; color: var(--muted); }

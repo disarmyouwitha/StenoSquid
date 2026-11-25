@@ -4,6 +4,8 @@
 #include "native_store.h"
 #include "native_validator.h"
 struct NativeDevice : LiveDevice {
+    uint32_t pool_end = kSmallPoolEnd;
+    uint32_t PoolEnd() const { return pool_end; }
     bool CheckBase(uint32_t at,uint32_t n,uint32_t expected){uint32_t crc;return Checksum(at,n,crc) && crc==expected;}
     bool Checksum(uint32_t at,uint32_t n,uint32_t &crc) {
         if(nor.fail_read || at>nor.data.size() || n>nor.data.size()-at)return false;

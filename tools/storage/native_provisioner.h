@@ -5,16 +5,17 @@
 #include <cstring>
 namespace candidate_b {
 enum class ProvisionResult { Ok, Invalid, Busy, Incomplete, IoError, ChecksumMismatch };
-template<class Device,uint32_t Segments=255>
+template<class Device,uint32_t Segments=0>
 class NativeProvisioner {
-    static_assert(Segments>=3 && Segments<=255);
-    static constexpr uint32_t Bytes=Segments*65536;
+    static_assert(!Segments || (Segments>=3 && Segments<=kLargePoolEnd));
+    uint32_t PoolEnd() const { return Segments ? Segments : NativePoolEnd(device); }
+    uint32_t Bytes() const { return PoolEnd()*65536; }
     Device &device;
     SegmentMap erased{};
     uint32_t expected=0, published_crc=0;
     bool active=false,finished=false,recovery=false,verified=false;
     alignas(4) uint8_t readback[512];
-    bool AllErased()const{for(unsigned i=0;i<Segments;++i)if(!erased.Contains(i))return false;return true;}
+    bool AllErased()const{for(unsigned i=0;i<PoolEnd();++i)if(!erased.Contains(i))return false;return true;}
 public:
     explicit NativeProvisioner(Device &value):device(value){}
     bool Active()const{return active;}
@@ -29,13 +30,13 @@ public:
     }
     void Abort(){active=finished=false;}
     ProvisionResult Erase(uint32_t segment) {
-        if(!active || verified || segment>=Segments)return ProvisionResult::Invalid;
+        if(!active || verified || segment>=PoolEnd())return ProvisionResult::Invalid;
         if(erased.Contains(segment))return ProvisionResult::Ok;
         if(!(segment<2?device.EraseCatalog(segment*65536,65536):device.Erase(segment)))return ProvisionResult::IoError;
         erased.Add(segment,1);return ProvisionResult::Ok;
     }
     ProvisionResult Write(uint32_t at,const uint8_t *data,uint32_t bytes) {
-        if(!active || verified || !data || !bytes || bytes>512 || bytes%4 || at%256 || at>=Bytes || bytes>Bytes-at)return ProvisionResult::Invalid;
+        if(!active || verified || !data || !bytes || bytes>512 || bytes%4 || at%256 || at>=Bytes() || bytes>Bytes()-at)return ProvisionResult::Invalid;
         if (recovery && (at == 0 || at == 65536) && bytes >= 32 &&
             (data[28] != 255 || data[29] != 255 || data[30] != 255 || data[31] != 255))
             return ProvisionResult::Invalid;
@@ -55,7 +56,7 @@ public:
         if(!AllErased())return ProvisionResult::Incomplete;
         uint32_t crc;
         if (!verified) {
-            if (!device.Checksum(0, Bytes, crc)) return ProvisionResult::IoError;
+            if (!device.Checksum(0, Bytes(), crc)) return ProvisionResult::IoError;
             if (crc != expected) return ProvisionResult::ChecksumMismatch;
             verified = true;
         }
@@ -71,7 +72,7 @@ public:
                      std::memcmp(readback, marker, 4)))
                     return ProvisionResult::IoError;
             }
-            if (!device.Checksum(0, Bytes, crc)) return ProvisionResult::IoError;
+            if (!device.Checksum(0, Bytes(), crc)) return ProvisionResult::IoError;
             if (crc != published_crc) return ProvisionResult::ChecksumMismatch;
         }
         active=false;finished=true;return ProvisionResult::Ok;

@@ -36,13 +36,21 @@ config ZMK_JAVELIN_DIAG
       src/steno_squid/flash_diagnostics.c.
 
 config ZMK_JAVELIN_DICTIONARY_BENCHMARK
-    bool "Read-only dictionary measurements and real key-path traces"
-    depends on ZMK_JAVELIN_DIAG && ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    bool "Read-only dictionary measurements and real key-path traces" if ZMK_JAVELIN_DIAG
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     select INIT_STACKS
     select THREAD_STACK_INFO
     help
       Phase-0 instrumentation for diagnostic builds only. Benchmark commands
       use USB HID and never import, erase or change dictionary selections.
+
+config ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+    bool "Paced dictionary stress replay and retained crash diagnostics"
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY && ZMK_STENO_SQUID_NATIVE_STORE
+    select ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    select REBOOT
+    help
+      Adds USB-only diagnostic commands for paced input and crash capture.
 
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
@@ -59,12 +67,11 @@ config ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER
     int "External flash clock divider (32 MHz / n)"
     depends on ZMK_JAVELIN_STENO_EXTERNAL_FLASH
     range 1 16
-    default 16
+    default 1
     help
-      16 gives the 2 MHz clock proven on the handwired left half. A routed
-      PCB should tolerate a much smaller divider, which shortens the full
-      dictionary check after a cold boot. Confirm each new value with
-      tools/qspi before relying on it.
+      The default divider of 1 runs the external flash at 32 MHz.
+      Increase the divider for hardware that needs a slower clock.
+      A divider of 16 gives 2 MHz.
 
 config ZMK_JAVELIN_STENO_FLASH_SETTLE_MS
     int "External flash rail settle time in milliseconds"

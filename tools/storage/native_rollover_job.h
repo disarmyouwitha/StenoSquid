@@ -96,7 +96,7 @@ public:
         if(phase==Phase::Plan) {
             SegmentMap protected_segments;
             if(CollectOwnership(device,catalog,frozen.root,protected_segments)!=CatalogResult::Ok)return Stop(JobResult::RecoveryRequired,true);
-            protected_segments.Union(unavailable);AllocationPlan plan(protected_segments);
+            protected_segments.Union(unavailable);AllocationPlan plan(protected_segments, NativePoolEnd(device));
             if(!plan.Reserve(1,start))return Stop(JobResult::NoSpace);
             std::memset(extent,0,24);extent[0]=uint8_t(start);extent[1]=uint8_t(start>>8);extent[2]=1;
             PutWord(extent+4,kSegmentBytes);PutWord(extent+12,2);

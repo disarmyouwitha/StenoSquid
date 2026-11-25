@@ -9,6 +9,7 @@
 
 /* The last chip ID read, for the status command. */
 uint8_t lf_last_jedec[3];
+uint32_t lf_flash_bytes;
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
 uint32_t steno_squid_benchmark_jedec(void) {
     return (uint32_t)lf_last_jedec[0] << 16 | (uint32_t)lf_last_jedec[1] << 8 | lf_last_jedec[2];
@@ -44,7 +45,7 @@ static bool start_qspi(nrfx_qspi_config_t *config) {
     }
     memcpy(lf_last_jedec, id, sizeof(lf_last_jedec));
     squid_flash_diag_log("Lapwing JEDEC ID: %02x %02x %02x\n", id[0], id[1], id[2]);
-    return id[0] == 0xef && id[1] == 0x40 && id[2] == 0x18;
+    return id[0] == 0xef && id[1] == 0x40 && (id[2] == 0x18 || id[2] == 0x20);
 }
 
 /* Four data lines for every read that follows, raw or mapped. */
@@ -67,7 +68,9 @@ static bool transient_fault;
 static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     *mapping_failed = false;
     transient_fault = false;
+    lf_flash_bytes = 0;
     config->prot_if.readoc = NRF_QSPI_READOC_FASTREAD;
+    config->prot_if.addrmode = NRF_QSPI_ADDRMODE_24BIT;
     if (!start_qspi(config)) {
         transient_fault = true;
         return false;
@@ -75,11 +78,20 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     /* The raw CRC pass reads every byte of both bases. On one data line it
      * was most of the cold-boot wait, so switch to four lines first.
      */
+    const bool large = lf_last_jedec[2] == 0x20;
+    if (large) {
+        if (w25q_enable_4byte_addressing() != NRFX_SUCCESS) {
+            transient_fault = true;
+            return false;
+        }
+        config->prot_if.addrmode = NRF_QSPI_ADDRMODE_32BIT;
+    }
     if (!enable_quad_reads(config)) {
         *mapping_failed = true;
         transient_fault = true;
-        return true;
+        return false;
     }
+    lf_flash_bytes = (large ? 64u : 16u) * 1024u * 1024u;
     *mapping_failed = !steno_squid_native_flash_open();
     atomic_set(&lf_mapped_ready, !*mapping_failed);
     return true;

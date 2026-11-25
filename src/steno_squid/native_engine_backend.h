@@ -4,6 +4,9 @@
 #include "native_dictionary_adapter.h"
 #include "../../tools/storage/native_store.h"
 namespace candidate_b {
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+void ReplayLookupFault(LiveResult result, uint32_t id, const uint32_t *strokes, size_t length);
+#endif
 // A baseline result remains visible only if no local edit shadows its
 // outline and the active dictionary stack still selects this dictionary.
 template<class Live, class Owner, class Fault>
@@ -55,6 +58,9 @@ public:
         const auto result=store.live.FindOutline(view,edits,id,strokes,lookup.length,record);
         if(result==LiveResult::Missing)return EditState::Missing;
         if(result!=LiveResult::Ok){
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+            ReplayLookupFault(result,id,strokes,lookup.length);
+#endif
             bases.Fault();return EditState::Error;
         }
         text={record.text_address,record.text_bytes};

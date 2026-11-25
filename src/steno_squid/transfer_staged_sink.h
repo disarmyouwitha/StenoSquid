@@ -63,7 +63,9 @@ public:
         commit_segment_ = Get32(info.args);
         commit_bytes_ = Get32(info.args + 4);
         commit_crc_ = Get32(info.args + 8);
-        if (commit_segment_ < 2 || commit_segment_ >= 255 || commit_bytes_ == 0) return SinkResult::kFail;
+        // No upper segment bound here: the pool is 255 segments on 16 MiB and 1023 on 64 MiB, and the staged writer
+        // validates every segment against the real geometry (NativePoolEnd), so the adapter must not hard-code it.
+        if (commit_segment_ < 2 || commit_bytes_ == 0) return SinkResult::kFail;
         state_ = Parse::kType;
         need_ = used_ = 0;
         writes_ = erases_ = 0;

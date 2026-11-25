@@ -1,8 +1,7 @@
 # StenoSquid
 
 ✅ZMK Wireless Keyboard\
-✅PloverHID\
-✅Javelin onboard steno\
+✅Javelin / PloverHID steno\
 🤌🍇 Wireless dictionary editing\
 🦑 Practice with just your keyboard!\
 📚 Tested: 900,000+ total stored entries on 16 MiB!
@@ -14,6 +13,16 @@
 
 [ZMK](https://github.com/zmkfirmware/zmk) handles the keyboard, Bluetooth, power management, and keymap editing. \
 [Javelin](https://github.com/jthlim/javelin-steno) handles onboard steno translation.
+
+## How to Install
+1. ⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use with or without a nice!view. (Practice uses the display.)
+2. Open **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
+3. Plug the **Left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
+4. In **Set up Dictionaries**, choose the factory dictionaries you want and click **Install selected Dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
+
+#### Use offline `StenoSquidManager.html` to edit translations, import/export dictionaries and manage memory~
+*(Also available online @ [https://ranna.ink/StenoSquidManager.html](https://ranna.ink/StenoSquidManager.html))*\
+<sub>We also offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
 ## Keyboard Modes
 
@@ -56,20 +65,6 @@ From the Javelin or Plover layer, tap the outer right thumb
 | SPEED | 10 / 30 seconds | Ten distinct words from the 300-word pool, with immediate advancement and a live countdown. |
 | TROUBLE | 10 | Focused repetitions of words your saved history marks as difficult. |
 
-## How to Install
-
-⭐ **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest) and open `StenoSquidManager.html` in Chrome to install and edit dictionaries!**
-
-### Provision a new Keyboard
-
-1. **[Download your bundle](https://github.com/disarmyouwitha/StenoSquid/releases/latest)**: **`boardsource.zip`** or **`nicenano.zip`**. Extract it and flash its **`Left.uf2`** and **`Right.uf2`** to the matching halves. Use the same pair with or without a nice!view. (Practice uses the right display.)
-2. Open the included **`StenoSquidManager.html` in Chrome** (or Edge). No installation needed.
-3. Plug the **left half into USB**, click **Connect** in Manager, and allow the browser to access your keyboard.
-4. In **Set up dictionaries**, choose the factory dictionaries you want and click **Install selected dictionaries**. Confirm the initial setup, which prepares the external dictionary pool, and keep USB connected until Manager reports that the keyboard is ready.
-
-#### Use offline `StenoSquidManager.html` to edit translations, import/export dictionaries and manage memory~
-*(Also available online @ [https://ranna.ink/StenoSquidManager.html](https://ranna.ink/StenoSquidManager.html))*\
-<sub>We still offer compatibility with [Javelin Steno Tools](https://lim.au/#/software/javelin-steno-tools) for basic dictionary tools.</sub>
 
 ## ZMK Studio
 ZMK Studio edits the keymap over USB (or Bluetooth with the Desktop app)!
@@ -100,20 +95,23 @@ https://zmk.studio/
 <img width="1166" height="568" alt="image" src="https://github.com/user-attachments/assets/a951050e-f7cb-4e96-8e83-7bb13f1018c6" />
 
 
-## NiceNano Wiring Diagram
+## Handwired Nice!Nano Diagram
+This diagram shows my tested handwired nice!nano configuration.
+
 ![StenoSquid left-half matrix, flash and passive wiring](assets/StenoSquid_wiring.png)
 
-**Components used in handwired build**
-* [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
-* [10K ohm Resistor](https://www.amazon.com/dp/B07HDGX5LM)
-* [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
+**External flash requires six unused, high-frequency-capable GPIOs** for QSPI (CS#, CLK, IO0–IO3), a GND connection, and a suitable switched 3.3 V supply.
 
-The 10 kΩ resistor connects CS# to the flash's switched 3.3 V supply.
-The 100 nF ceramic capacitor connects across flash VCC/GND. Both are nonpolarized.
-Wire the Adafruit #5634's exposed IO2 and IO3 pads directly.
-[Adafruit pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts)
+The GPIO assignments are configurable in firmware, so **you don't have to use the exact pins shown**. However, your wiring must match your firmware configuration. Other keyboards may not expose enough suitable pins.
 
-[Technical documentation](docs/README.md) covers the storage design, hardware results, and development checks.
+**Components used in the handwired build**
+- [Adafruit #5634 QSPI breakout](https://www.adafruit.com/product/5634)
+- [10 kΩ resistor](https://www.amazon.com/dp/B07HDGX5LM)
+- [100 nF ceramic capacitor](https://www.amazon.com/dp/B07X5XTDPB)
+
+The 10 kΩ resistor connects CS# to the flash's switched 3.3 V supply. The 100 nF capacitor connects across flash VCC and GND, close to the flash chip. Both are nonpolarized.
+
+Wire the Adafruit #5634's exposed IO2 and IO3 pads directly. [Adafruit pinout](https://learn.adafruit.com/adafruit-qspi-dip-breakout-boards/pinouts)
 
 ## License
 

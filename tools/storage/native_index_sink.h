@@ -29,13 +29,13 @@ public:
     bool Begin(uint32_t address,uint32_t bytes) {
         if(ready && !finished && !failed)return false;
         if(address%256 || bytes%4 || !bytes || bytes>0x1000000 || address<2*kSegmentBytes ||
-           address>255*kSegmentBytes || bytes>255*kSegmentBytes-address)return false;
+           address>NativePoolEnd(device)*kSegmentBytes || bytes>NativePoolEnd(device)*kSegmentBytes-address)return false;
         start=address;capacity=bytes;written=used=count=crc=0;finished=failed=false;ready=true;return true;
     }
     bool Append(uint32_t address) {
         if(!ready || failed || finished)return false;
         if(written+used>capacity || capacity-written-used<4 ||
-           address<2*kSegmentBytes+256 || address>=255*kSegmentBytes || address%4){failed=true;return false;}
+           address<2*kSegmentBytes+256 || address>=NativePoolEnd(device)*kSegmentBytes || address%4){failed=true;return false;}
         PutWord(page+used,address);used+=4;++count;
         return used<256 || Flush();
     }

@@ -6,6 +6,9 @@
 #include "binary_record.h"
 
 namespace candidate_b {
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+void ReplayJournalFault(unsigned line, uint32_t address, unsigned status);
+#endif
 enum class LiveResult { More, Ready, Ok, Missing, Invalid, IoError, Corrupt,
                         NeedCheckpoint, NeedJournal, NeedRebuild, ReadOnly, Stale, Busy };
 struct LiveView {
@@ -67,7 +70,7 @@ class LiveJournal {
         }
     }
     bool Owns(const LiveView &view,uint32_t at)const {
-        return at/kSegmentBytes<255 && at%kSegmentBytes>=256 && !(at%4) && view.journals.Contains(at/kSegmentBytes);
+        return at/kSegmentBytes<kLargePoolEnd && at%kSegmentBytes>=256 && !(at%4) && view.journals.Contains(at/kSegmentBytes);
     }
     LiveResult AppendTail(uint32_t address,uint32_t id,const uint32_t *strokes,uint8_t count) {
         if(live.tail.count==Tail::kCapacity)return LiveResult::NeedRebuild;
@@ -91,6 +94,11 @@ class LiveJournal {
         if (!Owns(view, address)) return LiveResult::Corrupt;
         JournalRecord record;
         const auto status = journal.ReadKey(address, record, key);
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        if (status != JournalResult::Ok || record.sequence > view.highwater ||
+                (record.sequence <= view.through) != indexed)
+            ReplayJournalFault(__LINE__, address, unsigned(status));
+#endif
         if (status == JournalResult::IoError) return LiveResult::IoError;
         if (status != JournalResult::Ok || record.sequence > view.highwater ||
             (record.sequence <= view.through) != indexed) return LiveResult::Corrupt;
@@ -101,6 +109,12 @@ class LiveJournal {
         JournalRecord record;
         JournalKey key;
         const auto status = journal.Read(address, record, &key);
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        if (status != JournalResult::Ok || record.sequence > view.highwater ||
+                (record.sequence <= view.through) != indexed ||
+                CompareOutlineKey(key, id, strokes, count))
+            ReplayJournalFault(__LINE__, address, unsigned(status));
+#endif
         if (status == JournalResult::IoError) return LiveResult::IoError;
         if (status != JournalResult::Ok || record.sequence > view.highwater ||
             (record.sequence <= view.through) != indexed ||
@@ -304,7 +318,7 @@ public:
             }
             if(kind!=uint32_t(ExtentKind::Journal))return LiveResult::More;
             const uint64_t epoch=uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32;
-            if(!epoch || epoch<=last_epoch || start<2 || start>=255 || live.journals.Contains(start))return Fail(LiveResult::Corrupt);
+            if(!epoch || epoch<=last_epoch || start<2 || start>=NativePoolEnd(device) || live.journals.Contains(start))return Fail(LiveResult::Corrupt);
             const auto status=journal.BeginScan(start,epoch,live.highwater,scan);
             if(status!=JournalResult::Ok)return Fail(status==JournalResult::IoError?LiveResult::IoError:LiveResult::Corrupt);
             live.journals.Add(start,1);last_epoch=epoch;scanning=true;return LiveResult::More;

@@ -12,7 +12,7 @@ from pathlib import Path
 import struct
 import zlib
 
-from build_native_image import LIMIT, SEGMENT, XIP, catalog_header, overlay_record_span, seed_entries, write_journal_header
+from build_native_image import SEGMENT, XIP, catalog_header, overlay_record_span, seed_entries, write_journal_header
 from compile_dict import parse_outline
 from hybrid import compact_entries
 from native_layout import validate_compact_layout
@@ -124,14 +124,14 @@ def overlay_geometry(entries):
 
 
 def layout_stats(view):
-    owned = {0, 1, 255}
+    owned = {0, 1, view.pool_end}
     regions = []
     kinds = {1: "compact", 2: "journal", 3: "forward-index", 4: "reverse-index"}
     for start, count, size, _, kind, _ in view.extents:
         owned.update(range(start, start + count))
         regions.append(dict(start=start, segments=count, bytes=size, kind=kinds[kind]))
-    free, run = inspect_free(owned)
-    return dict(used_segments=255 - free, free_segments=free, largest_free_run=run,
+    free, run = inspect_free(owned, view.pool_end)
+    return dict(used_segments=view.pool_end - free, free_segments=free, largest_free_run=run,
                 free_after_reserve=max(0, free - RESERVE), regions=regions)
 
 
@@ -177,10 +177,10 @@ def choose_conversions(source, operations, compact_segments, names):
 
 
 def pack_layout(source_image, source, operations, converted, expected_segments, *, merge=None):
-    if expected_segments + 2 > 255 - RESERVE:
+    if expected_segments + 2 > source.pool_end - RESERVE:
         raise ValueError("The packed target cannot retain the three-segment maintenance reserve")
     rows_to_pack, omitted_extents = merge_layout(source, merge)
-    image = bytearray(b"\xff" * LIMIT)
+    image = bytearray(b"\xff" * (source.pool_end * SEGMENT))
     extents = []
     remap, new_bases = {}, {}
     next_segment = 2
@@ -248,7 +248,7 @@ def pack_layout(source_image, source, operations, converted, expected_segments, 
         image[address:address + 32 + len(payload)] = catalog_header(root + 1, payload) + payload
     data = bytes(image)
     view = Snapshot(lambda address, n: data[address:address + n], 32, len(payload),
-                    zlib.crc32(payload), strict=True)
+                    zlib.crc32(payload), strict=True, pool_end=source.pool_end)
     return data, view
 
 
@@ -335,7 +335,7 @@ def verify_relocated(source_image, source, target_image, target, converted, merg
 
 def consolidation_geometry(image, snapshot):
     """Run the production allocator on each installed user snapshot at its current size."""
-    protected = {0, 1, 255}
+    protected = {0, 1, snapshot.pool_end}
     for start, span, *_ in snapshot.extents:
         protected.update(range(start, start + span))
     result = {}
@@ -365,7 +365,8 @@ def validate_pair(source_backup, target_backup, original, repacked):
     source_hash = source_backup["sha256"]
     if (not isinstance(metadata, dict) or metadata.get("source_bundle_sha256") != source_hash
             or metadata.get("target_image_sha256") != image_hash
-            or source_backup["host_layout"] != target_backup["host_layout"]):
+            or source_backup["host_layout"] != target_backup["host_layout"]
+            or source.pool_end != target.pool_end):
         raise ValueError("Optimized bundle does not match the source, target image or host layout")
     names = metadata.get("converted")
     if not isinstance(names, list) or any(not isinstance(name, str) for name in names) or len(names) != len(set(names)):
