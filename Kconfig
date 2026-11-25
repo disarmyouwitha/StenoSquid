@@ -119,6 +119,20 @@ config ZMK_JAVELIN_STENO_HID_PROVISIONING
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     default y
 
+config ZMK_STENO_SQUID_MEMORY_DIAGNOSTICS
+    bool "Heap and stack high-water measurement (USB console command memory_report)"
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    select INIT_STACKS
+    select THREAD_STACK_INFO
+    select THREAD_MONITOR
+    select THREAD_NAME
+    select SYS_HEAP_RUNTIME_STATS
+    default n
+    help
+      Fills every stack with a pattern and counts the system heap peak, then reports both
+      through the USB-only "memory_report" console command. Measurement builds only: thread
+      names and the fill add a little RAM and boot time. Use tools/bench/run_memory_report.py.
+
 config ZMK_STENO_SQUID_TRANSFER_SESSION
     bool "Experimental binary transfer session for Native dictionary updates"
     depends on ZMK_JAVELIN_STENO_HID_PROVISIONING && ZMK_STENO_SQUID_NATIVE_STORE

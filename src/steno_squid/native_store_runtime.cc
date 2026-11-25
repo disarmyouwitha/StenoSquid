@@ -11,6 +11,7 @@
 #include "transfer_port.h"
 #endif
 #include "dictionary_benchmark.h"
+#include "memory_report.h"
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
 #include "../../tools/storage/native_validator.h"

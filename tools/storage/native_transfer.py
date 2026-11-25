@@ -185,7 +185,8 @@ def _stream(session, stream, total, chunk, window, stall_seconds, retries, sleep
         for frame_type, _, offset, payload in frames:
             if frame_type == ERROR:
                 raise _error(payload[0])
-            if frame_type not in (ACK, NAK) or offset > total:
+            # The keyboard cannot have accepted more than was sent; a larger offset is noise, not progress.
+            if frame_type not in (ACK, NAK) or offset > sent:
                 continue
             if offset > acked:
                 acked = offset
@@ -203,7 +204,9 @@ def _stream(session, stream, total, chunk, window, stall_seconds, retries, sleep
         if percent >= last_percent + 5 or (percent == 100 and last_percent != 100):
             progress(f"Writing dictionary data… {percent}%")
             last_percent = percent
-        if not frames and time.monotonic() - last_progress > stall_seconds:
+        # Progress means the acknowledged offset advanced. Replies that do not advance it (an endless
+        # stream of busy NAKs, say) must not keep the transfer alive.
+        if time.monotonic() - last_progress > stall_seconds:
             stalls += 1
             if stalls > retries:
                 raise RuntimeError("The keyboard stopped responding during the transfer. Check the connection.")

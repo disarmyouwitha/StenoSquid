@@ -127,11 +127,20 @@ static void TestLockContention() {
     CHECK(nak.type == kNak && nak.payload[0] == kNakSinkBusy && !rig.port.receiver().active() && rig.env.flash_calls == 0);
     rig.env.lock_free = true;
     CHECK(rig.One(MakeFrame(kBegin, 1, 0, BeginPayload(stream))).type == kAck);
+    CHECK(rig.One(MakeFrame(kData, 1, 0, {kRecordErase, 5, 0})).type == kAck); // Receiver is now at 3.
     rig.env.lock_free = false;
-    Reply dn = rig.One(MakeFrame(kData, 1, 0, {kRecordErase, 5, 0}));
-    CHECK(dn.type == kNak && rig.port.receiver().next_offset() == 0); // Frame not consumed.
+    // A frame further ahead in the window meets a busy lock. The NAK must carry the RECEIVER's
+    // confirmed offset (3), never the offset of the frame that was refused (20): the host
+    // rewinds to this value, so a larger one would skip data the keyboard never accepted.
+    Reply dn = rig.One(MakeFrame(kData, 1, 20, {kRecordErase, 6, 0}));
+    CHECK(dn.type == kNak && dn.payload[0] == kNakSinkBusy);
+    CHECK(dn.offset == 3 && rig.port.receiver().next_offset() == 3);
     rig.env.lock_free = true;
-    CHECK(rig.One(MakeFrame(kData, 1, 0, {kRecordErase, 5, 0})).type == kAck);
+    CHECK(rig.One(MakeFrame(kData, 1, 3, {kRecordErase, 6, 0})).type == kAck);
+    // Before any session exists, a busy NAK to BEGIN reports offset 0, not a stale earlier value.
+    Rig fresh; fresh.env.lock_free = false;
+    Reply b = fresh.One(MakeFrame(kBegin, 1, 0, BeginPayload(stream)));
+    CHECK(b.type == kNak && b.offset == 0);
 }
 
 static void TestOwnership() {
