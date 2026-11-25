@@ -48,7 +48,7 @@ void steno_squid_memory_report(void *, const char *) {
     k_thread_foreach(ThreadRow, &walk);
     for (int cpu = 0; cpu < CONFIG_MP_MAX_NUM_CPUS; ++cpu) {
         size_t unused = 0;
-        if (z_stack_space_get(K_KERNEL_STACK_BUFFER(z_interrupt_stacks[cpu]),
+        if (z_stack_space_get(reinterpret_cast<const uint8_t *>(K_KERNEL_STACK_BUFFER(z_interrupt_stacks[cpu])),
                               K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[cpu]), &unused) == 0) {
             Row("ISR", K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[cpu]), unused, walk);
         }
