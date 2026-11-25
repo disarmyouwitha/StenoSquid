@@ -6,6 +6,9 @@
 #include "binary_record.h"
 
 namespace candidate_b {
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+void ReplayJournalFault(unsigned line, uint32_t address, unsigned status);
+#endif
 enum class LiveResult { More, Ready, Ok, Missing, Invalid, IoError, Corrupt,
                         NeedCheckpoint, NeedJournal, NeedRebuild, ReadOnly, Stale, Busy };
 struct LiveView {
@@ -91,6 +94,11 @@ class LiveJournal {
         if (!Owns(view, address)) return LiveResult::Corrupt;
         JournalRecord record;
         const auto status = journal.ReadKey(address, record, key);
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        if (status != JournalResult::Ok || record.sequence > view.highwater ||
+                (record.sequence <= view.through) != indexed)
+            ReplayJournalFault(__LINE__, address, unsigned(status));
+#endif
         if (status == JournalResult::IoError) return LiveResult::IoError;
         if (status != JournalResult::Ok || record.sequence > view.highwater ||
             (record.sequence <= view.through) != indexed) return LiveResult::Corrupt;
@@ -101,6 +109,12 @@ class LiveJournal {
         JournalRecord record;
         JournalKey key;
         const auto status = journal.Read(address, record, &key);
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        if (status != JournalResult::Ok || record.sequence > view.highwater ||
+                (record.sequence <= view.through) != indexed ||
+                CompareOutlineKey(key, id, strokes, count))
+            ReplayJournalFault(__LINE__, address, unsigned(status));
+#endif
         if (status == JournalResult::IoError) return LiveResult::IoError;
         if (status != JournalResult::Ok || record.sequence > view.highwater ||
             (record.sequence <= view.through) != indexed ||

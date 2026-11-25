@@ -107,3 +107,67 @@ Do not turn this initial baseline into a capacity or zero-stroke-loss promise.
 The next host-only correctness stage lives under `tools/storage/`. See
 [its design, commands and limits](../../docs/archive/hybrid-storage-prototype.md).
 It is independent of the diagnostic firmware and never accesses real USB/flash.
+
+## 64 MiB dictionary qualification
+
+The Phase 1 fixture uses pinned factory packages plus seeded synthetic compact
+dictionaries and edits. It records corpus hashes, catalog order, allocated
+extents and the expected result and owner for each lookup. It contains 49
+one-stroke full-stack misses. Their shapes are separate from the synthetic
+compact keys, and fixture generation excludes every pinned and seeded key.
+Each generated compact includes a one-stroke table.
+
+Prepare pinned sources with `tools/dictionaries/prepare.py`, then build the
+offline fixture.
+
+```sh
+python3 tools/bench/phase1_fixture.py --out build/phase1-fixture
+```
+
+The default corpus enforces space for the firmware's maintenance reserve and
+replacement indexes. It retains one small named compact so consolidation can
+be preflighted at high addresses. The report gives actual installed and active
+counts and the largest free run. `--skip-fill` and the entry-count arguments
+allow smoke fixtures. The emitted recovery JSON replaces the target pool when
+restored. Use it only on an authorized target with a verified prior backup.
+
+Build the host replay binary using the pinned Javelin source.
+
+```sh
+PYTHONPATH=tools/bench python3 - /path/to/javelin-steno <<'PY'
+from pathlib import Path
+from run_typing_replay import build_engine, compiler
+import sys
+
+build_engine(Path(sys.argv[1]), Path("build/phase1-host"), Path("tools/bench/typing_replay.cc"),
+             compiler(), optimization="-O2")
+PY
+python3 tools/bench/phase1_host.py build/phase1-host/typing_replay \
+  --fixture build/phase1-fixture --out build/phase1-paced --paced
+python3 tools/bench/phase1_host.py build/phase1-host/typing_replay \
+  --fixture build/phase1-fixture --out build/phase1-matrix --dormant-trials 3 --active-sweep
+```
+
+Host reports check each stroke and lookup owner and record processing latency,
+journal reads and bytes, and compact provider calls. Host timing captures the
+simulated NOR and the pinned engine. It does not cover QSPI, device scheduling,
+BLE, or physical scan timing.
+
+To build the 32-slot Boardsource test firmware, add
+`config/boardsource-wireless-corne/phase1-replay.conf` to the everyday left
+build's extra configuration files. Flash the matching left target. Once the
+test pool is loaded, run the read-only device checks and the keyboard replay.
+
+```sh
+python3 tools/bench/phase1_device.py --serial SERIAL \
+  --fixture build/phase1-fixture/fixture.json --report build/phase1-device.json
+python3 tools/bench/run_device_replay.py --serial SERIAL \
+  --fixture build/phase1-fixture/fixture.json --wpm 300 --repeat 5 \
+  --report build/phase1-device-300.json
+```
+
+Use the same replay runner for 350 or 400 WPM bursts with one repeat. Focus the
+capture window and leave the keys alone during injection. The replay validates
+the injected chord sequence on the board and the final text on the host.
+`phase1_device.py` reports the first sample from each distinct miss and the
+subsequent same-outline samples separately.

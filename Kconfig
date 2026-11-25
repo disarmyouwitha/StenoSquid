@@ -36,13 +36,21 @@ config ZMK_JAVELIN_DIAG
       src/steno_squid/flash_diagnostics.c.
 
 config ZMK_JAVELIN_DICTIONARY_BENCHMARK
-    bool "Read-only dictionary measurements and real key-path traces"
-    depends on ZMK_JAVELIN_DIAG && ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
+    bool "Read-only dictionary measurements and real key-path traces" if ZMK_JAVELIN_DIAG
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY
     select INIT_STACKS
     select THREAD_STACK_INFO
     help
       Phase-0 instrumentation for diagnostic builds only. Benchmark commands
       use USB HID and never import, erase or change dictionary selections.
+
+config ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+    bool "Paced dictionary stress replay and retained crash diagnostics"
+    depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY && ZMK_STENO_SQUID_NATIVE_STORE
+    select ZMK_JAVELIN_DICTIONARY_BENCHMARK
+    select REBOOT
+    help
+      Adds USB-only diagnostic commands for paced input and crash capture.
 
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"

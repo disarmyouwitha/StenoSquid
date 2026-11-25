@@ -147,11 +147,20 @@ StenoDictionary *parent=nullptr;
 LiveView export_view;
 OverlayCursor export_cursor;
 alignas(4) char export_text[2048];
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+atomic_t native_fault_pc;
+#endif
 
 class BaseProvider final : public NativeBaseProvider {
 public:
     bool Ready()const override{return healthy;}
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+    __attribute__((noinline))
+#endif
     void Fault()override {
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+        atomic_cas(&native_fault_pc, 0, reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
+#endif
         (void)ForgetBaseTrust();healthy=store.opened=false;atomic_clear(&lf_mapped_ready);atomic_set(&lf_checked,1);dictionary_flash_ready_changed();
     }
     const StenoDictionary *FindBase(uint32_t) const override;
@@ -1313,6 +1322,12 @@ const char *Install(const char *command,char *reply,size_t bytes) {
 }
 }
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes,uint32_t bluetooth_session) {
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+    if (!bluetooth_session && !std::strcmp(command, "diagnostic-fault\n")) {
+        steno_squid_replay_diagnostic_status(reply, bytes, atomic_get(&native_fault_pc));
+        return;
+    }
+#endif
     if (!std::strcmp(command, "connection\n")) {
         snprintk(reply, bytes, "%s", bluetooth_session ? "OK BLUETOOTH" : "OK USB");
         return;

@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 #ifdef __cplusplus
@@ -13,6 +14,9 @@ uint32_t steno_squid_benchmark_jedec(void);
 }
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
 void steno_squid_dictionary_benchmark(void *, const char *);
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+void steno_squid_replay_diagnostic_status(char *reply, size_t bytes, uint32_t store_fault);
+#endif
 class StenoSquidKeyBenchmark {
 public:
     StenoSquidKeyBenchmark(int index, bool pressed);

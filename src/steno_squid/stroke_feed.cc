@@ -25,6 +25,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define STENO_SQUID_TAPE_TIMING 1
 #endif
 
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+bool steno_squid_replay_suggestions_enabled();
+#endif
+
 namespace {
 
 class TapeWriter final : public IWriter {
@@ -129,6 +133,9 @@ extern "C" void steno_squid_stroke_feed_begin(uint32_t when, bool hints) {
   suggestionWasEnabled = Console::IsEventEnabled(ConsoleEvent::SUGGESTION);
   keyTime = when;
   hintBudgetActive = hints && hintPolicy.Allow(when) && !InputWaiting();
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+  hintBudgetActive = hintBudgetActive && steno_squid_replay_suggestions_enabled();
+#endif
   hintBudgetStarted = false;
   if (hintBudgetActive) {
     Console::EnableEvent(ConsoleEvent::SUGGESTION);
