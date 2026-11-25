@@ -190,9 +190,9 @@ python3 tools/bench/phase1_boot.py --serial SERIAL \
 ```
 
 In the host replay of the full pool, reusing extent validation for byte-identical
-catalog payloads reduced logical flash reads from 2,162,470 to 1,201,627. Time the
-candidate on hardware both with identical catalog payloads and after a catalog
-update leaves two distinct payloads.
+catalog payloads reduced logical flash reads from 2,162,470 to 1,201,627.
+Boot timing after a catalog update leaves two distinct payloads remains to be
+measured on hardware.
 
 ### 64 MiB hardware results
 
@@ -205,6 +205,12 @@ update leaves two distinct payloads.
   pool 68 seconds after its USB console became reachable following a UF2
   update. The catalog matched the fixture byte for byte, all 233 lookups
   passed, and `KAT` returned `cat`.
+- The 32 MHz everyday build with matching-catalog validation reuse (`fe11123`)
+  reached Javelin ready 38.8 seconds after its USB console appeared following
+  a UF2 update. This single run reopened generation 2 with a full validation,
+  32 dictionaries, 17 live tail entries, and 17 free blocks. The catalog matched
+  the fixture byte for byte, and all 233 fixture lookups passed, including the
+  full-stack misses. The board was left on this firmware with the pool intact.
 - Using injected chords and USB capture, the 44-stroke prose burst passed
   at 349.90 WPM. The completed 300 WPM rerun processed all 1,400 strokes in
   order with zero input overflows. It missed one completion deadline and
