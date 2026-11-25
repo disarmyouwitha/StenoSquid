@@ -1072,6 +1072,13 @@ const char *Update(const char *command, char *reply, size_t bytes) {
         return nullptr;
     }
     if (!staged.Active()) return "ERR No native update active";
+#ifdef CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION
+    // The Manager echoes this kind in BEGIN, so it needs no table of begin commands.
+    if (!std::strcmp(command, "transfer-kind\n")) {
+        snprintk(reply, bytes, "OK %u", unsigned(staged.Kind()));
+        return nullptr;
+    }
+#endif
     TouchInstall();
     steno_squid_upload_status(stage_mode, 60000);
     if (!std::strcmp(command, "abort\n")) {

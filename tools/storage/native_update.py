@@ -565,6 +565,13 @@ def effective_entries(snapshot, name, read):
 
 def publish(console, update, progress):
     import base64
+    import native_transfer
+
+    try:
+        native_transfer.upload(console, update, progress)
+        return
+    except native_transfer.TransferUnavailable:
+        pass  # Not advertised, or refused before any data moved: use the Base64 console path.
 
     total = sum(map(len, update.segments.values()))
     processed = 0

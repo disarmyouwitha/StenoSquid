@@ -84,7 +84,7 @@ transfer symbols and the console is byte-for-byte the same code path.
   `steno_squid_native_transfer_report`. Console text and Base64 never start with that byte, so there is no mode
   switch. The host sends one frame per zero-padded 63-byte report; replies (at most 17 bytes) are packed into the
   reply report and sent on the same transport (USB or BLE session) the frame arrived on.
-- **Capability**: `native_install update transfer-capabilities` answers `OK XFER1 49` only in this build; otherwise
+- **Capability**: `native_install update transfer-capabilities` answers `OK XFER1 49` only in this build, and `update transfer-kind` (while a staged update is open) answers `OK <NativeUpdateKind>`; otherwise
   the console answers its usual unknown-command error and the Manager stays on Base64.
 - **Policy in `transfer_port.h`**: the flash lock is taken without blocking (busy flash gives `NAK sink-busy`, the
   frame is not consumed); BEGIN attaches only to an update the **same connection** opened on the console; once a
@@ -108,6 +108,34 @@ transfer symbols and the console is byte-for-byte the same code path.
 The off build adds only two `uint32_t` variables and a counter increment versus the previous commit. The on build
 compiles without new warnings (the only warnings are in third-party CMSIS headers). `Verify` reuses the record page
 buffer, so it adds no stack on the HID worker. Not run on hardware.
+## Manager client
+
+`tools/storage/native_transfer.py` is called from `native_update.publish()`, the single upload loop used by
+compaction/import, base replacement and named imports, in both the desktop Manager and the browser Manager
+(Pyodide); the packager already bundles `tools/storage`. The Manager stays a website; nothing new is required of
+the browser because frames travel in the existing 63-byte WebHID reports.
+
+- **Negotiation and fallback.** It probes `native_install update transfer-capabilities` (and `transfer-kind`).
+  Not advertised, no `device` on the console, `console.binary_transfer = False`, or BEGIN refused or unanswered
+  before any data moved: `TransferUnavailable`, and `publish()` continues on the Base64 path unchanged. After data
+  has been accepted a failure is raised (the caller already aborts the staged update) and is **never** retried
+  over Base64.
+- **Streaming.** Go-back-N with a window (default 8 frames, capped by the keyboard's BEGIN credit, max 16): ACK
+  offsets advance the window; one NAK rewinds once per gap (later NAKs for frames already in flight are ignored);
+  a stall timer resends from the last acknowledged byte; `NAK sink-busy` backs off. END is repeated while the
+  keyboard verifies in slices; COMMIT is repeated slowly because the keyboard cannot answer while committing.
+  A lost reply never waits out the 30-minute commit deadline. On any failure an ABORT frame is sent best effort.
+- **Order of success.** COMMIT is sent only after an `ACK(Verified)`; progress reports reach 100% only when the
+  keyboard acknowledged every byte.
+
+### Client test status
+
+`test_native_transfer.py` drives the client against `transfer_device_sim.cc`: the real `NativeStage` on simulated
+NOR behind the real firmware glue, over 63-byte reports. Clean import and compaction uploads leave flash identical
+to the legacy path; eight seeded lossy links (drops, bit flips, duplicates, reordering of replies) still finish
+identical; a dead link raises without sending any legacy write; refusal and absence fall back to Base64; scripted
+keyboards pin the END-before-COMMIT rule, NAK-driven recovery and error reporting. Five deliberate client mutations
+are each caught. These fixtures upload about 1.6 KB, so they say nothing about speed.
 ## Test status (2026-11-24)
 
 Passed: C++ suites under clang++ and g++ (`-Wall -Wextra -Werror`), JS suite under Node 22.
@@ -119,8 +147,7 @@ browser WebHID, any hardware.
 
 ## Not yet done (needs approval or hardware)
 
-1. Manager-side client: probe `transfer-capabilities`, build the record stream, window DATA frames, and fall back
-   to Base64. Only the frame codec exists in JS today (`transfer_frame.js`).
+1. Browser UI: a user-visible indicator and an opt-out switch (the client already honours console.binary_transfer);\n   not exercised in a real browser (needs WebHID and a keyboard). The JS codec 	ransfer_frame.js is kept for a\n   future JS-native path and is not used by the Python client.
 2. CDC (Web Serial) mapping; this build carries frames on the HID console report only.
 3. Hardware bring-up of the opt-in build (flash `Left.uf2` built with `transfer.conf`) once the board is free.
 4. Instrumentation and throughput/RAM measurements (do not quote any figure
