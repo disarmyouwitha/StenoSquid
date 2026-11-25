@@ -16,7 +16,9 @@ budget and no pass/fail rule. This is now its own item, and it gates any further
   `config/boardsource-wireless-corne/memory.conf`) fills every stack with a pattern, counts the system heap peak, and
   serves both through the USB-only console command `memory_report`. `tools/bench/run_memory_report.py` prints the
   tightest stacks first, flags any below 25% free, and saves the raw JSON under `build/memory-report/`. The reader is
-  unit-tested; the firmware side builds but has not run on a keyboard.
+  unit-tested; the firmware side builds but has not run on a keyboard. The combined measurement build (32-slot everyday +
+  transfer + memory diagnostics, Boardsource left) measured 506,156 B flash and **242,078 B RAM (92.35%)**, which is 312 B
+  more RAM than the same build without the diagnostics.
 - **Measurement matrix (proposal).** Read after each workload from a fresh boot: idle; 300 WPM sustained and 350 WPM
   burst replay on the full 32-slot pool; a Base64 import; a binary transfer; Bluetooth typing plus management;
   ZMK Studio connected; a cold boot validation. Record peak heap, every thread's stack high-water mark and the ISR
