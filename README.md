@@ -4,7 +4,7 @@
 ✅Javelin / PloverHID steno\
 🤌🍇 Wireless dictionary editing\
 🦑 Practice with just your keyboard!\
-📚 Tested: 900,000+ total stored entries on 16 MiB!
+📚 Tested: 900,000+ total stored entries on 16 MiB! *(Over 3mil on 64mb!)*
 
 **Firmware for `Boardsource Wireless Corne SMT` && https://github.com/disarmyouwitha/StenoSquid-PCB** \
 (But it should work with any nRF52840 microcontroller + a 16 MiB `Adafruit #5634` QSPI breakout!)
