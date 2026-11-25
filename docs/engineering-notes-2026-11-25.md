@@ -134,6 +134,7 @@ Nothing below is urgent and none of it should happen before the Boardsource resu
 | Item | What to do | When |
 | --- | --- | --- |
 | Memory diagnostics (`memory_report`, `memory.conf`, `run_memory_report.py`) | **Keep permanently** (owner decision): off by default, and a standing tool for future firmware work. Nothing to remove; after the data is in, only right-size the RAM | After tonight's runs |
+| **REMINDER FOR THE OWNER: make 32 slots the shipping default** | Today the Kconfig default (`ZMK_STENO_SQUID_NATIVE_DICTIONARIES`) is 16, and CI Default builds are 16-slot; 32 is only in `phase1-everyday.conf`, which the `*-Left-Measure` builds append. When the measurements show 32 slots fit with real headroom (25% stacks, a measured heap margin, and room for the Web Serial/CDC work and everything else planned), ask the owner to approve, then change the Kconfig default and the Default builds. Claude must raise this when the memory results come in | After the memory report data |
 | Transfer option (`CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION`) | Stays opt-in until ratified; decide its default and the Bluetooth question | After hardware results |
 | JS spikes (`tools/bench/js/`, `manager_workloads.*`, `test_js_compiler.py`) | **Keep.** They are the seed of the new Manager core. Delete only the superseded naive port (`compile_dict.mjs`) and `phases.mjs` once `compile_fast.mjs` moves into the Manager source | At M1 |
 | Dead Python (1,367 unreachable lines in the shipped bundle) | Delete | Now or at M6 |
