@@ -342,7 +342,15 @@ the selected catalog can attach that state if its payload matches exactly.
 The existing recovery path still handles a different selected payload or a
 root whose live tail cannot be staged. In the simulated full pool this variant
 reduced mapped requests from 974,018 to 813,897 and bytes from 22,137,506 to
-16,943,926. A firmware run is needed to measure any time saved.
+16,943,926. The post-UF2 hardware run reached ready in 31.9 seconds from USB,
+versus 37.0 for the mapped 16 MHz control. It recorded 814,015 mapped reads.
+The journal scan and recovery state construction together took 12.8 seconds.
+The work between root validation and catalog ready took 15 milliseconds,
+versus 10.8 seconds in the faster cold control. Both roots validated, all 233
+fixture lookups passed, and the board retained 32 dictionaries and 17 free
+blocks. A physical cold start is still needed. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-after-uf2.json)
+and [lookup results](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-lookups.json).
 
 
 
