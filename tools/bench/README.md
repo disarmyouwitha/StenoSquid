@@ -291,6 +291,16 @@ pass differs from the repeated 32 MHz cold-start rejection. More paired
 reboots are needed to determine whether the clock accounts for the difference.
 See the [reboot trace](../../docs/benchmarks/phase1-startup-profile-16mhz-reboot.json).
 
+A second physical cold boot at 16 MHz also passed on the first full open.
+Ready arrived at 37.436 seconds of device uptime with exactly the same
+974,136 mapped reads as the 91.295-second run. Journal scan took 8.947 seconds,
+forward validation 6.989 seconds, reverse validation 9.179 seconds, and
+catalog selection plus live journal recovery 10.815 seconds. Both roots
+validated and all 233 lookups passed, with all 32 dictionaries and 17 free
+blocks. Keep both timings as the baseline for the DMA candidate.
+See the [second cold-boot trace](../../docs/benchmarks/phase1-startup-profile-16mhz-cold-02.json).
+
+
 The next timing candidate appends `phase1-boot-dma.conf` to the same left
 profile build. During catalog validation it fills the existing 256-byte QSPI
 bounce buffer with DMA and serves nearby reads from it. The build also uses
@@ -311,7 +321,7 @@ versus 213,430 DMA page fills for 54,638,080 bytes. Both selected generation 2,
 recovered 17 tail entries, performed zero writes, and refused a corrupted
 forward index. The request count and transferred bytes help size the next
 hardware experiment. Neither measures latency, and the candidate still needs
-a physical cold start against the 91.3-second 16 MHz baseline.
+a physical cold start against the 37.4- and 91.3-second 16 MHz baselines.
 
 
 
