@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "status": [],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "hfxo_error",
+      "uptime_ms": 865,
+      "detail": 4294967180,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "flash_unavailable",
+      "uptime_ms": 865,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    }
+  ],
+  "error": "Flash reported unavailable after validation."
+}

@@ -428,3 +428,9 @@ CRC32, with all validation still enabled. The trace records `hfxo_held`
 before QSPI startup. Time and verify the full pool across physical cold starts
 before qualifying this configuration.
 See [Nordic erratum 244](https://docs.nordicsemi.com/r/bundle/errata_nrf52840_rev3/page/err/nrf52840/rev3/latest/anomaly_840_244.html).
+
+The first 32 MHz lab build timed out while waiting for Zephyr's clock-ready
+notification. It stopped before any flash read. The revised check holds the
+same clock-manager reservation, verifies the oscillator through Nordic's
+clock status, and falls back to the normal validated open on timeout.
+See the [initial clock-request trace](../../docs/benchmarks/phase1-startup-profile-hfxo-request-timeout.json).
