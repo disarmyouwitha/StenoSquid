@@ -3,6 +3,7 @@
 #pragma once
 #include "native_merge_ops.h"
 namespace candidate_b {
+enum class ValidationStage { Extents, Journal, Forward, Reverse };
 template<class Device>
 class NativeValidator {
     Device &device;
@@ -34,7 +35,9 @@ public:
         uint32_t crc=0;
         return device.Checksum(start*kSegmentBytes,bytes,crc) && crc==Word(extent+8);
     }
-    CatalogResult Validate(const CatalogRoot &root, bool cross_check = true) {
+    CatalogResult Validate(const CatalogRoot &root, bool cross_check = true,
+                           void (*stage)(ValidationStage) = nullptr) {
+        if (stage) stage(ValidationStage::Extents);
         const auto schema=catalog.Validate(root,[&](uint32_t i,const uint8_t *row){return Extent(i,row);});
         if(schema!=CatalogResult::Ok)return schema;
         view={};reverse_address=reverse_count=0;uint8_t prefix[32];
@@ -46,6 +49,7 @@ public:
             uint8_t id[4];if(!device.Read(root.address+32+i*96,id,4))return CatalogResult::IoError;
             view.identities[i]=Word(id);
         }
+        if (stage) stage(ValidationStage::Journal);
         uint64_t last_epoch=0;bool boundary=!view.through;
         for(uint32_t i=0;i<extents;++i) {
             uint8_t row[24];if(!device.Read(root.address+32+view.dictionary_count*96+i*24,row,24))return CatalogResult::IoError;
@@ -71,6 +75,7 @@ public:
         if(!boundary || view.through>view.highwater || view.forward_count>kMaxEntries || reverse_count>kMaxEntries)return CatalogResult::Corrupt;
         uint32_t translations = 0;
         for(unsigned reverse=0;reverse<2;++reverse) {
+            if (stage) stage(reverse ? ValidationStage::Reverse : ValidationStage::Forward);
             MergeRecord previous;
             for(uint32_t i=0;i<(reverse?reverse_count:view.forward_count);++i) {
                 uint32_t address;MergeRecord record;

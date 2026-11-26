@@ -52,6 +52,12 @@ config ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
     help
       Adds USB-only diagnostic commands for paced input and crash capture.
 
+config ZMK_STENO_SQUID_BOOT_PROFILE
+    bool "Native dictionary startup profiling"
+    depends on ZMK_STENO_SQUID_NATIVE_STORE
+    help
+      Records startup stages and logical flash reads for USB lab measurements.
+
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG

@@ -18,6 +18,9 @@ extern "C" {
 #endif
 // Called by flash startup under flash_lock, after four-line reads are enabled.
 bool steno_squid_native_flash_open(void);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+void steno_squid_boot_stage(const char *stage, uint32_t detail);
+#endif
 void steno_squid_native_power_changed(void);
 int32_t steno_squid_native_scrub_wait(void);
 void steno_squid_native_scrub_step(void);

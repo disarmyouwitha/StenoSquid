@@ -71,6 +71,9 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     lf_flash_bytes = 0;
     config->prot_if.readoc = NRF_QSPI_READOC_FASTREAD;
     config->prot_if.addrmode = NRF_QSPI_ADDRMODE_24BIT;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    steno_squid_boot_stage("qspi_start", 0);
+#endif
     if (!start_qspi(config)) {
         transient_fault = true;
         return false;
@@ -78,6 +81,9 @@ static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     /* The raw CRC pass reads every byte of both bases. On one data line it
      * was most of the cold-boot wait, so switch to four lines first.
      */
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    steno_squid_boot_stage("quad_setup", lf_last_jedec[2]);
+#endif
     const bool large = lf_last_jedec[2] == 0x20;
     if (large) {
         if (w25q_enable_4byte_addressing() != NRFX_SUCCESS) {
@@ -156,6 +162,10 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
 #endif
     lf_provisioning_ready = qspi_ok;
     atomic_set(&lf_checked, 1);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    steno_squid_boot_stage(atomic_get(&lf_mapped_ready) ? "flash_ready" : "flash_unavailable",
+                           qspi_ok);
+#endif
     k_condvar_broadcast(&lf_restart_done);
     dictionary_flash_ready_changed();
 #if SERIAL_CONSOLE

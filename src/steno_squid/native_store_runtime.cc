@@ -65,6 +65,18 @@ static_assert(DT_REG_SIZE_BY_NAME(DT_NODELABEL(qspi),qspi_mm) >= kMaxSegments*kS
 bool ForgetBaseTrust();
 extern int64_t scrub_due;
 constexpr size_t MaxDictionaries=CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+struct BootEvent {
+    const char *stage;
+    uint32_t uptime_ms, detail, mapped_reads, dma_reads;
+};
+constexpr unsigned BootEventCount = 64;
+BootEvent boot_events[BootEventCount];
+k_spinlock boot_event_lock;
+uint32_t boot_event_next = 0, boot_mapped_reads = 0, boot_dma_reads = 0;
+bool boot_count_reads = false;
+#endif
+
 struct FlashDevice {
     bool mapped=false,trust_bases=false;
     int64_t cold_read_yield_at=0;
@@ -77,6 +89,9 @@ struct FlashDevice {
     void Dirty(uint32_t at,uint32_t n){for(auto &c:cached)if(c.bytes && at<c.at+c.bytes && c.at<at+n)c.bytes=0;}
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
         if(at>lf_flash_bytes || n>lf_flash_bytes-at)return false;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+        if (boot_count_reads) ++(mapped ? boot_mapped_reads : boot_dma_reads);
+#endif
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
         if (squid_bench_count_reads) {
             ++squid_bench_personal_reads;
@@ -797,6 +812,19 @@ uint32_t BaseFingerprint(const CatalogRoot &root) {
 }
 } // namespace
 
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+extern "C" void steno_squid_boot_stage(const char *stage, uint32_t detail) {
+    const auto key = k_spin_lock(&boot_event_lock);
+    boot_events[boot_event_next % BootEventCount] =
+        {stage, k_uptime_get_32(), detail, boot_mapped_reads, boot_dma_reads};
+    ++boot_event_next;
+    k_spin_unlock(&boot_event_lock, key);
+}
+#define BOOT_STAGE(stage, detail) steno_squid_boot_stage(stage, detail)
+#else
+#define BOOT_STAGE(stage, detail) ((void)0)
+#endif
+
 extern "C" void steno_squid_native_power_changed(void) {
     QueueIdleMaintenance();
 }
@@ -804,8 +832,10 @@ extern "C" void steno_squid_native_power_changed(void) {
 extern "C" bool steno_squid_native_flash_open(void) {
     // Only a same-boot, previously healthy mapper can retain its validated
     // layout. Metadata must be read from DMA before trusting mapped pointers.
+    BOOT_STAGE("resume_check", healthy && loaded);
     flash_device.mapped=false;
     if(healthy && loaded && last_open_pool_end == flash_device.PoolEnd() && NativeWarmResumeEligible(store)) {
+        BOOT_STAGE("resume_bind", 0);
         flash_device.mapped=true;
         for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
         NoteIdleMaintenance();
@@ -813,7 +843,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
     }
     last_open_pool_end=flash_device.PoolEnd();
     healthy=false;snapshot_format_rejected=false;++full_opens;
+    BOOT_STAGE("base_trust", full_opens);
     LoadNativeTrust();
+    BOOT_STAGE("mapping_probe", 0);
     // QSPI is in mapped quad mode here. Compare both root headers against
     // DMA before using the mapping for the many small index validation reads.
     bool mapping_ok = true;
@@ -831,14 +863,38 @@ extern "C" bool steno_squid_native_flash_open(void) {
     }
     flash_device.mapped = mapping_ok;
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
+    BOOT_STAGE("catalog", mapping_ok);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    boot_count_reads = true;
+#endif
     const auto result=store.Open([](const CatalogRoot &root){
+        BOOT_STAGE("root_fingerprint", root.address / kSegmentBytes);
         const uint32_t fingerprint=BaseFingerprint(root);
         flash_device.trust_bases=fingerprint && fingerprint==verified_fingerprint;
-        const auto status=validator.Validate(root, false);flash_device.trust_bases=false;return status;
+        const auto status=validator.Validate(root, false
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+            , [](ValidationStage stage) {
+                switch (stage) {
+                case ValidationStage::Extents: BOOT_STAGE("extent_checks", flash_device.trust_bases); break;
+                case ValidationStage::Journal: BOOT_STAGE("journal_scan", 0); break;
+                case ValidationStage::Forward: BOOT_STAGE("forward_index", 0); break;
+                case ValidationStage::Reverse: BOOT_STAGE("reverse_index", 0); break;
+                }
+            }
+#endif
+        );
+        flash_device.trust_bases=false;
+        BOOT_STAGE("root_validated", static_cast<uint32_t>(status));
+        return status;
     }, CatalogValidation::ReuseIdenticalPayload);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    boot_count_reads = false;
+#endif
+    BOOT_STAGE("catalog_result", static_cast<uint32_t>(result));
     flash_device.cold_read_yield_at = 0;
     flash_device.mapped = false;
     if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined){base_provider.Fault();return false;}
+    BOOT_STAGE("bind", store.selected.slot);
     uint8_t prefix[8];if(!flash_device.Read(store.selected.root.address,prefix,8))return false;
     const size_t count=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
     if(count>MaxDictionaries || (loaded && count!=cell_count))return false;
@@ -860,6 +916,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         } else if(cell.base)return false;
         cell.Bind();
     }
+    BOOT_STAGE("probe_dictionaries", count);
     cell_count=count;loaded=true;flash_device.mapped=true;
     for(size_t i=0;i<count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
     healthy=true;
@@ -1415,6 +1472,32 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
     if (!bluetooth_session && !std::strcmp(command, "diagnostic-fault\n")) {
         steno_squid_replay_diagnostic_status(reply, bytes, atomic_get(&native_fault_pc));
+        return;
+    }
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    if (!bluetooth_session && !std::strncmp(command, "boot-profile ", 13)) {
+        const char *cursor = command + 13;
+        uint32_t index;
+        if (!Number(cursor, index) || !End(cursor)) {
+            snprintk(reply, bytes, "ERR Invalid boot profile index");
+            return;
+        }
+        const auto key = k_spin_lock(&boot_event_lock);
+        const uint32_t next = boot_event_next;
+        const uint32_t first = next > BootEventCount ? next - BootEventCount : 0;
+        const BootEvent event = index >= first && index < next
+                                    ? boot_events[index % BootEventCount] : BootEvent{};
+        k_spin_unlock(&boot_event_lock, key);
+        if (event.stage) {
+            snprintk(reply, bytes,
+                     "{\"index\":%u,\"stage\":\"%s\",\"uptime_ms\":%u,\"detail\":%u,"
+                     "\"mapped_reads\":%u,\"dma_reads\":%u}",
+                     index, event.stage, event.uptime_ms, event.detail,
+                     event.mapped_reads, event.dma_reads);
+        } else {
+            snprintk(reply, bytes, "{\"first\":%u,\"next\":%u}", first, next);
+        }
         return;
     }
 #endif

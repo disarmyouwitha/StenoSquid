@@ -189,6 +189,17 @@ python3 tools/bench/phase1_boot.py --serial SERIAL \
   --report build/phase1-boot.json
 ```
 
+For stage profiling, append `config/boardsource-wireless-corne/phase1-boot-profile.conf`
+to the everyday 32-slot left build and pass `--profile`. The existing right
+firmware can show the layer and dictionary state from the left. Keep it paired
+if observing the display. Use a new report path for each of five physical cold
+starts per configuration. The trace records each stage's start in device uptime
+and cumulative mapped and DMA logical read calls during catalog validation.
+Subtract adjacent rows for per-stage elapsed time and read counts. The USB timer
+also verifies a Javelin lookup. Keep both measurements so USB enumeration and
+dictionary availability can be compared separately. A failed bring-up records
+`flash_unavailable` and a subsequent attempt starts again at `qspi_start`.
+
 In the host replay of the full pool, reusing extent validation for byte-identical
 catalog payloads reduced logical flash reads from 2,162,470 to 1,201,627.
 Boot timing after a catalog update leaves two distinct payloads remains to be

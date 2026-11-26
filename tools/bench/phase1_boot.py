@@ -19,6 +19,24 @@ def wait_for_usb(serial, connected, timeout):
     raise TimeoutError(f"USB console did not {'appear' if connected else 'disappear'}")
 
 
+def collect_profile(console, report):
+    events = report["profile"]
+    index = events[-1]["index"] + 1 if events else 0
+    while True:
+        reply = console.command(f"native_install boot-profile {index}", timeout=2)
+        if reply == "ERR Unknown native installation command":
+            raise ValueError("The left firmware needs CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE.")
+        row = json.loads(reply)
+        if "stage" in row:
+            events.append(row)
+            index += 1
+        elif row["first"] > index:
+            report.setdefault("profile_gaps", []).append([index, row["first"]])
+            index = row["first"]
+        else:
+            return
+
+
 def check(serial, timeout, report):
     if usb_console_devices(serial):
         print("Waiting for the left half to reboot or be power-cycled.", flush=True)
@@ -28,6 +46,13 @@ def check(serial, timeout, report):
     while monotonic() - start < timeout:
         try:
             with open_console(serial) as console:
+                if "profile" in report:
+                    collect_profile(console, report)
+                    # The normal status command can wake idle flash. Observe the
+                    # bring-up without requesting a wake until the flash is ready.
+                    if not report["profile"] or report["profile"][-1]["stage"] != "flash_ready":
+                        sleep(0.5)
+                        continue
                 status = console.command("native_install status", timeout=2)
                 elapsed = monotonic() - start
                 if not report["status"] or status != report["status"][-1]["reply"]:
@@ -39,6 +64,8 @@ def check(serial, timeout, report):
                     lookup = console.command("lookup_stroke KAT", timeout=5)
                     if not native["ready"] or lookup != "cat":
                         raise ValueError(f"Startup lookup failed: {lookup}")
+                    if "profile" in report:
+                        collect_profile(console, report)
                     report.update(usb_to_ready_seconds=round(elapsed, 3),
                                   generation=native["generation"], dictionaries=native["dictionaries"],
                                   tail=native["tail"], lookup=lookup, result="pass")
@@ -55,10 +82,13 @@ def main():
     parser.add_argument("--serial", required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--profile", action="store_true", help="Collect firmware startup stages.")
     args = parser.parse_args()
     if args.timeout < 1:
         parser.error("--timeout must be positive")
     report = dict(result="fail", status=[])
+    if args.profile:
+        report["profile"] = []
     with args.report.open("x", encoding="utf-8") as stream:
         try:
             check(args.serial, args.timeout, report)
