@@ -239,6 +239,21 @@ faster together. Catalog selection and live journal recovery still took
 11.2 seconds despite fewer calls. This is above the five-second target.
 See the [candidate post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-candidate-after-uf2.json).
 
+On a physical off/on test of the candidate, root 0 rejected the reverse index
+at `0x03e90000`, and root 1 rejected the forward index at `0x03e40000`.
+Both rejections occurred during extent CRC validation with mapped QSPI reads.
+Flash reported unavailable at 1.631 seconds of uptime. The passive observer
+did not report ready within 150 seconds. See the
+[candidate cold trace](../../docs/benchmarks/phase1-startup-profile-candidate-cold.json).
+An explicit USB status request triggered another full open. Javelin was ready
+68.0 seconds later. Readback verified all 640,192 bytes of the two rejected
+indexes against the original fixture, with both CRCs matching. The catalog
+was also byte-identical, all 233 fixture lookups passed, and both roots were
+valid. The board was left with the candidate and all 32 dictionaries loaded.
+See the [recovery trace](../../docs/benchmarks/phase1-startup-profile-candidate-recovery.json)
+and the [readback report](../../docs/benchmarks/phase1-startup-profile-candidate-readback.json).
+
+
 ### 64 MiB hardware results
 
 - The Boardsource pool used 1,006 of 1,023 blocks, with 17 contiguous
