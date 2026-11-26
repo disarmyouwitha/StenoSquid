@@ -416,3 +416,15 @@ See the [index trace](../../docs/benchmarks/phase1-startup-profile-index-after-u
 [combined post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-index-dma-after-uf2.json),
 [cold trace](../../docs/benchmarks/phase1-startup-profile-index-dma-cold.json), and
 [lookup results](../../docs/benchmarks/phase1-startup-profile-index-dma-lookups.json).
+
+The full-pool ceiling is now 20 seconds from power-on to Javelin ready. The
+next comparison returns to 32 MHz and appends `phase1-boot-hfxo.conf` to the
+combined configuration. It holds Zephyr's high-frequency crystal request
+through QSPI bring-up and validation, then releases it. Nordic documents that
+switching the high-frequency clock source during QSPI can corrupt transfers.
+This is a candidate explanation for the differing mapped and DMA CRCs seen
+at 32 MHz. The build also uses the table-driven version of the same IEEE
+CRC32, with all validation still enabled. The trace records `hfxo_held`
+before QSPI startup. Time and verify the full pool across physical cold starts
+before qualifying this configuration.
+See [Nordic erratum 244](https://docs.nordicsemi.com/r/bundle/errata_nrf52840_rev3/page/err/nrf52840/rev3/latest/anomaly_840_244.html).

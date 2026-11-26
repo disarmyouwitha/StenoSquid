@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "native_allocator.h"
 #include <cstring>
-#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
 #include <zephyr/sys/crc.h>
 #endif
 
@@ -20,7 +20,7 @@ inline void PutWord(uint8_t *p, uint32_t n) {
     for (unsigned i = 0; i < 4; ++i) p[i] = uint8_t(n >> (8*i));
 }
 inline uint32_t Crc(uint32_t crc, const uint8_t *p, uint32_t n) {
-#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
     return crc32_ieee_update(crc, p, n);
 #else
     crc = ~crc;

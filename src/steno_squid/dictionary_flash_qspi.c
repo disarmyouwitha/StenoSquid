@@ -6,6 +6,27 @@
 
 #include <string.h>
 #include <zephyr/drivers/pinctrl.h>
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_HFXO
+#include <zephyr/drivers/clock_control/nrf_clock_control.h>
+#include <zephyr/sys/onoff.h>
+
+static int request_hfxo(struct onoff_manager *manager) {
+    struct onoff_client client;
+    sys_notify_init_spinwait(&client.notify);
+    int result = onoff_request(manager, &client);
+    if (result < 0) return result;
+
+    const int64_t deadline = k_uptime_get() + 50;
+    while (sys_notify_fetch_result(&client.notify, &result) != 0) {
+        if (k_uptime_get() >= deadline) {
+            (void)onoff_cancel_or_release(manager, &client);
+            return -ETIMEDOUT;
+        }
+        k_usleep(100);
+    }
+    return result;
+}
+#endif
 
 /* The last chip ID read, for the status command. */
 uint8_t lf_last_jedec[3];
@@ -146,7 +167,16 @@ static bool prepare_flash_with_retry(nrfx_qspi_config_t *config, bool *mapping_f
 bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     const int64_t started = k_uptime_get();
     atomic_clear(&lf_checked);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_HFXO
+    // Nordic anomaly 244: switching HFCLK sources during QSPI can corrupt data.
+    struct onoff_manager *clock = z_nrf_clock_control_get_onoff(CLOCK_CONTROL_NRF_SUBSYS_HF);
+    const int clock_result = clock ? request_hfxo(clock) : -ENODEV;
+    steno_squid_boot_stage(clock_result == 0 ? "hfxo_held" : "hfxo_error", (uint32_t)clock_result);
+    const bool qspi_ok = clock_result == 0 && prepare_flash_with_retry(config, mapping_failed);
+    if (clock_result == 0) (void)onoff_release(clock);
+#else
     const bool qspi_ok = prepare_flash_with_retry(config, mapping_failed);
+#endif
     lf_last_open_ok = atomic_get(&lf_mapped_ready) != 0;
     squid_flash_diag_note(DIAG_FULL_CHECK);
     if (!atomic_get(&lf_mapped_ready)) {
