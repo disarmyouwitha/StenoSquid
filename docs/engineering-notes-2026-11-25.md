@@ -335,6 +335,28 @@ source (`lib/libc/common/source/stdlib/malloc.c`). Static call-graph evidence, n
     under a transfer, check the new `libc` line against the 19,968 B arena, then (with approval) flash the
     heap-reclaim variant and exercise boot, USB, Bluetooth, Studio and typing.
 
+### 7.5 First runtime reading of the libc heap (memory report v2 flashed, `d11f3f8`; nice!nano, 32 slots, USB)
+
+Measured. The report's plausibility check passed, and the arena it reports (19,968 B) equals the figure computed
+independently from the ELF (`_end` = `0x2003b1fe`, SRAM ends at `0x20040000`), so the layout assumption in 7.3 is
+confirmed on hardware.
+
+| Reading | libc heap peak (of 19,968 B) | System heap | Tightest stack |
+| --- | --- | --- | --- |
+| Idle, about 90 s after boot (marks cover boot and its validation) | 2,564 B (12.8%) | 0 B | BT LW WQ 32.3% free |
+| During upload and verify (Lapwing Proper Nouns, aborted before commit) | 2,564 B, unchanged | 0 B | unchanged |
+| After enabling Lapwing Base and 500 real lookups (400 random plus 100 multi-stroke, all found, 2.00 ms each over USB) | 2,696 B (13.5%), now 2,564 B | 0 B | unchanged |
+
+- Under these workloads the engine's heap use is about 2.7 KB, with about 17.3 KB of the arena never touched. A staged
+  upload adds nothing to it, and 500 lookups against a 114,885-entry dictionary added 132 B.
+- This is good news for 32 slots: the margin that mattered (the engine's dynamic heap) is far larger than feared.
+  The 92% static figure overstated the risk.
+- Still not covered: Bluetooth typing and management, Studio, sustained typing replay, personal-dictionary edit and
+  journal paths, several large dictionaries enabled at once. The 32-slot default decision (section 5) should wait for
+  those. Reclaiming the unused system heap (7.3) would raise the arena to about 51.7 KB, but on this evidence the
+  current arena already has comfortable room, so it is an optimisation, not a necessity.
+- Lapwing Base is enabled again (its state before the uninstall and reinstall tests).
+
 ### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
 
 `tools/manager/browser/transfer_client.js` is a port of the Python upload loop. On the nice!nano (cumulative-ack
