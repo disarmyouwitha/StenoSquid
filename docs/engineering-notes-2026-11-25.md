@@ -264,3 +264,32 @@ What this does and does not say:
 - Where the firmware does its read-back verification (during streaming or inside the 1.28 s commit) is not
   established; END to VERIFIED is instant.
 - Reboot to console: about 3.5 s after the commit finishes.
+
+### 7.2 Result of cumulative acknowledgements (same board, build `acaca31`, same Lapwing Base reinstall, two runs)
+
+The receiver now acknowledges every window/2 frames (4 with the client's window of 8), on the last frame and on a
+short frame (`docs/transfer-session.md`). Same test, same board, same client; only the firmware changed.
+
+| | Per-frame ACK (7.1) | Cumulative ACK | Change |
+| --- | --- | --- | --- |
+| Streaming stage | 43.79 s / 43.85 s | **25.47 s / 25.65 s** | 42% shorter |
+| Whole `upload()` | 45.12 s / 45.16 s | **26.81 s / 26.98 s** | 40% shorter |
+| Useful payload rate end to end (1,831,220 B) | 39.6 KiB/s | **66.7 / 66.3 KiB/s** | +68% |
+| Acknowledgements for 38,396 frames | 38,396 | **9,599** | exactly one quarter |
+| NAK, rewind, resend, stall | 0 | 0 | unchanged |
+| Catalog afterwards | 114,885 entries, 1,830,444 B | identical | intact |
+
+- This confirms the 7.1 inference: acknowledgement traffic on the HID input endpoint was the limit. Removing three
+  quarters of it raised the useful rate from 39.6 to about 66.5 KiB/s, with no protocol errors. It is now above
+  the 50 KiB/s stretch target for Bluetooth and far from the 250 KiB/s wired target (still HID).
+- The rate is about 1,500 frames per second on average. The 29 erase pauses (216-235 ms) add about 6.4 s, so
+  roughly a quarter of the streaming stage is now erase waiting. Hiding them (erasing the next segment while
+  data streams) is the next lever, a firmware change, and is not measured.
+- RAM: +8 B (242,174 B, 92.38%). Memory during upload and verify is unchanged: `javelin_web_hid` 2,020 B,
+  `dictionary_flash` 1,812 B; heap still 0 B. `HID Over GATT Send Work` read 404 of 768 B in this run against
+  188 B before; it is 47% free, but the change is unexplained (this run was read 15 s after boot).
+- Upload and verify of Lapwing Proper Nouns (aborted before commit): 4.6 s, against 7.6 s before.
+- Not yet done: Chrome WebHID with the new firmware (needs the JS transfer session), Bluetooth, and a lost-ACK test
+  on real hardware. The host tests cover a lost ACK; the hardware link had no loss in these runs.
+- Compatibility: the Python client needed no change. A client that expects one ACK per frame would still work
+  (cumulative ACKs are valid) but would not benefit.
