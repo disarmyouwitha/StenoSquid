@@ -271,6 +271,16 @@ Javelin was ready in 68.6 seconds. Both roots validated, all 32 dictionaries
 were loaded with 17 free blocks, and all 233 fixture lookups passed. See the
 [recovery trace](../../docs/benchmarks/phase1-startup-profile-dma-pair-recovery.json).
 
+The 16 MHz control adds only `CONFIG_ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER=2`
+to the otherwise identical 32-slot diagnostic build. Following UF2, it
+reached ready in 37.0 seconds versus 36.6 seconds at 32 MHz. All 233 fixture
+lookups passed, both roots validated, and 17 blocks were free. The recorder
+observed no physical off/on during this run, so it gives no evidence about
+whether the lower clock avoids the cold-start failure. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-16mhz-after-uf2.json)
+and [lookup report](../../docs/benchmarks/phase1-startup-profile-16mhz-lookups.json).
+
+
 
 
 
