@@ -293,3 +293,53 @@ short frame (`docs/transfer-session.md`). Same test, same board, same client; on
   on real hardware. The host tests cover a lost ACK; the hardware link had no loss in these runs.
 - Compatibility: the Python client needed no change. A client that expects one ACK per frame would still work
   (cumulative ACKs are valid) but would not benefit.
+
+### 7.3 The heap the memory report measures is not the heap that matters (static analysis of build `acaca31`, nice!nano 32-slot Measure ELF)
+
+Method: Zephyr `.config`, `nm` and an `objdump -d` scan for every call to an allocator, plus the pinned Zephyr
+source (`lib/libc/common/source/stdlib/malloc.c`). Static call-graph evidence, not a runtime measurement.
+
+- **The 32,768 B system heap is unused.** Nothing calls `k_malloc`, `k_calloc`, `k_heap_alloc` or any other
+  system-heap allocator. The one conditional path (`queue_insert` allocating a node) is only reachable from
+  `k_queue_alloc_*`, and the ELF contains only the non-allocating `k_queue_append`/`k_queue_prepend`. Its only
+  references are heap initialisation and our own `memory_report`. So the "0 B peak" reading is correct, not an
+  instrument fault. The 32 KB comes from this repo (`config/nicenano-wireless-corne/corne_left.conf:33`, no comment;
+  the Boardsource Left build uses the same file), not from Zephyr's defaults.
+- **The engine uses the libc heap, which the report does not read.** 24 distinct functions call `malloc`,
+  `calloc` or `realloc` (strings, `BufferWriter`, pattern matching, segment lists, the user dictionary,
+  `Console::WriteAsJson`, `PoolAllocateData`). With `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1` the libc arena is
+  every byte of SRAM above `_end`: for this build, 262,144 - 242,174 = about **19,970 B**. That, not the 32 KB
+  pool, is the real dynamic heap. The link map's "unallocated RAM" is this heap, so every static byte added
+  (32 slots: +5.5 KB) comes straight out of it.
+- **Consequences.** (1) The 32-slot decision must rest on the libc-arena peak, which nobody has measured.
+  (2) Setting `CONFIG_HEAP_MEM_POOL_SIZE` to a small value would raise the arena from about 20 KB to about
+  52 KB for free, a 2.6x increase. This is a one-line change but unproven on hardware (boot, Bluetooth, Studio, USB)
+  and I have not made it; it needs approval and a test.
+- **Instrument fix, not yet built.** `memory_report` should read `z_malloc_heap` (static in Zephyr, so it cannot be
+  referenced directly). Plan: build a `struct sys_heap` whose `heap` points at the arena base
+  (`ROUND_UP(&_end, alignment)`, where `sys_heap_init` puts its header) and call `sys_heap_runtime_stats_get`; validate
+  the layout assumption against Zephyr's own `heap.c` on the host first, and sanity-check with a `malloc` pointer at
+  boot. Alternative: `--wrap` the four allocators in the diagnostics build to count live and peak bytes.
+- Until the libc-arena peak is known, treat "92% of RAM used" as a statement about static data only, and the 25%
+  stack bar as the only runtime margin we have actually measured.
+
+### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
+
+`tools/manager/browser/transfer_client.js` is a port of the Python upload loop. On the nice!nano (cumulative-ack
+firmware), uninstall then reinstall of Lapwing Base, JS protocol logic, HID relayed by `tools/bench/run_js_upload_hw.py`:
+
+| Stage | JS client over the Python relay |
+| --- | --- |
+| BEGIN to open | 50 ms |
+| Streaming 1,881,392 record bytes | 26.80 s (68.6 KiB/s of record bytes) |
+| END to VERIFIED | 0.00 s |
+| COMMIT to DONE | 1.30 s |
+| Whole upload | 28.15 s (about 63.5 KiB/s useful, against 66.7 for the Python client) |
+| Frames / acks / NAKs / rewinds / stalls | 38,396 / 9,599 / 0 / 0 / 0 |
+
+- The keyboard accepted the JS client's frames with no protocol difference from Python's, and the catalog was intact.
+- The relay adds latency a browser would not, so this is a lower bound, not the Chrome number. The Chrome
+  measurement still needs a person to click the WebHID chooser.
+- Tests: 12 scripted cases, each original defect reintroduced is caught; acceptance against the real NativeStage
+  simulator (clean, plus 8 lossy-link seeds) matches the legacy flash; the JS record stream is byte-identical to
+  Python's. Wired into `run_all` through `tools/tests/test_js_transfer.py`.
