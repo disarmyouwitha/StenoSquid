@@ -1,0 +1,9 @@
+{
+  "layout_error": "ERR Layout scan timed out",
+  "result": "pass",
+  "generation": 2,
+  "dictionaries": 32,
+  "tail": 17,
+  "catalog_matches_fixture": true,
+  "lookups_passed": 233
+}

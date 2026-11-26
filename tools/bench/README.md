@@ -456,3 +456,14 @@ combined scan from 274,705 to 255,949 while increasing bytes transferred from
 15,558,552 to 15,702,936. The same change batches partial-word copies from
 mapped flash while retaining the aligned loads and barriers. These numbers
 measure requests, not cold-boot time.
+
+On the board, the 2 KiB build stayed at 32 MHz and reached flash ready at
+21.717 seconds of device uptime after UF2 and 57.987 seconds after physical
+power-off. It confirmed HFXO on both boots. The journal scan took 8.741 and
+8.845 seconds and used 2,760 DMA fills on both. The mapped index passes varied
+from 11.526 to 47.563 seconds with identical read counts. On the cold run,
+the catalog matched the fixture byte for byte and all 233 lookups passed.
+The layout-map query timed out. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-cold.json),
+and [lookup results](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-lookups.json).
