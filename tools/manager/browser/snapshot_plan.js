@@ -35,7 +35,7 @@ export class CompactImage {
   }
 }
 
-function packExtent(segment, span, bytes, crc, kind, auxiliary) {
+export function packExtent(segment, span, bytes, crc, kind, auxiliary) {
   const out = new Uint8Array(24);
   const v = view(out);
   v.setUint16(0, segment, true); v.setUint16(2, span, true); v.setUint32(4, bytes, true);
@@ -74,6 +74,11 @@ export function stageAllocation(protectedSegments, poolEnd = 255) {
     return segment;
   };
   return {blocks, extents, write};
+}
+
+export function unpackExtent(bytes) {
+  const v = view(bytes);
+  return [v.getUint16(0, true), v.getUint16(2, true), v.getUint32(4, true), v.getUint32(8, true), v.getUint32(12, true), v.getBigUint64(16, true)];
 }
 
 const update = (blocks, metadata, payload) => ({segments: blocks, metadata, payload, reclaimed: 0, changes: 0});
@@ -280,7 +285,7 @@ export function pyJson(value, separators = [", ", ": "]) {
   throw new TypeError("unsupported value for pyJson");
 }
 
-async function sha256Hex(...parts) {
+export async function sha256Hex(...parts) {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(...parts)));
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

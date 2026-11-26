@@ -110,8 +110,15 @@ identities; scattered free segments so the staging order is not ascending), plus
 (Python escapes DEL, 0x7f, in `json.dumps`, which would have changed every token whose serial contained it). Mutation
 check: 45 deliberate mutations, all caught except unreachable ones.
 
-Not yet ported: `backup_all`, `overlay_usage`, the factory-package planner (`native_base_update.py`), the compiler's
-use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
+**M2 status, third part: the factory-package planner is ported.** `package_plan.js` ports `plan_package` (install and
+uninstall of the six built-in dictionaries: row and extent edits, renumbering of later bases, the free-space report and the
+confirmation hash that the user approves, plus the serial-bound approval digest). Gate: 62 golden cases from Python on
+images with some packages absent, patched catalogs for every refusal (shared extent, snapshot flag, base past or equal to
+the catalog, a named member, a renamed row, 252 and 253 extents), tight and scattered free space, and both pool sizes;
+byte-identical or the same error. Mutation check: 25 mutations, all caught except two that cannot change a result.
+
+Not yet ported: `backup_all`, `overlay_usage`, `plan_replacements` (replacing a pinned base; needs the JSC4 lookup reader),
+the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
 (`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
 

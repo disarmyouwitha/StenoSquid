@@ -55,12 +55,16 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M2: named snapshots, change/merge, import cost and the token digests."""
         self.run_node("test_snapshot_plan.mjs")
 
+    def test_factory_package_planner_is_byte_identical_to_python(self):
+        """Manager milestone M2: installing and uninstalling the built-in dictionaries, report and confirmation included."""
+        self.run_node("test_package_plan.mjs")
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)
