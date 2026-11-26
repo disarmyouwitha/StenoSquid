@@ -67,6 +67,7 @@ constexpr uintptr_t Xip=DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi),qspi_mm);
 static_assert(DT_REG_SIZE_BY_NAME(DT_NODELABEL(qspi),qspi_mm) >= kMaxSegments*kSegmentBytes);
 bool ForgetBaseTrust();
 extern int64_t scrub_due;
+void ResetNativeScrub();
 constexpr size_t MaxDictionaries=CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES;
 // Startup uses this buffer under the flash lock before the engine opens. An
 // export holds a read session and also prevents borrowing the buffer.
@@ -238,7 +239,19 @@ public:
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
         atomic_cas(&native_fault_pc, 0, reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
 #endif
-        (void)ForgetBaseTrust();healthy=store.opened=false;atomic_clear(&lf_mapped_ready);atomic_set(&lf_checked,1);dictionary_flash_ready_changed();
+        const bool was_open = atomic_clear(&lf_mapped_ready) != 0;
+        (void)ForgetBaseTrust();
+        healthy = store.opened = false;
+        ResetNativeScrub();
+        if (was_open) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+            steno_squid_boot_stage("runtime_flash_fault", 0);
+#endif
+            dictionary_flash_recover();
+        } else {
+            atomic_set(&lf_checked, 1);
+        }
+        dictionary_flash_ready_changed();
     }
     const StenoDictionary *FindBase(uint32_t) const override;
 } base_provider;
@@ -929,6 +942,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
     }
     last_open_pool_end=flash_device.PoolEnd();
     healthy=false;snapshot_format_rejected=false;++full_opens;
+    ResetNativeScrub();
     BOOT_STAGE("base_trust", full_opens);
     LoadNativeTrust();
     BOOT_STAGE("mapping_probe", 0);
@@ -1681,6 +1695,10 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
 namespace {
 int64_t scrub_due=0;size_t scrub_cell=0;uint32_t scrub_offset=0,scrub_crc=0;
 alignas(4) uint8_t scrub_chunk[256];
+void ResetNativeScrub() {
+    scrub_due = 0;
+    scrub_cell = scrub_offset = scrub_crc = 0;
+}
 }
 extern "C" int32_t steno_squid_native_scrub_wait(void) {
     if(!healthy || !dictionary_flash_mapped_address() || lf_suspended)return -1;
@@ -1703,10 +1721,18 @@ extern "C" void steno_squid_native_scrub_step(void) {
     }
     if(scrub_cell==cell_count){scrub_cell=0;scrub_due=k_uptime_get()+24*60*60*1000LL;return;}
     const auto &cell=cells[scrub_cell];uint32_t n=cell.base_bytes-scrub_offset;if(n>sizeof(scrub_chunk))n=sizeof(scrub_chunk);
-    if(!flash_device.Read(cell.base_offset+scrub_offset,scrub_chunk,n)){base_provider.Fault();return;}
+    if (!flash_device.Read(cell.base_offset+scrub_offset,scrub_chunk,n)) {
+        BOOT_STAGE("scrub_read_error", cell.base_offset + scrub_offset);
+        base_provider.Fault();
+        return;
+    }
     scrub_crc=crc32_ieee_update(scrub_crc,scrub_chunk,n);scrub_offset+=n;
     if(scrub_offset==cell.base_bytes) {
-        if(scrub_crc!=cell.base_crc){base_provider.Fault();return;}
+        if (scrub_crc != cell.base_crc) {
+            BOOT_STAGE("scrub_crc_error", cell.base_offset);
+            base_provider.Fault();
+            return;
+        }
         ++scrub_cell;scrub_offset=scrub_crc=0;
     }
     scrub_due=k_uptime_get()+8;

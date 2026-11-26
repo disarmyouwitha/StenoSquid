@@ -486,3 +486,19 @@ The 20-second power-on ceiling remains open. See the
 [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-after-uf2.json),
 [cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-cold.json), and
 [lookup results](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-lookups.json).
+
+### 16 MiB runtime loss
+
+The USB console reported a 255-segment pool and `NATIVE2 UNPROVISIONED 3`
+while Javelin showed No Dict. The retained trace shows three successful
+opens within one boot. The latest completed at 1,116,524 ms of device
+uptime. The console later reported that dictionary flash was unavailable.
+This captures loss after a successful open, with the original fault site
+still unknown. See the [live trace](../../docs/benchmarks/phase1-16mib-live-no-dict.json).
+
+The reliability candidate resets the background CRC scan state when the
+store closes or fully reopens. A fault on a previously mapped store asks
+the flash worker for one verified reopen. The worker waits for read sessions
+and pending flash operations to finish before power-cycling the flash.
+The candidate records background scrub failures and runtime flash failures
+in the profile so the next reproduction can identify the failing path.

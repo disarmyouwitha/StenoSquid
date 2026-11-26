@@ -7,6 +7,7 @@
 atomic_t lf_mapped_ready;
 atomic_t lf_checked;
 bool lf_last_open_ok;
+static atomic_t fault_recovery;
 #if IDLE_OFF
 atomic_t lf_idle_off;
 atomic_t lf_held;
@@ -21,6 +22,12 @@ void lf_note_use(void) {
  * Runs on the flash worker with the flash lock held: only submit work.
  */
 __weak void dictionary_flash_ready_changed(void) {
+}
+
+void dictionary_flash_recover(void) {
+    atomic_clear(&lf_checked);
+    atomic_set(&fault_recovery, 1);
+    k_sem_give(&lf_restart_wake);
 }
 
 uintptr_t dictionary_flash_mapped_address(void) {
@@ -86,9 +93,44 @@ static void dictionary_flash_worker(void *a, void *b, void *c) {
     lf_serial_init();
 #endif
     bool qspi_ok = false;
+    int64_t next_fault_recovery = 0;
+    int64_t busy_since = 0;
 
     for (;;) {
-        if (atomic_get(&lf_restart_requested)) {
+        int32_t retry_wait = -1;
+        if (atomic_get(&fault_recovery)) {
+            k_mutex_lock(&flash_lock, K_FOREVER);
+            const int64_t now = k_uptime_get();
+            const bool initialized = nrfx_qspi_init_check();
+            if (atomic_get(&lf_read_sessions)) {
+                // The last read session signals the worker on release.
+                busy_since = 0;
+            } else if (now < next_fault_recovery) {
+                retry_wait = (int32_t)(next_fault_recovery - now);
+            } else if (!lf_suspended && !lf_flash_is_idle(initialized)) {
+                if (!busy_since) busy_since = now;
+                if (now - busy_since < 1000) {
+                    retry_wait = 20;
+                } else {
+                    atomic_clear(&fault_recovery);
+                    busy_since = 0;
+                    atomic_set(&lf_checked, 1);
+                    dictionary_flash_ready_changed();
+                }
+            } else {
+                atomic_clear(&fault_recovery);
+                busy_since = 0;
+                next_fault_recovery = now + 30000;
+                if (!lf_suspended) {
+                    (void)lf_power_down_flash(initialized);
+                    k_msleep(500);
+                }
+                lf_last_restart = k_uptime_get();
+                qspi_ok = lf_bring_up_flash(&config, &mapping_failed);
+            }
+            k_mutex_unlock(&flash_lock);
+        }
+        if (atomic_get(&lf_restart_requested) && !atomic_get(&fault_recovery)) {
             k_mutex_lock(&flash_lock, K_FOREVER);
             /* Several callers may ask for one wake. Only a powered-down flash
              * is brought up; a request that arrives late is already served.
@@ -104,12 +146,14 @@ static void dictionary_flash_worker(void *a, void *b, void *c) {
             k_mutex_unlock(&flash_lock);
         }
 #if IDLE_OFF
-        if (!atomic_get(&lf_read_sessions) && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
+        if (!atomic_get(&fault_recovery) && !atomic_get(&lf_read_sessions) &&
+            (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
             k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use) >= IDLE_OFF_MS) {
             k_mutex_lock(&flash_lock, K_FOREVER);
             /* Recheck under the lock: a lookup may have just used the flash. */
             const bool initialized = nrfx_qspi_init_check();
-            if (!lf_suspended && !atomic_get(&lf_read_sessions) && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
+            if (!lf_suspended && !atomic_get(&fault_recovery) && !atomic_get(&lf_read_sessions) &&
+                (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held)) &&
                 k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use) >= IDLE_OFF_MS &&
                 lf_flash_is_idle(initialized)) {
                 atomic_set(&lf_idle_off, 1);
@@ -129,7 +173,8 @@ static void dictionary_flash_worker(void *a, void *b, void *c) {
 #endif
         int32_t wait_ms = -1;
 #if IDLE_OFF
-        if (!lf_suspended && !atomic_get(&lf_read_sessions) && (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held))) {
+        if (!lf_suspended && !atomic_get(&fault_recovery) && !atomic_get(&lf_read_sessions) &&
+            (!atomic_get(&lf_mapped_ready) || !atomic_get(&lf_held))) {
             const uint32_t elapsed = k_uptime_get_32() - (uint32_t)atomic_get(&lf_last_use);
             wait_ms = elapsed < IDLE_OFF_MS ? (int32_t)(IDLE_OFF_MS - elapsed) : 1;
         }
@@ -143,6 +188,7 @@ static void dictionary_flash_worker(void *a, void *b, void *c) {
         const int32_t scrub_ms = lf_scrub_wait_ms();
         k_mutex_unlock(&flash_lock);
         if (scrub_ms >= 0 && (wait_ms < 0 || scrub_ms < wait_ms)) wait_ms = scrub_ms;
+        if (retry_wait >= 0 && (wait_ms < 0 || retry_wait < wait_ms)) wait_ms = retry_wait;
         k_sem_take(&lf_restart_wake, wait_ms < 0 ? K_FOREVER : K_MSEC(wait_ms));
     }
 }
