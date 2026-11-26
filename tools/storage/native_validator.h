@@ -13,11 +13,6 @@ class NativeValidator {
     IndexSink<Device> unused_f,unused_r;
     NativeMergeOps<Device> ops;
     uint32_t reverse_address=0,reverse_count=0;
-    bool Index(bool reverse,uint32_t position,uint32_t &address) {
-        uint8_t word[4];
-        if(!device.Read((reverse?reverse_address:view.forward_address)+position*4,word,4))return false;
-        address=Word(word);return true;
-    }
     bool MatchIndex(bool reverse,const MergeRecord &target) {
         auto read=[&](uint32_t offset,uint8_t *out,size_t n){return device.Read((reverse?reverse_address:view.forward_address)+offset,out,n);};
         auto compare=[&](uint32_t at){return ops.CompareTo(at,target,reverse);};
@@ -77,9 +72,20 @@ public:
         for(unsigned reverse=0;reverse<2;++reverse) {
             if (stage) stage(reverse ? ValidationStage::Reverse : ValidationStage::Forward);
             MergeRecord previous;
-            for(uint32_t i=0;i<(reverse?reverse_count:view.forward_count);++i) {
-                uint32_t address;MergeRecord record;
-                if(!Index(reverse,i,address) || !ops.Record(address,record,cross_check) || record.identity>=Word(prefix) ||
+            const uint32_t index_address = reverse ? reverse_address : view.forward_address;
+            const uint32_t entries = reverse ? reverse_count : view.forward_count;
+            uint8_t addresses[64];
+            constexpr uint32_t batch = sizeof(addresses) / 4;
+            for(uint32_t i=0;i<entries;++i) {
+                const uint32_t slot = i % batch;
+                if (!slot) {
+                    const uint32_t remaining = entries - i;
+                    if (!device.Read(index_address + i*4, addresses, 4 * (remaining < batch ? remaining : batch)))
+                        return CatalogResult::Corrupt;
+                }
+                const uint32_t address = Word(addresses + slot*4);
+                MergeRecord record;
+                if(!ops.Record(address,record,cross_check) || record.identity>=Word(prefix) ||
                    record.record.sequence>view.through || record.operation==2 || (reverse && record.operation) ||
                    (i && (reverse?ops.ReverseKeys(previous,record):ops.Keys(previous,record))>=0) ||
                    (cross_check && (reverse?!MatchIndex(false,record):(!record.operation && !MatchIndex(true,record)))))return CatalogResult::Corrupt;
