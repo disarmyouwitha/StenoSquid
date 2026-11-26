@@ -246,6 +246,9 @@ void hid_worker(void *, void *, void *) {
         // Binary transfer frames start with 0xB5, which console text and Base64 never
         // produce, so routing needs no mode switch and the console is untouched.
         if (report.bytes[0] == steno_transfer::kMagic) {
+#ifndef CONFIG_ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH
+            if (report.bluetooth) continue; // binary transfer is USB-only until Bluetooth reaches 50 KiB/s
+#endif
             uint8_t reply[REPORT_BYTES];
             const size_t length = steno_squid_native_transfer_report(
                 report.bytes, sizeof(report.bytes), report.bluetooth ? report.session : 0, reply, sizeof(reply));

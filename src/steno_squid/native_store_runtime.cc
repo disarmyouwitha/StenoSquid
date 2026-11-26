@@ -1418,6 +1418,13 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
         return;
     }
 #endif
+#if defined(CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION) && !defined(CONFIG_ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH)
+    // Binary transfer is USB-only until Bluetooth reaches 50 KiB/s; clients treat this as "unavailable".
+    if (bluetooth_session && !std::strcmp(command, "update transfer-capabilities\n")) {
+        snprintk(reply, bytes, "ERR Binary transfer is USB-only");
+        return;
+    }
+#endif
     if (!std::strcmp(command, "connection\n")) {
         snprintk(reply, bytes, "%s", bluetooth_session ? "OK BLUETOOTH" : "OK USB");
         return;

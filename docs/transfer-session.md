@@ -5,6 +5,9 @@ console is unchanged and remains the compatibility/recovery path. Nothing here
 changes storage formats, shipping defaults, USB/BLE descriptors or the safety
 queue. Throughput figures are **not measured**; see "Not yet done".
 
+
+> **USB-only by default (owner decision 2026-11-26).** Shipping builds refuse the binary session over Bluetooth until it reaches 50 KiB/s (measured 0.61 KiB/s). `CONFIG_ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH` re-enables it for lab builds (it is on in `transfer.conf`).
+
 ## Files
 
 | File | Role |

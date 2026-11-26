@@ -139,6 +139,18 @@ config ZMK_STENO_SQUID_MEMORY_DIAGNOSTICS
       through the USB-only "memory_report" console command. Measurement builds only: thread
       names and the fill add a little RAM and boot time. Use tools/bench/run_memory_report.py.
 
+config ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH
+    bool "Allow the binary transfer session over Bluetooth (lab only)"
+    depends on ZMK_STENO_SQUID_TRANSFER_SESSION
+    default n
+    help
+      Bluetooth HID carries only about 0.6 KiB/s of binary transfer (measured, nice!nano,
+      Chrome WebHID), against about 60 KiB/s over USB. Owner decision: binary uploads stay
+      USB-only until Bluetooth reaches at least 50 KiB/s. With this off, the Bluetooth
+      "transfer-capabilities" probe is refused (so the Manager uses its existing paths) and
+      binary frames received over Bluetooth are ignored. Enabled only by the lab fragment
+      transfer.conf so the Bluetooth throughput work can continue.
+
 config ZMK_STENO_SQUID_TRANSFER_SESSION
     bool "Experimental binary transfer session for Native dictionary updates"
     depends on ZMK_JAVELIN_STENO_HID_PROVISIONING && ZMK_STENO_SQUID_NATIVE_STORE

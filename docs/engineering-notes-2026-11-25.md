@@ -119,9 +119,14 @@ does not remove it from the laboratory.
 
 ## 4. Open decisions
 
-1. Allow binary uploads over Bluetooth before Phase 4 proves them? (Today they inherit the console's rules: ordinary
-   staged updates only; setup, repack and recovery stay USB-only.)
-2. Keep the transfer wire format (BEGIN fields, record format) labeled experimental until approved.
+1. ~~Allow binary uploads over Bluetooth?~~ **Decided 2026-11-26: no.** Binary transfer stays USB-only until Bluetooth
+   reaches at least 50 KiB/s (measured today: 0.61 KiB/s, section 7.9). Implemented as
+   `CONFIG_ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH` (default n): over Bluetooth the `transfer-capabilities` probe is
+   refused, so clients fall back to the existing text paths, and binary frames are ignored. Only the lab fragment
+   `transfer.conf` turns it on, so the Bluetooth throughput work can continue. Revisit when a Bluetooth run reaches 50 KiB/s.
+2. **Decided 2026-11-26:** keep `heap-reclaim.conf` as an opt-in lab fragment; it is not applied to shipping builds. The
+   engine peaks near 5 KB of its ~20 KB arena at 32 slots, so there is no need to reclaim unless a feature needs the room.
+3. Keep the transfer wire format (BEGIN fields, record format) labeled experimental until approved.
 
 Settled by the owner after review: JavaScript is the Manager language (TypeScript optional); the Python lab scripts
 and oracles stay; the memory diagnostics stay available permanently (off by default); final qualification is
