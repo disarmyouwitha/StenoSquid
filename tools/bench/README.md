@@ -434,3 +434,17 @@ notification. It stopped before any flash read. The revised check holds the
 same clock-manager reservation, verifies the oscillator through Nordic's
 clock status, and falls back to the normal validated open on timeout.
 See the [initial clock-request trace](../../docs/benchmarks/phase1-startup-profile-hfxo-request-timeout.json).
+
+The revised 32 MHz crystal-clock candidate confirmed HFXO before flash
+startup. It reached flash ready at 22.990 seconds of uptime after UF2 and
+22.957 seconds after a physical off/on. The journal scan ran in 9.60 and 9.59
+seconds, and the mapped index passes in 11.96 and 11.95 seconds. The cold
+console first reported Native READY 21.533 seconds after USB enumeration. The
+initial verification reply was not valid JSON, so the attempt log retains
+that host-side failure. Retrying separately confirmed generation 2, a
+byte-identical catalog, 32 dictionaries, 17 free blocks, and all 233 fixture
+lookups. The candidate passed this cold-open integrity check and exceeded the
+20-second ceiling by 2.957 seconds. One cold boot does not qualify the clock
+workaround. See the [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-cold.json), and
+[verification results](../../docs/benchmarks/phase1-startup-profile-hfxo-lookups.json).

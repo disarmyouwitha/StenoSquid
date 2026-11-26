@@ -70,7 +70,11 @@ def check(serial, timeout, report, stop_on_unavailable=False):
                 if status.startswith(("NATIVE2 UNPROVISIONED ", "NATIVE2 INSTALL ")):
                     raise ValueError(status)
                 if status.startswith("NATIVE2 READY "):
-                    native = json.loads(console.command("user_dictionary_status", timeout=5))
+                    reply = console.command("user_dictionary_status", timeout=5)
+                    try:
+                        native = json.loads(reply)
+                    except json.JSONDecodeError as error:
+                        raise RuntimeError(f"Dictionary status verification returned {reply!r}") from error
                     lookup = console.command("lookup_stroke KAT", timeout=5)
                     if not native["ready"] or lookup != "cat":
                         raise ValueError(f"Startup lookup failed: {lookup}")
