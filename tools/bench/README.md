@@ -232,8 +232,12 @@ took 68.3 seconds from QSPI start to ready and recovered generation 2 with all
 
 Reusing the decoded journal key during live recovery and reading 16 index
 addresses at a time reduced logical reads in the full-pool host simulation
-from 1,201,627 to 971,516. The device-side candidate still
-needs a cold timing run against the five-second target.
+from 1,201,627 to 971,516. In one post-UF2 run on the device, counted mapped
+reads fell from 1,204,247 to 974,136, while the wait after USB appeared fell
+from 38.1 to 36.9 seconds. The forward and reverse passes were 1.6 seconds
+faster together. Catalog selection and live journal recovery still took
+11.2 seconds despite fewer calls. This is above the five-second target.
+See the [candidate post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-candidate-after-uf2.json).
 
 ### 64 MiB hardware results
 
