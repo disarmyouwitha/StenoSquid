@@ -258,6 +258,16 @@ valid. The board was left with the candidate and all 32 dictionaries loaded.
 See the [recovery trace](../../docs/benchmarks/phase1-startup-profile-candidate-recovery.json)
 and the [readback report](../../docs/benchmarks/phase1-startup-profile-candidate-readback.json).
 
+The same-boot diagnostic at 32 MHz reproduced the failure. One root rejected
+a journal at `0x039f0000`. The other rejected the forward index at
+`0x03e40000`, which had expected CRC `0xd9cacb6f`. In order, the original
+mapped read returned `0x64c9da5f`, uncached DMA returned `0xb5ffc392`, and
+the uncached mapped repeat returned `0xbf07df31`. The three completed reads
+disagreed with each other and with the expected CRC before the firmware
+reported flash unavailable. This rules out a failure limited to mapped reads
+in this run. See the [cold diagnostic trace](../../docs/benchmarks/phase1-startup-profile-dma-pair-cold.json).
+
+
 
 ### 64 MiB hardware results
 
