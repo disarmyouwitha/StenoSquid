@@ -201,3 +201,37 @@ Results on the nice!nano count as development evidence only.
 - Needs explicit approval first: any shipping default, storage format, destructive hardware action, reduced
   CRC or queue guarantee, new production USB or BLE interface, and any no-RAM-regression exception.
 - Dropped from v5: its revision bookkeeping and duplicated links (stale on the next push).
+
+## 7. First hardware results (nice!nano Left, 16 MiB, 32-slot Measure build `48e5378`, USB)
+
+All **measured**, single runs, one board. Not a qualification.
+
+| Measurement | Result |
+| --- | --- |
+| Link map, 32 slots + transfer + diagnostics | 242,166 B RAM (92.38%); 507,388 B flash (62.56%). The 16-slot version was 236,662 B (90.28%) |
+| `transfer-capabilities` | `OK XFER1 49`: the transfer session is live on real hardware |
+| Binary install, Lapwing Commands (4,300 B) | 0.65 s, binary path |
+| Binary reinstall, Lapwing Base (1,831,220 B staged, 114,885 entries) | upload **45.23 s = 39.5 KiB/s** including erase; whole operation 49.53 s; identical size and entry count afterwards |
+| Upload and verify, Lapwing Proper Nouns, aborted before commit | 7.6 s; catalog unchanged |
+| Idle memory, 106 s after boot | every stack at least 32% free (tightest: BT LW WQ 32.3%, BT RX pri 34.8%); heap peak 0 B of 32,768 B |
+| Memory during upload and verify | `javelin_web_hid` 2,020 of 4,096 B (50.7% free); `dictionary_flash` 1,812 of 3,072 B (41.0% free); no other stack moved; heap peak still 0 B |
+| Command round trip, native Python `hidapi` | 1.02 ms |
+| Command round trip, Chrome 157 WebHID | 1.39 ms |
+| Flash read of 1 MiB (Base64 console), Python `hidapi` | 43.3 KiB/s |
+| Flash read of 1 MiB (Base64 console), Chrome WebHID | 41.1 KiB/s (95% of Python) |
+| `sendReport` alone, Chrome, awaited one at a time | 1,607 reports/s |
+
+What this does and does not say:
+
+- The 1 MiB read moves about 905 reports/s of Base64 text, so the USB HID input endpoint (about one report per
+  millisecond) is the limit, not the browser. Binary frames carry 49 payload bytes per 63-byte report against
+  about 46 for Base64, so on HID alone the gain is roughly 5-10%. The 250 KiB/s target needs CDC (Phase 3).
+- The upload direction may have headroom: Chrome can send 1,607 reports/s, about 77 KiB/s of 49-byte payloads, yet
+  the upload ran at 39.5 KiB/s. What bounds it (acknowledgement window, flash erase and program time, verify)
+  is not yet measured. The next step is per-stage timing.
+- Not measured: the real Manager (Pyodide) path in Chrome, a JS transfer session, Bluetooth, Studio, sustained
+  typing, or the heap under any load. The heap showing 0 B must not be acted on until the instrument is confirmed
+  to see the allocations that matter.
+- Unexplained: after the uninstall commit, the console was unreachable for over 90 s from a script, yet answered
+  in seconds when checked afterwards. Slow reboot or host HID re-enumeration is not distinguished.
+- Lapwing Base reinstalls disabled (the restore path does not re-enable it).
