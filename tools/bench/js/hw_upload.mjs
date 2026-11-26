@@ -23,12 +23,24 @@ const expect = (n) => new Promise((resolve) => { waiters.push({n, resolve}); pum
 const u16 = (value) => { const b = Buffer.alloc(2); b.writeUInt16LE(value); return b; };
 const send = (...parts) => process.stdout.write(Buffer.concat(parts.map((p) => (typeof p === "string" ? Buffer.from(p) : p))));
 
+// Loss injection for the lost-ACK hardware test: STENO_DROP_WRITES / STENO_DROP_READS are probabilities (0..1) of
+// silently losing an outgoing report or discarding an incoming one; STENO_SEED makes the pattern repeatable.
+const dropWrites = Number(process.env.STENO_DROP_WRITES || 0), dropReads = Number(process.env.STENO_DROP_READS || 0);
+let seed = Number(process.env.STENO_SEED || 1) >>> 0;
+const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+const dropped = {writes: 0, reads: 0};
 const link = {
-  async write(report) { send("W", Buffer.from(report)); },
+  async write(report) {
+    if (dropWrites && random() < dropWrites) { dropped.writes++; return; }
+    send("W", Buffer.from(report));
+  },
   async read(timeoutMs) {
     send("R", u16(Math.min(65535, Math.max(0, Math.round(timeoutMs)))));
     const tag = (await expect(1))[0];
-    return tag === 0x52 ? new Uint8Array(await expect(63)) : null;
+    if (tag !== 0x52) return null;
+    const report = new Uint8Array(await expect(63));
+    if (dropReads && random() < dropReads) { dropped.reads++; return null; }
+    return report;
   },
 };
 const hostConsole = {
@@ -52,9 +64,9 @@ const messages = [];
 let result;
 try {
   await upload(hostConsole, link, update, (text) => messages.push(text), {stats});
-  result = {stats, messages};
+  result = {stats, messages, dropped};
 } catch (error) {
-  result = {error: String(error?.message ?? error), stats, messages};
+  result = {error: String(error?.message ?? error), stats, messages, dropped};
 }
 const json = Buffer.from(JSON.stringify(result));
 const length = Buffer.alloc(4);

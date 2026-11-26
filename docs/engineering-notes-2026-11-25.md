@@ -457,6 +457,21 @@ Lapwing Proper Nouns, 5 segments, 260,328 staged bytes (a smaller package than t
   --uninstall-first`, start the sampler, then open the page. The keyboard is back in its original state (Lapwing Proper
   Nouns uninstalled, Lapwing Base installed and enabled).
 
+### 7.10 Lost reports on real hardware, and the plain 32-slot build under toggling (nice!nano, USB, overnight run)
+
+Build: the plain Measure image (`NiceNano-Left-Measure-32-libcreport`, no heap-reclaim). Same Lapwing Proper Nouns install (260,328 B, 5,459 frames) through the JS client relayed over `hidapi`, with `STENO_DROP_WRITES` / `STENO_DROP_READS` (seeded, in `tools/bench/js/hw_upload.mjs`) silently losing outgoing reports or discarding incoming ones:
+
+| Loss | Stream stage | Useful rate | Data frames sent | NAKs | Rewinds | Stalls | Result |
+|---|---|---|---|---|---|---|---|
+| none | 4.29 s | 60.8 KiB/s | 5,459 | 0 | 0 | 0 | installed |
+| 5% of replies discarded (79) | 7.35 s | 35.5 KiB/s | 5,483 | 0 | 0 | 3 | installed |
+| 5% of frames lost (356) | 16.6 s | 15.7 KiB/s | 7,341 | 1,526 | 275 | 11 | installed |
+| both 5% (340 + 158) | 23.5 s | 11.1 KiB/s | 7,250 | 1,330 | 255 | 18 | installed |
+
+Every run completed and was accepted by the device's CRC check, so lost frames and lost ACKs recover on real hardware (the simulator result is now confirmed on the device). A lost reply costs a timeout; a lost frame costs a rewind, which is why it is far more expensive. Real USB loses almost nothing; this is a resilience result, not a throughput one. Lapwing Proper Nouns was uninstalled again afterwards (catalog back to Lapwing Base only).
+
+Memory under toggling: 40 rounds of disable/enable Lapwing Base, each followed by 60 lookups and a `memory_report`. Worst stack was `BT LW WQ` at 32.3% free (948 of 1,400 B), then `BT RX pri` 34.8%, `javelin_web_hid` 36.2%, `dictionary_flash` 41.0%. The 512 B stack that read 25.8% free earlier was 63.3% free here, so that earlier reading did not come from dictionary toggling over USB; the trigger is still unknown. libc heap peak 2,696 B of 19,968 B. Nothing under 25%.
+
 ### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
 
 `tools/manager/browser/transfer_client.js` is a port of the Python upload loop. On the nice!nano (cumulative-ack

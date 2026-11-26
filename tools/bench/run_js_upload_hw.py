@@ -111,6 +111,8 @@ def main():
               f"verify {stats['verifyMs'] / 1000:.2f} s | commit {stats['commitMs'] / 1000:.2f} s | total {seconds:.2f} s")
         print(f"   frames {stats['dataFrames']}, acks {stats['acks']}, naks {stats['naks']}, rewinds {stats['rewinds']}, "
               f"stalls {stats['stalls']}; {stats['streamBytes'] / stats['streamMs'] * 1000 / 1024:.1f} KiB/s of record bytes over the stream stage")
+        if any(LAST.get("dropped", {}).values()):
+            print(f"   injected loss (STENO_DROP_WRITES / STENO_DROP_READS): {LAST['dropped']}")
         time.sleep(2)
     print("done")
 
