@@ -205,6 +205,15 @@ catalog payloads reduced logical flash reads from 2,162,470 to 1,201,627.
 Boot timing after a catalog update leaves two distinct payloads remains to be
 measured on hardware.
 
+The simulated full-pool open with matching catalogs issued 320,128 reads in
+the forward index pass and 480,094 in the reverse pass. The journal pass
+issued 160,300. Another 240,665 reads followed root validation, including
+catalog selection and live journal recovery. Use the hardware stage trace to
+check which passes dominate elapsed time. Look for redundant checks and reads
+first, then measure batching, read-ahead and QSPI changes against the five-second
+target. Consider extending persistent trust only if those changes fall short.
+Optimistic startup requires explicit approval.
+
 ### 64 MiB hardware results
 
 - The Boardsource pool used 1,006 of 1,023 blocks, with 17 contiguous
