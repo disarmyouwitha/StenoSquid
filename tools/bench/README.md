@@ -348,9 +348,19 @@ The journal scan and recovery state construction together took 12.8 seconds.
 The work between root validation and catalog ready took 15 milliseconds,
 versus 10.8 seconds in the faster cold control. Both roots validated, all 233
 fixture lookups passed, and the board retained 32 dictionaries and 17 free
-blocks. A physical cold start is still needed. See the
+blocks. See the
 [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-after-uf2.json)
 and [lookup results](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-lookups.json).
+
+On the next user-reported reboot, the candidate reached ready on the first
+open at 32.675 seconds of device uptime, versus the 37.436- and 91.295-second
+mapped 16 MHz controls. The journal scan took 12.789 seconds, the index passes
+took 18.333 seconds combined, and catalog selection after validation took
+14 milliseconds. Both roots validated, and all 233 lookups passed with 32
+dictionaries and 17 blocks free. The recorder attached after USB enumeration,
+so no USB-to-ready interval was measured. See the
+[reboot trace](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-reboot.json).
+
 
 
 
