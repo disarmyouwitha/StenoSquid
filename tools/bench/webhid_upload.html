@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steno Squid WebHID upload test</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 24px auto; max-width: 760px; padding: 0 16px; }
+  button { font: inherit; padding: 8px 14px; margin-right: 8px; }
+  pre { background: #1e1e1e; color: #ddd; padding: 12px; overflow: auto; border-radius: 6px; min-height: 8em; }
+  .note { color: #555; }
+</style>
+</head>
+<body>
+<h1>WebHID upload test (JavaScript transfer client)</h1>
+<p class="note">Lab instrument. Uploads the plan prepared by <code>prepare_chrome_upload.py</code> with the same
+<code>transfer_client.js</code> the Manager will ship, over WebHID, and reports stage timings. It <b>writes to the
+keyboard's dictionary flash</b> (a normal dictionary install) and the keyboard restarts when it finishes.</p>
+<p><button id="connect">1. Connect</button><button id="run" disabled>2. Run upload</button></p>
+<pre id="log">Click Connect and choose the Steno Squid left half.</pre>
+<script type="module">
+import {upload, linkFromHid} from "../manager/browser/transfer_client.js";
+
+const filter = {usagePage: 0xff31, usage: 0x74};
+const logEl = document.getElementById("log");
+const log = (text) => { logEl.textContent += "\n" + text; };
+let device, inputId, outputId, channel = 0;
+const queue = [];
+let waiter = null;
+const encoder = new TextEncoder(), decoder = new TextDecoder();
+
+function onInput({reportId, data}) {
+  if (reportId !== inputId) return;
+  queue.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice());
+  if (waiter) { const w = waiter; waiter = null; w(); }
+}
+function nextPacket(timeoutMs) {
+  if (queue.length) return Promise.resolve(queue.shift());
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { waiter = null; resolve(null); }, timeoutMs);
+    waiter = () => { clearTimeout(timer); resolve(queue.shift() || null); };
+  });
+}
+async function rawCommand(text, timeoutMs) {
+  channel = (channel + 1) % 100;
+  const prefix = `c${String(channel).padStart(2, "0")} `;
+  const line = encoder.encode(text + "\n"), pre = encoder.encode(prefix), room = 63 - pre.length;
+  for (let offset = 0; offset < line.length; offset += room) {
+    const report = new Uint8Array(63);
+    report.set(pre, 0);
+    report.set(line.subarray(offset, offset + room), pre.length);
+    await device.sendReport(outputId, report);
+  }
+  const deadline = performance.now() + timeoutMs;
+  let response = "";
+  while (performance.now() < deadline) {
+    const packet = await nextPacket(250);
+    if (!packet) continue;
+    let end = packet.length;
+    while (end > 0 && packet[end - 1] === 0) end--;
+    response += decoder.decode(packet.subarray(0, end));
+    if (response.endsWith("\n\n")) {
+      if (response.startsWith(prefix)) return response.slice(prefix.length).replace(/\n+$/, "");
+      response = "";
+    }
+  }
+  throw new Error("No reply to " + text.split(" ")[0]);
+}
+const hostConsole = {
+  async command(text, timeoutMs = 5000) {
+    for (let attempt = 0; attempt < 50; attempt++) { // the same retry the Python console does on a busy flash worker
+      const reply = await rawCommand(text, timeoutMs);
+      if (reply !== "ERR Native flash busy") return reply;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return "ERR Native flash busy";
+  },
+};
+const link = linkFromHid({
+  write: (report) => device.sendReport(outputId, report),
+  read: (timeoutMs) => nextPacket(timeoutMs).then((packet) => packet ?? []),
+});
+const fromHex = (hex) => { const out = new Uint8Array(hex.length / 2); for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16); return out; };
+
+document.getElementById("connect").addEventListener("click", async () => {
+  try {
+    if (!navigator.hid) { log("navigator.hid is not available in this browser."); return; }
+    const picked = await navigator.hid.requestDevice({filters: [filter]});
+    if (picked.length !== 1) { log("Choose exactly one device."); return; }
+    device = picked[0];
+    const collection = device.collections.find((c) => c.usagePage === filter.usagePage && c.usage === filter.usage);
+    inputId = collection.inputReports[0].reportId;
+    outputId = collection.outputReports[0].reportId;
+    if (!device.opened) await device.open();
+    device.addEventListener("inputreport", onInput);
+    log(`Connected: ${device.productName}; input report ${inputId}, output report ${outputId}`);
+    document.getElementById("run").disabled = false;
+  } catch (error) { log("Connect failed: " + error.message); }
+});
+
+document.getElementById("run").addEventListener("click", async () => {
+  const result = {userAgent: navigator.userAgent};
+  try {
+    log("Loading the prepared plan…");
+    const spec = await (await fetch("/update.json")).json();
+    const update = {segments: spec.segments.map(([segment, hex]) => [segment, fromHex(hex)]), metadata: spec.metadata, payload: fromHex(spec.payload)};
+    const staged = update.segments.reduce((sum, [, block]) => sum + block.length, 0);
+    log(`Plan for ${spec.name}: ${update.segments.length} segments, ${staged} staged bytes.`);
+    const begin = await hostConsole.command(spec.beginCommand, 30000);
+    if (!begin.startsWith("OK")) throw new Error("begin refused: " + begin);
+    log("Staged-update session open; uploading…");
+    const stats = {};
+    let lastLogged = 0;
+    const started = performance.now();
+    await upload(hostConsole, link, update, (text) => {
+      if (performance.now() - lastLogged > 4000 || text.includes("100%")) { lastLogged = performance.now(); log("  " + text); }
+    }, {stats});
+    result.name = spec.name; result.stats = stats; result.stagedBytes = staged;
+    result.wallSeconds = (performance.now() - started) / 1000;
+    result.usefulKiBps = staged / 1024 / (stats.totalMs / 1000);
+    result.done = true;
+    log(`DONE. stream ${(stats.streamMs / 1000).toFixed(2)} s, verify ${(stats.verifyMs / 1000).toFixed(2)} s, ` +
+        `commit ${(stats.commitMs / 1000).toFixed(2)} s, total ${(stats.totalMs / 1000).toFixed(2)} s; ` +
+        `${result.usefulKiBps.toFixed(1)} KiB/s useful; frames ${stats.dataFrames}, acks ${stats.acks}, naks ${stats.naks}, ` +
+        `rewinds ${stats.rewinds}, stalls ${stats.stalls}. The keyboard is restarting.`);
+  } catch (error) {
+    result.error = String(error.message || error);
+    log("FAILED: " + result.error);
+    try { await hostConsole.command("native_install update abort", 3000); } catch { /* the session may already be closed */ }
+  }
+  log("\nresult JSON:\n" + JSON.stringify(result));
+  try { await fetch("/result", {method: "POST", body: JSON.stringify(result)}); } catch { /* no collector */ }
+});
+</script>
+</body>
+</html>
