@@ -9,6 +9,7 @@
 struct StartupDevice : NativeDevice {
     bool read_ahead = false;
     bool wide_read_ahead = false;
+    bool index_cache = false;
     StartupReadAhead cache;
     uint8_t buffer[StartupReadAhead::PageBytes]{};
     uint8_t wide_buffer[2048]{};
@@ -16,6 +17,11 @@ struct StartupDevice : NativeDevice {
     bool Read(uint32_t at, uint8_t *out, uint32_t bytes) {
         if (at > nor.data.size() || bytes > nor.data.size() - at) return false;
         if (!read_ahead) return NativeDevice::Read(at, out, bytes);
+        if (index_cache && !wide_read_ahead) {
+            return StartupIndexCache::Read(at, out, bytes, wide_buffer, [&](uint32_t base, uint8_t *page, uint32_t size) {
+                return NativeDevice::Read(base, page, size);
+            });
+        }
         auto fill = [&](uint32_t base, auto &page) {
             return NativeDevice::Read(base, page, sizeof(page));
         };
@@ -48,6 +54,8 @@ static void JournalAndIndexDma(ValidationStage stage) {
     hybrid_device->read_ahead = stage != ValidationStage::Extents;
     hybrid_device->wide_read_ahead = stage == ValidationStage::Journal;
     if (hybrid_device->read_ahead) hybrid_device->cache = {};
+    if (hybrid_device->index_cache && !hybrid_device->wide_read_ahead)
+        StartupIndexCache::Reset(hybrid_device->wide_buffer);
 }
 
 int main(int argc, char **argv) {
@@ -60,13 +68,13 @@ int main(int argc, char **argv) {
 
     const char *mode_name[] = {"direct requests", "DMA pages", "reused recovery", "batched index keys",
                                "batched index + journal DMA", "batched index + 2 KiB journal DMA",
-                               "DMA for journal and batched indexes"};
+                               "DMA for journal and batched indexes", "DMA with seven index pages"};
     for (unsigned mode = 0; mode < sizeof(mode_name) / sizeof(mode_name[0]); ++mode) {
         const bool read_ahead = mode == 1;
         const bool reuse_recovery = mode >= 2;
         const bool batch_keys = mode >= 3;
-        const auto stage = mode == 6 ? JournalAndIndexDma : mode >= 4 ? JournalDmaOnly : nullptr;
-        StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, mode == 5, {}, {}, {}};
+        const auto stage = mode >= 6 ? JournalAndIndexDma : mode >= 4 ? JournalDmaOnly : nullptr;
+        StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, mode == 5, mode == 7, {}, {}, {}};
         hybrid_device = &device;
         NativeStore<StartupDevice> store(device);
         NativeValidator<StartupDevice> validator(device, store.catalog);

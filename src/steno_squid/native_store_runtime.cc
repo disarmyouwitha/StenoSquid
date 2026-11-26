@@ -91,6 +91,9 @@ struct FlashDevice {
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
     bool index_dma = false;
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+    bool index_cache = false;
+#endif
 #if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
     uint32_t cold_read_yield_at = 0;
     StartupReadAhead startup_read_ahead;
@@ -126,6 +129,14 @@ struct FlashDevice {
             };
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
             if (journal_dma) return startup_read_ahead.Read(at, out, n, export_buffer, fill);
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+            if (index_cache) {
+                return StartupIndexCache::Read(at, out, n, export_buffer, [](uint32_t base, uint8_t *buffer, uint32_t bytes) {
+                    ++boot_dma_reads;
+                    return nrfx_qspi_read(buffer, bytes, base) == NRFX_SUCCESS;
+                });
+            }
 #endif
             return startup_read_ahead.Read(at, out, n, dma, fill);
         }
@@ -968,6 +979,10 @@ extern "C" bool steno_squid_native_flash_open(void) {
                 flash_device.index_dma = stage == ValidationStage::Forward || stage == ValidationStage::Reverse;
                 if (flash_device.index_dma) flash_device.startup_read_ahead = {};
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+                flash_device.index_cache = flash_device.index_dma && !exporting;
+                if (flash_device.index_cache) StartupIndexCache::Reset(export_buffer);
+#endif
                 switch (stage) {
                 case ValidationStage::Extents: BOOT_STAGE("extent_checks", flash_device.trust_bases); break;
                 case ValidationStage::Journal: BOOT_STAGE("journal_scan", 0); break;
@@ -990,6 +1005,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
         flash_device.index_dma = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+        flash_device.index_cache = false;
 #endif
         flash_device.trust_bases=false;
         BOOT_STAGE("root_validated", static_cast<uint32_t>(status));

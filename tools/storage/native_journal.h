@@ -4,7 +4,9 @@
 #include <cstdint>
 #include "native_allocator.h"
 #include <cstring>
-#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CPU_BATCH
+#include <array>
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
 #include <zephyr/sys/crc.h>
 #endif
 
@@ -20,7 +22,21 @@ inline void PutWord(uint8_t *p, uint32_t n) {
     for (unsigned i = 0; i < 4; ++i) p[i] = uint8_t(n >> (8*i));
 }
 inline uint32_t Crc(uint32_t crc, const uint8_t *p, uint32_t n) {
-#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CPU_BATCH
+    static constexpr auto table = [] {
+        std::array<uint32_t, 256> values{};
+        for (unsigned i = 0; i < values.size(); ++i) {
+            uint32_t value = i;
+            for (unsigned bit = 0; bit < 8; ++bit)
+                value = (value >> 1) ^ (0xedb88320u & (0u - (value & 1u)));
+            values[i] = value;
+        }
+        return values;
+    }();
+    crc = ~crc;
+    for (uint32_t i = 0; i < n; ++i) crc = (crc >> 8) ^ table[(crc ^ p[i]) & 0xffu];
+    return ~crc;
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
     return crc32_ieee_update(crc, p, n);
 #else
     crc = ~crc;
@@ -49,6 +65,26 @@ struct Utf8 {
         }
         return true;
     }
+
+    bool PushText(const uint8_t *text, uint32_t bytes) {
+        while (bytes) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CPU_BATCH
+            if (!remaining && bytes >= 4) {
+                const uint32_t word = Word(text);
+                // Skip four ASCII characters only if none is a NUL.
+                const uint32_t zero = (word - 0x01010101u) & ~word;
+                if (!((word | zero) & 0x80808080u)) {
+                    text += 4;
+                    bytes -= 4;
+                    continue;
+                }
+            }
+#endif
+            if (!Push(*text++)) return false;
+            --bytes;
+        }
+        return true;
+    }
 };
 inline bool ValidNativeStroke(uint32_t stroke) {
     return stroke && !(stroke >> 25);
@@ -59,8 +95,7 @@ inline bool ValidEdit(uint32_t identity,uint8_t operation,const uint32_t *stroke
        (length && !text) || (operation && length))return false;
     for(uint8_t i=0;i<count;++i)if(!ValidNativeStroke(strokes[i]))return false;
     Utf8 utf;
-    for(uint16_t i=0;i<length;++i)if(!utf.Push(text[i]))return false;
-    return !utf.remaining;
+    return utf.PushText(text, length) && !utf.remaining;
 }
 
 struct JournalRecord {
@@ -263,8 +298,8 @@ public:
                     return JournalResult::Corrupt;
                 text_start = 8u + 4u * key.count;
             }
-            for (uint32_t i=0;i<n;++i)
-                if (position+i>=text_start && !utf.Push(buffer[i])) return JournalResult::Corrupt;
+            const uint32_t first_text_byte = position == 0 ? text_start : 0;
+            if (!utf.PushText(buffer + first_text_byte, n - first_text_byte)) return JournalResult::Corrupt;
             position+=n;
         }
         if (utf.remaining || crc!=Word(header+20)) return JournalResult::Corrupt;

@@ -34,4 +34,46 @@ struct StartupReadAhead {
     }
 };
 
+// Use seven aligned pages of the existing scratch buffer. Keep the tags and
+// replacement cursor in the first page so the lab build adds no static RAM.
+struct StartupIndexCache {
+    static constexpr size_t BufferBytes = 2048;
+    static constexpr uint32_t PageBytes = StartupReadAhead::PageBytes;
+    static constexpr unsigned Slots = BufferBytes / PageBytes - 1;
+
+    static void Reset(uint8_t (&buffer)[BufferBytes]) {
+        std::memset(buffer, 0xff, Slots * sizeof(uint32_t));
+        buffer[Slots * sizeof(uint32_t)] = 0;
+    }
+
+    template<class ReadPage>
+    static bool Read(uint32_t at, uint8_t *out, uint32_t bytes, uint8_t (&buffer)[BufferBytes], ReadPage fill) {
+        while (bytes) {
+            const uint32_t offset = at % PageBytes;
+            const uint32_t base = at - offset;
+            unsigned slot = 0;
+            for (; slot < Slots; ++slot) {
+                uint32_t tag;
+                std::memcpy(&tag, buffer + slot * sizeof(tag), sizeof(tag));
+                if (tag == base) break;
+            }
+            if (slot == Slots) {
+                auto &next = buffer[Slots * sizeof(uint32_t)];
+                slot = next;
+                auto *tag = buffer + slot * sizeof(uint32_t);
+                std::memset(tag, 0xff, sizeof(uint32_t));
+                if (!fill(base, buffer + (slot + 1) * PageBytes, PageBytes)) return false;
+                std::memcpy(tag, &base, sizeof(base));
+                next = (slot + 1) % Slots;
+            }
+            const uint32_t count = std::min(bytes, PageBytes - offset);
+            std::memcpy(out, buffer + (slot + 1) * PageBytes + offset, count);
+            at += count;
+            out += count;
+            bytes -= count;
+        }
+        return true;
+    }
+};
+
 } // namespace candidate_b
