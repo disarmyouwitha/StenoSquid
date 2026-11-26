@@ -127,6 +127,25 @@ conflict check's flash reads replayed); byte-identical or the same error. `+` st
 compact entries, so every `+` lookup is a miss in both implementations. Mutation check: about 55 mutations, all caught
 except ones that cannot change a result.
 
+**M1/M2 status, fifth part: the compiler is ported.** `compile.js` ports `DictionaryCollectionBuilder` (compact-map layout,
+text deduplication, the firmware hint index, pointer offsets, translation-length warnings) and `compile_snapshot`
+(24-bit and Native-limit checks, then a read-back of every entry through the lookup reader). It grew out of the naive
+spike `tools/bench/js/compile_dict.mjs`, which it supersedes; the typed-array fast path (`compile_fast.mjs`, 4-5x quicker)
+can replace its inner loops later without changing the interface. Gate: 53 golden cases from Python (single and
+multiple dictionaries, flash base addresses, empty dictionaries, gaps in outline lengths, sixteen-stroke outlines, numeric
+aliases, duplicates, unicode names and texts, the 127- and 2047-byte limits, every hash-block-count boundary, every
+refusal and its message), byte-identical images and pointer lists. Mutation check: 25 mutations, all caught except ones
+that cannot change a result.
+
+**M1 status, sixth part: Plover JSON import and export are ported.** `importer.js` ports `parse_named` and `write_json`. It
+cannot use `JSON.parse`, which hides duplicate keys and reorders integer-like keys (and the compiler's placement, so the
+image bytes, depend on file order), so it has an ordered reader that accepts and rejects what Python's `json.loads` does,
+and refuses a duplicate key at every nesting level, reporting it only when the object closes (as Python's hook does).
+Gate: 84 golden cases (valid files, integer-like and aliased keys, every kind of syntax error, lone and paired surrogates,
+NaN and Infinity, number grammar, control characters, 16- and 17-stroke outlines, the 2,047-byte translation limit with
+multibyte text, duplicate keys by escape) plus six export files; the same accept/refuse decision and, for the importer's own
+errors, the same message. Mutation check: 14 mutations; the survivors cannot change a result.
+
 Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
 (`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
