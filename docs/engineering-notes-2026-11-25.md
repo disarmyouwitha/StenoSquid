@@ -117,8 +117,17 @@ images with some packages absent, patched catalogs for every refusal (shared ext
 the catalog, a named member, a renamed row, 252 and 253 extents), tight and scattered free space, and both pool sizes;
 byte-identical or the same error. Mutation check: 25 mutations, all caught except two that cannot change a result.
 
-Not yet ported: `backup_all`, `overlay_usage`, `plan_replacements` (replacing a pinned base; needs the JSC4 lookup reader),
-the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
+**M2 status, fourth part: the lookup reader and base replacement are ported.** `lookup.js` ports the stroke parser and
+the JSC4 lookup (the engine's hash, probing and rank arithmetic, with the same reader checks); `replace_plan.js` ports
+`plan_replacements` (replace a pinned compiled base, keep everything else, report local edits that the new base now
+translates differently). Gate: 231 golden cases (every entry of three compiled images, misses, invalid outlines,
+numeric aliases and modifiers, 200 damaged images; replacements with and without conflicts, unchanged digests, shared or
+named-member rows, a failing base checksum, out-of-range relocation pointers, tight and scattered free space, with the
+conflict check's flash reads replayed); byte-identical or the same error. `+` strokes cannot be stored in the 24-bit
+compact entries, so every `+` lookup is a miss in both implementations. Mutation check: about 55 mutations, all caught
+except ones that cannot change a result.
+
+Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
 (`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
 
