@@ -1,0 +1,1237 @@
+{
+"schema": 1,
+"parse": [
+{
+"title": "a small dictionary",
+"source": "{\"KAT\": \"cat\", \"TKOG\": \"dog\", \"KAT/TKOG\": \"cat dog\"}",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+"636174"
+],
+[
+[
+262668
+],
+"646f67"
+],
+[
+[
+524552,
+262668
+],
+"63617420646f67"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+],
+[
+[
+262668
+],
+"TKOG"
+],
+[
+[
+524552,
+262668
+],
+"KAT/TKOG"
+]
+]
+}
+},
+{
+"title": "integer-like keys keep file order",
+"source": "{\"10\": \"ten\", \"2\": \"two\", \"1\": \"one\", \"TKOG\": \"dog\"}",
+"expect": {
+"entries": [
+[
+[
+515
+],
+"74656e"
+],
+[
+[
+5
+],
+"74776f"
+],
+[
+[
+3
+],
+"6f6e65"
+],
+[
+[
+262668
+],
+"646f67"
+]
+],
+"names": [
+[
+[
+515
+],
+"10"
+],
+[
+[
+5
+],
+"2"
+],
+[
+[
+3
+],
+"1"
+],
+[
+[
+262668
+],
+"TKOG"
+]
+]
+}
+},
+{
+"title": "numeric aliases with equal text",
+"source": "{\"1\": \"one\", \"#S\": \"one\", \"KAT\": \"cat\"}",
+"expect": {
+"entries": [
+[
+[
+3
+],
+"6f6e65"
+],
+[
+[
+524552
+],
+"636174"
+]
+],
+"names": [
+[
+[
+3
+],
+"1"
+],
+[
+[
+524552
+],
+"KAT"
+]
+]
+}
+},
+{
+"title": "numeric aliases with different text",
+"source": "{\"1\": \"one\", \"#S\": \"uno\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'#S' uses the same keys as another outline with different text."
+}
+}
+},
+{
+"title": "unicode text and escapes",
+"source": "{\"KAT\": \"caf\\u00e9\", \"TKOG\": \"\\ud83d\\ude00\", \"S\": \"a\\/b\", \"T\": \"\\n\\t\\b\"}",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+"636166c3a9"
+],
+[
+[
+262668
+],
+"f09f9880"
+],
+[
+[
+2
+],
+"612f62"
+],
+[
+[
+4
+],
+"0a0908"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+],
+[
+[
+262668
+],
+"TKOG"
+],
+[
+[
+2
+],
+"S"
+],
+[
+[
+4
+],
+"T"
+]
+]
+}
+},
+{
+"title": "raw unicode",
+"source": "{\"KAT\": \"caf\u00e9 \u65e5\u672c\u8a9e \ud83d\ude00\"}",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+"636166c3a920e697a5e69cace8aa9e20f09f9880"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+]
+]
+}
+},
+{
+"title": "whitespace everywhere",
+"source": " \n{ \n\"KAT\" : \"cat\" \n, \"TKOG\":\"dog\"\n} \n",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+"636174"
+],
+[
+[
+262668
+],
+"646f67"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+],
+[
+[
+262668
+],
+"TKOG"
+]
+]
+}
+},
+{
+"title": "a raw unit separator inside a string",
+"source": "{\"KAT\": \"a\u001fb\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid control character at: line 1 column 11 (char 10)"
+}
+}
+},
+{
+"title": "the highest surrogate pair",
+"source": "{\"KAT\": \"\\udbff\\udfff\"}",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+"f48fbfbf"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+]
+]
+}
+},
+{
+"title": "a high surrogate then a private-use escape",
+"source": "{\"KAT\": \"\\ud800\\ue000\"}",
+"expect": {
+"error": {
+"type": "UnicodeEncodeError",
+"message": "'utf-8' codec can't encode character '\\ud800' in position 0: surrogates not allowed"
+}
+}
+},
+{
+"title": "a high surrogate then a high surrogate",
+"source": "{\"KAT\": \"\\ud800\\ud800\\udc00\"}",
+"expect": {
+"error": {
+"type": "UnicodeEncodeError",
+"message": "'utf-8' codec can't encode character '\\ud800' in position 0: surrogates not allowed"
+}
+}
+},
+{
+"title": "negative infinity as a value",
+"source": "{\"KAT\": -Infinity}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "an exponent with no digits",
+"source": "{\"KAT\": 1e}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ',' delimiter: line 1 column 10 (char 9)"
+}
+}
+},
+{
+"title": "an exponent with digits",
+"source": "{\"KAT\": 1e5}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "a signed exponent and fraction",
+"source": "{\"KAT\": -1.5E+3}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "a fraction with no digits",
+"source": "{\"KAT\": 1.}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ',' delimiter: line 1 column 10 (char 9)"
+}
+}
+},
+{
+"title": "garbage between pairs",
+"source": "{\"KAT\": \"cat\"x\"TKOG\": \"dog\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ',' delimiter: line 1 column 14 (char 13)"
+}
+}
+},
+{
+"title": "two commas",
+"source": "{\"KAT\": \"cat\",,\"TKOG\": \"dog\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting property name enclosed in double quotes: line 1 column 15 (char 14)"
+}
+}
+},
+{
+"title": "a colon where a comma belongs",
+"source": "{\"KAT\": \"cat\":\"TKOG\": \"dog\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ',' delimiter: line 1 column 14 (char 13)"
+}
+}
+},
+{
+"title": "an empty object",
+"source": "{}",
+"expect": {
+"entries": [],
+"names": []
+}
+},
+{
+"title": "empty translation",
+"source": "{\"KAT\": \"\"}",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+""
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+]
+]
+}
+},
+{
+"title": "escaped key equals another key",
+"source": "{\"KAT\": \"a\", \"K\\u0041T\": \"b\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Duplicate JSON key 'KAT'"
+}
+}
+},
+{
+"title": "duplicate key",
+"source": "{\"KAT\": \"a\", \"TKOG\": \"b\", \"KAT\": \"c\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Duplicate JSON key 'KAT'"
+}
+}
+},
+{
+"title": "nested duplicate key",
+"source": "{\"KAT\": {\"a\": 1, \"a\": 2}}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Duplicate JSON key 'a'"
+}
+}
+},
+{
+"title": "duplicate key before a syntax error",
+"source": "{\"KAT\": \"a\", \"KAT\": \"b\", }",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting property name enclosed in double quotes: line 1 column 26 (char 25)"
+}
+}
+},
+{
+"title": "nested duplicate before an outer syntax error",
+"source": "{\"X\": {\"a\": 1, \"a\": 2}, }",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Duplicate JSON key 'a'"
+}
+}
+},
+{
+"title": "top-level array",
+"source": "[\"KAT\", \"cat\"]",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "The file must be a Plover JSON object mapping outlines to translations."
+}
+}
+},
+{
+"title": "top-level string",
+"source": "\"KAT\"",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "The file must be a Plover JSON object mapping outlines to translations."
+}
+}
+},
+{
+"title": "top-level number",
+"source": "12",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "The file must be a Plover JSON object mapping outlines to translations."
+}
+}
+},
+{
+"title": "top-level null",
+"source": "null",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "The file must be a Plover JSON object mapping outlines to translations."
+}
+}
+},
+{
+"title": "empty input",
+"source": "",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting value: line 1 column 1 (char 0)"
+}
+}
+},
+{
+"title": "whitespace only",
+"source": "  \n",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting value: line 2 column 1 (char 3)"
+}
+}
+},
+{
+"title": "byte order mark",
+"source": "\ufeff{\"KAT\": \"cat\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
+}
+}
+},
+{
+"title": "trailing comma",
+"source": "{\"KAT\": \"cat\",}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting property name enclosed in double quotes: line 1 column 15 (char 14)"
+}
+}
+},
+{
+"title": "trailing comma in a nested array",
+"source": "{\"KAT\": [\"a\",]}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting value: line 1 column 14 (char 13)"
+}
+}
+},
+{
+"title": "single quotes",
+"source": "{'KAT': 'cat'}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+}
+}
+},
+{
+"title": "a comment",
+"source": "{\"KAT\": \"cat\"} // note",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Extra data: line 1 column 16 (char 15)"
+}
+}
+},
+{
+"title": "an unquoted key",
+"source": "{KAT: \"cat\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+}
+}
+},
+{
+"title": "a missing colon",
+"source": "{\"KAT\" \"cat\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ':' delimiter: line 1 column 8 (char 7)"
+}
+}
+},
+{
+"title": "a missing comma",
+"source": "{\"KAT\": \"cat\" \"TKOG\": \"dog\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ',' delimiter: line 1 column 15 (char 14)"
+}
+}
+},
+{
+"title": "extra data after the object",
+"source": "{\"KAT\": \"cat\"} {}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Extra data: line 1 column 16 (char 15)"
+}
+}
+},
+{
+"title": "an unterminated string",
+"source": "{\"KAT\": \"cat",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Unterminated string starting at: line 1 column 9 (char 8)"
+}
+}
+},
+{
+"title": "an unterminated object",
+"source": "{\"KAT\": \"cat\"",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ',' delimiter: line 1 column 14 (char 13)"
+}
+}
+},
+{
+"title": "a raw newline inside a string",
+"source": "{\"KAT\": \"ca\nt\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid control character at: line 1 column 12 (char 11)"
+}
+}
+},
+{
+"title": "a raw tab inside a string",
+"source": "{\"KAT\": \"ca\tt\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid control character at: line 1 column 12 (char 11)"
+}
+}
+},
+{
+"title": "an invalid escape",
+"source": "{\"KAT\": \"ca\\xt\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid \\escape: line 1 column 12 (char 11)"
+}
+}
+},
+{
+"title": "a short unicode escape",
+"source": "{\"KAT\": \"\\u12\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid \\uXXXX escape: line 1 column 11 (char 10)"
+}
+}
+},
+{
+"title": "a bad hex digit in an escape",
+"source": "{\"KAT\": \"\\u12G4\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid \\uXXXX escape: line 1 column 11 (char 10)"
+}
+}
+},
+{
+"title": "a lone high surrogate",
+"source": "{\"KAT\": \"\\ud800\"}",
+"expect": {
+"error": {
+"type": "UnicodeEncodeError",
+"message": "'utf-8' codec can't encode character '\\ud800' in position 0: surrogates not allowed"
+}
+}
+},
+{
+"title": "a lone low surrogate",
+"source": "{\"KAT\": \"\\udc00\"}",
+"expect": {
+"error": {
+"type": "UnicodeEncodeError",
+"message": "'utf-8' codec can't encode character '\\udc00' in position 0: surrogates not allowed"
+}
+}
+},
+{
+"title": "a high surrogate then a non-surrogate escape",
+"source": "{\"KAT\": \"\\ud800\\u0041\"}",
+"expect": {
+"error": {
+"type": "UnicodeEncodeError",
+"message": "'utf-8' codec can't encode character '\\ud800' in position 0: surrogates not allowed"
+}
+}
+},
+{
+"title": "a surrogate pair split across text",
+"source": "{\"KAT\": \"\\ud83d x\\ude00\"}",
+"expect": {
+"error": {
+"type": "UnicodeEncodeError",
+"message": "'utf-8' codec can't encode character '\\ud83d' in position 0: surrogates not allowed"
+}
+}
+},
+{
+"title": "NaN as a value",
+"source": "{\"KAT\": NaN}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "Infinity as a value",
+"source": "{\"KAT\": Infinity}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "a number as a value",
+"source": "{\"KAT\": 12}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "a float as a value",
+"source": "{\"KAT\": 1.5e3}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "a leading-zero number",
+"source": "{\"KAT\": 01}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting ',' delimiter: line 1 column 10 (char 9)"
+}
+}
+},
+{
+"title": "a bare minus",
+"source": "{\"KAT\": -}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Expecting value: line 1 column 9 (char 8)"
+}
+}
+},
+{
+"title": "true as a value",
+"source": "{\"KAT\": true}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "null as a value",
+"source": "{\"KAT\": null}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "an object as a value",
+"source": "{\"KAT\": {\"a\": \"b\"}}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "an array as a value",
+"source": "{\"KAT\": [\"a\"]}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "a NUL escape in a translation",
+"source": "{\"KAT\": \"a\\u0000b\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "a raw NUL character",
+"source": "{\"KAT\": \"a\u0000b\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid control character at: line 1 column 11 (char 10)"
+}
+}
+},
+{
+"title": "an out-of-order outline",
+"source": "{\"TS\": \"ok\", \"ZZZ\": \"no\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Invalid or out-of-order steno stroke: 'ZZZ'"
+}
+}
+},
+{
+"title": "an empty outline",
+"source": "{\"\": \"x\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Invalid or out-of-order steno stroke: ''"
+}
+}
+},
+{
+"title": "an outline with an empty stroke",
+"source": "{\"KAT//TKOG\": \"x\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Invalid or out-of-order steno stroke: ''"
+}
+}
+},
+{
+"title": "an outline with a quote",
+"source": "{\"K\\'AT\": \"x\"}",
+"expect": {
+"error": {
+"type": "JSONDecodeError",
+"message": "Invalid \\escape: line 1 column 4 (char 3)"
+}
+}
+},
+{
+"title": "sixteen strokes",
+"source": "{\"KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT\": \"ok\"}",
+"expect": {
+"entries": [
+[
+[
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552
+],
+"6f6b"
+]
+],
+"names": [
+[
+[
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552,
+524552
+],
+"KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT"
+]
+]
+}
+},
+{
+"title": "seventeen strokes",
+"source": "{\"KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT\": \"no\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT/KAT' has more than 16 strokes."
+}
+}
+},
+{
+"title": "a translation of 2047 bytes",
+"source": "{\"KAT\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+"61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+]
+]
+}
+},
+{
+"title": "a translation of 2048 bytes",
+"source": "{\"KAT\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' has a translation longer than 2,047 UTF-8 bytes."
+}
+}
+},
+{
+"title": "a multibyte translation at the limit",
+"source": "{\"KAT\": \"\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5a\"}",
+"expect": {
+"entries": [
+[
+[
+524552
+],
+"e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a561"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+]
+]
+}
+},
+{
+"title": "a multibyte translation over the limit",
+"source": "{\"KAT\": \"\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' has a translation longer than 2,047 UTF-8 bytes."
+}
+}
+},
+{
+"title": "a key with a surrogate pair escape",
+"source": "{\"\\ud83d\\ude00\": \"x\"}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "Invalid or out-of-order steno stroke: '\ud83d\ude00'"
+}
+}
+},
+{
+"title": "the same strokes first different then equal",
+"source": "{\"1\": \"a\", \"#S\": \"a\", \"2\": \"b\", \"#T\": \"b\"}",
+"expect": {
+"entries": [
+[
+[
+3
+],
+"61"
+],
+[
+[
+5
+],
+"62"
+]
+],
+"names": [
+[
+[
+3
+],
+"1"
+],
+[
+[
+5
+],
+"2"
+]
+]
+}
+},
+{
+"title": "a large integer value",
+"source": "{\"KAT\": 123456789012345678901234567890}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+},
+{
+"title": "deep nesting in a value",
+"source": "{\"KAT\": [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+"expect": {
+"error": {
+"type": "ValueError",
+"message": "'KAT' needs a text translation without NUL bytes."
+}
+}
+}
+],
+"export": [
+{
+"title": "export 1",
+"entries": [
+[
+[
+524552
+],
+"611f6208630c647f65"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+]
+],
+"expect": "{\n\"KAT\": \"a\\u001fb\\bc\\fd\u007fe\"\n}\n"
+},
+{
+"title": "export 2",
+"entries": [
+[
+[
+524552
+],
+"636174"
+],
+[
+[
+262668
+],
+"646f67"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+],
+[
+[
+262668
+],
+"TKOG"
+]
+],
+"expect": "{\n\"KAT\": \"cat\",\n\"TKOG\": \"dog\"\n}\n"
+},
+{
+"title": "export 3",
+"entries": [
+[
+[
+524552
+],
+"c3a9222071756f74655c206261636b0a09017ff09f988020656e64"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+]
+],
+"expect": "{\n\"KAT\": \"\u00e9\\\" quote\\\\ back\\n\\t\\u0001\u007f\ud83d\ude00 end\"\n}\n"
+},
+{
+"title": "export 4",
+"entries": [
+[
+[
+3
+],
+"6f6e65"
+],
+[
+[
+524552,
+262668
+],
+""
+]
+],
+"names": [
+[
+[
+3
+],
+"1"
+],
+[
+[
+524552,
+262668
+],
+"KAT/TKOG"
+]
+],
+"expect": "{\n\"1\": \"one\",\n\"KAT/TKOG\": \"\"\n}\n"
+},
+{
+"title": "export 5",
+"entries": [],
+"names": [],
+"expect": "{}\n"
+},
+{
+"title": "export 6",
+"entries": [
+[
+[
+524552
+],
+"e697a5e69cace8aa9e"
+],
+[
+[
+262668
+],
+"636166c3a9"
+]
+],
+"names": [
+[
+[
+524552
+],
+"KAT"
+],
+[
+[
+262668
+],
+"TKOG"
+]
+],
+"expect": "{\n\"KAT\": \"\u65e5\u672c\u8a9e\",\n\"TKOG\": \"caf\u00e9\"\n}\n"
+}
+]
+}

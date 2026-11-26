@@ -137,7 +137,16 @@ aliases, duplicates, unicode names and texts, the 127- and 2047-byte limits, eve
 refusal and its message), byte-identical images and pointer lists. Mutation check: 25 mutations, all caught except ones
 that cannot change a result.
 
-Not yet ported: `backup_all`, `overlay_usage`, the JSON import parsing (`import_personal.parse_named`), the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
+**M1 status, sixth part: Plover JSON import and export are ported.** `importer.js` ports `parse_named` and `write_json`. It
+cannot use `JSON.parse`, which hides duplicate keys and reorders integer-like keys (and the compiler's placement, so the
+image bytes, depend on file order), so it has an ordered reader that accepts and rejects what Python's `json.loads` does,
+and refuses a duplicate key at every nesting level, reporting it only when the object closes (as Python's hook does).
+Gate: 84 golden cases (valid files, integer-like and aliased keys, every kind of syntax error, lone and paired surrogates,
+NaN and Infinity, number grammar, control characters, 16- and 17-stroke outlines, the 2,047-byte translation limit with
+multibyte text, duplicate keys by escape) plus six export files; the same accept/refuse decision and, for the importer's own
+errors, the same message. Mutation check: 14 mutations; the survivors cannot change a result.
+
+Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
 (`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
 

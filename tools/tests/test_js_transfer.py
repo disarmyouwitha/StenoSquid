@@ -67,12 +67,16 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestones M1/M2: the JSC4 compiler and compile_snapshot, including pointer lists and refusals."""
         self.run_node("test_compile.mjs")
 
+    def test_plover_json_importer_matches_python(self):
+        """Manager milestone M1: ordered JSON import (duplicate keys, limits, refusals) and the export file bytes."""
+        self.run_node("test_import.mjs")
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)
