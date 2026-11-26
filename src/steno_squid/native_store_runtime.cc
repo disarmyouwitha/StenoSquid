@@ -68,6 +68,9 @@ static_assert(DT_REG_SIZE_BY_NAME(DT_NODELABEL(qspi),qspi_mm) >= kMaxSegments*kS
 bool ForgetBaseTrust();
 extern int64_t scrub_due;
 constexpr size_t MaxDictionaries=CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES;
+// Startup uses this buffer under the flash lock before the engine opens. An
+// export holds a read session and also prevents borrowing the buffer.
+alignas(4) uint8_t export_buffer[2048];
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
 struct BootEvent {
     const char *stage;
@@ -110,10 +113,15 @@ struct FlashDevice {
 #else
         if (cold_read_yield_at) {
 #endif
-            return startup_read_ahead.Read(at, out, n, dma, [](uint32_t base, uint8_t *buffer) {
+            auto fill = [](uint32_t base, auto &buffer) {
                 ++boot_dma_reads;
-                return nrfx_qspi_read(buffer, StartupReadAhead::PageBytes, base) == NRFX_SUCCESS;
-            });
+                return nrfx_qspi_read(buffer, sizeof(buffer), base) == NRFX_SUCCESS;
+            };
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
+            return startup_read_ahead.Read(at, out, n, export_buffer, fill);
+#else
+            return startup_read_ahead.Read(at, out, n, dma, fill);
+#endif
         }
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
@@ -198,7 +206,7 @@ JobResult automatic_result = JobResult::Done;
 StenoDictionary *parent=nullptr;
 LiveView export_view;
 OverlayCursor export_cursor;
-alignas(4) char export_text[2048];
+char *const export_text = reinterpret_cast<char *>(export_buffer);
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
 atomic_t native_fault_pc;
 #endif
@@ -945,6 +953,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
             , [](ValidationStage stage) {
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
                 flash_device.journal_dma = stage == ValidationStage::Journal;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
+                flash_device.journal_dma &= !exporting;
+#endif
                 if (flash_device.journal_dma) flash_device.startup_read_ahead = {};
 #endif
                 switch (stage) {

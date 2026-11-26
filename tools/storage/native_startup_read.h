@@ -12,17 +12,19 @@ struct StartupReadAhead {
     static constexpr uint32_t PageBytes = 256;
     uint32_t page = UINT32_MAX;
 
-    template<class ReadPage>
-    bool Read(uint32_t at, uint8_t *out, uint32_t bytes, uint8_t (&buffer)[PageBytes], ReadPage read_page) {
+    template<size_t BlockBytes, class ReadPage>
+    bool Read(uint32_t at, uint8_t *out, uint32_t bytes, uint8_t (&buffer)[BlockBytes], ReadPage read_page) {
+        static_assert(BlockBytes >= PageBytes && !(BlockBytes & (BlockBytes - 1)));
+        constexpr uint32_t block = BlockBytes;
         while (bytes) {
-            const uint32_t offset = at % PageBytes;
+            const uint32_t offset = at % block;
             const uint32_t base = at - offset;
             if (base != page) {
                 page = UINT32_MAX;
                 if (!read_page(base, buffer)) return false;
                 page = base;
             }
-            const uint32_t count = std::min(bytes, PageBytes - offset);
+            const uint32_t count = std::min(bytes, block - offset);
             std::memcpy(out, buffer + offset, count);
             at += count;
             out += count;

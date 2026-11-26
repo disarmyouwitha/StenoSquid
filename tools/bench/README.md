@@ -448,3 +448,11 @@ lookups. The candidate passed this cold-open integrity check and exceeded the
 workaround. See the [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-after-uf2.json),
 [cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-cold.json), and
 [verification results](../../docs/benchmarks/phase1-startup-profile-hfxo-lookups.json).
+
+The next 32 MHz build adds `phase1-boot-journal-blocks.conf`. The sequential
+journal scan borrows the existing 2 KiB export buffer while the flash lock is
+held and no export is in progress. The fixture run reduced transactions in the
+combined scan from 274,705 to 255,949 while increasing bytes transferred from
+15,558,552 to 15,702,936. The same change batches partial-word copies from
+mapped flash while retaining the aligned loads and barriers. These numbers
+measure requests, not cold-boot time.

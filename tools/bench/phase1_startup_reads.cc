@@ -8,15 +8,19 @@
 
 struct StartupDevice : NativeDevice {
     bool read_ahead = false;
+    bool wide_read_ahead = false;
     StartupReadAhead cache;
     uint8_t buffer[StartupReadAhead::PageBytes]{};
+    uint8_t wide_buffer[2048]{};
 
     bool Read(uint32_t at, uint8_t *out, uint32_t bytes) {
         if (at > nor.data.size() || bytes > nor.data.size() - at) return false;
         if (!read_ahead) return NativeDevice::Read(at, out, bytes);
-        return cache.Read(at, out, bytes, buffer, [&](uint32_t base, uint8_t *page) {
-            return NativeDevice::Read(base, page, StartupReadAhead::PageBytes);
-        });
+        auto fill = [&](uint32_t base, auto &page) {
+            return NativeDevice::Read(base, page, sizeof(page));
+        };
+        return wide_read_ahead ? cache.Read(at, out, bytes, wide_buffer, fill)
+                               : cache.Read(at, out, bytes, buffer, fill);
     }
 
     // The measured pool already has verified bases. Index CRCs still read
@@ -49,13 +53,14 @@ int main(int argc, char **argv) {
     assert(nor.data.size() == kLargePoolEnd * kSegmentBytes);
     nor.data.resize(nor.data.size() + kSegmentBytes, 255);
 
-    const char *mode_name[] = {"direct requests", "DMA pages", "reused recovery", "batched index keys", "batched index + journal DMA"};
+    const char *mode_name[] = {"direct requests", "DMA pages", "reused recovery", "batched index keys",
+                               "batched index + journal DMA", "batched index + 2 KiB journal DMA"};
     for (unsigned mode = 0; mode < sizeof(mode_name) / sizeof(mode_name[0]); ++mode) {
         const bool read_ahead = mode == 1;
         const bool reuse_recovery = mode >= 2;
         const bool batch_keys = mode >= 3;
-        const auto stage = mode == 4 ? JournalDmaOnly : nullptr;
-        StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, {}, {}};
+        const auto stage = mode >= 4 ? JournalDmaOnly : nullptr;
+        StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, mode == 5, {}, {}, {}};
         hybrid_device = &device;
         NativeStore<StartupDevice> store(device);
         NativeValidator<StartupDevice> validator(device, store.catalog);
