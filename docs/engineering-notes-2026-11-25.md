@@ -146,6 +146,26 @@ NaN and Infinity, number grammar, control characters, 16- and 17-stroke outlines
 multibyte text, duplicate keys by escape) plus six export files; the same accept/refuse decision and, for the importer's own
 errors, the same message. Mutation check: 14 mutations; the survivors cannot change a result.
 
+**M3 status, first part: the flash map and image validation are ported.** `layout.js` ports `native_layout.py`: `parse_layout`,
+`parse_maps`, the paged `read_layout` scan, `read_images` and `validate_compact_layout`. Gate: 1,171 golden cases (both pool
+sizes, every status and region combination, malformed and mid-scan-changing maps, the commands sent and replies served by the
+scripted console, damaged catalog rows, and the compact-image validator under single-field pokes at each limit plus byte
+flips). The result of a map is compared by a hash of Python's exact JSON; errors by message. Mutation check: 77 mutations; the
+two survivors are an unreachable comparison (index 1 is always `c` by the geometry check) and an identical-text mutant. The
+gate found one real bug while it was being built: a stroke-table reply short by one whole group is valid to Python's
+`iter_unpack`, and the JS must use the groups returned rather than assume `maximum` of them.
+
+**M3 status, second part: the console and the keyboard state reads are ported.** `console.js` ports the vendor `Console` (63-byte
+report framing, channel prefixes, reply assembly, the flash-busy retry for `native_install` commands, timeouts); 86 golden
+cases run the Python class on a fake clock and a scripted device and compare every report written, the reply or error, the
+number of reads, every sleep and the elapsed time. `state.js` ports `read_state`, `load_view`, `installer_view`,
+`read_catalog`, the layout scan with its deferred-retry, `image_details` and `overlay_usage` (both the on-device paged form
+and the backup form); 185 golden transcripts record every console command with its timeout and the reply served, and the JS
+must send the same commands in the same order and reach the same result, progress messages, intermediate views and waits.
+Mutation checks: console 4 survivors, state 4 survivors, all equivalent. Known limits: JS cannot tell Python's ValueError
+from RuntimeError (only matters for a ValueError carrying `ERR Layout scan deferred` text, which cannot occur), and
+`int()` is matched for ASCII digits and an optional sign only.
+
 Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
 (`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
