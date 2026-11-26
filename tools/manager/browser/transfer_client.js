@@ -120,6 +120,10 @@ function beginPayload(total, streamCrc, chunk, window, kind, update) {
 // Stream, verify and commit `update`. Resolves when the keyboard reports DONE.
 export async function upload(console, link, update, progress = () => {}, options = {}) {
   const {window: requested = 8, stallMs = 1000, retries = 6, sleep = defaultSleep} = options;
+  // Optional instrumentation: pass an object and it is filled with stage times (ms) and frame counters.
+  const stats = options.stats ?? {};
+  Object.assign(stats, {dataFrames: 0, acks: 0, naks: 0, rewinds: 0, stalls: 0});
+  const started = now();
   const {chunk, kind} = await probe(console);
   const bytes = records(update);
   const total = bytes.length;
@@ -142,15 +146,20 @@ export async function upload(console, link, update, progress = () => {}, options
   if (!opened) throw new TransferUnavailable("no reply to BEGIN");
 
   try {
-    await stream(session, bytes, total, chunk, window, stallMs, retries, progress, sleep);
-    await finish(session, total, sleep);
+    const streaming = now();
+    stats.beginMs = streaming - started;
+    stats.streamBytes = total;
+    await stream(session, bytes, total, chunk, window, stallMs, retries, progress, sleep, stats);
+    stats.streamMs = now() - streaming;
+    await finish(session, total, sleep, stats);
+    stats.totalMs = now() - started;
   } catch (error) {
     try { await session.send(Type.ABORT, 0); } catch { /* the link is gone; the keyboard times the session out */ }
     throw error;
   }
 }
 
-async function stream(session, bytes, total, chunk, window, stallMs, retries, progress, sleep) {
+async function stream(session, bytes, total, chunk, window, stallMs, retries, progress, sleep, stats) {
   let acked = 0, sent = 0, lastPercent = -5, stalls = 0;
   let lastProgress = now();
   let lastRewind = [-1, 0];
@@ -158,18 +167,21 @@ async function stream(session, bytes, total, chunk, window, stallMs, retries, pr
   while (acked < total) {
     while (sent < total && sent - acked < window * chunk) {
       await session.send(Type.DATA, sent, bytes.subarray(sent, sent + chunk));
+      stats.dataFrames++;
       sent = Math.min(total, sent + chunk);
     }
     for (const {type, offset, payload} of await session.receive(50)) {
       if (type === Type.ERROR) throw errorFor(payload[0]);
       // The keyboard cannot have accepted more than was sent; a larger offset is noise, not progress.
       if ((type !== Type.ACK && type !== Type.NAK) || offset > sent) continue;
+      if (type === Type.ACK) stats.acks++; else stats.naks++;
       if (offset > acked) { acked = offset; stalls = 0; lastProgress = now(); }
       if (type === Type.NAK) {
         // One rewind per gap: later NAKs for frames already in flight are noise.
         const at = now();
         if (acked !== lastRewind[0] || at - lastRewind[1] > 200) {
           sent = acked;
+          stats.rewinds++;
           lastRewind = [acked, at];
           if (payload[0] === NAK_SINK_BUSY) await sleep(2);
         }
@@ -183,6 +195,7 @@ async function stream(session, bytes, total, chunk, window, stallMs, retries, pr
     // Progress means the acknowledged offset advanced. Replies that do not advance it (an endless stream of
     // busy NAKs, say) must not keep the transfer alive.
     if (now() - lastProgress > stallMs) {
+      stats.stalls++;
       if (++stalls > retries) throw new Error("The keyboard stopped responding during the transfer. Check the connection.");
       sent = acked; // Go back N: resend from the last acknowledged byte.
       lastProgress = now();
@@ -207,13 +220,17 @@ async function waitFor(session, wanted, resend, deadline, sleep, everyMs) {
   throw new Error("No reply from the keyboard during the transfer.");
 }
 
-async function finish(session, total, sleep) {
-  const verifyDeadline = now() + 120000;
+async function finish(session, total, sleep, stats) {
+  const verifyStart = now();
+  const verifyDeadline = verifyStart + 120000;
   for (;;) { // Verify runs in bounded slices on the keyboard; each busy NAK asks us to repeat END.
     const {payload} = await waitFor(session, [Type.ACK], () => session.send(Type.END, total), verifyDeadline, sleep, 500);
     if (payload[0] === STATE_VERIFIED) break;
   }
-  await waitFor(session, [Type.DONE], () => session.send(Type.COMMIT, total), now() + 1800000, sleep, 2000);
+  const commitStart = now();
+  stats.verifyMs = commitStart - verifyStart;
+  await waitFor(session, [Type.DONE], () => session.send(Type.COMMIT, total), commitStart + 1800000, sleep, 2000);
+  stats.commitMs = now() - commitStart;
 }
 
 // Adapter from tools/manager/browser/hid.js HidConnection (write(array), read(timeout) -> array) to a link.
