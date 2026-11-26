@@ -22,6 +22,22 @@ OUT = HERE / "golden" / "import_vectors.json"
 BS, NL, QUOTE = chr(92), chr(10), chr(34)
 
 
+def error_message(error):
+    # Python 3.13 reports these at the comma. Keep the fixture's established
+    # messages and locations at the closing bracket across Python versions.
+    if isinstance(error, json.JSONDecodeError):
+        legacy = {
+            "Illegal trailing comma before end of object": "Expecting property name enclosed in double quotes",
+            "Illegal trailing comma before end of array": "Expecting value",
+        }.get(error.msg)
+        if legacy:
+            pos = error.pos + 1
+            while pos < len(error.doc) and error.doc[pos] in " \t\r\n":
+                pos += 1
+            return str(json.JSONDecodeError(legacy, error.doc, pos))
+    return str(error)
+
+
 def parse_case(title, source):
     record = {"title": title, "source": source}
     try:
@@ -29,7 +45,7 @@ def parse_case(title, source):
         record["expect"] = {"entries": [[list(strokes), text.hex()] for strokes, text in entries.items()],
                             "names": [[list(strokes), outline] for strokes, outline in names.items()]}
     except Exception as error:
-        record["expect"] = {"error": {"type": type(error).__name__, "message": str(error)}}
+        record["expect"] = {"error": {"type": type(error).__name__, "message": error_message(error)}}
     return record
 
 
