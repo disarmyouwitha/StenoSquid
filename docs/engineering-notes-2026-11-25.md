@@ -75,9 +75,60 @@ exercised at their boundary. Second half: `device_reads.js` ports `update_comman
 (including the journal-trimming mode, which reads about 2 KB instead of 66 KB for the same snapshot) over any object with
 `command(text, timeout)`. Gate: Python's own functions run against a fake console on 24 images and failure modes
 (busy, short read, bad ownership bitmap, malformed committed records); the JS port must send the same commands in the
-same order and reach the same state, error and byte count (`test_device_reads.mjs`). Not yet ported: `effective_entries`
-and the lookup/verify reader (need the JS decoder from the M0 spike moved into the product), `backup_all`,
-`overlay_usage`, and the M2 planners.
+same order and reach the same state, error and byte count (`test_device_reads.mjs`).
+
+Third part (M1 lookup reader): `decode.js` ports `format_stroke`, `compact_entries`, the JSC4 reader checks,
+`require_snapshot_hint` and `effective_entries` (a compiled base with the journal's sets and resets applied), keeping
+Python's validation so a damaged image is rejected. Gate: 1,017 cases (intact images with and without a flash base,
+two-member images, 860-plus single-byte flips and truncations, targeted damage to the maximum length and bitmap mask,
+the SHI1 hint, and catalog rows with a bad member or base); `test_decode.mjs` requires the same entries, the same error
+text where the code wrote one, and acceptance of exactly what Python accepts. It supersedes the spike
+`tools/bench/js/decode_dict.mjs` (still byte-identical to Python on the real Lapwing and Plover images).
+
+**M2 status: the update planner is ported.** `plan.js` ports `plan()` (personal edits, named-dictionary import,
+journal compaction, move/rename/delete, the allocation order, journal and index layout, catalog payload). Gate:
+`golden_plan.py` runs Python's planner on 5 images (small and large pools, a multi-journal catalog with real garbage, a
+three-journal ordering case, an exhausted identity counter) for 49 cases, recording each staged segment's length and
+SHA-256 in upload order plus the catalog payload; `test_plan.mjs` requires byte-identical results or the same error.
+Byte-identical output to Python is the spec's alternative to C++ simulator acceptance (Python's plans are what the
+simulator already accepts), so a separate simulator run of JS plans adds nothing; it becomes useful only when the JS
+planner stops being checked against Python at M6. Mutation check: 25 deliberate mutations; the survivors are
+comparisons that no fixture can reach (an exact `live == remaining` tie, a last-journal anchor that equals the
+anchor, the 253-extent limit, an unreachable 25-bit stroke test). While adding these vectors I found and fixed a bug
+in my own `golden_snapshot.py` helper (`append_tail` stepped by the unpadded record length, so earlier "journal tail"
+vectors only exercised part of their records; JS still agreed with Python, now on all of them).
+
+**M2 status, second part: the snapshot, change, merge and import planners are ported.** `snapshot_plan.js` ports, from
+`native_snapshot.py` and `native_import_plan.py`: the stage allocator, `plan_named_snapshot`, `plan_change` (consolidate,
+convert, clear, delete, merge), `merge_rows`, `merged_entries`, `journal_baseline`, `inspect_free`, `consolidation_cost`,
+`plan_compact_import`, and the import, merge and offline-merge token digests (Python's `json.dumps` and SHA-256, byte for
+byte). Compiled images enter as plain data, so the compiler is gated separately. Gate: 131 golden cases from Python
+(chained imports to get real compact rows; patched catalogs for the identity-counter limit, the 253-extent limit, each
+merge-pair condition, a shared extent and out-of-range identities; journal tails with resets and entries of both merged
+identities; scattered free segments so the staging order is not ascending), plus replayed flash reads for
+`merged_entries`; results are byte-identical or fail with the same error. The vectors caught one real porting mistake
+(Python escapes DEL, 0x7f, in `json.dumps`, which would have changed every token whose serial contained it). Mutation
+check: 45 deliberate mutations, all caught except unreachable ones.
+
+**M2 status, third part: the factory-package planner is ported.** `package_plan.js` ports `plan_package` (install and
+uninstall of the six built-in dictionaries: row and extent edits, renumbering of later bases, the free-space report and the
+confirmation hash that the user approves, plus the serial-bound approval digest). Gate: 62 golden cases from Python on
+images with some packages absent, patched catalogs for every refusal (shared extent, snapshot flag, base past or equal to
+the catalog, a named member, a renamed row, 252 and 253 extents), tight and scattered free space, and both pool sizes;
+byte-identical or the same error. Mutation check: 25 mutations, all caught except two that cannot change a result.
+
+**M2 status, fourth part: the lookup reader and base replacement are ported.** `lookup.js` ports the stroke parser and
+the JSC4 lookup (the engine's hash, probing and rank arithmetic, with the same reader checks); `replace_plan.js` ports
+`plan_replacements` (replace a pinned compiled base, keep everything else, report local edits that the new base now
+translates differently). Gate: 231 golden cases (every entry of three compiled images, misses, invalid outlines,
+numeric aliases and modifiers, 200 damaged images; replacements with and without conflicts, unchanged digests, shared or
+named-member rows, a failing base checksum, out-of-range relocation pointers, tight and scattered free space, with the
+conflict check's flash reads replayed); byte-identical or the same error. `+` strokes cannot be stored in the 24-bit
+compact entries, so every `+` lookup is a miss in both implementations. Mutation check: about 55 mutations, all caught
+except ones that cannot change a result.
+
+Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
+(`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
 
 ### RAM by owner (measured, 32-slot everyday build with the transfer option, link map)

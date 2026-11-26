@@ -85,7 +85,7 @@ export function encodeRecord(edit, sequence) {
   return concat(header, trailer, payload);
 }
 
-const rowName = (row) => text8(row.subarray(16, 16 + row[12]));
+export const rowName = (row) => text8(row.subarray(16, 16 + row[12]));
 
 // `read(address, length)` returns the bytes (or a promise of them). Resolves to a Snapshot.
 export class Snapshot {
@@ -198,9 +198,9 @@ export class Snapshot {
 }
 
 // Python orders (strokes tuple, identity) and (text bytes, (identity, strokes tuple)) lexicographically.
-const outlineKey = (entry) => [entry.strokes, entry.identity];
-const textKey = (entry) => [Array.from(entry.text), [entry.identity, entry.strokes]];
-function compareKeys(a, b) {
+export const outlineKey = (entry) => [entry.strokes, entry.identity];
+export const textKey = (entry) => [Array.from(entry.text), [entry.identity, entry.strokes]];
+export function compareKeys(a, b) {
   if (Array.isArray(a) && Array.isArray(b)) {
     for (let i = 0; i < Math.min(a.length, b.length); i++) {
       const order = compareKeys(a[i], b[i]);
