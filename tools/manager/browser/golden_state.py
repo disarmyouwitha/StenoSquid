@@ -168,7 +168,10 @@ class Keyboard:
 
     def handle(self, text):
         if text == "native_install status":
-            return self.statuses.pop(0) if self.statuses else "NATIVE2 READY 12"
+            value = self.statuses.pop(0) if self.statuses else "NATIVE2 READY 12"
+            if isinstance(value, BaseException):
+                raise value
+            return value
         if text == UPDATE + "layout-map":
             if not self.layout:
                 raise AssertionError("no more layout replies")
@@ -315,9 +318,19 @@ def generate():
     cases.append(read_state_case("user dictionary status times out", {"user_dictionary_status": TimeoutError("No reply to user_dictionary_status. Check the left half’s connection.")}))
     cases.append(read_state_case("merge capability with the wrong marker", {UPDATE + "snapshot-merge-capabilities": "NO MERGE1 16"}))
     cases.append(read_state_case("merge capability with a non-numeric limit", {UPDATE + "snapshot-merge-capabilities": "OK MERGE1 x"}))
+    for ro in ([0], {"a": 1}, [[]], 0.0, -1):
+        cases.append(read_state_case(f"read_only {ro!r} (truthiness)", {"user_dictionary_status": json.dumps({**STATUS, "read_only": ro})}))
+    for key in ("auto_checkpoints", "auto_reclaimed"):
+        for value in (None, "", 0, 7, False, "x"):
+            cases.append(read_state_case(f"{key} {value!r}", {"user_dictionary_status": json.dumps({**STATUS, key: value})}))
+    cases.append(read_state_case("generation null", {"user_dictionary_status": json.dumps({**STATUS, "generation": None})}))
+    cases.append(read_state_case("merge capability with a nine", {UPDATE + "snapshot-merge-capabilities": "OK MERGE1 9"}))
+    cases.append(read_state_case("merge capability with a zero digit", {UPDATE + "snapshot-merge-capabilities": "OK MERGE1 10"}))
     # --- installer_view ---
     for status in ("NATIVE2 READY 12", UNPROVISIONED, "NATIVE2 UNPROVISIONED 5 extra words", "NATIVE2 UNPROVISIONED 5 ", "NATIVE2 UNPROVISIONED",
                    "NATIVE2 INSTALL 3", "garbage", "", "NATIVE2 READY 12\n", "NATIVE2 UNPROVISIONED 1" + NL + "x"):
+        cases.append(installer_case(f"installer for {status!r}", status))
+    for status in ("NATIVE2 READY 0", "NATIVE2 READY 9", "NATIVE2 READY 90", "NATIVE2 UNPROVISIONED 9", "NATIVE2 UNPROVISIONED 0 x", "NATIVE2 UNPROVISIONED 09 x y"):
         cases.append(installer_case(f"installer for {status!r}", status))
     cases.append(installer_case("installer reprovision over Bluetooth", "NATIVE2 READY 3", reprovision=True, transport="bluetooth"))
     cases.append(installer_case("installer without factory capability", UNPROVISIONED, {FACTORY: "OK FACTORY1"}))
@@ -365,6 +378,18 @@ def generate():
         if rest:
             plan.append((full * 128, full * 128 + rest, total, [(journals[0], identities[0], rest, 1, 10)]))
         cases.append(view_case(f"journal budget of {total} records", "refresh", keyboard(pages=usage_pages(identities, journals, plan=plan), layout=[layout_ok])))
+
+    for action in sorted(manager.MAP_REFRESH_ACTIONS):
+        cases.append(view_case(f"refreshing action {action!r}", action, keyboard(layout=[layout_ok], pages=good_pages)))
+    for label, error in (("a decode error", UnicodeDecodeError("utf-8", bytes([255]), 0, 1, "invalid start byte")),
+                         ("an encode error", UnicodeEncodeError("utf-8", chr(0xD800), 0, 1, "surrogates not allowed")),
+                         ("a JSON error", json.JSONDecodeError("Expecting value", "", 0)), ("an OS error", OSError("gone")),
+                         ("a type error", TypeError("odd"))):
+        cases.append(view_case(f"layout scan raises {label}", "refresh", keyboard(layout=[error], pages=good_pages)))
+        cases.append(view_case(f"usage raises {label}", "refresh", keyboard(pages={0: error}, layout=[layout_ok])))
+        cases.append(view_case(f"image details raise {label}", "refresh", keyboard(begin=[error], layout=[layout_ok], pages=good_pages)))
+    cases.append(view_case("layout deferred with a ValueError of the same text", "refresh", keyboard(
+        layout=[ValueError("ERR Layout scan deferred until the flash and input are idle"), layout_ok], pages=good_pages)))
     cases.append(view_case("Bluetooth refresh", "refresh", keyboard(pages=good_pages, layout=[f"OK MAP1 1 w vv {layer(random.Random(3), SMALL_POOL_END, 'v')} {layer(random.Random(4), SMALL_POOL_END, 'v')}"]), transport="bluetooth"))
     cases.append(view_case("setup view skips the map", "refresh", keyboard(statuses=[UNPROVISIONED])))
     cases.append(view_case("setup view over Bluetooth", "refresh", keyboard(statuses=[UNPROVISIONED]), transport="bluetooth"))
@@ -421,6 +446,11 @@ def generate():
     plan_case("a row with a negative segment", [(0, 3, 3, [f"-{js[0]},{ids[0]},3,2,100"])])
     plan_case("a bad cursor", [(0, "x", 3, [])])
     plan_case("the same bytes in the same block add up", [(0, 6, 6, [(js[0], ids[0], 3, 2, 100), (js[0], ids[1], 3, 2, 200)])])
+    plan_case("a segment just past the last journal", [(0, 3, 3, [(js[-1] + 1, ids[0], 3, 2, 100)])])
+    plan_case("a segment just before the first journal", [(0, 3, 3, [(js[0] - 1, ids[0], 3, 2, 100)])])
+    plan_case("one byte", [(0, 3, 3, [(js[0], ids[0], 3, 2, 1)])])
+    plan_case("one record", [(0, 1, 1, [(js[0], ids[0], 1, 1, 10)])])
+    plan_case("two ends of the journal range", [(0, 6, 6, [(js[0], ids[0], 3, 2, 100), (js[-1], ids[0], 3, 2, 100)])])
     for name, pages in (("a wrong marker", {0: "NO USAGE2 3 3 " + f"{js[0]},{ids[0]},3,2,100"}), ("a wrong version", {0: "OK USAGE3 3 3 " + f"{js[0]},{ids[0]},3,2,100"}),
                         ("too few tokens", {0: "OK USAGE2 3"}), ("an error", {0: "ERR boom"}), ("an empty reply", {0: "OK"})):
         cases.append(usage_case(f"usage page with {name}", keyboard(pages=pages)))

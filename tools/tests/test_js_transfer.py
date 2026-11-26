@@ -83,12 +83,16 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: read_state, load_view, installer_view and overlay_usage ask and conclude as manager.py does."""
         self.run_node("test_state.mjs")
 
+    def test_job_orchestration_matches_python(self):
+        """Manager milestone M3: run_job's checks, session handling, ordering and waits match manager.py action by action."""
+        self.run_node("test_jobs.mjs")
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)

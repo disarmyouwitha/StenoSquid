@@ -166,6 +166,22 @@ Mutation checks: console 4 survivors, state 4 survivors, all equivalent. Known l
 from RuntimeError (only matters for a ValueError carrying `ERR Layout scan deferred` text, which cannot occur), and
 `int()` is matched for ASCII digits and an optional sign only.
 
+**M3 status, third part: the job orchestration is ported.** `jobs.js` ports `manager.run_job` (every action's request checks,
+messages and ordering), `setup_keyboard`, `read_import` (including Python's line and column for a JSON syntax error),
+`safe_name` and `wait_ready`; `manage.js` ports `checked`, `commit_with_progress` (stall and total deadlines, status
+heartbeat) and `import_entries`. The heavy operations that have their own ports are injected (`deps`), so each can be gated
+separately: factory package, change/clear/merge snapshot, named import, transfer, editor, repack and recovery, export, backup,
+provisioning. Gate: `golden_jobs.py` runs the Python on a scripted world (console replies, session openers, a deterministic
+clock) with recording fakes for those operations and writes ONE ordered event stream per case (sessions opened and closed,
+every console command with its timeout and reply, every fake call with its arguments, progress, views, sleeps); the JS must
+reproduce the stream step for step and reach the same result or failure. 413 jobs and 14 direct `import_entries` runs, covering
+every action's validation, the Bluetooth restrictions, selection and install checks, the commit-wait deadlines, and the
+publish-and-reconnect loop. Things the gate found: `RuntimeError` versus `ValueError` matters (Python catches only one of them
+in several places), so RuntimeErrors carry `kind: "RuntimeError"` (`errors.js`); `dict.get(key, default)` keeps a JSON null, so
+`status.get("auto_checkpoints", 0)` is null when the key is present and null; and Python reports an unterminated string at its
+opening quote and a bad unicode escape at the `u`, which the importer now matches. Not a contract: the wording of a JSON decoder
+error wrapped into a commit failure, and the column Python 3.13 reports for a trailing comma.
+
 Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
 (`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings

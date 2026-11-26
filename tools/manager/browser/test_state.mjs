@@ -7,7 +7,8 @@ import fs from "node:fs";
 import {installerView, loadView, overlayUsage, readState} from "./state.js";
 
 const vectors = JSON.parse(fs.readFileSync(new URL("./golden/state_vectors.json", import.meta.url), "utf8"));
-const NAMES = {TimeoutError: "TimeoutError", KeyError: "KeyError", AssertionError: "AssertionError", JSONDecodeError: "JSONDecodeError"};
+const NAMES = {TimeoutError: "TimeoutError", KeyError: "KeyError", AssertionError: "AssertionError", JSONDecodeError: "JSONDecodeError",
+  UnicodeDecodeError: "UnicodeDecodeError", UnicodeEncodeError: "UnicodeEncodeError", TypeError: "TypeError"};
 const roundTrip = (value) => JSON.parse(JSON.stringify(value));
 
 function replyOf(entry) {

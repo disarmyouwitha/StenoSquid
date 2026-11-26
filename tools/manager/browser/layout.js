@@ -1,6 +1,7 @@
 // Manager milestone M3 (console-driving code): the flash map and image metadata reads, ported from
 // tools/storage/native_layout.py. `console` is any object with `command(text, timeoutSeconds) -> Promise<string>`.
 // golden_layout.py supplies the golden vectors; error text matches Python's where it wrote the message.
+import {runtimeError} from "./errors.js";
 import {SEGMENT, SMALL_POOL_END, LARGE_POOL_END, rowName} from "./snapshot.js";
 import {readSnapshot, updateCommand} from "./device_reads.js";
 import {inspectFree} from "./snapshot_plan.js";
@@ -73,7 +74,7 @@ export async function readLayout(console) {
     const current = page.slice(4, 9);
     if (header === null) header = current;
     else if (current.some((value, i) => value !== header[i])) {
-      throw new Error("The catalog changed during the flash map scan. Scan again.");
+      throw runtimeError("The catalog changed during the flash map scan. Scan again.");
     }
     for (let slot = 0; slot < 2; slot++) maps[slot] += page[9 + slot];
   }
