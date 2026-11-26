@@ -65,6 +65,13 @@ config ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
       Lab-only startup read path. Reuses the existing QSPI bounce buffer and
       uses Zephyr's table-driven implementation of the same CRC32.
 
+config ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY
+    bool "Reuse journal recovery from startup validation"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+    help
+      Lab-only startup optimization. Stage the live journal during full
+      validation, and attach it after the catalog selects the validated root.
+
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG

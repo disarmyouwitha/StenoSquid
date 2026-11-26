@@ -1,7 +1,37 @@
 #include "native_store_fixture.h"
 #include "native_overlay_usage.h"
 #include <iostream>
+
+static void TestStagedRecovery() {
+    NativeFixture fixture;
+    assert(fixture.Edit(1, 1, "before boot") == LiveResult::Ok);
+    LiveView scratch;
+    assert(fixture.store.Enable(2, false, scratch, fixture.Check()) == CatalogResult::Ok);
+    const auto open = [&] {
+        return fixture.store.Open([&](const CatalogRoot &root) {
+            return fixture.validator.Validate(root, false, nullptr, nullptr, &fixture.store.live);
+        }, CatalogValidation::ReuseIdenticalPayload, true);
+    };
+    assert(open() == CatalogResult::Ok);
+    const auto newer = fixture.store.live.Root();
+    uint8_t row[96];
+    assert(fixture.store.Row(1, row) && !Word(row + 4));
+    assert(fixture.store.live.TailCount() == 1 && fixture.store.live.MaximumOutline(1) == 1);
+    assert(fixture.Edit(1, 3, "after boot") == LiveResult::Ok);
+    assert(open() == CatalogResult::Ok && fixture.store.live.TailCount() == 2);
+
+    // The newer catalog has distinct metadata. Its rejection must select the
+    // older state and retain quarantine even if a scan was staged for it.
+    fixture.nor.data[newer.address] ^= 1;
+    assert(open() == CatalogResult::Quarantined);
+    assert(fixture.store.live.Root().generation < newer.generation);
+    assert(fixture.store.Row(1, row) && Word(row + 4));
+    assert(fixture.store.live.TailCount() == 2);
+    assert(fixture.Edit(1, 4, "quarantined") == LiveResult::ReadOnly);
+}
+
 int main() {
+    TestStagedRecovery();
     NativeFixture f;assert(f.Edit(1,1,"first")==LiveResult::Ok);
     LiveView scratch;
     const auto high=f.store.live.Highwater();assert(f.store.Enable(2,false,scratch,f.Check())==CatalogResult::Ok);

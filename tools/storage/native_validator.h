@@ -44,23 +44,31 @@ public:
     }
     CatalogResult Validate(const CatalogRoot &root, bool cross_check = true,
                            void (*stage)(ValidationStage) = nullptr,
-                           void (*extent_failed)(const RejectedExtent &) = nullptr) {
+                           void (*extent_failed)(const RejectedExtent &) = nullptr,
+                           LiveJournal<Device> *startup = nullptr) {
         if (stage) stage(ValidationStage::Extents);
         const auto schema = catalog.Validate(root, [&](uint32_t i, const uint8_t *row) {
             return Extent(i, row, extent_failed);
         });
         if(schema!=CatalogResult::Ok)return schema;
+        if (stage) stage(ValidationStage::Journal);
+        // A retained older root can exceed the live tail limit. Fall back to
+        // the normal validation scan if recovery cannot stage that root.
+        const bool staged = startup && startup->StageRecovery(root);
         view={};reverse_address=reverse_count=0;uint8_t prefix[32];
         if(!device.Read(root.address,prefix,32))return CatalogResult::IoError;
         view.root=root;view.dictionary_count=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
         const uint32_t extents=uint16_t(prefix[6]) | uint16_t(prefix[7])<<8;
         view.through=uint64_t(Word(prefix+8)) | uint64_t(Word(prefix+12))<<32;
-        for(uint32_t i=0;i<view.dictionary_count;++i) {
-            uint8_t id[4];if(!device.Read(root.address+32+i*96,id,4))return CatalogResult::IoError;
-            view.identities[i]=Word(id);
+        if (staged) {
+            view = startup->live;
+        } else {
+            for(uint32_t i=0;i<view.dictionary_count;++i) {
+                uint8_t id[4];if(!device.Read(root.address+32+i*96,id,4))return CatalogResult::IoError;
+                view.identities[i]=Word(id);
+            }
         }
-        if (stage) stage(ValidationStage::Journal);
-        uint64_t last_epoch=0;bool boundary=!view.through;
+        uint64_t last_epoch=0;bool boundary=staged || !view.through;
         for(uint32_t i=0;i<extents;++i) {
             uint8_t row[24];if(!device.Read(root.address+32+view.dictionary_count*96+i*24,row,24))return CatalogResult::IoError;
             const uint32_t start=uint16_t(row[0]) | uint16_t(row[1])<<8,kind=Word(row+12);
@@ -68,7 +76,7 @@ public:
                 view.forward_address=start*kSegmentBytes;view.forward_count=Word(row+4)/4;
             }
             if(kind==4){reverse_address=start*kSegmentBytes;reverse_count=Word(row+4)/4;}
-            if(kind!=2)continue;
+            if(kind!=2 || staged)continue;
             const uint64_t epoch=uint64_t(Word(row+16)) | uint64_t(Word(row+20))<<32;
             if(epoch<=last_epoch)return CatalogResult::Corrupt;
             last_epoch=epoch;view.journals.Add(start,1);JournalScan scan;JournalRecord record;
@@ -108,7 +116,9 @@ public:
                 previous=record;
             }
         }
-        return translations == reverse_count ? CatalogResult::Ok : CatalogResult::Corrupt;
+        if (translations != reverse_count) return CatalogResult::Corrupt;
+        if (staged) startup->staged_recovery = true;
+        return CatalogResult::Ok;
     }
 };
 }

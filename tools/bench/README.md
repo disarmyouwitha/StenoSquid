@@ -335,6 +335,15 @@ full-pool target. See the [post-UF2 trace](../../docs/benchmarks/phase1-startup-
 [cold trace](../../docs/benchmarks/phase1-startup-profile-dma-ahead-cold.json),
 and [lookup results](../../docs/benchmarks/phase1-startup-profile-dma-ahead-lookups.json).
 
+The separate recovery-reuse candidate appends `phase1-boot-reuse.conf` to the
+16 MHz profile build and uses mapped QSPI. It constructs live recovery state
+while the validator performs the full journal scan. After both indexes pass,
+the selected catalog can attach that state if its payload matches exactly.
+The existing recovery path still handles a different selected payload or a
+root whose live tail cannot be staged. In the simulated full pool this variant
+reduced mapped requests from 974,018 to 813,897 and bytes from 22,137,506 to
+16,943,926. A firmware run is needed to measure any time saved.
+
 
 
 

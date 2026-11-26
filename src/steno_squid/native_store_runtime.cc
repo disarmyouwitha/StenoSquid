@@ -940,11 +940,15 @@ extern "C" bool steno_squid_native_flash_open(void) {
                 }
             }, profile_extent_rejection
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY
+            , &store.live
+#endif
         );
         flash_device.trust_bases=false;
         BOOT_STAGE("root_validated", static_cast<uint32_t>(status));
         return status;
-    }, CatalogValidation::ReuseIdenticalPayload);
+    }, CatalogValidation::ReuseIdenticalPayload,
+       IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY));
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
     boot_count_reads = false;
 #endif
