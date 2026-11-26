@@ -402,3 +402,17 @@ and the same rejection of a corrupted forward index in each build.
   at 349.90 WPM. The completed 300 WPM rerun processed all 1,400 strokes in
   order with zero input overflows. It missed one completion deadline and
   the host received one extra character.
+
+On the Boardsource left, post-UF2 USB-to-ready went from 31.9 seconds with
+recovery reuse to 30.5 seconds with batched index reads and 26.6 seconds with
+journal-only DMA added. The combined build's physical off/on still took
+63.8 seconds from boot and 60.0 seconds from USB. The combined build issued
+253,307 mapped reads and 21,516 DMA page fills in both runs. Journal validation
+took 12.4 and 13.0 seconds. The mapped index passes grew from 13.6 to 49.2
+seconds on the cold run. The cold run reopened generation 2 on the first
+try, the catalog matched the original fixture, and all 233 lookups passed.
+The layout-map command timed out, so free blocks were not measured in this run.
+See the [index trace](../../docs/benchmarks/phase1-startup-profile-index-after-uf2.json),
+[combined post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-index-dma-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-index-dma-cold.json), and
+[lookup results](../../docs/benchmarks/phase1-startup-profile-index-dma-lookups.json).
