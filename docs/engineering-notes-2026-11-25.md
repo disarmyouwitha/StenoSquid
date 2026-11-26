@@ -384,6 +384,28 @@ firmware (backed up under `StenoSquid-int/build/uf2/`); the external-flash pool 
   where changing the selection would alter the owner's pool. It is just above the 25% bar; if it is confirmed, raise
   that queue's stack size (a ZMK split option) and re-measure.
 
+### 7.7 nice!nano, paired over Bluetooth and typing (report v2 build, 32 slots; USB also connected so the report can be read)
+
+Measured. The owner paired the keyboard, selected Bluetooth output and typed for roughly two minutes (uptime 909.9 s at the
+second reading). Whether every keystroke took the Bluetooth path was not verified independently; the stack changes below
+are consistent with it.
+
+| Stack (size) | After pairing, before typing | After typing | Free after |
+| --- | --- | --- | --- |
+| 512 B unnamed (split-central queue by elimination, from the earlier dictionary-enable test) | 380 B | 380 B | 25.8% |
+| BT LW WQ (1,400 B) | 972 B | 972 B | 30.6% |
+| BT RX pri (448 B) | 292 B | 292 B | 34.8% |
+| Low Priority Work Queue (768 B) | 284 B | **492 B** | 35.9% (was 63.0%) |
+| HID Over GATT Send Work (768 B) | 404 B | 404 B | 47.4% |
+| BT RX WQ (2,200 B) | 1,116 B | 1,116 B | 49.3% |
+| libc heap peak (of 19,968 B) | 2,892 B | 2,892 B | 14.5% |
+
+- Typing over Bluetooth moved exactly one stack, the Low Priority Work Queue, by 208 B. Every stack stays above the 25%
+  bar; the libc heap, the system heap (0 B), input overflows (0) and the input high-water mark (0) did not move.
+- The tightest stacks are now the 512 B one (25.8%), BT LW WQ (30.6%) and BT RX pri (34.8%). None has been tested under
+  Bluetooth management traffic (a Manager session over Bluetooth), Studio, or sustained typing. A short typing window
+  is evidence, not qualification.
+
 ### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
 
 `tools/manager/browser/transfer_client.js` is a port of the Python upload loop. On the nice!nano (cumulative-ack
