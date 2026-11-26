@@ -357,6 +357,33 @@ confirmed on hardware.
   current arena already has comfortable room, so it is an optimisation, not a necessity.
 - Lapwing Base is enabled again (its state before the uninstall and reinstall tests).
 
+### 7.6 Boardsource Left, full 64 MiB pool, memory report v2 (Measure build `8925afc9`, 32 slots, USB; USB only, no Bluetooth host)
+
+Measured. Pool as the owner left it: 32 dictionaries installed, 16 enabled, journal tail 17. Flashed over the daily-driver
+firmware (backed up under `StenoSquid-int/build/uf2/`); the external-flash pool was not touched.
+
+| Reading | libc heap peak (of 20,064 B) | System heap | Tightest stack | Store |
+| --- | --- | --- | --- | --- |
+| Uptime 38.8 s, after boot validation | 4,792 B (23.9%) | 0 B | BT LW WQ 32.3% free | ready, 0 input overflows |
+| Uptime 92 s, after about 53 s of typing on both halves (split link over Bluetooth) | 4,864 B (24.2%), now 4,792 B | 0 B | BT LW WQ 32.3% | 0 overflows, input high-water 0 |
+| Uptime 119 s, plus 500 console lookups (all found, 4.99 ms each) and a no-change re-enable | 4,924 B (24.5%), now 4,792 B | 0 B | BT LW WQ 32.3% | unchanged |
+
+- With the pool fully installed the engine's heap peaks near 4.9 KB of 20 KB, double the nice!nano's 2.7 KB (32 dictionaries
+  installed, 16 enabled), still about 15 KB never touched. Typing and lookups added only 60-130 B.
+- Every stack stayed at least 32.3% free on this board (25% bar). `sysworkq` rose to 1,956 B (52.2% free) with typing;
+  `javelin_web_hid` to 1,724 B (57.9%) with console traffic; `BT RX` 188 to 220 B with split-link traffic.
+- The typing window was short (about 53 s between readings), so this is evidence, not qualification. Bluetooth to a
+  host, Studio, Bluetooth management and sustained typing remain unmeasured, as does the replay (Codex's fixture
+  file is not on this machine).
+- First boot after the UF2 update: the console answered and the store reported ready about 23 s after the flash
+  finished enumerating (full open of the pool, `warm_resumes` 0). Boot time is the Codex phase's measurement.
+- **A stack to watch.** On the nice!nano a 512-byte stack went from 63.3% to **25.8% free** (380 of 512 B) after a
+  real dictionary enable (a state change) followed by lookups. By elimination it is `split_central_split_run_q_stack`,
+  the only 512-byte stack object in the ELF. A no-change re-enable plus 500 lookups on the Boardsource left it at
+  63.3%, so the trigger looks like an actual selection change, not lookups. Not yet reproduced on the Boardsource,
+  where changing the selection would alter the owner's pool. It is just above the 25% bar; if it is confirmed, raise
+  that queue's stack size (a ZMK split option) and re-measure.
+
 ### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
 
 `tools/manager/browser/transfer_client.js` is a port of the Python upload loop. On the nice!nano (cumulative-ack
