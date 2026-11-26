@@ -502,3 +502,11 @@ the flash worker for one verified reopen. The worker waits for read sessions
 and pending flash operations to finish before power-cycling the flash.
 The candidate records background scrub failures and runtime flash failures
 in the profile so the next reproduction can identify the failing path.
+
+The recovery candidate was flashed on the same 16 MiB left half at 32 MHz.
+The original generation 3 opened and stayed ready during a 75-second USB
+observation. Both enabled personal translations matched the stored entries.
+The full open checked the bases, so this run did not exercise the early
+background scan used after a trusted-base open. An actual deep-sleep wake and
+a subsequent trusted-base boot still need verification.
+See the [post-UF2 observation](../../docs/benchmarks/phase1-16mib-recovery-after-uf2.json).
