@@ -280,6 +280,18 @@ whether the lower clock avoids the cold-start failure. See the
 [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-16mhz-after-uf2.json)
 and [lookup report](../../docs/benchmarks/phase1-startup-profile-16mhz-lookups.json).
 
+On the next user-reported reboot, the 16 MHz control passed the first full
+open. Flash reported ready at 91.295 seconds of device uptime, or 90.537
+seconds after QSPI startup. The trace recorded 974,136 mapped reads and no
+rejected extents or second open. After one layout command timeout, the retry
+confirmed both roots valid, all 32 dictionaries, 17 free blocks, and all 233
+fixture lookups passing. The host started collecting after USB was already
+connected, so there is no USB-to-ready measurement for this run. This single
+pass differs from the repeated 32 MHz cold-start rejection. More paired
+reboots are needed to determine whether the clock accounts for the difference.
+See the [reboot trace](../../docs/benchmarks/phase1-startup-profile-16mhz-reboot.json).
+
+
 
 
 
