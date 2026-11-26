@@ -35,6 +35,16 @@ def analyse(report, warn_free=25.0):
     return rows, summary
 
 
+def libc_summary(report):
+    """The engine's malloc heap (report version 2), or None when the firmware did not or could not report it."""
+    libc = report.get("libc")
+    if not libc or not libc.get("ok"):
+        return None
+    size = libc["size"]
+    return {**libc, "peak_pct": 100.0 * libc["max_allocated"] / size if size else 0.0,
+            "never_used": size - libc["max_allocated"]}
+
+
 def render(report, warn_free=25.0):
     rows, heap = analyse(report, warn_free)
     lines = [f"uptime {report['uptime_ms'] / 1000:.1f} s", "", f"{'stack':<22}{'size':>7}{'used':>7}{'free':>7}{'free %':>8}"]
@@ -47,6 +57,15 @@ def render(report, warn_free=25.0):
                      f"({heap['peak_pct']:.1f}%), now {heap['allocated']} B; {heap['never_used']} B never used")
     else:
         lines.append("system heap: statistics unavailable (build without SYS_HEAP_RUNTIME_STATS?)")
+    libc = libc_summary(report)
+    if libc:
+        lines.append(f"libc heap (the engine's malloc): {libc['size']} B arena (all SRAM above the static image), "
+                     f"peak allocation {libc['max_allocated']} B ({libc['peak_pct']:.1f}%), now {libc['allocated']} B; "
+                     f"{libc['never_used']} B never used")
+    elif "libc" in report:
+        lines.append("libc heap: not reported (the layout check failed; see src/steno_squid/memory_report.cc)")
+    else:
+        lines.append("libc heap: not in this report (firmware older than report version 2)")
     return "\n".join(lines)
 
 
