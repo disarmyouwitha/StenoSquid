@@ -107,6 +107,17 @@ config ZMK_STENO_SQUID_BOOT_CPU_BATCH
     bool "Use byte-table CRC32 and batch ASCII verification in Native storage"
     depends on ZMK_STENO_SQUID_BOOT_PROFILE
 
+config ZMK_STENO_SQUID_BOOT_BASE_DMA
+    bool "Read base checksums in 2 KiB DMA blocks at startup"
+    depends on ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
+
+config ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC
+    bool "Recalculate base checksums on every full startup validation"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+    help
+      Lab-only comparison of untrusted startup reads. It leaves the saved
+      fingerprint and normal catalog validation intact.
+
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG

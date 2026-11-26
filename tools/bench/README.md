@@ -525,3 +525,20 @@ over USB before resetting the left half. `lookup_outline_error` and
 `scrub_read_error` identify the affected flash addresses. `scrub_crc_error`
 is followed by the expected and observed checksums. `qspi_unsupported_jedec`
 records the full chip ID for a flash that the firmware rejected at startup.
+
+### Full base checksum comparison
+
+On the 64 MiB fixture, the previous physical cold boot reached ready at
+24.221 seconds with saved base checksums. A later diagnostic boot after UF2
+reached ready at 53.981 seconds and spent 31.400 seconds in extent validation
+with base trust unavailable. The fixture has 31 base extents totaling
+58,075,492 bytes. An offline scan in 2 KiB chunks matched every catalog CRC,
+with 28,369 chunks compared with 226,861 at 256 bytes.
+
+To measure full base verification on both builds, add
+`CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC=y` to the profiled 32 MHz
+DMA-index configuration above. Then add
+`CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA=y` for the second build. The second
+build uses the same CRC and 2 KiB of existing scratch space for DMA. Compare
+`extent_checks` to `journal_scan` in both traces and verify the same catalog
+and fixture lookups. Use the normal build for trusted-base timings.

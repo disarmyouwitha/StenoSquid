@@ -86,6 +86,9 @@ bool boot_count_reads = false;
 
 struct FlashDevice {
     bool mapped=false,trust_bases=false;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    bool boot_base_dma = false;
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
     bool journal_dma = false;
 #endif
@@ -192,13 +195,39 @@ struct FlashDevice {
     }
     bool CheckBase(uint32_t at,uint32_t bytes,uint32_t expected) {
         if(trust_bases){cached[cache_next++%32]={at,bytes,expected};return true;}
-        uint32_t crc;return Checksum(at,bytes,crc) && crc==expected;
+        uint32_t crc;return Checksum(at,bytes,crc,true) && crc==expected;
     }
-    bool Checksum(uint32_t at,uint32_t bytes,uint32_t &crc) {
+    bool Checksum(uint32_t at,uint32_t bytes,uint32_t &crc,[[maybe_unused]] bool for_base=false) {
         for(const auto &c:cached)if(c.bytes==bytes && c.at==at){crc=c.crc;return true;}
-        if (!ChecksumUncached(at, bytes, crc)) return false;
+        bool ok;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+        if (for_base && boot_base_dma && !(at % 4))
+            ok = ChecksumBootBase(at, bytes, crc);
+        else
+#endif
+            ok = ChecksumUncached(at, bytes, crc);
+        if (!ok) return false;
         cached[cache_next++%32]={at,bytes,crc};return true;
     }
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    bool ChecksumBootBase(uint32_t at, uint32_t bytes, uint32_t &crc) {
+        if (at > lf_flash_bytes || bytes > lf_flash_bytes - at) return false;
+        crc = 0;
+        while (bytes) {
+            if (static_cast<int32_t>(k_uptime_get_32() - cold_read_yield_at) >= 0) {
+                k_sleep(K_TICKS(1));
+                cold_read_yield_at = k_uptime_get_32() + 5u;
+            }
+            const uint32_t count = std::min<uint32_t>(bytes, sizeof(export_buffer));
+            ++boot_dma_reads;
+            if (nrfx_qspi_read(export_buffer, (count + 3u) & ~3u, at) != NRFX_SUCCESS) return false;
+            crc = crc32_ieee_update(crc, export_buffer, count);
+            at += count;
+            bytes -= count;
+        }
+        return true;
+    }
+#endif
     bool ChecksumUncached(uint32_t at, uint32_t bytes, uint32_t &crc) {
         alignas(4) uint8_t chunk[256];crc=0;
         for(uint32_t offset=0;offset<bytes;) {
@@ -951,6 +980,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
     last_open_pool_end=flash_device.PoolEnd();
     healthy=false;snapshot_format_rejected=false;++full_opens;
     ResetNativeScrub();
+    if (IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC)) flash_device.Invalidate();
     BOOT_STAGE("base_trust", full_opens);
     LoadNativeTrust();
     BOOT_STAGE("mapping_probe", 0);
@@ -980,13 +1010,19 @@ extern "C" bool steno_squid_native_flash_open(void) {
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
 #endif
     BOOT_STAGE("catalog", mapping_ok);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    // The startup flash lock protects the export buffer when no export owns it.
+    flash_device.boot_base_dma = !exporting;
+    if (flash_device.boot_base_dma) BOOT_STAGE("base_dma", sizeof(export_buffer));
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
     boot_count_reads = true;
 #endif
     const auto result=store.Open([](const CatalogRoot &root){
         BOOT_STAGE("root_fingerprint", root.address / kSegmentBytes);
         const uint32_t fingerprint=BaseFingerprint(root);
-        flash_device.trust_bases=fingerprint && fingerprint==verified_fingerprint;
+        flash_device.trust_bases=!IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC) &&
+                                 fingerprint && fingerprint==verified_fingerprint;
         const auto status=validator.Validate(root, false
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
             , [](ValidationStage stage) {
@@ -1036,6 +1072,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
         return status;
     }, CatalogValidation::ReuseIdenticalPayload,
        IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY));
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    flash_device.boot_base_dma = false;
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
     boot_count_reads = false;
 #endif
