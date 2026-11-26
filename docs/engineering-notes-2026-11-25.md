@@ -322,6 +322,18 @@ source (`lib/libc/common/source/stdlib/malloc.c`). Static call-graph evidence, n
   boot. Alternative: `--wrap` the four allocators in the diagnostics build to count live and peak bytes.
 - Until the libc-arena peak is known, treat "92% of RAM used" as a statement about static data only, and the 25%
   stack bar as the only runtime margin we have actually measured.
+- **Built, not flashed (the keyboard cannot be reset until the owner returns):**
+  - Memory report v2 (`d11f3f8`): reads the libc heap by rebuilding the `sys_heap` view (header at the first
+    8-byte boundary above `_end`; `CONFIG_USERSPACE` is off, so no larger alignment applies) and checks that
+    free + allocated account for the whole arena, otherwise it reports `ok:0`. It compiles; RAM unchanged at
+    242,174 B (92.38%). The layout assumption is read from Zephyr's `sys_heap_init` and `malloc.c` and has NOT been
+    confirmed on hardware.
+  - `config/boardsource-wireless-corne/heap-reclaim.conf` (`HEAP_MEM_POOL_SIZE=1024`): the override of
+    `corne_left.conf` takes effect. Static RAM falls from 242,174 B to **210,430 B (80.27%)** and the libc arena
+    rises from 19,968 B to **51,712 B** (2.59x). Build only; not run on a keyboard.
+  - Plan once the board is next in the bootloader: flash the report-v2 build, read `memory_report` at idle and
+    under a transfer, check the new `libc` line against the 19,968 B arena, then (with approval) flash the
+    heap-reclaim variant and exercise boot, USB, Bluetooth, Studio and typing.
 
 ### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
 
