@@ -199,6 +199,11 @@ Subtract adjacent rows for per-stage elapsed time and read counts. The USB timer
 also verifies a Javelin lookup. Keep both measurements so USB enumeration and
 dictionary availability can be compared separately. A failed bring-up records
 `flash_unavailable` and a subsequent attempt starts again at `qspi_start`.
+Pass `--stop-on-unavailable` with `--profile` to save a failed boot without
+waking the flash again. On a rejected index extent, the profiler records the
+expected and original CRCs. If the original check used mapped QSPI, it then
+records uncached DMA and mapped-repeat CRCs in that order on the same flash
+power cycle. These reads leave catalog validation's decision in place.
 
 In the host replay of the full pool, reusing extent validation for byte-identical
 catalog payloads reduced logical flash reads from 2,162,470 to 1,201,627.

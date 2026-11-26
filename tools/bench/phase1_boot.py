@@ -44,7 +44,7 @@ def collect_profile(console, report):
             return
 
 
-def check(serial, timeout, report):
+def check(serial, timeout, report, stop_on_unavailable=False):
     if usb_console_devices(serial):
         print("Waiting for the left half to reboot or be power-cycled.", flush=True)
         wait_for_usb(serial, False, timeout)
@@ -55,9 +55,12 @@ def check(serial, timeout, report):
             with open_console(serial) as console:
                 if "profile" in report:
                     collect_profile(console, report)
+                    latest = report["profile"][-1]["stage"] if report["profile"] else None
+                    if stop_on_unavailable and latest == "flash_unavailable":
+                        raise ValueError("Flash reported unavailable after validation.")
                     # The normal status command can wake idle flash. Observe the
                     # bring-up without requesting a wake until the flash is ready.
-                    if not report["profile"] or report["profile"][-1]["stage"] != "flash_ready":
+                    if latest != "flash_ready":
                         sleep(0.5)
                         continue
                 status = console.command("native_install status", timeout=2)
@@ -90,15 +93,19 @@ def main():
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--profile", action="store_true", help="Collect firmware startup stages.")
+    parser.add_argument("--stop-on-unavailable", action="store_true",
+                        help="Save the trace immediately when validation leaves flash unavailable.")
     args = parser.parse_args()
     if args.timeout < 1:
         parser.error("--timeout must be positive")
+    if args.stop_on_unavailable and not args.profile:
+        parser.error("--stop-on-unavailable requires --profile")
     report = dict(result="fail", status=[])
     if args.profile:
         report["profile"] = []
     with args.report.open("x", encoding="utf-8") as stream:
         try:
-            check(args.serial, args.timeout, report)
+            check(args.serial, args.timeout, report, args.stop_on_unavailable)
         except (RuntimeError, OSError, ValueError) as error:
             report["error"] = str(error)
             raise

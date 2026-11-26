@@ -4,6 +4,10 @@
 #include "native_merge_ops.h"
 namespace candidate_b {
 enum class ValidationStage { Extents, Journal, Forward, Reverse };
+struct RejectedExtent {
+    uint32_t kind, address, bytes, expected, actual;
+    bool checksum_read;
+};
 template<class Device>
 class NativeValidator {
     Device &device;
@@ -23,24 +27,27 @@ public:
     NativeValidator(Device &value,NativeCatalog<Device> &roots):device(value),catalog(roots),journal(value),
         unused_f(value),unused_r(value),ops(value,view,unused_f,unused_r){}
     const LiveView &ValidatedView() const { return view; }
-    bool Extent(uint32_t,const uint8_t *extent) {
+    bool Extent(uint32_t,const uint8_t *extent, void (*rejected)(const RejectedExtent &) = nullptr) {
         const uint32_t start=uint16_t(extent[0]) | uint16_t(extent[1])<<8,bytes=Word(extent+4),kind=Word(extent+12);
-        if(kind==2)return journal.Open(start,uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32)==JournalResult::Ok;
-        if(kind==1)return device.CheckBase(start*kSegmentBytes,bytes,Word(extent+8));
-        uint32_t crc=0;
-        return device.Checksum(start*kSegmentBytes,bytes,crc) && crc==Word(extent+8);
+        RejectedExtent info{kind, start*kSegmentBytes, bytes, Word(extent+8), 0, false};
+        bool valid;
+        if (kind == uint32_t(ExtentKind::Journal)) {
+            valid = journal.Open(start, uint64_t(Word(extent+16)) | uint64_t(Word(extent+20))<<32) == JournalResult::Ok;
+        } else if (kind == uint32_t(ExtentKind::Base)) {
+            valid = device.CheckBase(info.address, bytes, info.expected);
+        } else {
+            info.checksum_read = device.Checksum(info.address, bytes, info.actual);
+            valid = info.checksum_read && info.actual == info.expected;
+        }
+        if (!valid && rejected) rejected(info);
+        return valid;
     }
     CatalogResult Validate(const CatalogRoot &root, bool cross_check = true,
                            void (*stage)(ValidationStage) = nullptr,
-                           void (*extent_failed)(uint32_t, uint32_t) = nullptr) {
+                           void (*extent_failed)(const RejectedExtent &) = nullptr) {
         if (stage) stage(ValidationStage::Extents);
         const auto schema = catalog.Validate(root, [&](uint32_t i, const uint8_t *row) {
-            if (Extent(i, row)) return true;
-            if (extent_failed) {
-                const uint32_t segment = uint16_t(row[0]) | uint16_t(row[1]) << 8;
-                extent_failed(Word(row + 12), segment * kSegmentBytes);
-            }
-            return false;
+            return Extent(i, row, extent_failed);
         });
         if(schema!=CatalogResult::Ok)return schema;
         view={};reverse_address=reverse_count=0;uint8_t prefix[32];

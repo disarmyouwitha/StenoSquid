@@ -141,13 +141,17 @@ struct FlashDevice {
     }
     bool Checksum(uint32_t at,uint32_t bytes,uint32_t &crc) {
         for(const auto &c:cached)if(c.bytes==bytes && c.at==at){crc=c.crc;return true;}
+        if (!ChecksumUncached(at, bytes, crc)) return false;
+        cached[cache_next++%32]={at,bytes,crc};return true;
+    }
+    bool ChecksumUncached(uint32_t at, uint32_t bytes, uint32_t &crc) {
         alignas(4) uint8_t chunk[256];crc=0;
         for(uint32_t offset=0;offset<bytes;) {
             uint32_t n=bytes-offset;if(n>sizeof(chunk))n=sizeof(chunk);
             if(!Read(at+offset,chunk,n))return false;
             crc=crc32_ieee_update(crc,chunk,n);offset+=n;if(!(offset%4096))k_yield();
         }
-        cached[cache_next++%32]={at,bytes,crc};return true;
+        return true;
     }
 } flash_device;
 NativeStore<FlashDevice> store(flash_device);
@@ -821,6 +825,30 @@ extern "C" void steno_squid_boot_stage(const char *stage, uint32_t detail) {
     k_spin_unlock(&boot_event_lock, key);
 }
 #define BOOT_STAGE(stage, detail) steno_squid_boot_stage(stage, detail)
+static void profile_extent_rejection(const RejectedExtent &extent) {
+    switch (static_cast<ExtentKind>(extent.kind)) {
+    case ExtentKind::Base: BOOT_STAGE("base_rejected", extent.address); return;
+    case ExtentKind::Journal: BOOT_STAGE("journal_rejected", extent.address); return;
+    case ExtentKind::Forward: BOOT_STAGE("forward_rejected", extent.address); break;
+    case ExtentKind::Reverse: BOOT_STAGE("reverse_rejected", extent.address); break;
+    }
+
+    const bool mapped = flash_device.mapped;
+    BOOT_STAGE("index_expected_crc", extent.expected);
+    BOOT_STAGE(mapped ? (extent.checksum_read ? "mapped_original_crc" : "mapped_original_error")
+                      : (extent.checksum_read ? "dma_original_crc" : "dma_original_error"), extent.actual);
+    if (!mapped) return;
+
+    // Use the same configuration, flash lock and power cycle as the failed
+    // check. Keep the uncached samples separate from the validation decision.
+    uint32_t crc = 0;
+    flash_device.mapped = false;
+    const bool dma_ok = flash_device.ChecksumUncached(extent.address, extent.bytes, crc);
+    BOOT_STAGE(dma_ok ? "dma_probe_crc" : "dma_probe_error", crc);
+    flash_device.mapped = true;
+    const bool mapped_ok = flash_device.ChecksumUncached(extent.address, extent.bytes, crc);
+    BOOT_STAGE(mapped_ok ? "mapped_repeat_crc" : "mapped_repeat_error", crc);
+}
 #else
 #define BOOT_STAGE(stage, detail) ((void)0)
 #endif
@@ -880,14 +908,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
                 case ValidationStage::Forward: BOOT_STAGE("forward_index", 0); break;
                 case ValidationStage::Reverse: BOOT_STAGE("reverse_index", 0); break;
                 }
-            }, [](uint32_t kind, uint32_t address) {
-                switch (static_cast<ExtentKind>(kind)) {
-                case ExtentKind::Base: BOOT_STAGE("base_rejected", address); break;
-                case ExtentKind::Journal: BOOT_STAGE("journal_rejected", address); break;
-                case ExtentKind::Forward: BOOT_STAGE("forward_rejected", address); break;
-                case ExtentKind::Reverse: BOOT_STAGE("reverse_rejected", address); break;
-                }
-            }
+            }, profile_extent_rejection
 #endif
         );
         flash_device.trust_bases=false;
