@@ -127,7 +127,17 @@ conflict check's flash reads replayed); byte-identical or the same error. `+` st
 compact entries, so every `+` lookup is a miss in both implementations. Mutation check: about 55 mutations, all caught
 except ones that cannot change a result.
 
-Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
+**M1/M2 status, fifth part: the compiler is ported.** `compile.js` ports `DictionaryCollectionBuilder` (compact-map layout,
+text deduplication, the firmware hint index, pointer offsets, translation-length warnings) and `compile_snapshot`
+(24-bit and Native-limit checks, then a read-back of every entry through the lookup reader). It grew out of the naive
+spike `tools/bench/js/compile_dict.mjs`, which it supersedes; the typed-array fast path (`compile_fast.mjs`, 4-5x quicker)
+can replace its inner loops later without changing the interface. Gate: 53 golden cases from Python (single and
+multiple dictionaries, flash base addresses, empty dictionaries, gaps in outline lengths, sixteen-stroke outlines, numeric
+aliases, duplicates, unicode names and texts, the 127- and 2047-byte limits, every hash-block-count boundary, every
+refusal and its message), byte-identical images and pointer lists. Mutation check: 25 mutations, all caught except ones
+that cannot change a result.
+
+Not yet ported: `backup_all`, `overlay_usage`, the JSON import parsing (`import_personal.parse_named`), the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
 (`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
 
