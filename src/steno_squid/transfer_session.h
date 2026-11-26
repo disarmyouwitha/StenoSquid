@@ -7,7 +7,8 @@
  *
  * Success ladder, never skipped:
  *   ACK(Open)      BEGIN accepted by the sink
- *   ACK(Receiving) DATA accepted by the sink (offset = next expected byte)
+ *   ACK(Receiving) DATA accepted by the sink (offset = next expected byte). Cumulative: sent every
+ *                  window/2 frames, on the last frame and on a short frame, not once per frame.
  *   ACK(Verified)  END: length and whole-payload CRC match and Sink::Verify passed
  *   DONE           COMMIT: Sink::Commit made the result durable
  * Cancel, timeout, disconnect and every error call Sink::Abort exactly once,
@@ -141,6 +142,8 @@ private:
         }
         total_ = total; crc_ = crc; chunk_ = chunk; kind_ = kind;
         window_ = window > kMaxWindow ? kMaxWindow : window;
+        ack_every_ = window_ >= 2 ? window_ / 2 : 1;
+        unacked_ = 0;
         begin_length_ = f.length;
         memcpy(args_, f.payload + kBeginPayloadBytes, f.length - kBeginPayloadBytes);
         next_ = 0;
@@ -171,7 +174,17 @@ private:
         running_ = Crc32Update(running_, f.payload, f.length);
         next_ += f.length;
         state_ = State::kReceiving;
-        return Ack(kStateReceiving);
+        // Cumulative acknowledgement: the ACK offset is already "next expected byte", so one ACK
+        // covers every frame before it. Acknowledging each frame made the ACK stream itself the
+        // limit (one HID input report per frame). Reply every window/2 frames, on the last frame
+        // and on any short frame; everything else stays silent. window/2 can never leave the sender
+        // blocked: it stops only after a full window is unacknowledged, and fewer than window/2
+        // frames are ever owed an ACK.
+        if (++unacked_ >= ack_every_ || next_ == total_ || f.length < chunk_) {
+            unacked_ = 0;
+            return Ack(kStateReceiving);
+        }
+        return {};
     }
 
     Reply End(const Frame &f, uint32_t now) {
@@ -242,7 +255,7 @@ private:
     State state_ = State::kIdle;
     uint16_t session_ = 0;
     uint32_t total_ = 0, crc_ = 0, next_ = 0, running_ = 0, last_activity_ = 0;
-    uint16_t chunk_ = 0, window_ = 0;
+    uint16_t chunk_ = 0, window_ = 0, ack_every_ = 1, unacked_ = 0;
     uint8_t kind_ = 0, last_error_ = kErrNone;
     uint8_t begin_length_ = 0, args_[kMaxBeginArgs] = {};
 };

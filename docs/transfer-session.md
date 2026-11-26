@@ -38,6 +38,14 @@ COMMIT and `Sink::Commit`. These map to the plan's distinct stages: queue
 acceptance, sink write, verification, durable commit. Transport/endpoint
 completion and Manager reception are tracked outside this core.
 
+**Cumulative acknowledgements.** `ACK(Receiving)` is not sent per frame. Its offset is the next expected byte, so one
+ACK covers every frame before it, and the receiver replies only every `window / 2` frames (the window from BEGIN,
+capped at 16), on the last frame of the stream and on any frame shorter than the chunk; other in-order frames get no
+reply. Duplicates and NAKs are still answered at once. Hardware measurement (notes, section 7.1) showed that one
+ACK per frame made the HID input endpoint, about 880 reports per second, the limit of an upload. The sender cannot be
+left blocked: it stops only after a full window is unacknowledged, and fewer than `window / 2` frames are ever
+owed an ACK. A lost ACK is recovered by the sender's stall timer, because a resent duplicate always draws an ACK.
+
 ## Rules
 
 - One session at a time. A different BEGIN while active returns `ERR_BUSY`; no
