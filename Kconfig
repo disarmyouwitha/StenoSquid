@@ -104,7 +104,13 @@ config ZMK_STENO_SQUID_NATIVE_DICTIONARIES
     int "Maximum resident native dictionary wrappers"
     depends on ZMK_STENO_SQUID_NATIVE_STORE
     range 7 64
-    default 16
+    default 32
+    help
+      Resident dictionary slots: how many installed dictionaries the engine can hold open at once. The default
+      is 32, measured on hardware with all 32 installed and 16 enabled: the engine's malloc heap peaks near 5 KB
+      of about 20 KB and every stack stays above 25% free (docs/engineering-notes-2026-11-25.md, sections 7.5 and
+      7.6). Each slot costs about 344 bytes of static RAM (16 to 32 slots: +5.5 KB). Enabling more than 16
+      dictionaries at once still shows the Manager's active-dictionary warning.
 
 config ZMK_JAVELIN_STENO_HID_PROVISIONING
     bool "Manage Native dictionary flash through the HID console"
