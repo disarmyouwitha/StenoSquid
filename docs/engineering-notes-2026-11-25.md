@@ -60,6 +60,19 @@ program. It was audited and measured in `docs/manager-audit-2026-11-25.md`, whic
   as an in-browser dry run, only if it shows value. There is no WASM-first milestone.
 - **Gate for every port step:** output byte-identical to Python or accepted by the C++ simulator
   (`transfer_device_sim`, the real `NativeStage`).
+
+**M1 status (2026-11-26, first half): the catalog and journal reader is ported.** `tools/manager/browser/snapshot.js`
+ports `Snapshot` (strict, metadata-only and normal reads, both pool sizes), the journal record codec and the metadata
+planner (move, rename, delete) from `native_update.py`, with the same checks in the same order and the same error text.
+The reader takes a sync or async `read(address, length)`, so the same code will read a keyboard or a captured image.
+Gate: `golden_snapshot.py` records, from Python, every flash read and the result (or error) for 28 images (clean,
+journal tail, corruptions, boundary cases) and 58 metadata plans; `test_snapshot.mjs` replays them and requires the same
+parsed state, the same error text and the same read pattern. Both run in `test_js_transfer.py`, and `--check` fails if
+the committed vectors are stale. Mutation check: the first vector set let five deliberate mutations of the port survive;
+the added cases (duplicate sequence, checkpoint boundary, repeated index entry, NUL and out-of-range strokes, move upper
+bound) catch them. Three exact-limit constants (64 rows, 253 extents, 256 tail records) are copied verbatim and not
+exercised at their boundary. Not yet ported: the catalog/snapshot reads over the console (`read_snapshot`,
+`effective_entries`, the lookup/verify reader), which need the console and keyboard transport (M3), and the M2 planners.
 ## 2. Findings
 
 ### RAM by owner (measured, 32-slot everyday build with the transfer option, link map)

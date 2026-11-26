@@ -40,6 +40,15 @@ class JavaScriptScriptedTests(unittest.TestCase):
     def test_scripted_client_protocol_cases(self):
         self.run_node("test_transfer_client.mjs")
 
+    def test_snapshot_reader_matches_python_golden_vectors(self):
+        """Manager milestone M1: the JS catalog/journal reader and metadata planner agree with the Python oracle."""
+        self.run_node("test_snapshot.mjs")
+
+    def test_snapshot_golden_vectors_are_current(self):
+        result = subprocess.run([sys.executable, str(BROWSER / "golden_snapshot.py"), "--check"],
+                                capture_output=True, text=True, timeout=300)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 @unittest.skipUnless(shutil.which("node"), "Node is not installed")
 class JavaScriptTransferTests(Fixture, unittest.TestCase):
