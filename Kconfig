@@ -52,6 +52,61 @@ config ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
     help
       Adds USB-only diagnostic commands for paced input and crash capture.
 
+config ZMK_STENO_SQUID_BOOT_PROFILE
+    bool "Native dictionary startup profiling"
+    depends on ZMK_STENO_SQUID_NATIVE_STORE
+    help
+      Records startup stages and logical flash reads for USB lab measurements.
+
+config ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    bool "Use paged QSPI DMA during dictionary startup validation"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+    help
+      Lab-only startup read path. Reuses the existing QSPI bounce buffer and
+      uses Zephyr's table-driven implementation of the same CRC32.
+
+config ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY
+    bool "Reuse journal recovery from startup validation"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+    help
+      Lab-only startup optimization. Stage the live journal during full
+      validation, and attach it after the catalog selects the validated root.
+
+config ZMK_STENO_SQUID_BOOT_INDEX_BATCH
+    bool "Batch journal key reads during startup index validation"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+
+config ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+    bool "Use DMA read-ahead for sequential startup journal recovery"
+    depends on ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY && !ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+
+config ZMK_STENO_SQUID_BOOT_HFXO
+    bool "Hold the high-frequency crystal during flash startup"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE && CLOCK_CONTROL_NRF
+    help
+      Trial workaround for nRF52840 anomaly 244. Keep the clock source stable
+      during QSPI bring-up and dictionary validation.
+
+config ZMK_STENO_SQUID_BOOT_FAST_CRC
+    bool "Use table-driven IEEE CRC32 in the Native store"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+
+config ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
+    bool "Use larger sequential journal DMA blocks during startup"
+    depends on ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+
+config ZMK_STENO_SQUID_BOOT_INDEX_DMA
+    bool "Use DMA read-ahead for startup index validation"
+    depends on ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS && ZMK_STENO_SQUID_BOOT_INDEX_BATCH
+
+config ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+    bool "Keep seven recent pages during startup index DMA"
+    depends on ZMK_STENO_SQUID_BOOT_INDEX_DMA
+
+config ZMK_STENO_SQUID_BOOT_CPU_BATCH
+    bool "Use byte-table CRC32 and batch ASCII verification in Native storage"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG

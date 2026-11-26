@@ -1,0 +1,167 @@
+{
+  "result": "fail",
+  "status": [],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "qspi_start",
+      "uptime_ms": 800,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "quad_setup",
+      "uptime_ms": 850,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "resume_check",
+      "uptime_ms": 850,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "base_trust",
+      "uptime_ms": 850,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "mapping_probe",
+      "uptime_ms": 1053,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "catalog",
+      "uptime_ms": 1053,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1059,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "extent_checks",
+      "uptime_ms": 1061,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "journal_rejected",
+      "uptime_ms": 1062,
+      "detail": 60751872,
+      "mapped_reads": 207,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "root_validated",
+      "uptime_ms": 1062,
+      "detail": 2,
+      "mapped_reads": 207,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1069,
+      "detail": 1,
+      "mapped_reads": 232,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "extent_checks",
+      "uptime_ms": 1070,
+      "detail": 1,
+      "mapped_reads": 350,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "forward_rejected",
+      "uptime_ms": 1363,
+      "detail": 65273856,
+      "mapped_reads": 1802,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "index_expected_crc",
+      "uptime_ms": 1363,
+      "detail": 3653946223,
+      "mapped_reads": 1802,
+      "dma_reads": 0
+    },
+    {
+      "index": 14,
+      "stage": "mapped_original_crc",
+      "uptime_ms": 1363,
+      "detail": 1690950239,
+      "mapped_reads": 1802,
+      "dma_reads": 0
+    },
+    {
+      "index": 15,
+      "stage": "dma_probe_crc",
+      "uptime_ms": 1584,
+      "detail": 3053437842,
+      "mapped_reads": 1802,
+      "dma_reads": 1251
+    },
+    {
+      "index": 16,
+      "stage": "mapped_repeat_crc",
+      "uptime_ms": 2958,
+      "detail": 3204964145,
+      "mapped_reads": 3053,
+      "dma_reads": 1251
+    },
+    {
+      "index": 17,
+      "stage": "root_validated",
+      "uptime_ms": 2958,
+      "detail": 2,
+      "mapped_reads": 3053,
+      "dma_reads": 1251
+    },
+    {
+      "index": 18,
+      "stage": "catalog_result",
+      "uptime_ms": 2958,
+      "detail": 2,
+      "mapped_reads": 3053,
+      "dma_reads": 1251
+    },
+    {
+      "index": 19,
+      "stage": "flash_unavailable",
+      "uptime_ms": 2962,
+      "detail": 1,
+      "mapped_reads": 3053,
+      "dma_reads": 1251
+    }
+  ],
+  "error": "Flash reported unavailable after validation."
+}

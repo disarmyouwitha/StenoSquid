@@ -189,10 +189,197 @@ python3 tools/bench/phase1_boot.py --serial SERIAL \
   --report build/phase1-boot.json
 ```
 
+For stage profiling, append `config/boardsource-wireless-corne/phase1-boot-profile.conf`
+to the everyday 32-slot left build and pass `--profile`. The existing right
+firmware can show the layer and dictionary state from the left. Keep it paired
+if observing the display. Use a new report path for each of five physical cold
+starts per configuration. The trace records each stage's start in device uptime
+and cumulative mapped and DMA logical read calls during catalog validation.
+Subtract adjacent rows for per-stage elapsed time and read counts. The USB timer
+also verifies a Javelin lookup. Keep both measurements so USB enumeration and
+dictionary availability can be compared separately. A failed bring-up records
+`flash_unavailable` and a subsequent attempt starts again at `qspi_start`.
+Pass `--stop-on-unavailable` with `--profile` to save a failed boot without
+waking the flash again. On a rejected index extent, the profiler records the
+expected and original CRCs. If the original check used mapped QSPI, it then
+records uncached DMA and mapped-repeat CRCs in that order on the same flash
+power cycle. These reads leave catalog validation's decision in place.
+
 In the host replay of the full pool, reusing extent validation for byte-identical
 catalog payloads reduced logical flash reads from 2,162,470 to 1,201,627.
 Boot timing after a catalog update leaves two distinct payloads remains to be
 measured on hardware.
+
+The simulated full-pool open with matching catalogs issued 320,128 reads in
+the forward index pass and 480,094 in the reverse pass. The journal pass
+issued 160,300. Another 240,665 reads followed root validation, including
+catalog selection and live journal recovery. Use the hardware stage trace to
+check which passes dominate elapsed time. Look for redundant checks and reads
+first, then measure batching, read-ahead and QSPI changes against the five-second
+target. Consider extending persistent trust only if those changes fall short.
+Optimistic startup requires explicit approval.
+
+The profiled 64 MiB left build at 32 MHz reached ready 38.1 seconds after USB
+appeared following a UF2 update. The journal scan took 9.1 seconds, the index
+passes took 7.6 and 9.8 seconds, and catalog selection and live journal recovery
+took 11.1 seconds. All 1,204,247 counted reads used mapped QSPI. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-after-uf2.json).
+
+The physical off/on attempt hit a USB disconnect and recorded events from two
+boots, so it is excluded from timing comparisons. A fresh read of the surviving
+boot trace showed both roots rejected before journal scanning and the flash
+reported unavailable at 1.346 seconds of uptime. See the
+[attempt](../../docs/benchmarks/phase1-startup-profile-physical-attempt.json) and
+[cold-boot trace](../../docs/benchmarks/phase1-startup-profile-cold-unavailable.json).
+An explicit USB status check later woke the idle flash. The second full open
+took 68.3 seconds from QSPI start to ready and recovered generation 2 with all
+32 dictionaries. See the [recovery trace](../../docs/benchmarks/phase1-startup-profile-recovery.json).
+
+Reusing the decoded journal key during live recovery and reading 16 index
+addresses at a time reduced logical reads in the full-pool host simulation
+from 1,201,627 to 971,516. In one post-UF2 run on the device, counted mapped
+reads fell from 1,204,247 to 974,136, while the wait after USB appeared fell
+from 38.1 to 36.9 seconds. The forward and reverse passes were 1.6 seconds
+faster together. Catalog selection and live journal recovery still took
+11.2 seconds despite fewer calls. This is above the five-second target.
+See the [candidate post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-candidate-after-uf2.json).
+
+On a physical off/on test of the candidate, root 0 rejected the reverse index
+at `0x03e90000`, and root 1 rejected the forward index at `0x03e40000`.
+Both rejections occurred during extent CRC validation with mapped QSPI reads.
+Flash reported unavailable at 1.631 seconds of uptime. The passive observer
+did not report ready within 150 seconds. See the
+[candidate cold trace](../../docs/benchmarks/phase1-startup-profile-candidate-cold.json).
+An explicit USB status request triggered another full open. Javelin was ready
+68.0 seconds later. Readback verified all 640,192 bytes of the two rejected
+indexes against the original fixture, with both CRCs matching. The catalog
+was also byte-identical, all 233 fixture lookups passed, and both roots were
+valid. The board was left with the candidate and all 32 dictionaries loaded.
+See the [recovery trace](../../docs/benchmarks/phase1-startup-profile-candidate-recovery.json)
+and the [readback report](../../docs/benchmarks/phase1-startup-profile-candidate-readback.json).
+
+The same-boot diagnostic at 32 MHz reproduced the failure. One root rejected
+a journal at `0x039f0000`. The other rejected the forward index at
+`0x03e40000`, which had expected CRC `0xd9cacb6f`. In order, the original
+mapped read returned `0x64c9da5f`, uncached DMA returned `0xb5ffc392`, and
+the uncached mapped repeat returned `0xbf07df31`. The three completed reads
+disagreed with each other and with the expected CRC before the firmware
+reported flash unavailable. This rules out a failure limited to mapped reads
+in this run. See the [cold diagnostic trace](../../docs/benchmarks/phase1-startup-profile-dma-pair-cold.json).
+After the flash idled, a USB status request triggered another full open.
+Javelin was ready in 68.6 seconds. Both roots validated, all 32 dictionaries
+were loaded with 17 free blocks, and all 233 fixture lookups passed. See the
+[recovery trace](../../docs/benchmarks/phase1-startup-profile-dma-pair-recovery.json).
+
+The 16 MHz control adds only `CONFIG_ZMK_JAVELIN_STENO_QSPI_SCK_DIVIDER=2`
+to the otherwise identical 32-slot diagnostic build. Following UF2, it
+reached ready in 37.0 seconds versus 36.6 seconds at 32 MHz. All 233 fixture
+lookups passed, both roots validated, and 17 blocks were free. The recorder
+observed no physical off/on during this run, so it gives no evidence about
+whether the lower clock avoids the cold-start failure. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-16mhz-after-uf2.json)
+and [lookup report](../../docs/benchmarks/phase1-startup-profile-16mhz-lookups.json).
+
+On the next user-reported reboot, the 16 MHz control passed the first full
+open. Flash reported ready at 91.295 seconds of device uptime, or 90.537
+seconds after QSPI startup. The trace recorded 974,136 mapped reads and no
+rejected extents or second open. After one layout command timeout, the retry
+confirmed both roots valid, all 32 dictionaries, 17 free blocks, and all 233
+fixture lookups passing. The host started collecting after USB was already
+connected, so there is no USB-to-ready measurement for this run. This single
+pass differs from the repeated 32 MHz cold-start rejection. More paired
+reboots are needed to determine whether the clock accounts for the difference.
+See the [reboot trace](../../docs/benchmarks/phase1-startup-profile-16mhz-reboot.json).
+
+A second physical cold boot at 16 MHz also passed on the first full open.
+Ready arrived at 37.436 seconds of device uptime with exactly the same
+974,136 mapped reads as the 91.295-second run. Journal scan took 8.947 seconds,
+forward validation 6.989 seconds, reverse validation 9.179 seconds, and
+catalog selection plus live journal recovery 10.815 seconds. Both roots
+validated and all 233 lookups passed, with all 32 dictionaries and 17 free
+blocks. Keep both timings as the baseline for the DMA candidate.
+See the [second cold-boot trace](../../docs/benchmarks/phase1-startup-profile-16mhz-cold-02.json).
+
+
+The next timing candidate appends `phase1-boot-dma.conf` to the same left
+profile build. During catalog validation it fills the existing 256-byte QSPI
+bounce buffer with DMA and serves nearby reads from it. The build also uses
+Zephyr's table-driven IEEE CRC32. It still runs the original integrity checks
+and live journal recovery. In this build the trace's `dma_reads` count during
+`dma_read_ahead` and validation is the number of physical page fills.
+
+Compare request volume against the same precached-base fixture on the host:
+
+```sh
+c++ -std=c++20 -O2 -Itools/tests -Itools/storage \
+  tools/bench/phase1_startup_reads.cc -o build/phase1-startup-reads
+build/phase1-startup-reads build/phase1/loaded-fixture/simulated-pool.bin
+```
+
+The full-pool host open issued 974,018 direct requests for 22,137,506 bytes,
+versus 213,430 DMA page fills for 54,638,080 bytes. Both selected generation 2,
+recovered 17 tail entries, performed zero writes, and refused a corrupted
+forward index. The request count and transferred bytes help size the next
+hardware experiment. Neither measures latency, and the candidate still needs
+a comparison on hardware. The 16 MHz candidate was then flashed and tested.
+It reached ready in 41.4 seconds from USB after UF2, versus the 37.0-second
+post-UF2 control. On a physical cold start, flash reported ready at 44.0 seconds
+of device uptime, versus 37.4 and 91.3 seconds for the two 16 MHz controls. The
+host USB-to-ready interval was 39.1 seconds. The candidate completed both boots
+on the first open and recorded 213,443 DMA page fills each time. On the
+physical run, the forward and reverse index passes took 23.5 seconds combined,
+versus 16.2 seconds in the faster control. Both roots validated, and all 233
+fixture lookups passed with 32 dictionaries loaded and 17 free blocks. The
+candidate does not establish a boot-time improvement or meet the 10-second
+full-pool target. See the [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-dma-ahead-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-dma-ahead-cold.json),
+and [lookup results](../../docs/benchmarks/phase1-startup-profile-dma-ahead-lookups.json).
+
+The separate recovery-reuse candidate appends `phase1-boot-reuse.conf` to the
+16 MHz profile build and uses mapped QSPI. It constructs live recovery state
+while the validator performs the full journal scan. After both indexes pass,
+the selected catalog can attach that state if its payload matches exactly.
+The existing recovery path still handles a different selected payload or a
+root whose live tail cannot be staged. In the simulated full pool this variant
+reduced mapped requests from 974,018 to 813,897 and bytes from 22,137,506 to
+16,943,926. The post-UF2 hardware run reached ready in 31.9 seconds from USB,
+versus 37.0 for the mapped 16 MHz control. It recorded 814,015 mapped reads.
+The journal scan and recovery state construction together took 12.8 seconds.
+The work between root validation and catalog ready took 15 milliseconds,
+versus 10.8 seconds in the faster cold control. Both roots validated, all 233
+fixture lookups passed, and the board retained 32 dictionaries and 17 free
+blocks. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-after-uf2.json)
+and [lookup results](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-lookups.json).
+
+On the next user-reported reboot, the candidate reached ready on the first
+open at 32.675 seconds of device uptime, versus the 37.436- and 91.295-second
+mapped 16 MHz controls. The journal scan took 12.789 seconds, the index passes
+took 18.333 seconds combined, and catalog selection after validation took
+14 milliseconds. Both roots validated, and all 233 lookups passed with 32
+dictionaries and 17 blocks free. The recorder attached after USB enumeration,
+so no USB-to-ready interval was measured. See the
+[reboot trace](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-reboot.json).
+
+The next two 16 MHz comparison builds keep recovery reuse enabled. The first
+adds `phase1-boot-index.conf` to batch index record key reads and reuse the
+previous translation prefix in the reverse pass. The second adds
+`phase1-boot-journal-dma.conf` to use DMA page fills only during the journal
+scan. Both still run extent CRCs and complete index ordering checks. The
+host fixture benchmark above reports these results, with zero flash writes
+and the same rejection of a corrupted forward index in each build.
+
+| Configuration | Read requests or page fills | Bytes |
+| --- | ---: | ---: |
+| Reused recovery | 813,897 | 16,943,926 |
+| Batched index reads | 413,787 | 15,263,696 |
+| Batched index reads and journal DMA | 274,705 | 15,558,552 |
+
+
+
+
+
+
 
 ### 64 MiB hardware results
 
@@ -215,3 +402,87 @@ measured on hardware.
   at 349.90 WPM. The completed 300 WPM rerun processed all 1,400 strokes in
   order with zero input overflows. It missed one completion deadline and
   the host received one extra character.
+
+On the Boardsource left, post-UF2 USB-to-ready went from 31.9 seconds with
+recovery reuse to 30.5 seconds with batched index reads and 26.6 seconds with
+journal-only DMA added. The combined build's physical off/on still took
+63.8 seconds from boot and 60.0 seconds from USB. The combined build issued
+253,307 mapped reads and 21,516 DMA page fills in both runs. Journal validation
+took 12.4 and 13.0 seconds. The mapped index passes grew from 13.6 to 49.2
+seconds on the cold run. The cold run reopened generation 2 on the first
+try, the catalog matched the original fixture, and all 233 lookups passed.
+The layout-map command timed out, so free blocks were not measured in this run.
+See the [index trace](../../docs/benchmarks/phase1-startup-profile-index-after-uf2.json),
+[combined post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-index-dma-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-index-dma-cold.json), and
+[lookup results](../../docs/benchmarks/phase1-startup-profile-index-dma-lookups.json).
+
+The full-pool ceiling is now 20 seconds from power-on to Javelin ready. The
+next comparison returns to 32 MHz and appends `phase1-boot-hfxo.conf` to the
+combined configuration. It holds Zephyr's high-frequency crystal request
+through QSPI bring-up and validation, then releases it. Nordic documents that
+switching the high-frequency clock source during QSPI can corrupt transfers.
+This is a candidate explanation for the differing mapped and DMA CRCs seen
+at 32 MHz. The build also uses the table-driven version of the same IEEE
+CRC32, with all validation still enabled. The trace records `hfxo_held`
+before QSPI startup. Time and verify the full pool across physical cold starts
+before qualifying this configuration.
+See [Nordic erratum 244](https://docs.nordicsemi.com/r/bundle/errata_nrf52840_rev3/page/err/nrf52840/rev3/latest/anomaly_840_244.html).
+
+The first 32 MHz lab build timed out while waiting for Zephyr's clock-ready
+notification. It stopped before any flash read. The revised check holds the
+same clock-manager reservation, verifies the oscillator through Nordic's
+clock status, and falls back to the normal validated open on timeout.
+See the [initial clock-request trace](../../docs/benchmarks/phase1-startup-profile-hfxo-request-timeout.json).
+
+The revised 32 MHz crystal-clock candidate confirmed HFXO before flash
+startup. It reached flash ready at 22.990 seconds of uptime after UF2 and
+22.957 seconds after a physical off/on. The journal scan ran in 9.60 and 9.59
+seconds, and the mapped index passes in 11.96 and 11.95 seconds. The cold
+console first reported Native READY 21.533 seconds after USB enumeration. The
+initial verification reply was not valid JSON, so the attempt log retains
+that host-side failure. Retrying separately confirmed generation 2, a
+byte-identical catalog, 32 dictionaries, 17 free blocks, and all 233 fixture
+lookups. The candidate passed this cold-open integrity check and exceeded the
+20-second ceiling by 2.957 seconds. One cold boot does not qualify the clock
+workaround. See the [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-cold.json), and
+[verification results](../../docs/benchmarks/phase1-startup-profile-hfxo-lookups.json).
+
+The next 32 MHz build adds `phase1-boot-journal-blocks.conf`. The sequential
+journal scan borrows the existing 2 KiB export buffer while the flash lock is
+held and no export is in progress. The fixture run reduced transactions in the
+combined scan from 274,705 to 255,949 while increasing bytes transferred from
+15,558,552 to 15,702,936. The same change batches partial-word copies from
+mapped flash while retaining the aligned loads and barriers. These numbers
+measure requests, not cold-boot time.
+
+On the board, the 2 KiB build stayed at 32 MHz and reached flash ready at
+21.717 seconds of device uptime after UF2 and 57.987 seconds after physical
+power-off. It confirmed HFXO on both boots. The journal scan took 8.741 and
+8.845 seconds and used 2,760 DMA fills on both. The mapped index passes varied
+from 11.526 to 47.563 seconds with identical read counts. On the cold run,
+the catalog matched the fixture byte for byte and all 233 lookups passed.
+The layout-map query timed out. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-cold.json),
+and [lookup results](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-lookups.json).
+
+For an index-transport comparison, append `phase1-boot-index-dma.conf` to
+that build. It keeps the 2 KiB DMA journal scan and substitutes 256-byte DMA
+fills for mapped reads during both index passes. Extent validation and normal
+dictionary access retain their existing read paths. The host run used 133,400
+transactions for 38,984,968 bytes and still rejected a corrupt forward index.
+
+The 32 MHz DMA-index build passed both hardware starts. Flash was ready at
+24.268 seconds of device uptime after UF2 and 24.221 seconds after physical
+power-off. The cold USB-to-ready interval was 19.943 seconds. Both runs
+confirmed HFXO and recorded 130,278 DMA fills and 3,240 mapped reads. The
+index passes took 14.096 and 14.105 seconds, compared with 11.526 and
+47.563 seconds with mapped index reads in the previous build. The cold
+run reopened on the first try, matched the original catalog byte for byte,
+passed all 233 lookups, and retained 32 dictionaries and 17 free blocks.
+The 20-second power-on ceiling remains open. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-cold.json), and
+[lookup results](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-lookups.json).

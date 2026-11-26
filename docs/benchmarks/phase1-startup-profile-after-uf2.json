@@ -1,0 +1,144 @@
+{
+  "result": "pass",
+  "status": [
+    {
+      "seconds": 38.144,
+      "reply": "NATIVE2 READY 2"
+    }
+  ],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "qspi_start",
+      "uptime_ms": 791,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "quad_setup",
+      "uptime_ms": 841,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "resume_check",
+      "uptime_ms": 841,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "base_trust",
+      "uptime_ms": 841,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "mapping_probe",
+      "uptime_ms": 937,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "catalog",
+      "uptime_ms": 937,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "root_fingerprint",
+      "uptime_ms": 944,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "extent_checks",
+      "uptime_ms": 945,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "journal_scan",
+      "uptime_ms": 1285,
+      "detail": 0,
+      "mapped_reads": 3060,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "forward_index",
+      "uptime_ms": 10377,
+      "detail": 0,
+      "mapped_reads": 163360,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "reverse_index",
+      "uptime_ms": 17958,
+      "detail": 0,
+      "mapped_reads": 483488,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "root_validated",
+      "uptime_ms": 27749,
+      "detail": 0,
+      "mapped_reads": 963582,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "catalog_result",
+      "uptime_ms": 38840,
+      "detail": 0,
+      "mapped_reads": 1204247,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "bind",
+      "uptime_ms": 38840,
+      "detail": 1,
+      "mapped_reads": 1204247,
+      "dma_reads": 0
+    },
+    {
+      "index": 14,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 38845,
+      "detail": 32,
+      "mapped_reads": 1204247,
+      "dma_reads": 0
+    },
+    {
+      "index": 15,
+      "stage": "flash_ready",
+      "uptime_ms": 38850,
+      "detail": 1,
+      "mapped_reads": 1204247,
+      "dma_reads": 0
+    }
+  ],
+  "usb_to_ready_seconds": 38.144,
+  "generation": 2,
+  "dictionaries": 32,
+  "tail": 17,
+  "lookup": "cat"
+}

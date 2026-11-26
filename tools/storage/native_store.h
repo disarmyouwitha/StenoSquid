@@ -23,11 +23,18 @@ public:
         checkpoint(value,catalog,live),rollover(value,catalog,live){}
     NativeStore(const NativeStore &)=delete;
     template<class Validate>
-    CatalogResult Open(Validate validate, CatalogValidation mode = CatalogValidation::Independent) {
+    CatalogResult Open(Validate validate, CatalogValidation mode = CatalogValidation::Independent,
+                       bool reuse_recovery = false) {
         if(work!=Work::None)return CatalogResult::Busy;
         opened=false;
+        live.staged_recovery = false;
         const auto result=catalog.OpenValidated(selected,validate,mode);
         if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined)return result;
+        if (reuse_recovery && live.AcceptStagedRecovery(selected)) {
+            opened = true;
+            last = JobResult::Done;
+            return result;
+        }
         if(live.Begin(selected)!=LiveResult::More)return CatalogResult::Corrupt;
         for(;;) {
             const auto step=live.RecoverStep();

@@ -15,6 +15,9 @@
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
 #include "../../tools/storage/native_validator.h"
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+#include "../../tools/storage/native_startup_read.h"
+#endif
 #include "../../tools/storage/native_provisioner.h"
 #include "../../tools/storage/native_stage.h"
 #include "../../tools/storage/native_entry_stager.h"
@@ -65,9 +68,38 @@ static_assert(DT_REG_SIZE_BY_NAME(DT_NODELABEL(qspi),qspi_mm) >= kMaxSegments*kS
 bool ForgetBaseTrust();
 extern int64_t scrub_due;
 constexpr size_t MaxDictionaries=CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES;
+// Startup uses this buffer under the flash lock before the engine opens. An
+// export holds a read session and also prevents borrowing the buffer.
+alignas(4) uint8_t export_buffer[2048];
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+struct BootEvent {
+    const char *stage;
+    uint32_t uptime_ms, detail, mapped_reads, dma_reads;
+};
+constexpr unsigned BootEventCount = 64;
+BootEvent boot_events[BootEventCount];
+k_spinlock boot_event_lock;
+uint32_t boot_event_next = 0, boot_mapped_reads = 0, boot_dma_reads = 0;
+bool boot_count_reads = false;
+#endif
+
 struct FlashDevice {
     bool mapped=false,trust_bases=false;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+    bool journal_dma = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+    bool index_dma = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+    bool index_cache = false;
+#endif
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+    uint32_t cold_read_yield_at = 0;
+    StartupReadAhead startup_read_ahead;
+#else
     int64_t cold_read_yield_at=0;
+#endif
     alignas(4) uint8_t dma[256];
     struct Cached {uint32_t at=0,bytes=0,crc=0;} cached[32];
     unsigned cache_next=0;
@@ -77,16 +109,53 @@ struct FlashDevice {
     void Dirty(uint32_t at,uint32_t n){for(auto &c:cached)if(c.bytes && at<c.at+c.bytes && c.at<at+n)c.bytes=0;}
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
         if(at>lf_flash_bytes || n>lf_flash_bytes-at)return false;
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+        if (cold_read_yield_at && static_cast<int32_t>(k_uptime_get_32() - cold_read_yield_at) >= 0) {
+            k_sleep(K_TICKS(1));
+            cold_read_yield_at = k_uptime_get_32() + 5u;
+        }
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+        if (journal_dma
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+            || index_dma
+#endif
+        ) {
+#else
+        if (cold_read_yield_at) {
+#endif
+            auto fill = [](uint32_t base, auto &buffer) {
+                ++boot_dma_reads;
+                return nrfx_qspi_read(buffer, sizeof(buffer), base) == NRFX_SUCCESS;
+            };
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
+            if (journal_dma) return startup_read_ahead.Read(at, out, n, export_buffer, fill);
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+            if (index_cache) {
+                return StartupIndexCache::Read(at, out, n, export_buffer, [](uint32_t base, uint8_t *buffer, uint32_t bytes) {
+                    ++boot_dma_reads;
+                    return nrfx_qspi_read(buffer, bytes, base) == NRFX_SUCCESS;
+                });
+            }
+#endif
+            return startup_read_ahead.Read(at, out, n, dma, fill);
+        }
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+        if (boot_count_reads) ++(mapped ? boot_mapped_reads : boot_dma_reads);
+#endif
 #ifdef CONFIG_ZMK_JAVELIN_DICTIONARY_BENCHMARK
         if (squid_bench_count_reads) {
             ++squid_bench_personal_reads;
             squid_bench_personal_bytes += n;
         }
 #endif
+#if !defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) && !defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
         if (cold_read_yield_at && k_uptime_get() >= cold_read_yield_at) {
             k_sleep(K_TICKS(1));
             cold_read_yield_at = k_uptime_get() + 5;
         }
+#endif
         if(mapped){copy_xip_bytes(out,reinterpret_cast<const void *>(Xip+at),n);return true;}
         while(n) {
             uint32_t skip=at%4,count=n<256-skip?n:256-skip;
@@ -126,13 +195,17 @@ struct FlashDevice {
     }
     bool Checksum(uint32_t at,uint32_t bytes,uint32_t &crc) {
         for(const auto &c:cached)if(c.bytes==bytes && c.at==at){crc=c.crc;return true;}
+        if (!ChecksumUncached(at, bytes, crc)) return false;
+        cached[cache_next++%32]={at,bytes,crc};return true;
+    }
+    bool ChecksumUncached(uint32_t at, uint32_t bytes, uint32_t &crc) {
         alignas(4) uint8_t chunk[256];crc=0;
         for(uint32_t offset=0;offset<bytes;) {
             uint32_t n=bytes-offset;if(n>sizeof(chunk))n=sizeof(chunk);
             if(!Read(at+offset,chunk,n))return false;
             crc=crc32_ieee_update(crc,chunk,n);offset+=n;if(!(offset%4096))k_yield();
         }
-        cached[cache_next++%32]={at,bytes,crc};return true;
+        return true;
     }
 } flash_device;
 NativeStore<FlashDevice> store(flash_device);
@@ -150,7 +223,7 @@ JobResult automatic_result = JobResult::Done;
 StenoDictionary *parent=nullptr;
 LiveView export_view;
 OverlayCursor export_cursor;
-alignas(4) char export_text[2048];
+char *const export_text = reinterpret_cast<char *>(export_buffer);
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
 atomic_t native_fault_pc;
 #endif
@@ -797,6 +870,47 @@ uint32_t BaseFingerprint(const CatalogRoot &root) {
 }
 } // namespace
 
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+extern "C" void steno_squid_boot_stage(const char *stage, uint32_t detail) {
+    const auto key = k_spin_lock(&boot_event_lock);
+    boot_events[boot_event_next % BootEventCount] =
+        {stage, k_uptime_get_32(), detail, boot_mapped_reads, boot_dma_reads};
+    ++boot_event_next;
+    k_spin_unlock(&boot_event_lock, key);
+}
+#define BOOT_STAGE(stage, detail) steno_squid_boot_stage(stage, detail)
+static void profile_extent_rejection(const RejectedExtent &extent) {
+    switch (static_cast<ExtentKind>(extent.kind)) {
+    case ExtentKind::Base: BOOT_STAGE("base_rejected", extent.address); return;
+    case ExtentKind::Journal: BOOT_STAGE("journal_rejected", extent.address); return;
+    case ExtentKind::Forward: BOOT_STAGE("forward_rejected", extent.address); break;
+    case ExtentKind::Reverse: BOOT_STAGE("reverse_rejected", extent.address); break;
+    }
+
+    const bool mapped = flash_device.mapped;
+    BOOT_STAGE("index_expected_crc", extent.expected);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    BOOT_STAGE(extent.checksum_read ? "dma_ahead_original_crc" : "dma_ahead_original_error", extent.actual);
+    return;
+#endif
+    BOOT_STAGE(mapped ? (extent.checksum_read ? "mapped_original_crc" : "mapped_original_error")
+                      : (extent.checksum_read ? "dma_original_crc" : "dma_original_error"), extent.actual);
+    if (!mapped) return;
+
+    // Use the same configuration, flash lock and power cycle as the failed
+    // check. Keep the uncached samples separate from the validation decision.
+    uint32_t crc = 0;
+    flash_device.mapped = false;
+    const bool dma_ok = flash_device.ChecksumUncached(extent.address, extent.bytes, crc);
+    BOOT_STAGE(dma_ok ? "dma_probe_crc" : "dma_probe_error", crc);
+    flash_device.mapped = true;
+    const bool mapped_ok = flash_device.ChecksumUncached(extent.address, extent.bytes, crc);
+    BOOT_STAGE(mapped_ok ? "mapped_repeat_crc" : "mapped_repeat_error", crc);
+}
+#else
+#define BOOT_STAGE(stage, detail) ((void)0)
+#endif
+
 extern "C" void steno_squid_native_power_changed(void) {
     QueueIdleMaintenance();
 }
@@ -804,8 +918,10 @@ extern "C" void steno_squid_native_power_changed(void) {
 extern "C" bool steno_squid_native_flash_open(void) {
     // Only a same-boot, previously healthy mapper can retain its validated
     // layout. Metadata must be read from DMA before trusting mapped pointers.
+    BOOT_STAGE("resume_check", healthy && loaded);
     flash_device.mapped=false;
     if(healthy && loaded && last_open_pool_end == flash_device.PoolEnd() && NativeWarmResumeEligible(store)) {
+        BOOT_STAGE("resume_bind", 0);
         flash_device.mapped=true;
         for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
         NoteIdleMaintenance();
@@ -813,7 +929,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
     }
     last_open_pool_end=flash_device.PoolEnd();
     healthy=false;snapshot_format_rejected=false;++full_opens;
+    BOOT_STAGE("base_trust", full_opens);
     LoadNativeTrust();
+    BOOT_STAGE("mapping_probe", 0);
     // QSPI is in mapped quad mode here. Compare both root headers against
     // DMA before using the mapping for the many small index validation reads.
     bool mapping_ok = true;
@@ -830,15 +948,80 @@ extern "C" bool steno_squid_native_flash_open(void) {
         }
     }
     flash_device.mapped = mapping_ok;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    flash_device.startup_read_ahead = {};
+    flash_device.cold_read_yield_at = k_uptime_get_32() + 5u;
+    BOOT_STAGE("dma_read_ahead", StartupReadAhead::PageBytes);
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+    flash_device.cold_read_yield_at = k_uptime_get_32() + 5u;
+#else
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
+#endif
+    BOOT_STAGE("catalog", mapping_ok);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    boot_count_reads = true;
+#endif
     const auto result=store.Open([](const CatalogRoot &root){
+        BOOT_STAGE("root_fingerprint", root.address / kSegmentBytes);
         const uint32_t fingerprint=BaseFingerprint(root);
         flash_device.trust_bases=fingerprint && fingerprint==verified_fingerprint;
-        const auto status=validator.Validate(root, false);flash_device.trust_bases=false;return status;
-    }, CatalogValidation::ReuseIdenticalPayload);
+        const auto status=validator.Validate(root, false
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+            , [](ValidationStage stage) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+                flash_device.journal_dma = stage == ValidationStage::Journal;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
+                flash_device.journal_dma &= !exporting;
+#endif
+                if (flash_device.journal_dma) flash_device.startup_read_ahead = {};
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+                flash_device.index_dma = stage == ValidationStage::Forward || stage == ValidationStage::Reverse;
+                if (flash_device.index_dma) flash_device.startup_read_ahead = {};
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+                flash_device.index_cache = flash_device.index_dma && !exporting;
+                if (flash_device.index_cache) StartupIndexCache::Reset(export_buffer);
+#endif
+                switch (stage) {
+                case ValidationStage::Extents: BOOT_STAGE("extent_checks", flash_device.trust_bases); break;
+                case ValidationStage::Journal: BOOT_STAGE("journal_scan", 0); break;
+                case ValidationStage::Forward: BOOT_STAGE("forward_index", 0); break;
+                case ValidationStage::Reverse: BOOT_STAGE("reverse_index", 0); break;
+                }
+            }, profile_extent_rejection
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY
+            , &store.live
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_BATCH
+            , true
+#endif
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_BATCH)
+            , nullptr, true
+#endif
+        );
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+        flash_device.journal_dma = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+        flash_device.index_dma = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
+        flash_device.index_cache = false;
+#endif
+        flash_device.trust_bases=false;
+        BOOT_STAGE("root_validated", static_cast<uint32_t>(status));
+        return status;
+    }, CatalogValidation::ReuseIdenticalPayload,
+       IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY));
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    boot_count_reads = false;
+#endif
+    BOOT_STAGE("catalog_result", static_cast<uint32_t>(result));
     flash_device.cold_read_yield_at = 0;
     flash_device.mapped = false;
     if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined){base_provider.Fault();return false;}
+    BOOT_STAGE("bind", store.selected.slot);
     uint8_t prefix[8];if(!flash_device.Read(store.selected.root.address,prefix,8))return false;
     const size_t count=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
     if(count>MaxDictionaries || (loaded && count!=cell_count))return false;
@@ -860,6 +1043,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         } else if(cell.base)return false;
         cell.Bind();
     }
+    BOOT_STAGE("probe_dictionaries", count);
     cell_count=count;loaded=true;flash_device.mapped=true;
     for(size_t i=0;i<count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
     healthy=true;
@@ -1422,6 +1606,33 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
     // Binary transfer is USB-only until Bluetooth reaches 50 KiB/s; clients treat this as "unavailable".
     if (bluetooth_session && !std::strcmp(command, "update transfer-capabilities\n")) {
         snprintk(reply, bytes, "ERR Binary transfer is USB-only");
+        return;
+    }
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    if (!bluetooth_session && !std::strncmp(command, "boot-profile ", 13)) {
+        const char *cursor = command + 13;
+        uint32_t index;
+        if (!Number(cursor, index) || !End(cursor)) {
+            snprintk(reply, bytes, "ERR Invalid boot profile index");
+            return;
+        }
+        const auto key = k_spin_lock(&boot_event_lock);
+        const uint32_t next = boot_event_next;
+        const uint32_t first = next > BootEventCount ? next - BootEventCount : 0;
+        const BootEvent event = index >= first && index < next
+                                    ? boot_events[index % BootEventCount] : BootEvent{};
+        k_spin_unlock(&boot_event_lock, key);
+        if (event.stage) {
+            snprintk(reply, bytes,
+                     "{\"index\":%u,\"stage\":\"%s\",\"uptime_ms\":%u,\"detail\":%u,"
+                     "\"mapped_reads\":%u,\"dma_reads\":%u}",
+                     index, event.stage, event.uptime_ms, event.detail,
+                     event.mapped_reads, event.dma_reads);
+        } else {
+            snprintk(reply, bytes, "{\"first\":%u,\"next\":%u,\"uptime_ms\":%u}",
+                     first, next, k_uptime_get_32());
+        }
         return;
     }
 #endif

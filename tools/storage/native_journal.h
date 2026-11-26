@@ -4,6 +4,11 @@
 #include <cstdint>
 #include "native_allocator.h"
 #include <cstring>
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CPU_BATCH
+#include <array>
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
+#include <zephyr/sys/crc.h>
+#endif
 
 namespace candidate_b {
 constexpr uint32_t kSegmentBytes = 65536, kPageBytes = 256;
@@ -17,12 +22,30 @@ inline void PutWord(uint8_t *p, uint32_t n) {
     for (unsigned i = 0; i < 4; ++i) p[i] = uint8_t(n >> (8*i));
 }
 inline uint32_t Crc(uint32_t crc, const uint8_t *p, uint32_t n) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CPU_BATCH
+    static constexpr auto table = [] {
+        std::array<uint32_t, 256> values{};
+        for (unsigned i = 0; i < values.size(); ++i) {
+            uint32_t value = i;
+            for (unsigned bit = 0; bit < 8; ++bit)
+                value = (value >> 1) ^ (0xedb88320u & (0u - (value & 1u)));
+            values[i] = value;
+        }
+        return values;
+    }();
+    crc = ~crc;
+    for (uint32_t i = 0; i < n; ++i) crc = (crc >> 8) ^ table[(crc ^ p[i]) & 0xffu];
+    return ~crc;
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
+    return crc32_ieee_update(crc, p, n);
+#else
     crc = ~crc;
     for (uint32_t i = 0; i < n; ++i) {
         crc ^= p[i];
         for (unsigned bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1)));
     }
     return ~crc;
+#endif
 }
 struct Utf8 {
     uint32_t value = 0, minimum = 0;
@@ -42,6 +65,26 @@ struct Utf8 {
         }
         return true;
     }
+
+    bool PushText(const uint8_t *text, uint32_t bytes) {
+        while (bytes) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CPU_BATCH
+            if (!remaining && bytes >= 4) {
+                const uint32_t word = Word(text);
+                // Skip four ASCII characters only if none is a NUL.
+                const uint32_t zero = (word - 0x01010101u) & ~word;
+                if (!((word | zero) & 0x80808080u)) {
+                    text += 4;
+                    bytes -= 4;
+                    continue;
+                }
+            }
+#endif
+            if (!Push(*text++)) return false;
+            --bytes;
+        }
+        return true;
+    }
 };
 inline bool ValidNativeStroke(uint32_t stroke) {
     return stroke && !(stroke >> 25);
@@ -52,8 +95,7 @@ inline bool ValidEdit(uint32_t identity,uint8_t operation,const uint32_t *stroke
        (length && !text) || (operation && length))return false;
     for(uint8_t i=0;i<count;++i)if(!ValidNativeStroke(strokes[i]))return false;
     Utf8 utf;
-    for(uint16_t i=0;i<length;++i)if(!utf.Push(text[i]))return false;
-    return !utf.remaining;
+    return utf.PushText(text, length) && !utf.remaining;
 }
 
 struct JournalRecord {
@@ -166,12 +208,12 @@ public:
     // One committed record per call, at most 2119 payload bytes streamed through
     // fixed workspace. Caller can yield/cancel between steps. IO errors leave
     // cursor unchanged; committed corruption never looks like an unfinished tail.
-    JournalResult Step(JournalScan &scan, JournalRecord &record) {
+    JournalResult Step(JournalScan &scan, JournalRecord &record, JournalKey *key = nullptr) {
         if (!scan.ready || scan.next > scan.end || scan.end % kSegmentBytes ||
             scan.end > NativePoolEnd(device)*kSegmentBytes || scan.end < 3*kSegmentBytes ||
             scan.next < scan.end-kSegmentBytes+kPageBytes) return JournalResult::Invalid;
         if (scan.end-scan.next < 32) return JournalResult::End;
-        const auto status=Read(scan.next,record);
+        const auto status=Read(scan.next,record,key);
         if (status!=JournalResult::Ok) return status;
         if (record.sequence<=scan.previous) return JournalResult::Corrupt;
         scan.previous=record.sequence;
@@ -179,13 +221,17 @@ public:
         return JournalResult::Ok;
     }
 
-    JournalResult ReadEnvelope(uint32_t address, JournalRecord &record,uint8_t (&header)[32]) {
+private:
+    bool EnvelopeAddressValid(uint32_t address) const {
         const uint32_t offset = address % kSegmentBytes;
-        if (address / kSegmentBytes < 2 || address / kSegmentBytes >= NativePoolEnd(device) || address % 4 ||
-            offset < kPageBytes || offset > kSegmentBytes-32) return JournalResult::Invalid;
-        if (!device.Read(address, header, 32)) return JournalResult::IoError;
+        return address / kSegmentBytes >= 2 && address / kSegmentBytes < NativePoolEnd(device) &&
+               address % 4 == 0 && offset >= kPageBytes && offset <= kSegmentBytes - 32;
+    }
+
+    JournalResult DecodeEnvelope(uint32_t address, JournalRecord &record, const uint8_t *header) {
+        const uint32_t offset = address % kSegmentBytes;
         bool blank = true;
-        for (auto byte : header) blank &= byte == 255;
+        for (unsigned i = 0; i < 32; ++i) blank &= header[i] == 255;
         if (blank) return JournalResult::End;
         if (Word(header+28) != kCommit) return JournalResult::Sealed;
         uint32_t span=Word(header+4), size=Word(header+16);
@@ -195,6 +241,13 @@ public:
             span != ((size+35)&~3u) || Word(header+24)!=Crc(0,header,24)) return JournalResult::Corrupt;
         record={sequence,address,span,size};
         return JournalResult::Ok;
+    }
+
+public:
+    JournalResult ReadEnvelope(uint32_t address, JournalRecord &record,uint8_t (&header)[32]) {
+        if (!EnvelopeAddressValid(address)) return JournalResult::Invalid;
+        if (!device.Read(address, header, sizeof(header))) return JournalResult::IoError;
+        return DecodeEnvelope(address, record, header);
     }
 
     // Only for records validated at append/recovery and held in owned immutable
@@ -207,6 +260,23 @@ public:
         if (!DecodeKeyPrefix(bytes, record.payload_bytes, key)) return JournalResult::Corrupt;
         if (!device.Read(address + 40, bytes, 4u * key.count)) return JournalResult::IoError;
         return DecodeStrokes(bytes, key) ? JournalResult::Ok : JournalResult::Corrupt;
+    }
+
+    // One read for the header, key prefix, and first stroke. A multi-stroke
+    // outline needs one more read of exactly its remaining strokes.
+    JournalResult ReadIndexKey(uint32_t address, JournalRecord &record, JournalKey &key) {
+        if (!EnvelopeAddressValid(address)) return JournalResult::Invalid;
+        uint8_t prefix[44];
+        if (address % kSegmentBytes > kSegmentBytes - sizeof(prefix)) return ReadKey(address, record, key);
+        if (!device.Read(address, prefix, sizeof(prefix))) return JournalResult::IoError;
+        const auto status = DecodeEnvelope(address, record, prefix);
+        if (status != JournalResult::Ok) return status;
+        if (!DecodeKeyPrefix(prefix + 32, record.payload_bytes, key)) return JournalResult::Corrupt;
+        uint8_t strokes[64];
+        std::memcpy(strokes, prefix + 40, 4);
+        if (key.count > 1 && !device.Read(address + sizeof(prefix), strokes + 4, 4u * (key.count - 1)))
+            return JournalResult::IoError;
+        return DecodeStrokes(strokes, key) ? JournalResult::Ok : JournalResult::Corrupt;
     }
 
     JournalResult Read(uint32_t address, JournalRecord &record, JournalKey *decoded = nullptr) {
@@ -228,8 +298,8 @@ public:
                     return JournalResult::Corrupt;
                 text_start = 8u + 4u * key.count;
             }
-            for (uint32_t i=0;i<n;++i)
-                if (position+i>=text_start && !utf.Push(buffer[i])) return JournalResult::Corrupt;
+            const uint32_t first_text_byte = position == 0 ? text_start : 0;
+            if (!utf.PushText(buffer + first_text_byte, n - first_text_byte)) return JournalResult::Corrupt;
             position+=n;
         }
         if (utf.remaining || crc!=Word(header+20)) return JournalResult::Corrupt;

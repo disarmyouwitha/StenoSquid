@@ -26,15 +26,29 @@ static inline uint32_t xip_load_u24(const void *address) {
 static inline void copy_xip_bytes(void *destination, const void *address, size_t length) {
     uint8_t *out = (uint8_t *)destination;
     const uint8_t *in = (const uint8_t *)address;
-    while (length && ((uintptr_t)in & 3)) {
-        *out++ = xip_load_byte(in++);
-        --length;
+    const uintptr_t head = (uintptr_t)in & 3u;
+    if (length && head) {
+        const void *aligned = (const void *)((uintptr_t)in - head);
+        uint32_t word = xip_load_word(aligned) >> (8u * head);
+        size_t bytes = length < 4u - head ? length : 4u - head;
+        in += bytes;
+        length -= bytes;
+        while (bytes--) {
+            *out++ = (uint8_t)word;
+            word >>= 8;
+        }
     }
     while (length >= 4) {
         const uint32_t word = xip_load_word(in);
         memcpy(out, &word, 4);
         out += 4; in += 4; length -= 4;
     }
-    while (length--) *out++ = xip_load_byte(in++);
+    if (length) {
+        uint32_t word = xip_load_word(in);
+        while (length--) {
+            *out++ = (uint8_t)word;
+            word >>= 8;
+        }
+    }
 }
 #endif

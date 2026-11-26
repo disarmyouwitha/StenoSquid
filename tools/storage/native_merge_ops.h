@@ -29,13 +29,14 @@ public:
         for(uint32_t i=0;i<view.dictionary_count;++i)if(view.identities[i]==identity)return true;
         return false;
     }
-    bool Record(uint32_t address,MergeRecord &out,bool full=false) {
+    bool Record(uint32_t address,MergeRecord &out,bool full=false,bool index_key=false) {
         const uint32_t segment = address / kSegmentBytes;
         const bool staged = relocation && relocation->destination == segment;
         if(segment>=kLargePoolEnd || address%kSegmentBytes<256 || address%4 ||
            (!staged && !view.journals.Contains(segment)))return false;
         const auto status = full ? journal.Read(address, out.record, &out)
-                                 : journal.ReadKey(address, out.record, out);
+                                 : index_key ? journal.ReadIndexKey(address, out.record, out)
+                                             : journal.ReadKey(address, out.record, out);
         if (status != JournalResult::Ok || out.record.sequence > (staged ? relocation->through : view.highwater)) return false;
         out.text_address = address + 40u + 4u * out.count;
         return true;
@@ -57,13 +58,23 @@ public:
         MergeRecord target;
         return Record(b, target) ? CompareTo(a, target, true) : 2;
     }
-    int ReverseKeys(const MergeRecord &x, const MergeRecord &y) {
+    int ReverseKeys(const MergeRecord &x, const MergeRecord &y,
+                    const uint8_t *left_prefix = nullptr, const uint8_t *right_prefix = nullptr) {
         if (x.operation || y.operation) return 2;
         uint8_t left[32],right[32];
         for(uint32_t at=0;at<x.text_bytes && at<y.text_bytes;) {
             uint32_t n=x.text_bytes-at;if(n>y.text_bytes-at)n=y.text_bytes-at;if(n>32)n=32;
-            if(!device.Read(x.text_address+at,left,n) || !device.Read(y.text_address+at,right,n))return 2;
-            for(uint32_t i=0;i<n;++i)if(left[i]!=right[i])return left[i]<right[i]?-1:1;
+            const uint8_t *x_text = at == 0 ? left_prefix : nullptr;
+            const uint8_t *y_text = at == 0 ? right_prefix : nullptr;
+            if (!x_text) {
+                if (!device.Read(x.text_address+at,left,n)) return 2;
+                x_text = left;
+            }
+            if (!y_text) {
+                if (!device.Read(y.text_address+at,right,n)) return 2;
+                y_text = right;
+            }
+            for(uint32_t i=0;i<n;++i)if(x_text[i]!=y_text[i])return x_text[i]<y_text[i]?-1:1;
             at+=n;
         }
         return x.text_bytes == y.text_bytes ? CompareReverseKeyTie(x, y.identity, y.strokes, y.count)

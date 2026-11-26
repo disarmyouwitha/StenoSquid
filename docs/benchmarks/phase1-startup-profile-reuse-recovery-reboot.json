@@ -1,0 +1,139 @@
+{
+  "usb_to_ready_seconds": null,
+  "profile": [
+    {
+      "index": 0,
+      "stage": "qspi_start",
+      "uptime_ms": 828,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "quad_setup",
+      "uptime_ms": 942,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "resume_check",
+      "uptime_ms": 942,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "base_trust",
+      "uptime_ms": 942,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "mapping_probe",
+      "uptime_ms": 1052,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "catalog",
+      "uptime_ms": 1052,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1059,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "extent_checks",
+      "uptime_ms": 1060,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "journal_scan",
+      "uptime_ms": 1527,
+      "detail": 0,
+      "mapped_reads": 3027,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "forward_index",
+      "uptime_ms": 14316,
+      "detail": 0,
+      "mapped_reads": 163625,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "reverse_index",
+      "uptime_ms": 22394,
+      "detail": 0,
+      "mapped_reads": 408723,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "root_validated",
+      "uptime_ms": 32649,
+      "detail": 0,
+      "mapped_reads": 813802,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "catalog_result",
+      "uptime_ms": 32663,
+      "detail": 0,
+      "mapped_reads": 814015,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "bind",
+      "uptime_ms": 32663,
+      "detail": 1,
+      "mapped_reads": 814015,
+      "dma_reads": 0
+    },
+    {
+      "index": 14,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 32669,
+      "detail": 32,
+      "mapped_reads": 814015,
+      "dma_reads": 0
+    },
+    {
+      "index": 15,
+      "stage": "flash_ready",
+      "uptime_ms": 32675,
+      "detail": 1,
+      "mapped_reads": 814015,
+      "dma_reads": 0
+    }
+  ],
+  "status": [],
+  "result": "pass",
+  "generation": 2,
+  "dictionaries": 32,
+  "free_blocks": 17,
+  "lookup_probes_passed": 233
+}

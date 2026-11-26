@@ -1,0 +1,148 @@
+{
+  "result": "fail",
+  "status": [
+    {
+      "seconds": 21.533,
+      "reply": "NATIVE2 READY 2"
+    }
+  ],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "hfxo_held",
+      "uptime_ms": 789,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "qspi_start",
+      "uptime_ms": 789,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "quad_setup",
+      "uptime_ms": 840,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "resume_check",
+      "uptime_ms": 840,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "base_trust",
+      "uptime_ms": 840,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "mapping_probe",
+      "uptime_ms": 939,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "catalog",
+      "uptime_ms": 940,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "root_fingerprint",
+      "uptime_ms": 942,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "extent_checks",
+      "uptime_ms": 944,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "journal_scan",
+      "uptime_ms": 1393,
+      "detail": 0,
+      "mapped_reads": 3027,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "forward_index",
+      "uptime_ms": 10985,
+      "detail": 0,
+      "mapped_reads": 3027,
+      "dma_reads": 21516
+    },
+    {
+      "index": 11,
+      "stage": "reverse_index",
+      "uptime_ms": 16630,
+      "detail": 0,
+      "mapped_reads": 88061,
+      "dma_reads": 21516
+    },
+    {
+      "index": 12,
+      "stage": "root_validated",
+      "uptime_ms": 22938,
+      "detail": 0,
+      "mapped_reads": 253094,
+      "dma_reads": 21516
+    },
+    {
+      "index": 13,
+      "stage": "catalog_result",
+      "uptime_ms": 22947,
+      "detail": 0,
+      "mapped_reads": 253307,
+      "dma_reads": 21516
+    },
+    {
+      "index": 14,
+      "stage": "bind",
+      "uptime_ms": 22947,
+      "detail": 1,
+      "mapped_reads": 253307,
+      "dma_reads": 21516
+    },
+    {
+      "index": 15,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 22952,
+      "detail": 32,
+      "mapped_reads": 253307,
+      "dma_reads": 21516
+    },
+    {
+      "index": 16,
+      "stage": "flash_ready",
+      "uptime_ms": 22957,
+      "detail": 1,
+      "mapped_reads": 253307,
+      "dma_reads": 21516
+    }
+  ],
+  "error": "Expecting value: line 1 column 1 (char 0)"
+}

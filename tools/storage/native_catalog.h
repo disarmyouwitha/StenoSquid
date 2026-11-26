@@ -103,6 +103,10 @@ public:
         for(const auto &other:trusted)if(other.generation>root.generation)return false;
         return true;
     }
+    bool SameTrustedPayload(const CatalogRoot &first, const CatalogRoot &second) {
+        if (!IsTrusted(first) || !IsTrusted(second)) return false;
+        return first.address == second.address || SamePayload(first, second);
+    }
     bool CanWrite(const CatalogRoot &root)const{return !write_blocked && IsLatestTrusted(root);}
     bool HasPin(uint32_t token,const CatalogRoot &root)const {
         if(!token || !IsTrusted(root))return false;

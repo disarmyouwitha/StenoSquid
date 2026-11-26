@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "address": 65273856,
+      "bytes": 320128,
+      "crc32": 3653946223,
+      "matched": true
+    },
+    {
+      "address": 65601536,
+      "bytes": 320064,
+      "crc32": 1490554325,
+      "matched": true
+    }
+  ],
+  "lookups_passed": 233,
+  "generation": 2,
+  "dictionaries": 32,
+  "free_blocks": 17,
+  "catalog_matches": true
+}

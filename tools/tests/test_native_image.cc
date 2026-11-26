@@ -2,6 +2,9 @@
 #include "native_provisioner.h"
 #include <fstream>
 #include <iostream>
+
+static RejectedExtent rejected_extent{};
+
 int main(int argc,char **argv) {
     assert(argc==3);std::ifstream input(argv[1],std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(input)),{});assert(image.size()==255*65536);
@@ -54,6 +57,19 @@ int main(int argc,char **argv) {
     const auto &root = store.selected.root;
     std::vector<uint8_t> invalid(root.bytes);
     assert(device.Read(root.address, invalid.data(), invalid.size()));
+    assert(validator.Validate(root, false) == CatalogResult::Ok);
+    assert(validator.Validate(root, false, nullptr, nullptr, nullptr, true) == CatalogResult::Ok);
+    const auto forward = validator.ValidatedView().forward_address;
+    assert(forward >= 2 * kSegmentBytes);
+    nor.data[forward] ^= 1;
+    assert(validator.Validate(root, false, nullptr, [](const RejectedExtent &extent) {
+        rejected_extent = extent;
+    }) == CatalogResult::Corrupt);
+    assert(rejected_extent.kind == uint32_t(ExtentKind::Forward) && rejected_extent.address == forward);
+    assert(rejected_extent.checksum_read && rejected_extent.actual != rejected_extent.expected);
+    assert(rejected_extent.actual == Crc(0, nor.data.data() + forward, rejected_extent.bytes));
+    nor.data[forward] ^= 1;
+
     std::memcpy(invalid.data() + 32 + 2 * 96 + 8, invalid.data() + 32 + 96 + 8, 3); // Duplicate extent/member.
     CatalogSelection rejected;
     assert(store.catalog.Publish(store.selected, invalid.size(), Source{invalid},

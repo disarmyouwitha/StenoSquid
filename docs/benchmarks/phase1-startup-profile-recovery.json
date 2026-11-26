@@ -1,0 +1,309 @@
+{
+  "status": [
+    {
+      "seconds": 2.051,
+      "reply": "ERR Native flash busy"
+    },
+    {
+      "seconds": 68.457,
+      "reply": "NATIVE2 READY 2"
+    }
+  ],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "qspi_start",
+      "uptime_ms": 780,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "quad_setup",
+      "uptime_ms": 830,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "resume_check",
+      "uptime_ms": 830,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "base_trust",
+      "uptime_ms": 830,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "mapping_probe",
+      "uptime_ms": 1024,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "catalog",
+      "uptime_ms": 1024,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1031,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "extent_checks",
+      "uptime_ms": 1032,
+      "detail": 0,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "root_validated",
+      "uptime_ms": 1270,
+      "detail": 2,
+      "mapped_reads": 970,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1287,
+      "detail": 1,
+      "mapped_reads": 995,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "extent_checks",
+      "uptime_ms": 1296,
+      "detail": 0,
+      "mapped_reads": 1113,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "root_validated",
+      "uptime_ms": 1296,
+      "detail": 2,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "catalog_result",
+      "uptime_ms": 1296,
+      "detail": 2,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "flash_unavailable",
+      "uptime_ms": 1346,
+      "detail": 1,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 14,
+      "stage": "qspi_start",
+      "uptime_ms": 218970,
+      "detail": 0,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 15,
+      "stage": "quad_setup",
+      "uptime_ms": 219020,
+      "detail": 32,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 16,
+      "stage": "resume_check",
+      "uptime_ms": 219020,
+      "detail": 0,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 17,
+      "stage": "base_trust",
+      "uptime_ms": 219020,
+      "detail": 2,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 18,
+      "stage": "mapping_probe",
+      "uptime_ms": 219020,
+      "detail": 0,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 19,
+      "stage": "catalog",
+      "uptime_ms": 219020,
+      "detail": 1,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 20,
+      "stage": "root_fingerprint",
+      "uptime_ms": 219026,
+      "detail": 0,
+      "mapped_reads": 1142,
+      "dma_reads": 0
+    },
+    {
+      "index": 21,
+      "stage": "extent_checks",
+      "uptime_ms": 219027,
+      "detail": 0,
+      "mapped_reads": 1260,
+      "dma_reads": 0
+    },
+    {
+      "index": 22,
+      "stage": "journal_scan",
+      "uptime_ms": 249698,
+      "detail": 0,
+      "mapped_reads": 231038,
+      "dma_reads": 0
+    },
+    {
+      "index": 23,
+      "stage": "forward_index",
+      "uptime_ms": 258708,
+      "detail": 0,
+      "mapped_reads": 391338,
+      "dma_reads": 0
+    },
+    {
+      "index": 24,
+      "stage": "reverse_index",
+      "uptime_ms": 266309,
+      "detail": 0,
+      "mapped_reads": 711466,
+      "dma_reads": 0
+    },
+    {
+      "index": 25,
+      "stage": "root_validated",
+      "uptime_ms": 276085,
+      "detail": 0,
+      "mapped_reads": 1191560,
+      "dma_reads": 0
+    },
+    {
+      "index": 26,
+      "stage": "catalog_result",
+      "uptime_ms": 287215,
+      "detail": 0,
+      "mapped_reads": 1432225,
+      "dma_reads": 0
+    },
+    {
+      "index": 27,
+      "stage": "bind",
+      "uptime_ms": 287215,
+      "detail": 1,
+      "mapped_reads": 1432225,
+      "dma_reads": 0
+    },
+    {
+      "index": 28,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 287219,
+      "detail": 32,
+      "mapped_reads": 1432225,
+      "dma_reads": 0
+    },
+    {
+      "index": 29,
+      "stage": "flash_ready",
+      "uptime_ms": 287283,
+      "detail": 1,
+      "mapped_reads": 1432225,
+      "dma_reads": 0
+    }
+  ],
+  "native": {
+    "format": "SQBCAT02",
+    "ready": true,
+    "read_only": false,
+    "generation": 2,
+    "tail": 17,
+    "maintenance": 0,
+    "warm_resumes": 0,
+    "full_opens": 2,
+    "work_steps": 0,
+    "max_maintenance_slice_us": 0,
+    "input_highwater": 0,
+    "input_overflows": 0,
+    "max_replay_delay_ms": 0,
+    "personal_id": 1,
+    "auto_checkpoints": 0,
+    "auto_checkpoint_result": 1,
+    "auto_reclaimed": 0,
+    "dictionaries": 32,
+    "ids": [
+      1,
+      32,
+      31,
+      30,
+      29,
+      28,
+      27,
+      26,
+      25,
+      24,
+      23,
+      22,
+      21,
+      19,
+      18,
+      17,
+      16,
+      15,
+      14,
+      13,
+      12,
+      11,
+      10,
+      9,
+      8,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      20
+    ]
+  },
+  "lookup": "cat"
+}

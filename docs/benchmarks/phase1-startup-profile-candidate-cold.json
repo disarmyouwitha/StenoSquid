@@ -1,0 +1,135 @@
+{
+  "result": "fail",
+  "status": [],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "qspi_start",
+      "uptime_ms": 780,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "quad_setup",
+      "uptime_ms": 882,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "resume_check",
+      "uptime_ms": 882,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "base_trust",
+      "uptime_ms": 882,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "mapping_probe",
+      "uptime_ms": 981,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "catalog",
+      "uptime_ms": 981,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "root_fingerprint",
+      "uptime_ms": 987,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "extent_checks",
+      "uptime_ms": 988,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "reverse_rejected",
+      "uptime_ms": 1441,
+      "detail": 65601536,
+      "mapped_reads": 2847,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "root_validated",
+      "uptime_ms": 1441,
+      "detail": 2,
+      "mapped_reads": 2847,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1447,
+      "detail": 1,
+      "mapped_reads": 2872,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "extent_checks",
+      "uptime_ms": 1449,
+      "detail": 1,
+      "mapped_reads": 2990,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "forward_rejected",
+      "uptime_ms": 1627,
+      "detail": 65273856,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "root_validated",
+      "uptime_ms": 1627,
+      "detail": 2,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 14,
+      "stage": "catalog_result",
+      "uptime_ms": 1627,
+      "detail": 2,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 15,
+      "stage": "flash_unavailable",
+      "uptime_ms": 1631,
+      "detail": 1,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    }
+  ],
+  "error": "Javelin did not become ready before the deadline"
+}

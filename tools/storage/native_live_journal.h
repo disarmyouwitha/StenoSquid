@@ -6,6 +6,8 @@
 #include "binary_record.h"
 
 namespace candidate_b {
+template<class Device> class NativeStore;
+template<class Device> class NativeValidator;
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
 void ReplayJournalFault(unsigned line, uint32_t address, unsigned status);
 #endif
@@ -42,6 +44,8 @@ struct OutlineEdits {
 
 template <class Device>
 class LiveJournal {
+    friend class NativeStore<Device>;
+    friend class NativeValidator<Device>;
     Device &device;
     NativeCatalog<Device> &catalog;
     NativeJournal<Device> journal;
@@ -53,6 +57,7 @@ class LiveJournal {
     uint64_t last_epoch=0;
     JournalScan scan{};
     bool recovering=false,scanning=false,ready=false,sealed=false,quarantine=false,boundary_seen=false,maintenance=false;
+    bool staged_recovery = false;
 
     LiveResult Fail(LiveResult result){recovering=ready=false;return result;}
     bool HasIdentity(const LiveView &view,uint32_t id)const {
@@ -257,9 +262,17 @@ public:
     // Attach only a fully validated selection from this catalog instance.
     // Opening/recovery is read-only and advances one metadata row or record/call.
     LiveResult Begin(const CatalogSelection &selection) {
+        return BeginRecovery(selection, true);
+    }
+
+    LiveResult RecoverStep() { return RecoverStepImpl(true); }
+
+private:
+    LiveResult BeginRecovery(const CatalogSelection &selection, bool require_trusted) {
         ready=recovering=scanning=false;live={};scan={};
+        staged_recovery = false;
         dictionary_position=extent_position=append_address=append_end=0;last_epoch=0;sealed=false;
-        if(!catalog.IsTrusted(selection.root))return LiveResult::Invalid;
+        if (require_trusted && !catalog.IsTrusted(selection.root)) return LiveResult::Invalid;
         uint8_t prefix[32];
         if(!device.Read(selection.root.address,prefix,32))return LiveResult::IoError;
         shape.next_id=Word(prefix);shape.dictionaries=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;
@@ -272,10 +285,10 @@ public:
         recovering=true;return LiveResult::More;
     }
 
-    LiveResult RecoverStep() {
+    LiveResult RecoverStepImpl(bool require_trusted) {
         if(ready)return LiveResult::Ready;
         if(!recovering)return LiveResult::Invalid;
-        if(!catalog.IsLatestTrusted(live.root))return Fail(LiveResult::Stale);
+        if(require_trusted && !catalog.IsLatestTrusted(live.root))return Fail(LiveResult::Stale);
         if(dictionary_position<shape.dictionaries) {
             uint8_t row[4];
             if(!device.Read(live.root.address+32+dictionary_position*96,row,4))return Fail(LiveResult::IoError);
@@ -284,20 +297,16 @@ public:
             live.identities[live.dictionary_count++]=id;++dictionary_position;return LiveResult::More;
         }
         if(scanning) {
-            JournalRecord record;const auto status=journal.Step(scan,record);
+            JournalRecord record;
+            JournalKey key;
+            const auto status = journal.Step(scan, record, &key);
             if(status==JournalResult::IoError)return Fail(LiveResult::IoError);
             if(status==JournalResult::Ok) {
-                uint8_t key[8];
-                if(!device.Read(record.address+32,key,8))return Fail(LiveResult::IoError);
-                if(!Word(key) || key[5]<1 || key[5]>16)return Fail(LiveResult::Corrupt);
-                Observe(Word(key),key[5]);
+                Observe(key.identity, key.count);
                 live.highwater=record.sequence;live.highwater_address=record.address;
                 if(record.sequence==live.through)boundary_seen=true;
                 if(record.sequence>live.through) {
-                    uint8_t bytes[64];uint32_t strokes[16];
-                    if(!device.Read(record.address+40,bytes,key[5]*4))return Fail(LiveResult::IoError);
-                    for(unsigned i=0;i<key[5];++i)strokes[i]=Word(bytes+i*4);
-                    const auto added=AppendTail(record.address,Word(key),strokes,key[5]);
+                    const auto added = AppendTail(record.address, key.identity, key.strokes, key.count);
                     if(added!=LiveResult::Ok)return Fail(added);
                 }
                 return LiveResult::More;
@@ -326,6 +335,31 @@ public:
         if(!boundary_seen || live.through>live.highwater || (live.forward_count && !live.through))return Fail(LiveResult::Corrupt);
         recovering=false;ready=true;return LiveResult::Ready;
     }
+
+    // The validator calls this after checking catalog schema and extent CRCs.
+    // Recovery state stays private until catalog selection authenticates it.
+    bool StageRecovery(const CatalogRoot &root) {
+        if (BeginRecovery({root}, false) != LiveResult::More) return false;
+        LiveResult step;
+        do {
+            step = RecoverStepImpl(false);
+        } while (step == LiveResult::More);
+        ready = false;
+        return step == LiveResult::Ready;
+    }
+
+    bool AcceptStagedRecovery(const CatalogSelection &selection) {
+        const bool accepted = staged_recovery && catalog.IsLatestTrusted(selection.root) &&
+                              catalog.SameTrustedPayload(live.root, selection.root);
+        staged_recovery = false;
+        if (!accepted) return false;
+        live.root = selection.root;
+        quarantine = selection.quarantine;
+        ready = true;
+        return true;
+    }
+
+public:
 
     // Caller has published a metadata-only edit under the same exclusive lease.
     // Compare immutable ownership and identity order before retaining live cursors.

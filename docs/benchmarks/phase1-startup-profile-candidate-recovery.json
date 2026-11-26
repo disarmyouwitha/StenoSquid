@@ -1,0 +1,325 @@
+{
+  "status": [
+    {
+      "seconds": 2.057,
+      "reply": "ERR Native flash busy"
+    },
+    {
+      "seconds": 67.953,
+      "reply": "NATIVE2 READY 2"
+    }
+  ],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "qspi_start",
+      "uptime_ms": 780,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "quad_setup",
+      "uptime_ms": 882,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "resume_check",
+      "uptime_ms": 882,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "base_trust",
+      "uptime_ms": 882,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "mapping_probe",
+      "uptime_ms": 981,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "catalog",
+      "uptime_ms": 981,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "root_fingerprint",
+      "uptime_ms": 987,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "extent_checks",
+      "uptime_ms": 988,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "reverse_rejected",
+      "uptime_ms": 1441,
+      "detail": 65601536,
+      "mapped_reads": 2847,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "root_validated",
+      "uptime_ms": 1441,
+      "detail": 2,
+      "mapped_reads": 2847,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1447,
+      "detail": 1,
+      "mapped_reads": 2872,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "extent_checks",
+      "uptime_ms": 1449,
+      "detail": 1,
+      "mapped_reads": 2990,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "forward_rejected",
+      "uptime_ms": 1627,
+      "detail": 65273856,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "root_validated",
+      "uptime_ms": 1627,
+      "detail": 2,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 14,
+      "stage": "catalog_result",
+      "uptime_ms": 1627,
+      "detail": 2,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 15,
+      "stage": "flash_unavailable",
+      "uptime_ms": 1631,
+      "detail": 1,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 16,
+      "stage": "qspi_start",
+      "uptime_ms": 174988,
+      "detail": 0,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 17,
+      "stage": "quad_setup",
+      "uptime_ms": 175038,
+      "detail": 32,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 18,
+      "stage": "resume_check",
+      "uptime_ms": 175038,
+      "detail": 0,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 19,
+      "stage": "base_trust",
+      "uptime_ms": 175038,
+      "detail": 2,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 20,
+      "stage": "mapping_probe",
+      "uptime_ms": 175038,
+      "detail": 0,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 21,
+      "stage": "catalog",
+      "uptime_ms": 175038,
+      "detail": 1,
+      "mapped_reads": 4442,
+      "dma_reads": 0
+    },
+    {
+      "index": 22,
+      "stage": "root_fingerprint",
+      "uptime_ms": 175044,
+      "detail": 0,
+      "mapped_reads": 4467,
+      "dma_reads": 0
+    },
+    {
+      "index": 23,
+      "stage": "extent_checks",
+      "uptime_ms": 175045,
+      "detail": 0,
+      "mapped_reads": 4585,
+      "dma_reads": 0
+    },
+    {
+      "index": 24,
+      "stage": "journal_scan",
+      "uptime_ms": 206192,
+      "detail": 0,
+      "mapped_reads": 234363,
+      "dma_reads": 0
+    },
+    {
+      "index": 25,
+      "stage": "forward_index",
+      "uptime_ms": 215346,
+      "detail": 0,
+      "mapped_reads": 394663,
+      "dma_reads": 0
+    },
+    {
+      "index": 26,
+      "stage": "reverse_index",
+      "uptime_ms": 222388,
+      "detail": 0,
+      "mapped_reads": 639761,
+      "dma_reads": 0
+    },
+    {
+      "index": 27,
+      "stage": "root_validated",
+      "uptime_ms": 231337,
+      "detail": 0,
+      "mapped_reads": 1044840,
+      "dma_reads": 0
+    },
+    {
+      "index": 28,
+      "stage": "catalog_result",
+      "uptime_ms": 242724,
+      "detail": 0,
+      "mapped_reads": 1205439,
+      "dma_reads": 0
+    },
+    {
+      "index": 29,
+      "stage": "bind",
+      "uptime_ms": 242724,
+      "detail": 1,
+      "mapped_reads": 1205439,
+      "dma_reads": 0
+    },
+    {
+      "index": 30,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 242728,
+      "detail": 32,
+      "mapped_reads": 1205439,
+      "dma_reads": 0
+    },
+    {
+      "index": 31,
+      "stage": "flash_ready",
+      "uptime_ms": 242794,
+      "detail": 1,
+      "mapped_reads": 1205439,
+      "dma_reads": 0
+    }
+  ],
+  "native": {
+    "format": "SQBCAT02",
+    "ready": true,
+    "read_only": false,
+    "generation": 2,
+    "tail": 17,
+    "maintenance": 0,
+    "warm_resumes": 0,
+    "full_opens": 2,
+    "work_steps": 0,
+    "max_maintenance_slice_us": 0,
+    "input_highwater": 0,
+    "input_overflows": 0,
+    "max_replay_delay_ms": 0,
+    "personal_id": 1,
+    "auto_checkpoints": 0,
+    "auto_checkpoint_result": 1,
+    "auto_reclaimed": 0,
+    "dictionaries": 32,
+    "ids": [
+      1,
+      32,
+      31,
+      30,
+      29,
+      28,
+      27,
+      26,
+      25,
+      24,
+      23,
+      22,
+      21,
+      19,
+      18,
+      17,
+      16,
+      15,
+      14,
+      13,
+      12,
+      11,
+      10,
+      9,
+      8,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      20
+    ]
+  },
+  "lookup": "cat"
+}

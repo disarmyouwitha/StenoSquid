@@ -1,0 +1,10 @@
+{
+  "result": "pass",
+  "generation": 2,
+  "dictionaries": 32,
+  "tail": 17,
+  "layout_status": "timeout",
+  "read_only": false,
+  "lookups_passed": 233,
+  "catalog_matches_fixture": true
+}
