@@ -467,3 +467,9 @@ The layout-map query timed out. See the
 [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-after-uf2.json),
 [cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-cold.json),
 and [lookup results](../../docs/benchmarks/phase1-startup-profile-hfxo-blocks-lookups.json).
+
+For an index-transport comparison, append `phase1-boot-index-dma.conf` to
+that build. It keeps the 2 KiB DMA journal scan and substitutes 256-byte DMA
+fills for mapped reads during both index passes. Extent validation and normal
+dictionary access retain their existing read paths. The host run used 133,400
+transactions for 38,984,968 bytes and still rejected a corrupt forward index.

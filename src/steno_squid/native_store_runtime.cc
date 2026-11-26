@@ -88,6 +88,9 @@ struct FlashDevice {
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
     bool journal_dma = false;
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+    bool index_dma = false;
+#endif
 #if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
     uint32_t cold_read_yield_at = 0;
     StartupReadAhead startup_read_ahead;
@@ -109,7 +112,11 @@ struct FlashDevice {
             cold_read_yield_at = k_uptime_get_32() + 5u;
         }
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
-        if (journal_dma) {
+        if (journal_dma
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+            || index_dma
+#endif
+        ) {
 #else
         if (cold_read_yield_at) {
 #endif
@@ -118,10 +125,9 @@ struct FlashDevice {
                 return nrfx_qspi_read(buffer, sizeof(buffer), base) == NRFX_SUCCESS;
             };
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
-            return startup_read_ahead.Read(at, out, n, export_buffer, fill);
-#else
-            return startup_read_ahead.Read(at, out, n, dma, fill);
+            if (journal_dma) return startup_read_ahead.Read(at, out, n, export_buffer, fill);
 #endif
+            return startup_read_ahead.Read(at, out, n, dma, fill);
         }
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
@@ -958,6 +964,10 @@ extern "C" bool steno_squid_native_flash_open(void) {
 #endif
                 if (flash_device.journal_dma) flash_device.startup_read_ahead = {};
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+                flash_device.index_dma = stage == ValidationStage::Forward || stage == ValidationStage::Reverse;
+                if (flash_device.index_dma) flash_device.startup_read_ahead = {};
+#endif
                 switch (stage) {
                 case ValidationStage::Extents: BOOT_STAGE("extent_checks", flash_device.trust_bases); break;
                 case ValidationStage::Journal: BOOT_STAGE("journal_scan", 0); break;
@@ -977,6 +987,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
         );
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
         flash_device.journal_dma = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
+        flash_device.index_dma = false;
 #endif
         flash_device.trust_bases=false;
         BOOT_STAGE("root_validated", static_cast<uint32_t>(status));

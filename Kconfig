@@ -95,6 +95,10 @@ config ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
     bool "Use larger sequential journal DMA blocks during startup"
     depends on ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
 
+config ZMK_STENO_SQUID_BOOT_INDEX_DMA
+    bool "Use DMA read-ahead for startup index validation"
+    depends on ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS && ZMK_STENO_SQUID_BOOT_INDEX_BATCH
+
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG

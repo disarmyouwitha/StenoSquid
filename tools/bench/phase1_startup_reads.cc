@@ -44,6 +44,11 @@ static void JournalDmaOnly(ValidationStage stage) {
     hybrid_device->read_ahead = stage == ValidationStage::Journal;
     if (hybrid_device->read_ahead) hybrid_device->cache = {};
 }
+static void JournalAndIndexDma(ValidationStage stage) {
+    hybrid_device->read_ahead = stage != ValidationStage::Extents;
+    hybrid_device->wide_read_ahead = stage == ValidationStage::Journal;
+    if (hybrid_device->read_ahead) hybrid_device->cache = {};
+}
 
 int main(int argc, char **argv) {
     assert(argc == 2);
@@ -54,12 +59,13 @@ int main(int argc, char **argv) {
     nor.data.resize(nor.data.size() + kSegmentBytes, 255);
 
     const char *mode_name[] = {"direct requests", "DMA pages", "reused recovery", "batched index keys",
-                               "batched index + journal DMA", "batched index + 2 KiB journal DMA"};
+                               "batched index + journal DMA", "batched index + 2 KiB journal DMA",
+                               "DMA for journal and batched indexes"};
     for (unsigned mode = 0; mode < sizeof(mode_name) / sizeof(mode_name[0]); ++mode) {
         const bool read_ahead = mode == 1;
         const bool reuse_recovery = mode >= 2;
         const bool batch_keys = mode >= 3;
-        const auto stage = mode >= 4 ? JournalDmaOnly : nullptr;
+        const auto stage = mode == 6 ? JournalAndIndexDma : mode >= 4 ? JournalDmaOnly : nullptr;
         StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, mode == 5, {}, {}, {}};
         hybrid_device = &device;
         NativeStore<StartupDevice> store(device);
