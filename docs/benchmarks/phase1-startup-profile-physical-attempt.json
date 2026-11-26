@@ -1,0 +1,124 @@
+{
+  "result": "fail",
+  "status": [
+    {
+      "seconds": 10.232,
+      "reply": "Connect one Steno Squid left half by USB, or use --serial to select it."
+    }
+  ],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "qspi_start",
+      "uptime_ms": 666,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "quad_setup",
+      "uptime_ms": 716,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "resume_check",
+      "uptime_ms": 716,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "base_trust",
+      "uptime_ms": 716,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "mapping_probe",
+      "uptime_ms": 909,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "catalog",
+      "uptime_ms": 909,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "root_fingerprint",
+      "uptime_ms": 916,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "extent_checks",
+      "uptime_ms": 917,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "journal_scan",
+      "uptime_ms": 1265,
+      "detail": 0,
+      "mapped_reads": 3060,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "forward_index",
+      "uptime_ms": 10266,
+      "detail": 0,
+      "mapped_reads": 163360,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "extent_checks",
+      "uptime_ms": 1296,
+      "detail": 0,
+      "mapped_reads": 1113,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "root_validated",
+      "uptime_ms": 1296,
+      "detail": 2,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "catalog_result",
+      "uptime_ms": 1296,
+      "detail": 2,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "flash_unavailable",
+      "uptime_ms": 1346,
+      "detail": 1,
+      "mapped_reads": 1117,
+      "dma_reads": 0
+    }
+  ],
+  "error": "Javelin did not become ready before the deadline"
+}

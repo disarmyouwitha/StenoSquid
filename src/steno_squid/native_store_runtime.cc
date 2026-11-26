@@ -880,6 +880,13 @@ extern "C" bool steno_squid_native_flash_open(void) {
                 case ValidationStage::Forward: BOOT_STAGE("forward_index", 0); break;
                 case ValidationStage::Reverse: BOOT_STAGE("reverse_index", 0); break;
                 }
+            }, [](uint32_t kind, uint32_t address) {
+                switch (static_cast<ExtentKind>(kind)) {
+                case ExtentKind::Base: BOOT_STAGE("base_rejected", address); break;
+                case ExtentKind::Journal: BOOT_STAGE("journal_rejected", address); break;
+                case ExtentKind::Forward: BOOT_STAGE("forward_rejected", address); break;
+                case ExtentKind::Reverse: BOOT_STAGE("reverse_rejected", address); break;
+                }
             }
 #endif
         );
@@ -1496,7 +1503,8 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
                      index, event.stage, event.uptime_ms, event.detail,
                      event.mapped_reads, event.dma_reads);
         } else {
-            snprintk(reply, bytes, "{\"first\":%u,\"next\":%u}", first, next);
+            snprintk(reply, bytes, "{\"first\":%u,\"next\":%u,\"uptime_ms\":%u}",
+                     first, next, k_uptime_get_32());
         }
         return;
     }

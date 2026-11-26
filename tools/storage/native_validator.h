@@ -31,9 +31,17 @@ public:
         return device.Checksum(start*kSegmentBytes,bytes,crc) && crc==Word(extent+8);
     }
     CatalogResult Validate(const CatalogRoot &root, bool cross_check = true,
-                           void (*stage)(ValidationStage) = nullptr) {
+                           void (*stage)(ValidationStage) = nullptr,
+                           void (*extent_failed)(uint32_t, uint32_t) = nullptr) {
         if (stage) stage(ValidationStage::Extents);
-        const auto schema=catalog.Validate(root,[&](uint32_t i,const uint8_t *row){return Extent(i,row);});
+        const auto schema = catalog.Validate(root, [&](uint32_t i, const uint8_t *row) {
+            if (Extent(i, row)) return true;
+            if (extent_failed) {
+                const uint32_t segment = uint16_t(row[0]) | uint16_t(row[1]) << 8;
+                extent_failed(Word(row + 12), segment * kSegmentBytes);
+            }
+            return false;
+        });
         if(schema!=CatalogResult::Ok)return schema;
         view={};reverse_address=reverse_count=0;uint8_t prefix[32];
         if(!device.Read(root.address,prefix,32))return CatalogResult::IoError;

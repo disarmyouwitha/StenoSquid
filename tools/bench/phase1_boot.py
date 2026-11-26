@@ -27,6 +27,13 @@ def collect_profile(console, report):
         if reply == "ERR Unknown native installation command":
             raise ValueError("The left firmware needs CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE.")
         row = json.loads(reply)
+        if events and row.get("uptime_ms", events[-1]["uptime_ms"]) < events[-1]["uptime_ms"]:
+            # An nRF reset can occur during a USB reconnect. Index zero is
+            # reused by the new firmware boot, so save the interrupted trace.
+            report.setdefault("interrupted_profiles", []).append(events)
+            events = report["profile"] = []
+            index = 0
+            continue
         if "stage" in row:
             events.append(row)
             index += 1

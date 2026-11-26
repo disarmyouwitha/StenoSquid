@@ -214,6 +214,27 @@ first, then measure batching, read-ahead and QSPI changes against the five-secon
 target. Consider extending persistent trust only if those changes fall short.
 Optimistic startup requires explicit approval.
 
+The profiled 64 MiB left build at 32 MHz reached ready 38.1 seconds after USB
+appeared following a UF2 update. The journal scan took 9.1 seconds, the index
+passes took 7.6 and 9.8 seconds, and catalog selection and live journal recovery
+took 11.1 seconds. All 1,204,247 counted reads used mapped QSPI. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-after-uf2.json).
+
+The physical off/on attempt hit a USB disconnect and recorded events from two
+boots, so it is excluded from timing comparisons. A fresh read of the surviving
+boot trace showed both roots rejected before journal scanning and the flash
+reported unavailable at 1.346 seconds of uptime. See the
+[attempt](../../docs/benchmarks/phase1-startup-profile-physical-attempt.json) and
+[cold-boot trace](../../docs/benchmarks/phase1-startup-profile-cold-unavailable.json).
+An explicit USB status check later woke the idle flash. The second full open
+took 68.3 seconds from QSPI start to ready and recovered generation 2 with all
+32 dictionaries. See the [recovery trace](../../docs/benchmarks/phase1-startup-profile-recovery.json).
+
+Reusing the decoded journal key during live recovery and reading 16 index
+addresses at a time reduced logical reads in the full-pool host simulation
+from 1,201,627 to 971,516. The device-side candidate still
+needs a cold timing run against the five-second target.
+
 ### 64 MiB hardware results
 
 - The Boardsource pool used 1,006 of 1,023 blocks, with 17 contiguous
