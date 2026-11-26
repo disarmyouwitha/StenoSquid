@@ -98,9 +98,21 @@ anchor, the 253-extent limit, an unreachable 25-bit stroke test). While adding t
 in my own `golden_snapshot.py` helper (`append_tail` stepped by the unpadded record length, so earlier "journal tail"
 vectors only exercised part of their records; JS still agreed with Python, now on all of them).
 
-Not yet ported: `backup_all`, `overlay_usage`, the named-snapshot planner (`native_snapshot.py`, which needs the
-compiler: `tools/bench/js/compile_fast.mjs` is its spike), the import planner (`native_import_plan.py`), merge, repack
-(`native_repack.py`, M4) and recovery (M4). The JS pieces are not yet wired into the Manager UI (M3/M5).
+**M2 status, second part: the snapshot, change, merge and import planners are ported.** `snapshot_plan.js` ports, from
+`native_snapshot.py` and `native_import_plan.py`: the stage allocator, `plan_named_snapshot`, `plan_change` (consolidate,
+convert, clear, delete, merge), `merge_rows`, `merged_entries`, `journal_baseline`, `inspect_free`, `consolidation_cost`,
+`plan_compact_import`, and the import, merge and offline-merge token digests (Python's `json.dumps` and SHA-256, byte for
+byte). Compiled images enter as plain data, so the compiler is gated separately. Gate: 131 golden cases from Python
+(chained imports to get real compact rows; patched catalogs for the identity-counter limit, the 253-extent limit, each
+merge-pair condition, a shared extent and out-of-range identities; journal tails with resets and entries of both merged
+identities; scattered free segments so the staging order is not ascending), plus replayed flash reads for
+`merged_entries`; results are byte-identical or fail with the same error. The vectors caught one real porting mistake
+(Python escapes DEL, 0x7f, in `json.dumps`, which would have changed every token whose serial contained it). Mutation
+check: 45 deliberate mutations, all caught except unreachable ones.
+
+Not yet ported: `backup_all`, `overlay_usage`, the factory-package planner (`native_base_update.py`), the compiler's
+use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
+(`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
 ## 2. Findings
 
 ### RAM by owner (measured, 32-slot everyday build with the transfer option, link map)
