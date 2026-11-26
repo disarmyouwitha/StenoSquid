@@ -507,6 +507,14 @@ The recovery candidate was flashed on the same 16 MiB left half at 32 MHz.
 The original generation 3 opened and stayed ready during a 75-second USB
 observation. Both enabled personal translations matched the stored entries.
 The full open checked the bases, so this run did not exercise the early
-background scan used after a trusted-base open. An actual deep-sleep wake and
-a subsequent trusted-base boot still need verification.
+background scan used after a trusted-base open.
 See the [post-UF2 observation](../../docs/benchmarks/phase1-16mib-recovery-after-uf2.json).
+
+After physically switching the left half off and back on, the dictionary
+opened at 1.092 seconds of device uptime. At 103.938 seconds the trace
+recorded a same-boot resume after external flash idle power-down. The
+flash became ready 52 ms after that resume began. Both personal entries
+still resolved, with no recorded scrub or runtime flash fault. The trace
+records scan errors only, and the scan can wait while flash is suspended.
+The test verified USB idle resume. A Bluetooth deep-sleep wake remains
+unverified. See the [cold trace](../../docs/benchmarks/phase1-16mib-recovery-cold.json).
