@@ -166,12 +166,12 @@ public:
     // One committed record per call, at most 2119 payload bytes streamed through
     // fixed workspace. Caller can yield/cancel between steps. IO errors leave
     // cursor unchanged; committed corruption never looks like an unfinished tail.
-    JournalResult Step(JournalScan &scan, JournalRecord &record) {
+    JournalResult Step(JournalScan &scan, JournalRecord &record, JournalKey *key = nullptr) {
         if (!scan.ready || scan.next > scan.end || scan.end % kSegmentBytes ||
             scan.end > NativePoolEnd(device)*kSegmentBytes || scan.end < 3*kSegmentBytes ||
             scan.next < scan.end-kSegmentBytes+kPageBytes) return JournalResult::Invalid;
         if (scan.end-scan.next < 32) return JournalResult::End;
-        const auto status=Read(scan.next,record);
+        const auto status=Read(scan.next,record,key);
         if (status!=JournalResult::Ok) return status;
         if (record.sequence<=scan.previous) return JournalResult::Corrupt;
         scan.previous=record.sequence;

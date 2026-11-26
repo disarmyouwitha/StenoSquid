@@ -284,20 +284,16 @@ public:
             live.identities[live.dictionary_count++]=id;++dictionary_position;return LiveResult::More;
         }
         if(scanning) {
-            JournalRecord record;const auto status=journal.Step(scan,record);
+            JournalRecord record;
+            JournalKey key;
+            const auto status = journal.Step(scan, record, &key);
             if(status==JournalResult::IoError)return Fail(LiveResult::IoError);
             if(status==JournalResult::Ok) {
-                uint8_t key[8];
-                if(!device.Read(record.address+32,key,8))return Fail(LiveResult::IoError);
-                if(!Word(key) || key[5]<1 || key[5]>16)return Fail(LiveResult::Corrupt);
-                Observe(Word(key),key[5]);
+                Observe(key.identity, key.count);
                 live.highwater=record.sequence;live.highwater_address=record.address;
                 if(record.sequence==live.through)boundary_seen=true;
                 if(record.sequence>live.through) {
-                    uint8_t bytes[64];uint32_t strokes[16];
-                    if(!device.Read(record.address+40,bytes,key[5]*4))return Fail(LiveResult::IoError);
-                    for(unsigned i=0;i<key[5];++i)strokes[i]=Word(bytes+i*4);
-                    const auto added=AppendTail(record.address,Word(key),strokes,key[5]);
+                    const auto added = AppendTail(record.address, key.identity, key.strokes, key.count);
                     if(added!=LiveResult::Ok)return Fail(added);
                 }
                 return LiveResult::More;
