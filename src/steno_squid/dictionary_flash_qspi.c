@@ -68,7 +68,13 @@ static bool start_qspi(nrfx_qspi_config_t *config) {
     }
     memcpy(lf_last_jedec, id, sizeof(lf_last_jedec));
     squid_flash_diag_log("Lapwing JEDEC ID: %02x %02x %02x\n", id[0], id[1], id[2]);
-    return id[0] == 0xef && id[1] == 0x40 && (id[2] == 0x18 || id[2] == 0x20);
+    const bool supported = id[0] == 0xef && id[1] == 0x40 && (id[2] == 0x18 || id[2] == 0x20);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+    if (!supported) {
+        steno_squid_boot_stage("qspi_unsupported_jedec", (uint32_t)id[0] << 16 | (uint32_t)id[1] << 8 | id[2]);
+    }
+#endif
+    return supported;
 }
 
 /* Four data lines for every read that follows, raw or mapped. */

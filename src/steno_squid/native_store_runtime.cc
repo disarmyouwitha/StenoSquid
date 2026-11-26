@@ -891,6 +891,9 @@ extern "C" void steno_squid_boot_stage(const char *stage, uint32_t detail) {
     ++boot_event_next;
     k_spin_unlock(&boot_event_lock, key);
 }
+void candidate_b::ProfileLookupFault(const char *stage, LiveResult result) {
+    steno_squid_boot_stage(stage, static_cast<uint32_t>(result));
+}
 #define BOOT_STAGE(stage, detail) steno_squid_boot_stage(stage, detail)
 static void profile_extent_rejection(const RejectedExtent &extent) {
     switch (static_cast<ExtentKind>(extent.kind)) {
@@ -936,7 +939,12 @@ extern "C" bool steno_squid_native_flash_open(void) {
     if(healthy && loaded && last_open_pool_end == flash_device.PoolEnd() && NativeWarmResumeEligible(store)) {
         BOOT_STAGE("resume_bind", 0);
         flash_device.mapped=true;
-        for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
+        for (size_t i = 0; i < cell_count; ++i) {
+            if (cells[i].Probe()) continue;
+            BOOT_STAGE("resume_probe_error", cells[i].base_offset);
+            base_provider.Fault();
+            return false;
+        }
         NoteIdleMaintenance();
         ++warm_resumes;return true;
     }
@@ -1730,6 +1738,8 @@ extern "C" void steno_squid_native_scrub_step(void) {
     if(scrub_offset==cell.base_bytes) {
         if (scrub_crc != cell.base_crc) {
             BOOT_STAGE("scrub_crc_error", cell.base_offset);
+            BOOT_STAGE("scrub_expected_crc", cell.base_crc);
+            BOOT_STAGE("scrub_actual_crc", scrub_crc);
             base_provider.Fault();
             return;
         }

@@ -4,6 +4,9 @@
 #include "native_dictionary_adapter.h"
 #include "../../tools/storage/native_store.h"
 namespace candidate_b {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+void ProfileLookupFault(const char *stage, LiveResult result);
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
 void ReplayLookupFault(LiveResult result, uint32_t id, const uint32_t *strokes, size_t length);
 #endif
@@ -58,6 +61,9 @@ public:
         const auto result=store.live.FindOutline(view,edits,id,strokes,lookup.length,record);
         if(result==LiveResult::Missing)return EditState::Missing;
         if(result!=LiveResult::Ok){
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+            ProfileLookupFault("lookup_outline_error", result);
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
             ReplayLookupFault(result,id,strokes,lookup.length);
 #endif
@@ -68,10 +74,15 @@ public:
     }
     bool Read(uint32_t token,const EditText &text,char *out)override {
         const RecordView record{Operation::Set,text.address,text.bytes};
-        const bool ok=token && token==view.token &&
-            store.live.ReadText(view,record,reinterpret_cast<uint8_t *>(out),text.bytes)==LiveResult::Ok;
-        if(!ok)bases.Fault();
-        return ok;
+        const auto result = token && token == view.token
+                                ? store.live.ReadText(view, record, reinterpret_cast<uint8_t *>(out), text.bytes)
+                                : LiveResult::Stale;
+        if (result == LiveResult::Ok) return true;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+        ProfileLookupFault("lookup_text_error", result);
+#endif
+        bases.Fault();
+        return false;
     }
     StenoDictionaryLookupResult Base(uint32_t token,uint32_t id,const StenoDictionaryLookup &lookup)override {
         if (!bases.Ready() || !token || token != view.token)

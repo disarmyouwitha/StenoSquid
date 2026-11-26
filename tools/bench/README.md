@@ -518,3 +518,10 @@ still resolved, with no recorded scrub or runtime flash fault. The trace
 records scan errors only, and the scan can wait while flash is suspended.
 The test verified USB idle resume. A Bluetooth deep-sleep wake remains
 unverified. See the [cold trace](../../docs/benchmarks/phase1-16mib-recovery-cold.json).
+
+On the Bluetooth reproduction build, read `native_install boot-profile <index>`
+over USB before resetting the left half. `lookup_outline_error` and
+`lookup_text_error` carry the Native `LiveResult`. `resume_probe_error` and
+`scrub_read_error` identify the affected flash addresses. `scrub_crc_error`
+is followed by the expected and observed checksums. `qspi_unsupported_jedec`
+records the full chip ID for a flash that the firmware rejected at startup.
