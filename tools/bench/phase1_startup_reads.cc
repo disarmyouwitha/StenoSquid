@@ -1,0 +1,72 @@
+// Compare physical read requests for the full pool using the real startup validator.
+#include "native_store_fixture.h"
+#include "native_startup_read.h"
+
+#include <fstream>
+#include <iostream>
+#include <iterator>
+
+struct StartupDevice : NativeDevice {
+    bool read_ahead = false;
+    StartupReadAhead cache;
+    uint8_t buffer[StartupReadAhead::PageBytes]{};
+
+    bool Read(uint32_t at, uint8_t *out, uint32_t bytes) {
+        if (at > nor.data.size() || bytes > nor.data.size() - at) return false;
+        if (!read_ahead) return NativeDevice::Read(at, out, bytes);
+        return cache.Read(at, out, bytes, buffer, [&](uint32_t base, uint8_t *page) {
+            return NativeDevice::Read(base, page, StartupReadAhead::PageBytes);
+        });
+    }
+
+    // The measured pool already has verified bases. Index CRCs still read
+    // every byte, using the same request size as FlashDevice.
+    bool CheckBase(uint32_t, uint32_t, uint32_t) { return true; }
+    bool Checksum(uint32_t at, uint32_t bytes, uint32_t &crc) {
+        uint8_t chunk[StartupReadAhead::PageBytes];
+        crc = 0;
+        for (uint32_t offset = 0; offset < bytes;) {
+            const auto count = std::min<uint32_t>(sizeof(chunk), bytes - offset);
+            if (!Read(at + offset, chunk, count)) return false;
+            crc = Crc(crc, chunk, count);
+            offset += count;
+        }
+        return true;
+    }
+};
+
+int main(int argc, char **argv) {
+    assert(argc == 2);
+    std::ifstream stream(argv[1], std::ios::binary);
+    Nor nor;
+    nor.data.assign(std::istreambuf_iterator<char>(stream), {});
+    assert(nor.data.size() == kLargePoolEnd * kSegmentBytes);
+    nor.data.resize(nor.data.size() + kSegmentBytes, 255);
+
+    for (bool read_ahead : {false, true}) {
+        StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, {}, {}};
+        NativeStore<StartupDevice> store(device);
+        NativeValidator<StartupDevice> validator(device, store.catalog);
+        nor.reads = nor.read_bytes = 0;
+        const auto writes = nor.operations;
+        const auto result = store.Open([&](const CatalogRoot &root) {
+            return validator.Validate(root, false);
+        }, CatalogValidation::ReuseIdenticalPayload);
+        assert(result == CatalogResult::Ok && store.opened);
+        assert(store.selected.root.generation == 2 && store.live.TailCount() == 17);
+        assert(nor.operations == writes);
+        std::cout << (read_ahead ? "DMA pages" : "direct requests") << ": "
+                  << nor.reads << " reads, " << nor.read_bytes << " bytes\n";
+
+        // The fixture's index bytes remain protected by their original CRCs.
+        const auto forward_index = validator.ValidatedView().forward_address;
+        assert(forward_index >= 2 * kSegmentBytes);
+        nor.data[forward_index] ^= 1;
+        device.cache = {};
+        assert(store.Open([&](const CatalogRoot &root) {
+            return validator.Validate(root, false);
+        }, CatalogValidation::ReuseIdenticalPayload) == CatalogResult::Corrupt);
+        assert(!store.opened && nor.operations == writes);
+        nor.data[forward_index] ^= 1;
+    }
+}

@@ -4,6 +4,9 @@
 #include <cstdint>
 #include "native_allocator.h"
 #include <cstring>
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+#include <zephyr/sys/crc.h>
+#endif
 
 namespace candidate_b {
 constexpr uint32_t kSegmentBytes = 65536, kPageBytes = 256;
@@ -17,12 +20,16 @@ inline void PutWord(uint8_t *p, uint32_t n) {
     for (unsigned i = 0; i < 4; ++i) p[i] = uint8_t(n >> (8*i));
 }
 inline uint32_t Crc(uint32_t crc, const uint8_t *p, uint32_t n) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    return crc32_ieee_update(crc, p, n);
+#else
     crc = ~crc;
     for (uint32_t i = 0; i < n; ++i) {
         crc ^= p[i];
         for (unsigned bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1)));
     }
     return ~crc;
+#endif
 }
 struct Utf8 {
     uint32_t value = 0, minimum = 0;

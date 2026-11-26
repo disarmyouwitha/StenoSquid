@@ -15,6 +15,9 @@
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
 #include "../../tools/storage/native_validator.h"
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+#include "../../tools/storage/native_startup_read.h"
+#endif
 #include "../../tools/storage/native_provisioner.h"
 #include "../../tools/storage/native_stage.h"
 #include "../../tools/storage/native_entry_stager.h"
@@ -79,7 +82,12 @@ bool boot_count_reads = false;
 
 struct FlashDevice {
     bool mapped=false,trust_bases=false;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    uint32_t cold_read_yield_at = 0;
+    StartupReadAhead startup_read_ahead;
+#else
     int64_t cold_read_yield_at=0;
+#endif
     alignas(4) uint8_t dma[256];
     struct Cached {uint32_t at=0,bytes=0,crc=0;} cached[32];
     unsigned cache_next=0;
@@ -89,6 +97,18 @@ struct FlashDevice {
     void Dirty(uint32_t at,uint32_t n){for(auto &c:cached)if(c.bytes && at<c.at+c.bytes && c.at<at+n)c.bytes=0;}
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
         if(at>lf_flash_bytes || n>lf_flash_bytes-at)return false;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+        if (cold_read_yield_at) {
+            if (static_cast<int32_t>(k_uptime_get_32() - cold_read_yield_at) >= 0) {
+                k_sleep(K_TICKS(1));
+                cold_read_yield_at = k_uptime_get_32() + 5u;
+            }
+            return startup_read_ahead.Read(at, out, n, dma, [](uint32_t base, uint8_t *buffer) {
+                ++boot_dma_reads;
+                return nrfx_qspi_read(buffer, StartupReadAhead::PageBytes, base) == NRFX_SUCCESS;
+            });
+        }
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
         if (boot_count_reads) ++(mapped ? boot_mapped_reads : boot_dma_reads);
 #endif
@@ -835,6 +855,10 @@ static void profile_extent_rejection(const RejectedExtent &extent) {
 
     const bool mapped = flash_device.mapped;
     BOOT_STAGE("index_expected_crc", extent.expected);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    BOOT_STAGE(extent.checksum_read ? "dma_ahead_original_crc" : "dma_ahead_original_error", extent.actual);
+    return;
+#endif
     BOOT_STAGE(mapped ? (extent.checksum_read ? "mapped_original_crc" : "mapped_original_error")
                       : (extent.checksum_read ? "dma_original_crc" : "dma_original_error"), extent.actual);
     if (!mapped) return;
@@ -890,7 +914,13 @@ extern "C" bool steno_squid_native_flash_open(void) {
         }
     }
     flash_device.mapped = mapping_ok;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    flash_device.startup_read_ahead = {};
+    flash_device.cold_read_yield_at = k_uptime_get_32() + 5u;
+    BOOT_STAGE("dma_read_ahead", StartupReadAhead::PageBytes);
+#else
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
+#endif
     BOOT_STAGE("catalog", mapping_ok);
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
     boot_count_reads = true;

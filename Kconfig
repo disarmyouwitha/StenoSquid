@@ -58,6 +58,13 @@ config ZMK_STENO_SQUID_BOOT_PROFILE
     help
       Records startup stages and logical flash reads for USB lab measurements.
 
+config ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+    bool "Use paged QSPI DMA during dictionary startup validation"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+    help
+      Lab-only startup read path. Reuses the existing QSPI bounce buffer and
+      uses Zephyr's table-driven implementation of the same CRC32.
+
 config ZMK_JAVELIN_DIAG_RAIL_SENSE_PIN
     int "Port 0 pin that the R rail test reads"
     depends on ZMK_JAVELIN_DIAG

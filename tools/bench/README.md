@@ -291,6 +291,28 @@ pass differs from the repeated 32 MHz cold-start rejection. More paired
 reboots are needed to determine whether the clock accounts for the difference.
 See the [reboot trace](../../docs/benchmarks/phase1-startup-profile-16mhz-reboot.json).
 
+The next timing candidate appends `phase1-boot-dma.conf` to the same left
+profile build. During catalog validation it fills the existing 256-byte QSPI
+bounce buffer with DMA and serves nearby reads from it. The build also uses
+Zephyr's table-driven IEEE CRC32. It still runs the original integrity checks
+and live journal recovery. In this build the trace's `dma_reads` count during
+`dma_read_ahead` and validation is the number of physical page fills.
+
+Compare request volume against the same precached-base fixture on the host:
+
+```sh
+c++ -std=c++20 -O2 -Itools/tests -Itools/storage \
+  tools/bench/phase1_startup_reads.cc -o build/phase1-startup-reads
+build/phase1-startup-reads build/phase1/loaded-fixture/simulated-pool.bin
+```
+
+The full-pool host open issued 974,018 direct requests for 22,137,506 bytes,
+versus 213,430 DMA page fills for 54,638,080 bytes. Both selected generation 2,
+recovered 17 tail entries, performed zero writes, and refused a corrupted
+forward index. The request count and transferred bytes help size the next
+hardware experiment. Neither measures latency, and the candidate still needs
+a physical cold start against the 91.3-second 16 MHz baseline.
+
 
 
 
