@@ -406,6 +406,28 @@ are consistent with it.
   Bluetooth management traffic (a Manager session over Bluetooth), Studio, or sustained typing. A short typing window
   is evidence, not qualification.
 
+### 7.8 The JavaScript transfer client in Chrome over WebHID (heap-reclaim build `58482f3f`, nice!nano, USB, Chrome 157)
+
+Measured, one run. `tools/bench/webhid_upload.html` (the real `transfer_client.js`, no Python in the data path) uploaded
+the same Lapwing Base install plan as every earlier run (29 segments, 1,831,220 staged bytes). Python prepared the plan
+(`prepare_chrome_upload.py`); the browser opened its own staged-update session and ran the upload.
+
+| Path | Whole upload | Useful rate | Frames / acks / NAKs / rewinds / stalls |
+| --- | --- | --- | --- |
+| Python client, native `hidapi`, per-frame ACK (7.1) | 45.1 s | 39.6 KiB/s | 38,396 / 38,396 / 0 / 0 / 0 |
+| Python client, native `hidapi`, cumulative ACK (7.2) | 26.8-27.0 s | 66.3-66.7 KiB/s | 38,396 / 9,599 / 0 / 0 / 0 |
+| JS client via the Python relay (7.4) | 28.15 s | about 63.5 KiB/s | 38,396 / 9,599 / 0 / 0 / 0 |
+| **JS client in Chrome over WebHID** | **28.59 s** | **62.5 KiB/s** | **38,396 / 9,599 / 0 / 0 / 0** |
+
+- Stages in Chrome: BEGIN 57 ms, stream 27.26 s, END to VERIFIED 2 ms, COMMIT 1.27 s. The catalog afterwards is intact
+  (114,885 entries, 1,830,444 B).
+- The browser path reaches about 94% of the native Python rate with identical protocol behaviour, and clears the
+  50 KiB/s stretch target set for Bluetooth, though this was USB. It needs no per-report bridge: the Python-driven client's
+  no-op bridge alone capped it near 40 KiB/s (section 2), so this is the M3 spike working as intended.
+- Not measured: the Manager's own Pyodide path in the same Chrome (the comparison the audit predicted), Bluetooth, a
+  download direction, a lossy link on hardware. One run is not a distribution.
+- Lapwing Base was re-enabled afterwards (the restore path leaves it disabled).
+
 ### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
 
 `tools/manager/browser/transfer_client.js` is a port of the Python upload loop. On the nice!nano (cumulative-ack
