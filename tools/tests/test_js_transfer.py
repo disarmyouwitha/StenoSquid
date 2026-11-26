@@ -75,12 +75,16 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: flash map parsing, paged scans, image metadata reads and compact-layout validation."""
         self.run_node("test_layout.mjs")
 
+    def test_vendor_console_matches_python(self):
+        """Manager milestone M3: report framing, replies, retries on flash busy and timeouts match Python's Console."""
+        self.run_node("test_console.mjs")
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)

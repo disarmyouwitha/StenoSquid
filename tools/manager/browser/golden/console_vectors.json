@@ -1,0 +1,4601 @@
+{
+"schema": 1,
+"reportBytes": 63,
+"cases": [
+{
+"title": "a one-packet reply",
+"commands": [
+{
+"text": "native_install status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "4e41544956453220524541445920370a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "NATIVE2 READY 7"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "the reply split over packets",
+"commands": [
+{
+"text": "get_parameter host_layout",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "4141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
+"pad": false
+},
+{
+"p": false,
+"hex": "42424242424242424242424242424242424242420a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBB"
+}
+],
+"writes": [
+"633031206765745f706172616d6574657220686f73745f6c61796f75740a000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 2,
+"sleeps": [],
+"clock": 0.004,
+"channel": 1
+}
+},
+{
+"title": "a long reply over many packets",
+"commands": [
+{
+"text": "native_catalog",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878",
+"pad": false
+},
+{
+"p": false,
+"hex": "0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+}
+],
+"writes": [
+"633031206e61746976655f636174616c6f670a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 10,
+"sleeps": [],
+"clock": 0.02,
+"channel": 1
+}
+},
+{
+"title": "a reply with several trailing newlines",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "4f4b0a0a0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "OK"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a reply with an interior blank line",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6e650a0a74776f0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "one\n\ntwo"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "an empty reply",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": ""
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a reply of just a newline",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 121,
+"sleeps": [],
+"clock": 30.002,
+"channel": 1
+}
+},
+{
+"title": "a reply that splits the terminator across packets",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "4f4b0a",
+"pad": false
+},
+{
+"p": false,
+"hex": "0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "OK"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 2,
+"sleeps": [],
+"clock": 0.004,
+"channel": 1
+}
+},
+{
+"title": "a stale reply from another channel is dropped",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": false,
+"hex": "633939206f6c640a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "66726573680a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "fresh"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 2,
+"sleeps": [],
+"clock": 0.004,
+"channel": 1
+}
+},
+{
+"title": "a stale reply then a timeout",
+"commands": [
+{
+"text": "a",
+"timeout": 2,
+"script": [
+{
+"p": false,
+"hex": "633939206f6c640a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 9,
+"sleeps": [],
+"clock": 2.002,
+"channel": 1
+}
+},
+{
+"title": "a packet with no prefix at all",
+"commands": [
+{
+"text": "a",
+"timeout": 1,
+"script": [
+{
+"p": false,
+"hex": "6e6f207072656669780a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 5,
+"sleeps": [],
+"clock": 1.002,
+"channel": 1
+}
+},
+{
+"title": "a prefix that only partly matches",
+"commands": [
+{
+"text": "a",
+"timeout": 1,
+"script": [
+{
+"p": false,
+"hex": "63300a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 5,
+"sleeps": [],
+"clock": 1.002,
+"channel": 1
+}
+},
+{
+"title": "a reply that is exactly the prefix",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": ""
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "unicode in the reply",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "636166c3a920e697a5e69cace8aa9e20f09f98800a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "caf\u00e9 \u65e5\u672c\u8a9e \ud83d\ude00"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a multibyte character split across packets",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "e697",
+"pad": false
+},
+{
+"p": false,
+"hex": "a50a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "\u65e5"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 2,
+"sleeps": [],
+"clock": 0.004,
+"channel": 1
+}
+},
+{
+"title": "an invalid UTF-8 reply",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "ff0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "UnicodeDecodeError",
+"message": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte"
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a packet of only padding is ignored",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": false,
+"hex": "",
+"pad": true
+},
+{
+"p": true,
+"hex": "6c6174650a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "late"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 2,
+"sleeps": [],
+"clock": 0.004,
+"channel": 1
+}
+},
+{
+"title": "a short unpadded packet",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "4f4b0a0a",
+"pad": false
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "OK"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a timeout",
+"commands": [
+{
+"text": "native_install status",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to native_install. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a timeout part way through a reply",
+"commands": [
+{
+"text": "a",
+"timeout": 1,
+"script": [
+{
+"p": true,
+"hex": "7061727469616c",
+"pad": false
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 5,
+"sleeps": [],
+"clock": 1.002,
+"channel": 1
+}
+},
+{
+"title": "a timeout with explicit gaps",
+"commands": [
+{
+"text": "a",
+"timeout": 1,
+"script": [
+null,
+null,
+{
+"p": true,
+"hex": "6c6174650a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "late"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 3,
+"sleeps": [],
+"clock": 0.502,
+"channel": 1
+}
+},
+{
+"title": "a reply after some empty reads",
+"commands": [
+{
+"text": "a",
+"timeout": null,
+"script": [
+null,
+null,
+null,
+{
+"p": true,
+"hex": "6c6174650a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "late"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 0.752,
+"channel": 1
+}
+},
+{
+"title": "a zero timeout",
+"commands": [
+{
+"text": "a",
+"timeout": 0,
+"script": [
+{
+"p": true,
+"hex": "4f4b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 0,
+"sleeps": [],
+"clock": 0.0,
+"channel": 1
+}
+},
+{
+"title": "a negative timeout",
+"commands": [
+{
+"text": "a",
+"timeout": -1,
+"script": [
+{
+"p": true,
+"hex": "4f4b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 0,
+"sleeps": [],
+"clock": 0.0,
+"channel": 1
+}
+},
+{
+"title": "a fractional timeout",
+"commands": [
+{
+"text": "a",
+"timeout": 0.6,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 3,
+"sleeps": [],
+"clock": 0.75,
+"channel": 1
+}
+},
+{
+"title": "an empty command that times out",
+"commands": [
+{
+"text": "",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "IndexError",
+"message": "list index out of range"
+}
+}
+],
+"writes": [
+"633031200a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a whitespace command that times out",
+"commands": [
+{
+"text": "   ",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "IndexError",
+"message": "list index out of range"
+}
+}
+],
+"writes": [
+"633031202020200a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command with leading separators that times out",
+"commands": [
+{
+"text": "\u001fword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031201f776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command with a byte-order mark that times out",
+"commands": [
+{
+"text": "\ufeffword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \ufeffword. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120efbbbf776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command with a non-breaking space that times out",
+"commands": [
+{
+"text": "native\u00a0x y",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to native. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031206e6174697665c2a07820790a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command of 1 characters",
+"commands": [
+{
+"text": "c",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"63303120630a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 55 characters",
+"commands": [
+{
+"text": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"63303120636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363630a000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 58 characters",
+"commands": [
+{
+"text": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"63303120636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363630a"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 59 characters",
+"commands": [
+{
+"text": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031200a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 60 characters",
+"commands": [
+{
+"text": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"63303120630a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 61 characters",
+"commands": [
+{
+"text": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"6330312063630a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 117 characters",
+"commands": [
+{
+"text": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"63303120636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363630a"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 118 characters",
+"commands": [
+{
+"text": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031200a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 119 characters",
+"commands": [
+{
+"text": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"63303120630a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 120 characters",
+"commands": [
+{
+"text": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"6330312063630a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 177 characters",
+"commands": [
+{
+"text": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031200a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command of 300 characters",
+"commands": [
+{
+"text": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"633031206363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363",
+"6330312063636363630a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a multibyte command split across reports",
+"commands": [
+{
+"text": "\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5\u65e5",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"63303120e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697",
+"63303120a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e697a5e6",
+"6330312097a50a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a multibyte command at the report edge",
+"commands": [
+{
+"text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u65e5",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"63303120616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161e697",
+"63303120a50a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a command with embedded newlines",
+"commands": [
+{
+"text": "one\ntwo",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206f6e650a74776f0a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "the channel advances",
+"commands": [
+{
+"text": "c0",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "72300a0a",
+"pad": true
+}
+]
+},
+{
+"text": "c1",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "72310a0a",
+"pad": true
+}
+]
+},
+{
+"text": "c2",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "72320a0a",
+"pad": true
+}
+]
+},
+{
+"text": "c3",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "72330a0a",
+"pad": true
+}
+]
+},
+{
+"text": "c4",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "72340a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "r0"
+},
+{
+"reply": "r1"
+},
+{
+"reply": "r2"
+},
+{
+"reply": "r3"
+},
+{
+"reply": "r4"
+}
+],
+"writes": [
+"6330312063300a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"6330322063310a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"6330332063320a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"6330342063330a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"6330352063340a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 5,
+"sleeps": [],
+"clock": 0.01,
+"channel": 5
+}
+},
+{
+"title": "the channel wraps after 99",
+"commands": [
+{
+"text": "n0",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n1",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n2",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n3",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n4",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n5",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n6",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n7",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n8",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n9",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n10",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n11",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n12",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n13",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n14",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n15",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n16",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n17",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n18",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n19",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n20",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n21",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n22",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n23",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n24",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n25",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n26",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n27",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n28",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n29",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n30",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n31",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n32",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n33",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n34",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n35",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n36",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n37",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n38",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n39",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n40",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n41",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n42",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n43",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n44",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n45",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n46",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n47",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n48",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n49",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n50",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n51",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n52",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n53",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n54",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n55",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n56",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n57",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n58",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n59",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n60",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n61",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n62",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n63",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n64",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n65",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n66",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n67",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n68",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n69",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n70",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n71",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n72",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n73",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n74",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n75",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n76",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n77",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n78",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n79",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n80",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n81",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n82",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n83",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n84",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n85",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n86",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n87",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n88",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n89",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n90",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n91",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n92",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n93",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n94",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n95",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n96",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n97",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n98",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n99",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n100",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n101",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "n102",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206e300a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633032206e310a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633033206e320a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633034206e330a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633035206e340a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633036206e350a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633037206e360a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633038206e370a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633039206e380a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633130206e390a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633131206e31300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633132206e31310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633133206e31320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633134206e31330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633135206e31340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633136206e31350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633137206e31360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633138206e31370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633139206e31380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633230206e31390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633231206e32300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633232206e32310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633233206e32320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633234206e32330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633235206e32340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633236206e32350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633237206e32360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633238206e32370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633239206e32380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633330206e32390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633331206e33300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633332206e33310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633333206e33320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633334206e33330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633335206e33340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633336206e33350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633337206e33360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633338206e33370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633339206e33380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633430206e33390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633431206e34300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633432206e34310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633433206e34320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633434206e34330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633435206e34340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633436206e34350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633437206e34360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633438206e34370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633439206e34380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633530206e34390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633531206e35300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633532206e35310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633533206e35320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633534206e35330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633535206e35340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633536206e35350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633537206e35360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633538206e35370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633539206e35380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633630206e35390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633631206e36300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633632206e36310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633633206e36320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633634206e36330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633635206e36340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633636206e36350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633637206e36360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633638206e36370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633639206e36380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633730206e36390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633731206e37300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633732206e37310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633733206e37320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633734206e37330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633735206e37340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633736206e37350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633737206e37360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633738206e37370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633739206e37380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633830206e37390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633831206e38300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633832206e38310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633833206e38320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633834206e38330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633835206e38340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633836206e38350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633837206e38360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633838206e38370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633839206e38380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633930206e38390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633931206e39300a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633932206e39310a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633933206e39320a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633934206e39330a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633935206e39340a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633936206e39350a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633937206e39360a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633938206e39370a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633939206e39380a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633030206e39390a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633031206e3130300a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633032206e3130310a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"633033206e3130320a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 103,
+"sleeps": [],
+"clock": 0.206,
+"channel": 3
+}
+},
+{
+"title": "flash busy then ready",
+"commands": [
+{
+"text": "native_install status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633032206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 2,
+"sleeps": [
+0.1
+],
+"clock": 0.104,
+"channel": 2
+}
+},
+{
+"title": "flash busy twice then ready",
+"commands": [
+{
+"text": "native_install status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+},
+{
+"text": "native_install status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+},
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633032206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633033206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633034206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [
+0.1,
+0.1
+],
+"clock": 0.208,
+"channel": 4
+}
+},
+{
+"title": "flash busy three times then ready",
+"commands": [
+{
+"text": "native_install status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "6f6b0a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ok"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633032206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633033206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633034206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [
+0.1,
+0.1,
+0.1
+],
+"clock": 0.308,
+"channel": 4
+}
+},
+{
+"title": "flash busy until the deadline",
+"commands": [
+{
+"text": "native_install status",
+"timeout": 1,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633032206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633033206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633034206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633035206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633036206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633037206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633038206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633039206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633130206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 10,
+"sleeps": [
+0.1,
+0.1,
+0.1,
+0.1,
+0.1,
+0.1,
+0.1,
+0.1,
+0.1,
+0.0800000000002683
+],
+"clock": 1.0,
+"channel": 10
+}
+},
+{
+"title": "flash busy with a short deadline",
+"commands": [
+{
+"text": "native_install status",
+"timeout": 0.05,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [
+0.04800000000000182
+],
+"clock": 0.05,
+"channel": 1
+}
+},
+{
+"title": "flash busy with a very short deadline",
+"commands": [
+{
+"text": "native_install status",
+"timeout": 0.001,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "flash busy for a command that is not native_install",
+"commands": [
+{
+"text": "native_catalog",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy"
+}
+],
+"writes": [
+"633031206e61746976655f636174616c6f670a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "flash busy for a command that only starts like it",
+"commands": [
+{
+"text": "native_installx status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c78207374617475730a000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "flash busy for a prefix without the space",
+"commands": [
+{
+"text": "native_install",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c0a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "flash busy with other text",
+"commands": [
+{
+"text": "native_install status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c6173682062757379206e6f770a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy now"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "a different error is not retried",
+"commands": [
+{
+"text": "native_install status",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "45525220536f6d657468696e6720656c73650a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Something else"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 1,
+"sleeps": [],
+"clock": 0.002,
+"channel": 1
+}
+},
+{
+"title": "busy then a timeout",
+"commands": [
+{
+"text": "native_install status",
+"timeout": 0.5,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+null,
+null,
+null
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to native_install. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000",
+"633032206e61746976655f696e7374616c6c207374617475730a00000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 3,
+"sleeps": [
+0.1
+],
+"clock": 0.602,
+"channel": 2
+}
+},
+{
+"title": "busy replies that burn the whole budget",
+"commands": [
+{
+"text": "native_install update read 0 4",
+"timeout": 0.3,
+"script": [
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+},
+{
+"p": true,
+"hex": "455252204e617469766520666c61736820627573790a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"reply": "ERR Native flash busy"
+}
+],
+"writes": [
+"633031206e61746976655f696e7374616c6c207570646174652072656164203020340a00000000000000000000000000000000000000000000000000000000",
+"633032206e61746976655f696e7374616c6c207570646174652072656164203020340a00000000000000000000000000000000000000000000000000000000",
+"633033206e61746976655f696e7374616c6c207570646174652072656164203020340a00000000000000000000000000000000000000000000000000000000"
+],
+"reads": 3,
+"sleeps": [
+0.1,
+0.1,
+0.09400000000005093
+],
+"clock": 0.3,
+"channel": 3
+}
+},
+{
+"title": "a reply with a newline but no blank line",
+"commands": [
+{
+"text": "a",
+"timeout": 1,
+"script": [
+{
+"p": true,
+"hex": "6f6e650a74776f",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 5,
+"sleeps": [],
+"clock": 1.002,
+"channel": 1
+}
+},
+{
+"title": "a reply ending in a letter after a newline",
+"commands": [
+{
+"text": "a",
+"timeout": 1,
+"script": [
+{
+"p": true,
+"hex": "6f6e650a74",
+"pad": false
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 5,
+"sleeps": [],
+"clock": 1.002,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+0009 that times out",
+"commands": [
+{
+"text": "\tword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"6330312009776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+000B that times out",
+"commands": [
+{
+"text": "\u000bword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031200b776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+000C that times out",
+"commands": [
+{
+"text": "\fword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031200c776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+000D that times out",
+"commands": [
+{
+"text": "\rword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031200d776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+001C that times out",
+"commands": [
+{
+"text": "\u001cword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031201c776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+001D that times out",
+"commands": [
+{
+"text": "\u001dword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031201d776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+001E that times out",
+"commands": [
+{
+"text": "\u001eword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031201e776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+0085 that times out",
+"commands": [
+{
+"text": "\u0085word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120c285776f726420726573740a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+1680 that times out",
+"commands": [
+{
+"text": "\u1680word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e19a80776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+2000 that times out",
+"commands": [
+{
+"text": "\u2000word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e28080776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+200A that times out",
+"commands": [
+{
+"text": "\u200aword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e2808a776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+2028 that times out",
+"commands": [
+{
+"text": "\u2028word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e280a8776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+2029 that times out",
+"commands": [
+{
+"text": "\u2029word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e280a9776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+202F that times out",
+"commands": [
+{
+"text": "\u202fword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e280af776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+205F that times out",
+"commands": [
+{
+"text": "\u205fword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e2819f776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+3000 that times out",
+"commands": [
+{
+"text": "\u3000word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e38080776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+0008 (a non-space) that times out",
+"commands": [
+{
+"text": "\bword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \bword. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"6330312008776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+000E (a non-space) that times out",
+"commands": [
+{
+"text": "\u000eword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \u000eword. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031200e776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+001B (a non-space) that times out",
+"commands": [
+{
+"text": "\u001bword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \u001bword. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"633031201b776f726420726573740a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+200B (a non-space) that times out",
+"commands": [
+{
+"text": "\u200bword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \u200bword. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e2808b776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+2060 (a non-space) that times out",
+"commands": [
+{
+"text": "\u2060word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \u2060word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e281a0776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+3001 (a non-space) that times out",
+"commands": [
+{
+"text": "\u3001word rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \u3001word. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e38081776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command led by U+180E (a non-space) that times out",
+"commands": [
+{
+"text": "\u180eword rest",
+"timeout": 1,
+"script": []
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to \u180eword. Check the left half\u2019s connection."
+}
+}
+],
+"writes": [
+"63303120e1a08e776f726420726573740a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 4,
+"sleeps": [],
+"clock": 1.0,
+"channel": 1
+}
+},
+{
+"title": "a command after a timeout still works",
+"commands": [
+{
+"text": "a",
+"timeout": 1,
+"script": []
+},
+{
+"text": "b",
+"timeout": null,
+"script": [
+{
+"p": true,
+"hex": "66696e650a0a",
+"pad": true
+}
+]
+}
+],
+"expect": {
+"results": [
+{
+"error": {
+"type": "TimeoutError",
+"message": "No reply to a. Check the left half\u2019s connection."
+}
+},
+{
+"reply": "fine"
+}
+],
+"writes": [
+"63303120610a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+"63303220620a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+],
+"reads": 5,
+"sleeps": [],
+"clock": 1.002,
+"channel": 2
+}
+}
+]
+}
