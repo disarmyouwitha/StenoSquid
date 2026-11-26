@@ -24,7 +24,7 @@ import {upload, linkFromHid} from "../manager/browser/transfer_client.js";
 const filter = {usagePage: 0xff31, usage: 0x74};
 const logEl = document.getElementById("log");
 const log = (text) => { logEl.textContent += "\n" + text; };
-let device, inputId, outputId, channel = 0;
+let device, inputId, outputId, channel = 0, via = "unknown";
 const queue = [];
 let waiter = null;
 const encoder = new TextEncoder(), decoder = new TextDecoder();
@@ -94,12 +94,22 @@ document.getElementById("connect").addEventListener("click", async () => {
     if (!device.opened) await device.open();
     device.addEventListener("inputreport", onInput);
     log(`Connected: ${device.productName}; input report ${inputId}, output report ${outputId}`);
+    // The keyboard says which transport this HID device is. USB and Bluetooth can both be listed in the chooser.
+    via = (await hostConsole.command("native_install connection", 3000)).replace(/^OK /, "");
+    log(`This device is connected over: ${via}`);
+    const required = new URLSearchParams(location.search).get("via");
+    if (required && required.toUpperCase() !== via) {
+      log(`This page was opened with ?via=${required} but you chose ${via}. Reload the page and choose the other device.`);
+      return;
+    }
     document.getElementById("run").disabled = false;
   } catch (error) { log("Connect failed: " + error.message); }
 });
 
 document.getElementById("run").addEventListener("click", async () => {
-  const result = {userAgent: navigator.userAgent};
+  // ?window=N sets the client's go-back-N window in frames (default 8, the protocol maximum is 16).
+  const windowFrames = Number(new URLSearchParams(location.search).get("window")) || 8;
+  const result = {userAgent: navigator.userAgent, via, window: windowFrames};
   try {
     log("Loading the prepared plan…");
     const spec = await (await fetch("/update.json")).json();
@@ -114,7 +124,7 @@ document.getElementById("run").addEventListener("click", async () => {
     const started = performance.now();
     await upload(hostConsole, link, update, (text) => {
       if (performance.now() - lastLogged > 4000 || text.includes("100%")) { lastLogged = performance.now(); log("  " + text); }
-    }, {stats});
+    }, {stats, window: windowFrames});
     result.name = spec.name; result.stats = stats; result.stagedBytes = staged;
     result.wallSeconds = (performance.now() - started) / 1000;
     result.usefulKiBps = staged / 1024 / (stats.totalMs / 1000);

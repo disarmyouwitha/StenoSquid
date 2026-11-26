@@ -428,6 +428,35 @@ the same Lapwing Base install plan as every earlier run (29 segments, 1,831,220 
   download direction, a lossy link on hardware. One run is not a distribution.
 - Lapwing Base was re-enabled afterwards (the restore path leaves it disabled).
 
+### 7.9 The same upload over Bluetooth (JS client in Chrome 157 over WebHID, nice!nano heap-reclaim build, window 8)
+
+Measured, one run. The page asked the keyboard which transport the chosen device used and reported `BLUETOOTH`. Plan:
+Lapwing Proper Nouns, 5 segments, 260,328 staged bytes (a smaller package than the USB runs, because of the speed below).
+
+| | USB (7.8) | Bluetooth |
+| --- | --- | --- |
+| Package | Lapwing Base, 1,831,220 B | Lapwing Proper Nouns, 260,328 B |
+| Whole upload | 28.6 s | **417.3 s** |
+| Useful rate | 62.5 KiB/s | **0.61 KiB/s** |
+| Frames sent / acks / NAK / rewinds / stalls | 38,396 / 9,599 / 0 / 0 / 0 | 5,459 / 1,365 / 0 / 0 / 0 |
+| Frame rate | about 1,400 per second | **13.1 per second** (76 ms per frame) |
+| BEGIN / verify / commit | 57 ms / 2 ms / 1.27 s | 178 ms / 60 ms / 419 ms |
+
+- The upload is correct (Lapwing Proper Nouns installed with 15,788 entries, 259,528 B; 0 NAKs, rewinds and stalls) but the
+  Bluetooth HID path moves about 13 frames, 0.6 KiB, per second. That is about 100x slower than USB and below the 1.71 KiB/s
+  the older Base64 path measured over Bluetooth (different host and conditions, so not a controlled comparison). The
+  40-50 KiB/s Bluetooth target is not close.
+- What it does not say: where the limit is. 13.1 frames per second with a window of 8 means either a round trip of about 0.6 s
+  (window / RTT limited) or a fixed rate of roughly one write per 76 ms (a connection-interval limit). Window 16 separates
+  them: the rate doubles if the window is the limit, and stays the same if it is a write-rate limit. The negotiated
+  connection interval, PHY and MTU were not read.
+- Memory during this session was not captured (the commit restarts the keyboard and clears the marks). The next run samples
+  `memory_report` over USB during the Bluetooth upload.
+- A second run (`?via=bluetooth&window=16`) with `memory_report` sampled over USB during the upload was prepared but not
+  run: the sampler covered about 45 minutes with no upload. To resume: `prepare_chrome_upload.py lapwing-proper OUT.json
+  --uninstall-first`, start the sampler, then open the page. The keyboard is back in its original state (Lapwing Proper
+  Nouns uninstalled, Lapwing Base installed and enabled).
+
 ### 7.4 The JavaScript transfer client on a real keyboard (build `81741dd`, relayed through Python `hidapi`)
 
 `tools/manager/browser/transfer_client.js` is a port of the Python upload loop. On the nice!nano (cumulative-ack
