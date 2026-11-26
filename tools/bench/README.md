@@ -473,3 +473,16 @@ that build. It keeps the 2 KiB DMA journal scan and substitutes 256-byte DMA
 fills for mapped reads during both index passes. Extent validation and normal
 dictionary access retain their existing read paths. The host run used 133,400
 transactions for 38,984,968 bytes and still rejected a corrupt forward index.
+
+The 32 MHz DMA-index build passed both hardware starts. Flash was ready at
+24.268 seconds of device uptime after UF2 and 24.221 seconds after physical
+power-off. The cold USB-to-ready interval was 19.943 seconds. Both runs
+confirmed HFXO and recorded 130,278 DMA fills and 3,240 mapped reads. The
+index passes took 14.096 and 14.105 seconds, compared with 11.526 and
+47.563 seconds with mapped index reads in the previous build. The cold
+run reopened on the first try, matched the original catalog byte for byte,
+passed all 233 lookups, and retained 32 dictionaries and 17 free blocks.
+The 20-second power-on ceiling remains open. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-cold.json), and
+[lookup results](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-lookups.json).
