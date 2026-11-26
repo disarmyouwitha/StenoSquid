@@ -266,6 +266,11 @@ the uncached mapped repeat returned `0xbf07df31`. The three completed reads
 disagreed with each other and with the expected CRC before the firmware
 reported flash unavailable. This rules out a failure limited to mapped reads
 in this run. See the [cold diagnostic trace](../../docs/benchmarks/phase1-startup-profile-dma-pair-cold.json).
+After the flash idled, a USB status request triggered another full open.
+Javelin was ready in 68.6 seconds. Both roots validated, all 32 dictionaries
+were loaded with 17 free blocks, and all 233 fixture lookups passed. See the
+[recovery trace](../../docs/benchmarks/phase1-startup-profile-dma-pair-recovery.json).
+
 
 
 
