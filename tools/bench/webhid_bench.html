@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steno Squid WebHID benchmark</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 24px auto; max-width: 760px; padding: 0 16px; }
+  button { font: inherit; padding: 8px 14px; margin-right: 8px; }
+  pre { background: #1e1e1e; color: #ddd; padding: 12px; overflow: auto; border-radius: 6px; min-height: 8em; }
+  .note { color: #555; }
+</style>
+</head>
+<body>
+<h1>WebHID benchmark</h1>
+<p class="note">Lab instrument, not part of the Manager. Read-only against the keyboard's flash: it opens a staged-update
+session with <code>begin compact</code> (changes nothing), reads, then aborts. Requires a build with the console
+(any Native build); run over USB.</p>
+<p><button id="connect">1. Connect</button><button id="run" disabled>2. Run benchmark</button></p>
+<pre id="log">Click Connect and choose the Steno Squid left half.</pre>
+<script>
+"use strict";
+const filter = {usagePage: 0xff31, usage: 0x74};
+const logEl = document.getElementById("log");
+const log = (text) => { logEl.textContent += "\n" + text; };
+let device, inputId, outputId, channel = 0;
+const queue = [];
+let waiter = null;
+
+function onInput({reportId, data}) {
+  if (reportId !== inputId) return;
+  queue.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice());
+  if (waiter) { const w = waiter; waiter = null; w(); }
+}
+function nextPacket(timeoutMs) {
+  if (queue.length) return Promise.resolve(queue.shift());
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { waiter = null; resolve(null); }, timeoutMs);
+    waiter = () => { clearTimeout(timer); resolve(queue.shift() || null); };
+  });
+}
+const encoder = new TextEncoder(), decoder = new TextDecoder();
+
+async function command(text, timeoutMs = 5000) {
+  channel = (channel + 1) % 100;
+  const prefix = `c${String(channel).padStart(2, "0")} `;
+  const line = encoder.encode(text + "\n");
+  const pre = encoder.encode(prefix);
+  const room = 63 - pre.length;
+  for (let offset = 0; offset < line.length; offset += room) {
+    const report = new Uint8Array(63);
+    report.set(pre, 0);
+    report.set(line.subarray(offset, offset + room), pre.length);
+    await device.sendReport(outputId, report);
+  }
+  const deadline = performance.now() + timeoutMs;
+  let response = "";
+  while (performance.now() < deadline) {
+    const packet = await nextPacket(250);
+    if (!packet) continue;
+    let end = packet.length;
+    while (end > 0 && packet[end - 1] === 0) end--;
+    response += decoder.decode(packet.subarray(0, end));
+    if (response.endsWith("\n\n")) {
+      if (response.startsWith(prefix)) return response.slice(prefix.length).replace(/\n+$/, "");
+      response = "";
+    }
+  }
+  throw new Error("No reply to " + text.split(" ")[0]);
+}
+const kib = (bytes, ms) => (bytes / 1024 / (ms / 1000));
+
+document.getElementById("connect").addEventListener("click", async () => {
+  try {
+    if (!navigator.hid) { log("navigator.hid is not available in this browser."); return; }
+    const picked = await navigator.hid.requestDevice({filters: [filter]});
+    if (picked.length !== 1) { log("Choose exactly one device."); return; }
+    device = picked[0];
+    const collection = device.collections.find((c) => c.usagePage === filter.usagePage && c.usage === filter.usage);
+    inputId = collection.inputReports[0].reportId;
+    outputId = collection.outputReports[0].reportId;
+    if (!device.opened) await device.open();
+    device.addEventListener("inputreport", onInput);
+    log(`Connected: ${device.productName} (vendor ${device.vendorId.toString(16)}, product ${device.productId.toString(16)}); ` +
+        `input report ${inputId}, output report ${outputId}`);
+    document.getElementById("run").disabled = false;
+  } catch (error) { log("Connect failed: " + error.message); }
+});
+
+document.getElementById("run").addEventListener("click", async () => {
+  const result = {userAgent: navigator.userAgent};
+  window.__result = result;
+  try {
+    // 1. Round-trip latency of a tiny command.
+    const n = 200;
+    let start = performance.now();
+    for (let i = 0; i < n; i++) await command("native_install update transfer-capabilities");
+    result.command_round_trip_ms = (performance.now() - start) / n;
+    log(`command round trip: ${result.command_round_trip_ms.toFixed(2)} ms (${n} commands)`);
+
+    // 2. Output report rate: awaited sendReport of reports the firmware ignores.
+    const idle = new Uint8Array(63); idle.set(encoder.encode("c99 \n"));
+    start = performance.now();
+    const outputs = 2000;
+    for (let i = 0; i < outputs; i++) await device.sendReport(outputId, idle);
+    result.send_report_per_second = outputs / ((performance.now() - start) / 1000);
+    log(`sendReport alone: ${result.send_report_per_second.toFixed(0)} reports/s`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    queue.length = 0;
+
+    // 3. Flash read throughput (Base64 text over the console), read-only inside a staged-update session.
+    const begin = await command("native_install update begin compact");
+    if (!begin.startsWith("OK")) throw new Error("begin refused: " + begin);
+    try {
+      const base = 131072, total = 1024 * 1024;
+      let got = 0;
+      start = performance.now();
+      for (let offset = 0; offset < total; offset += 512) {
+        const reply = await command(`native_install update read ${base + offset} 512`);
+        if (!reply.startsWith("OK ")) throw new Error("read failed: " + reply);
+        got += atob(reply.slice(3)).length;
+      }
+      const ms = performance.now() - start;
+      result.read_bytes = got;
+      result.read_seconds = ms / 1000;
+      result.read_kib_per_s = kib(got, ms);
+      log(`flash read: ${got} B in ${(ms / 1000).toFixed(2)} s = ${result.read_kib_per_s.toFixed(1)} KiB/s`);
+    } finally {
+      try { await command("native_install update abort", 3000); } catch (error) { log("abort: " + error.message); }
+    }
+    result.done = true;
+  } catch (error) {
+    result.error = String(error.message || error);
+    log("FAILED: " + result.error);
+  }
+  log("\nresult JSON:\n" + JSON.stringify(result));
+  // When served by the lab's local result collector, hand the numbers back; harmless anywhere else.
+  try { await fetch("/result", {method: "POST", body: JSON.stringify(result)}); } catch (error) { /* no collector */ }
+});
+</script>
+</body>
+</html>
