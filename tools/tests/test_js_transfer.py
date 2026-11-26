@@ -44,6 +44,9 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M1: the JS catalog/journal reader and metadata planner agree with the Python oracle."""
         self.run_node("test_snapshot.mjs")
 
+    def test_console_snapshot_reads_match_python(self):
+        self.run_node("test_device_reads.mjs")
+
     def test_snapshot_golden_vectors_are_current(self):
         result = subprocess.run([sys.executable, str(BROWSER / "golden_snapshot.py"), "--check"],
                                 capture_output=True, text=True, timeout=300)

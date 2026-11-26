@@ -9,6 +9,7 @@ result and the same read pattern.
     python3 tools/manager/browser/golden_snapshot.py            # rewrite golden/snapshot_vectors.json
     python3 tools/manager/browser/golden_snapshot.py --check    # fail if the committed file is stale
 """
+import base64
 import json
 from pathlib import Path
 import struct
@@ -20,9 +21,10 @@ ROOT = Path(__file__).resolve().parents[3]
 for sub in ("tools/storage", "tools/dictionaries", "tools/dict_compiler"):
     sys.path.insert(0, str(ROOT / sub))
 from build_native_image import LARGE_POOL_END, SEGMENT, SMALL_POOL_END, SOURCES, build
-from native_update import Edit, Snapshot, encode_record, metadata_payload
+from native_update import Edit, Snapshot, encode_record, metadata_payload, read_snapshot
 
 OUT = Path(__file__).with_name("golden") / "snapshot_vectors.json"
+DEVICE_OUT = Path(__file__).with_name("golden") / "device_read_vectors.json"
 FACTORY = [(identity, name, enabled) for identity, name, enabled, _ in SOURCES]
 
 
@@ -227,16 +229,96 @@ def generate():
     return {"schema": 1, "cases": cases}
 
 
+class FakeConsole:
+    """Answers `native_install update read A N` from an image and records the whole transcript."""
+
+    def __init__(self, image, mode=None):
+        self.image, self.mode, self.commands, self.reads = image, mode, [], []
+
+    def command(self, text, timeout=30):
+        self.commands.append(text)
+        _, _, verb, start, count = text.split()
+        assert verb == "read", text
+        start, count = int(start), int(count)
+        data = bytes(self.image[start:start + count])
+        self.reads.append(data.rstrip(b"\xff").hex())
+        if self.mode == "busy":
+            return "ERR Native flash busy"
+        if self.mode == "short":
+            data = data[:-1]
+        return "OK " + base64.b64encode(data).decode()
+
+
+def ownership(snapshot, pool_end):
+    """A plausible ownership bitmap: both catalog slots and every extent segment."""
+    owned = {0, 1}
+    for start, span, *_ in snapshot.extents:
+        owned.update(range(start, start + span))
+    if pool_end == LARGE_POOL_END:
+        owned.add(1000)  # a high segment: only visible if the bitmap is read at the large width
+    words = [0] * ((pool_end + 1 + 31) // 32)
+    for segment in owned:
+        words[segment // 32] |= 1 << (segment % 32)
+    return "".join(f"{word:08x}" for word in words)
+
+
+def device_case(name, image, pool_end, *, metadata_only=False, trim=False, mode=None, answer=None):
+    address, size, crc = catalog_of(image)
+    probe = Snapshot(lambda a, n: bytes(image[a:a + n]), address, size, crc, metadata_only=True, pool_end=pool_end)
+    answer = answer or f"OK {address} {size} {crc} {ownership(probe, pool_end)}"
+    console, counted = FakeConsole(image, mode), []
+    case = {"name": name, "answer": answer, "options": {"metadataOnly": metadata_only, "trimJournals": trim, "poolEnd": pool_end}}
+    try:
+        snapshot, protected = read_snapshot(console, answer, metadata_only=metadata_only, trim_journals=trim,
+                                            on_read=counted.append)
+        case["expect"] = {"snapshot": summary(snapshot, metadata_only), "protected": sorted(protected), "bytesRead": sum(counted)}
+    except (ValueError, RuntimeError) as error:
+        case["expect"] = {"error": str(error)}
+    case.update(mode=mode, commands=console.commands, reads=console.reads)
+    return case
+
+
+def generate_device_reads():
+    cases = []
+    for pool_end in (SMALL_POOL_END, LARGE_POOL_END):
+        label = "small" if pool_end == SMALL_POOL_END else "large"
+        base = fixture(pool_end)
+        tailed = bytearray(base)
+        append_tail(tailed, pool_end, [Edit(0, 1, 0, (0x11,), b"tail"), Edit(0, 1, 2, (0x10,), b"")])
+        for image_name, image in (("clean", base), ("with tail", tailed)):
+            for metadata_only, trim in ((False, False), (True, False), (False, True), (True, True)):
+                cases.append(device_case(f"{label} pool {image_name}, metadata_only={metadata_only}, trim={trim}",
+                                         image, pool_end, metadata_only=metadata_only, trim=trim))
+    base = fixture(SMALL_POOL_END)
+    probe = Snapshot(lambda a, n: bytes(base[a:a + n]), *catalog_of(base), metadata_only=True, pool_end=SMALL_POOL_END)
+    journal_at = next(extent[0] for extent in probe.extents if extent[4] == 2) * SEGMENT
+    for span in (40, 46, SEGMENT):  # too small, not a multiple of 4, runs off the segment
+        damaged = bytearray(base)
+        struct.pack_into("<I", damaged, journal_at + 256 + 4, span)
+        cases.append(device_case(f"malformed committed record (span {span}), trim", damaged, SMALL_POOL_END, trim=True))
+    cases.append(device_case("flash busy", base, SMALL_POOL_END, mode="busy"))
+    cases.append(device_case("short read", base, SMALL_POOL_END, mode="short"))
+    address, size, crc = catalog_of(base)
+    cases.append(device_case("bad ownership length", base, SMALL_POOL_END, answer=f"OK {address} {size} {crc} abcd"))
+    cases.append(device_case("missing field", base, SMALL_POOL_END, answer=f"OK {address} {size}"))
+    cases.append(device_case("wrong catalog checksum", base, SMALL_POOL_END,
+                             answer=f"OK {address} {size} {crc ^ 1} " + "0" * 64))
+    return {"schema": 1, "cases": cases}
+
+
 def main():
-    text = json.dumps(generate(), indent=1) + "\n"
+    outputs = [(OUT, generate()), (DEVICE_OUT, generate_device_reads())]
     if "--check" in sys.argv:
-        if not OUT.exists() or OUT.read_text(encoding="utf-8").replace("\r\n", "\n") != text:
-            sys.exit("golden/snapshot_vectors.json is stale; rerun golden_snapshot.py")
+        for path, data in outputs:
+            if not path.exists() or path.read_text(encoding="utf-8").replace("\r\n", "\n") != json.dumps(data, indent=1) + "\n":
+                sys.exit(f"golden/{path.name} is stale; rerun golden_snapshot.py")
         print("golden vectors are current")
         return
     OUT.parent.mkdir(exist_ok=True)
-    OUT.write_text(text, encoding="utf-8", newline="\n")
-    print(f"wrote {OUT} ({len(text) // 1024} KiB, {len(json.loads(text)['cases'])} cases)")
+    for path, data in outputs:
+        text = json.dumps(data, indent=1) + "\n"
+        path.write_text(text, encoding="utf-8", newline="\n")
+        print(f"wrote {path} ({len(text) // 1024} KiB, {len(data['cases'])} cases)")
 
 
 if __name__ == "__main__":

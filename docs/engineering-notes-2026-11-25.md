@@ -71,8 +71,13 @@ parsed state, the same error text and the same read pattern. Both run in `test_j
 the committed vectors are stale. Mutation check: the first vector set let five deliberate mutations of the port survive;
 the added cases (duplicate sequence, checkpoint boundary, repeated index entry, NUL and out-of-range strokes, move upper
 bound) catch them. Three exact-limit constants (64 rows, 253 extents, 256 tail records) are copied verbatim and not
-exercised at their boundary. Not yet ported: the catalog/snapshot reads over the console (`read_snapshot`,
-`effective_entries`, the lookup/verify reader), which need the console and keyboard transport (M3), and the M2 planners.
+exercised at their boundary. Second half: `device_reads.js` ports `update_command`, `read_flash`, `read_live_journal` and `read_snapshot`
+(including the journal-trimming mode, which reads about 2 KB instead of 66 KB for the same snapshot) over any object with
+`command(text, timeout)`. Gate: Python's own functions run against a fake console on 24 images and failure modes
+(busy, short read, bad ownership bitmap, malformed committed records); the JS port must send the same commands in the
+same order and reach the same state, error and byte count (`test_device_reads.mjs`). Not yet ported: `effective_entries`
+and the lookup/verify reader (need the JS decoder from the M0 spike moved into the product), `backup_all`,
+`overlay_usage`, and the M2 planners.
 ## 2. Findings
 
 ### RAM by owner (measured, 32-slot everyday build with the transfer option, link map)
