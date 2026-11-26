@@ -47,10 +47,20 @@ class JavaScriptScriptedTests(unittest.TestCase):
     def test_console_snapshot_reads_match_python(self):
         self.run_node("test_device_reads.mjs")
 
-    def test_snapshot_golden_vectors_are_current(self):
-        result = subprocess.run([sys.executable, str(BROWSER / "golden_snapshot.py"), "--check"],
-                                capture_output=True, text=True, timeout=300)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    def test_update_planner_is_byte_identical_to_python(self):
+        """Manager milestone M2: the JS copy-on-write planner produces the same segments and catalog as plan()."""
+        self.run_node("test_plan.mjs")
+
+    def test_dictionary_decoder_matches_python(self):
+        """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
+        self.run_node("test_decode.mjs")
+
+    def test_golden_vectors_are_current(self):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py"):
+            with self.subTest(script=script):
+                result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
+                                        capture_output=True, text=True, timeout=900)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 @unittest.skipUnless(shutil.which("node"), "Node is not installed")

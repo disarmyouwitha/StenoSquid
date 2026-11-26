@@ -75,9 +75,32 @@ exercised at their boundary. Second half: `device_reads.js` ports `update_comman
 (including the journal-trimming mode, which reads about 2 KB instead of 66 KB for the same snapshot) over any object with
 `command(text, timeout)`. Gate: Python's own functions run against a fake console on 24 images and failure modes
 (busy, short read, bad ownership bitmap, malformed committed records); the JS port must send the same commands in the
-same order and reach the same state, error and byte count (`test_device_reads.mjs`). Not yet ported: `effective_entries`
-and the lookup/verify reader (need the JS decoder from the M0 spike moved into the product), `backup_all`,
-`overlay_usage`, and the M2 planners.
+same order and reach the same state, error and byte count (`test_device_reads.mjs`).
+
+Third part (M1 lookup reader): `decode.js` ports `format_stroke`, `compact_entries`, the JSC4 reader checks,
+`require_snapshot_hint` and `effective_entries` (a compiled base with the journal's sets and resets applied), keeping
+Python's validation so a damaged image is rejected. Gate: 1,017 cases (intact images with and without a flash base,
+two-member images, 860-plus single-byte flips and truncations, targeted damage to the maximum length and bitmap mask,
+the SHI1 hint, and catalog rows with a bad member or base); `test_decode.mjs` requires the same entries, the same error
+text where the code wrote one, and acceptance of exactly what Python accepts. It supersedes the spike
+`tools/bench/js/decode_dict.mjs` (still byte-identical to Python on the real Lapwing and Plover images).
+
+**M2 status: the update planner is ported.** `plan.js` ports `plan()` (personal edits, named-dictionary import,
+journal compaction, move/rename/delete, the allocation order, journal and index layout, catalog payload). Gate:
+`golden_plan.py` runs Python's planner on 5 images (small and large pools, a multi-journal catalog with real garbage, a
+three-journal ordering case, an exhausted identity counter) for 49 cases, recording each staged segment's length and
+SHA-256 in upload order plus the catalog payload; `test_plan.mjs` requires byte-identical results or the same error.
+Byte-identical output to Python is the spec's alternative to C++ simulator acceptance (Python's plans are what the
+simulator already accepts), so a separate simulator run of JS plans adds nothing; it becomes useful only when the JS
+planner stops being checked against Python at M6. Mutation check: 25 deliberate mutations; the survivors are
+comparisons that no fixture can reach (an exact `live == remaining` tie, a last-journal anchor that equals the
+anchor, the 253-extent limit, an unreachable 25-bit stroke test). While adding these vectors I found and fixed a bug
+in my own `golden_snapshot.py` helper (`append_tail` stepped by the unpadded record length, so earlier "journal tail"
+vectors only exercised part of their records; JS still agreed with Python, now on all of them).
+
+Not yet ported: `backup_all`, `overlay_usage`, the named-snapshot planner (`native_snapshot.py`, which needs the
+compiler: `tools/bench/js/compile_fast.mjs` is its spike), the import planner (`native_import_plan.py`), merge, repack
+(`native_repack.py`, M4) and recovery (M4). The JS pieces are not yet wired into the Manager UI (M3/M5).
 ## 2. Findings
 
 ### RAM by owner (measured, 32-slot everyday build with the transfer option, link map)

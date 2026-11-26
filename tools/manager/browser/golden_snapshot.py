@@ -103,7 +103,7 @@ def append_tail(image, pool_end, records, sequences=None):
         sequence = sequences[number] if sequences else sequence + 1
         blob = encode_record(edit, sequence)
         image[offset:offset + len(blob)] = blob
-        offset += len(blob)
+        offset += edit.span  # records are padded to 4 bytes; the reader steps by the span
 
 
 def metadata_cases(snapshot):
