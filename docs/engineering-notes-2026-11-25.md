@@ -226,12 +226,41 @@ What this does and does not say:
 - The 1 MiB read moves about 905 reports/s of Base64 text, so the USB HID input endpoint (about one report per
   millisecond) is the limit, not the browser. Binary frames carry 49 payload bytes per 63-byte report against
   about 46 for Base64, so on HID alone the gain is roughly 5-10%. The 250 KiB/s target needs CDC (Phase 3).
-- The upload direction may have headroom: Chrome can send 1,607 reports/s, about 77 KiB/s of 49-byte payloads, yet
-  the upload ran at 39.5 KiB/s. What bounds it (acknowledgement window, flash erase and program time, verify)
-  is not yet measured. The next step is per-stage timing.
+- The upload direction has headroom: Chrome can send 1,607 reports/s, about 77 KiB/s of 49-byte payloads, yet
+  the upload ran at 39.5 KiB/s. Section 7.1 shows why.
 - Not measured: the real Manager (Pyodide) path in Chrome, a JS transfer session, Bluetooth, Studio, sustained
   typing, or the heap under any load. The heap showing 0 B must not be acted on until the instrument is confirmed
   to see the allocations that matter.
-- Unexplained: after the uninstall commit, the console was unreachable for over 90 s from a script, yet answered
-  in seconds when checked afterwards. Slow reboot or host HID re-enumeration is not distinguished.
+- **Correction.** An earlier version of this section listed "console unreachable for over 90 s after the uninstall
+  commit" as unexplained. That was a bug in the test script, which tried to reconnect about 3 s after the commit
+  and treated its first failed attempt as a timeout. Measured properly (7.1), the console is reachable about
+  3.5 s after the commit finishes.
 - Lapwing Base reinstalls disabled (the restore path does not re-enable it).
+
+### 7.1 Where the upload time goes (Lapwing Base reinstall, 1,831,220 B staged, two runs, binary path)
+
+| Stage | Run 1 | Run 2 |
+| --- | --- | --- |
+| BEGIN to open | 40 ms | 23 ms |
+| Streaming 1,881,392 record bytes (includes record headers) | 43.79 s (42.0 KiB/s) | 43.85 s (41.9 KiB/s) |
+| END to VERIFIED | 0.00 s | 0.00 s |
+| COMMIT to DONE | 1.28 s | 1.28 s |
+| Whole `upload()` | 45.12 s | 45.16 s |
+| Useful payload rate end to end | 39.6 KiB/s | 39.6 KiB/s |
+| Frames sent, one per 49 bytes | 38,396 (877 per second) | 38,396 |
+| Acknowledgements received | 38,396, one per frame | 38,396 |
+| NAKs, rewinds, resent frames, stalls | 0 | 0 |
+
+- The protocol itself costs nothing here: no NAK, rewind, resend or stall in either run.
+- The keyboard sends one acknowledgement report for every data frame, so the input endpoint carries about 877
+  reports per second, the same ceiling the Base64 read test hit (about 905 per second). **The upload looks limited
+  by acknowledgement traffic on the USB HID input endpoint, not by flash or by the sending side** (Chrome can send
+  1,607 reports/s). This is an inference from matching rates, not yet a controlled experiment.
+- Flash erase is visible but small: 29 erases, with the longest single pauses of 218-248 ms after an erase (about
+  6-7 s in total, roughly 15% of the stream stage, inferred from those pauses, not timed separately).
+- Proposal: cumulative acknowledgements (acknowledge every few frames, and at END), which the window of 8 already
+  allows. If acknowledgement traffic is the limit, this should lift the rate toward the sending ceiling, perhaps
+  60+ KiB/s over HID. It is a wire-behavior change to an experimental protocol, so it needs owner approval.
+- Where the firmware does its read-back verification (during streaming or inside the 1.28 s commit) is not
+  established; END to VERIFIED is instant.
+- Reboot to console: about 3.5 s after the commit finishes.
