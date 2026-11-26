@@ -86,6 +86,7 @@ static bool Transfer(Stage &stage, const Plan &plan, bool &refused) {
         const size_t n = port.OnReport(report, sizeof report, 0, out, sizeof out);
         steno_transfer::Decoder d; d.Push(out, n);
         steno_transfer::Frame f;
+        if (!n) return uint8_t(0); // Silent: a cumulative acknowledgement is not due.
         assert(d.Poll(f));
         return f.type;
     };
@@ -93,7 +94,10 @@ static bool Transfer(Stage &stage, const Plan &plan, bool &refused) {
     if (refused) return false;
     for (size_t off = 0; off < stream.size(); off += 49) {
         const size_t n = std::min<size_t>(49, stream.size() - off);
-        if (exchange(MakeFrame(steno_transfer::kData, 1, off, stream.data() + off, n)) != steno_transfer::kAck) return false;
+        // Cumulative acknowledgements: silence inside a group, never a NAK or error, and the last frame is acked.
+        const auto reply = exchange(MakeFrame(steno_transfer::kData, 1, off, stream.data() + off, n));
+        if (reply != 0 && reply != steno_transfer::kAck) return false;
+        if (off + n == stream.size() && reply != steno_transfer::kAck) return false;
     }
     for (int i = 0; i < 1000; i++) {
         const auto r = exchange(MakeFrame(steno_transfer::kEnd, 1, stream.size()));
