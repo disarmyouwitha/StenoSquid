@@ -64,13 +64,64 @@ static std::vector<uint8_t> Body(size_t n, uint32_t seed = 1) {
     return b;
 }
 
-static void Upload(Receiver &r, uint16_t sid, const std::vector<uint8_t> &body, uint16_t chunk = 49) {
-    CHECK(Send(r, Enc(kBegin, sid, 0, BeginPayload(body, chunk))).type == kAck);
+// Cumulative acknowledgements: the receiver replies every window/2 frames, on the last frame and on a
+// short frame, and is silent otherwise. Returns how many ACKs were sent.
+static size_t Upload(Receiver &r, uint16_t sid, const std::vector<uint8_t> &body, uint16_t chunk = 49,
+                     uint16_t window = 8) {
+    CHECK(Send(r, Enc(kBegin, sid, 0, BeginPayload(body, chunk, window))).type == kAck);
+    const size_t every = window >= 2 ? window / 2 : 1;
+    size_t frames = 0, acks = 0;
     for (size_t off = 0; off < body.size(); off += chunk) {
         size_t n = std::min<size_t>(chunk, body.size() - off);
         Reply a = Send(r, Enc(kData, sid, off, {body.begin() + off, body.begin() + off + n}));
-        CHECK(a.type == kAck && a.offset == off + n);
+        const bool due = ++frames % every == 0 || off + n == body.size() || n < chunk;
+        if (due) { CHECK(a.type == kAck && a.offset == off + n); acks++; }
+        else CHECK(a.type == 0);
     }
+    return acks;
+}
+
+static void TestCumulativeAcks() {
+    // Exact ACK counts: every window/2 frames, plus the last frame when it is not already a multiple.
+    for (uint16_t window : {1, 2, 3, 4, 8, 15, 16}) {
+        for (size_t size : {size_t(1), size_t(48), size_t(49), size_t(50), size_t(49 * 8), size_t(49 * 8 + 3), size_t(5000)}) {
+            MemSink sink; Receiver r(sink);
+            const size_t frames = (size + 48) / 49, every = window >= 2 ? window / 2 : 1;
+            const size_t expected = frames / every + (frames % every ? 1 : 0);
+            CHECK(Upload(r, 1, Body(size), 49, window) == expected);
+            CHECK(sink.data == Body(size));
+        }
+    }
+    // The sender can never be left blocked: it stops sending once a full window is unacknowledged, so the
+    // number of frames the receiver still owes an ACK for must always stay below the window.
+    for (uint16_t window = 1; window <= kMaxWindow; window++) {
+        MemSink sink; Receiver r(sink);
+        auto body = Body(49 * 100 + 7, window);
+        CHECK(Send(r, Enc(kBegin, 1, 0, BeginPayload(body, 49, window))).type == kAck);
+        uint32_t acked = 0;
+        for (size_t off = 0; off < body.size(); off += 49) {
+            size_t n = std::min<size_t>(49, body.size() - off);
+            Reply a = Send(r, Enc(kData, 1, off, {body.begin() + off, body.begin() + off + n}));
+            if (a.type == kAck) acked = a.offset;
+            const size_t owed = (r.next_offset() - acked + 48) / 49;
+            CHECK(owed < window);
+        }
+        CHECK(acked == body.size());
+    }
+    // A lost ACK is recovered by the sender's go-back-N: a duplicate always draws an ACK with the
+    // confirmed offset, even in the middle of a silent group.
+    MemSink sink; Receiver r(sink);
+    auto body = Body(49 * 6);
+    CHECK(Send(r, Enc(kBegin, 1, 0, BeginPayload(body, 49, 8))).type == kAck);
+    auto frame = [&](size_t i) { return Enc(kData, 1, i * 49, {body.begin() + i * 49, body.begin() + i * 49 + 49}); };
+    CHECK(Send(r, frame(0)).type == 0 && Send(r, frame(1)).type == 0);
+    Reply dup = Send(r, frame(0));
+    CHECK(dup.type == kAck && dup.offset == 98);
+    // NAKs still carry the confirmed offset, not the acknowledged one.
+    Reply gap = Send(r, Enc(kData, 1, 49 * 5, {body.begin() + 49 * 5, body.begin() + 49 * 6}));
+    CHECK(gap.type == kNak && gap.offset == 98);
+    // END after silent frames still requires every byte: nothing is confirmed by silence.
+    CHECK(Send(r, Enc(kEnd, 1, body.size())).type == kNak);
 }
 
 static void TestCodec(const char *golden_hex) {
@@ -145,14 +196,14 @@ static void TestOrdering() {
     auto body = Body(200);
     CHECK(Send(r, Enc(kBegin, 1, 0, BeginPayload(body))).type == kAck);
     auto chunk = [&](size_t off, size_t n) { return std::vector<uint8_t>(body.begin() + off, body.begin() + off + n); };
-    CHECK(Send(r, Enc(kData, 1, 0, chunk(0, 49))).type == kAck);
+    CHECK(Send(r, Enc(kData, 1, 0, chunk(0, 49))).type == 0); // Cumulative: silent inside a group.
     Reply gap = Send(r, Enc(kData, 1, 98, chunk(98, 49)));
     CHECK(gap.type == kNak && gap.payload[0] == kNakOutOfOrder && gap.offset == 49);
     Reply dup = Send(r, Enc(kData, 1, 0, chunk(0, 49)));
     CHECK(dup.type == kAck && dup.offset == 49 && sink.data.size() == 49);
     Reply overlap = Send(r, Enc(kData, 1, 40, chunk(40, 49)));
     CHECK(overlap.type == kNak && overlap.payload[0] == kNakBadOffset && sink.data.size() == 49);
-    CHECK(Send(r, Enc(kData, 1, 49, chunk(49, 49))).type == kAck);
+    CHECK(Send(r, Enc(kData, 1, 49, chunk(49, 49))).type == 0);
     // Early END is refused without aborting; the host can keep sending.
     Reply early = Send(r, Enc(kEnd, 1, body.size()));
     CHECK(early.type == kNak && r.state() == State::kReceiving && sink.aborts == 0);
@@ -166,7 +217,7 @@ static void TestBackpressure() {
     Reply nak = Send(r, Enc(kData, 1, 0, {body.begin(), body.begin() + 49}));
     CHECK(nak.type == kNak && nak.payload[0] == kNakSinkBusy && nak.offset == 0 && r.state() == State::kOpen);
     sink.write_result = SinkResult::kOk;
-    CHECK(Send(r, Enc(kData, 1, 0, {body.begin(), body.begin() + 49})).type == kAck);
+    CHECK(Send(r, Enc(kData, 1, 0, {body.begin(), body.begin() + 49})).type == 0); // Accepted, ACK is cumulative.
     // Verify and commit can also push back without failing the session.
     Send(r, Enc(kData, 1, 49, {body.begin() + 49, body.begin() + 98}));
     Send(r, Enc(kData, 1, 98, {body.begin() + 98, body.end()}));
@@ -318,6 +369,7 @@ int main(int argc, char **argv) {
     if (argc < 2) { printf("usage: %s golden-hex\n", argv[0]); return 2; }
     TestCodec(argv[1]);
     TestHappyPath();
+    TestCumulativeAcks();
     TestOrdering();
     TestBackpressure();
     TestFailures();

@@ -79,7 +79,9 @@ static Outcome Run(NativeStage<NativeDevice> &stage, const Plan &plan, uint32_t 
     for (size_t off = 0; off < stream.size(); off += 49) {
         const size_t n = std::min<size_t>(49, stream.size() - off);
         const Reply r = send(MakeFrame(steno_transfer::kData, 1, off, stream.data() + off, n));
-        if (r.type != steno_transfer::kAck) return {false, receiver.state(), false, stage.Active()};
+        // Cumulative acknowledgements: silence inside a group, but never a NAK or error, and the last frame is acked.
+        if (r.type != 0 && r.type != steno_transfer::kAck) return {false, receiver.state(), false, stage.Active()};
+        if (off + n == stream.size() && r.type != steno_transfer::kAck) return {false, receiver.state(), false, stage.Active()};
         if (disconnect_midway && off > stream.size() / 2) {
             receiver.Disconnect();
             return {false, receiver.state(), false, stage.Active()};
@@ -124,13 +126,16 @@ static bool PortRun(NativeStage<NativeDevice> &stage, const Plan &plan) {
         const size_t n = port.OnReport(report, sizeof report, 0, out, sizeof out);
         steno_transfer::Decoder d; d.Push(out, n);
         steno_transfer::Frame f;
+        if (!n) return std::make_pair(uint8_t(0), uint8_t(0)); // Silent: a cumulative acknowledgement is not due.
         assert(d.Poll(f));
         return std::make_pair(f.type, f.length ? f.payload[0] : uint8_t(0));
     };
     assert(exchange(MakeFrame(steno_transfer::kBegin, 1, 0, begin, sizeof begin)).first == steno_transfer::kAck);
     for (size_t off = 0; off < stream.size(); off += 49) {
         const size_t n = std::min<size_t>(49, stream.size() - off);
-        assert(exchange(MakeFrame(steno_transfer::kData, 1, off, stream.data() + off, n)).first == steno_transfer::kAck);
+        const auto reply = exchange(MakeFrame(steno_transfer::kData, 1, off, stream.data() + off, n));
+        const bool last = off + n == stream.size();
+        assert(reply.first == steno_transfer::kAck || (reply.first == 0 && !last));
     }
     for (int i = 0; i < 1000; i++) {
         const auto r = exchange(MakeFrame(steno_transfer::kEnd, 1, stream.size()));
