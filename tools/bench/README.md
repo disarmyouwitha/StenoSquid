@@ -321,7 +321,19 @@ versus 213,430 DMA page fills for 54,638,080 bytes. Both selected generation 2,
 recovered 17 tail entries, performed zero writes, and refused a corrupted
 forward index. The request count and transferred bytes help size the next
 hardware experiment. Neither measures latency, and the candidate still needs
-a physical cold start against the 37.4- and 91.3-second 16 MHz baselines.
+a comparison on hardware. The 16 MHz candidate was then flashed and tested.
+It reached ready in 41.4 seconds from USB after UF2, versus the 37.0-second
+post-UF2 control. On a physical cold start, flash reported ready at 44.0 seconds
+of device uptime, versus 37.4 and 91.3 seconds for the two 16 MHz controls. The
+host USB-to-ready interval was 39.1 seconds. The candidate completed both boots
+on the first open and recorded 213,443 DMA page fills each time. On the
+physical run, the forward and reverse index passes took 23.5 seconds combined,
+versus 16.2 seconds in the faster control. Both roots validated, and all 233
+fixture lookups passed with 32 dictionaries loaded and 17 free blocks. The
+candidate does not establish a boot-time improvement or meet the 10-second
+full-pool target. See the [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-dma-ahead-after-uf2.json),
+[cold trace](../../docs/benchmarks/phase1-startup-profile-dma-ahead-cold.json),
+and [lookup results](../../docs/benchmarks/phase1-startup-profile-dma-ahead-lookups.json).
 
 
 
