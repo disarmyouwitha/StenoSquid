@@ -15,7 +15,7 @@
 #include "native_engine_backend.h"
 #include "../../tools/storage/native_store.h"
 #include "../../tools/storage/native_validator.h"
-#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
 #include "../../tools/storage/native_startup_read.h"
 #endif
 #include "../../tools/storage/native_provisioner.h"
@@ -82,7 +82,10 @@ bool boot_count_reads = false;
 
 struct FlashDevice {
     bool mapped=false,trust_bases=false;
-#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+    bool journal_dma = false;
+#endif
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
     uint32_t cold_read_yield_at = 0;
     StartupReadAhead startup_read_ahead;
 #else
@@ -97,12 +100,16 @@ struct FlashDevice {
     void Dirty(uint32_t at,uint32_t n){for(auto &c:cached)if(c.bytes && at<c.at+c.bytes && c.at<at+n)c.bytes=0;}
     bool Read(uint32_t at,uint8_t *out,uint32_t n) {
         if(at>lf_flash_bytes || n>lf_flash_bytes-at)return false;
-#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+        if (cold_read_yield_at && static_cast<int32_t>(k_uptime_get_32() - cold_read_yield_at) >= 0) {
+            k_sleep(K_TICKS(1));
+            cold_read_yield_at = k_uptime_get_32() + 5u;
+        }
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+        if (journal_dma) {
+#else
         if (cold_read_yield_at) {
-            if (static_cast<int32_t>(k_uptime_get_32() - cold_read_yield_at) >= 0) {
-                k_sleep(K_TICKS(1));
-                cold_read_yield_at = k_uptime_get_32() + 5u;
-            }
+#endif
             return startup_read_ahead.Read(at, out, n, dma, [](uint32_t base, uint8_t *buffer) {
                 ++boot_dma_reads;
                 return nrfx_qspi_read(buffer, StartupReadAhead::PageBytes, base) == NRFX_SUCCESS;
@@ -118,10 +125,12 @@ struct FlashDevice {
             squid_bench_personal_bytes += n;
         }
 #endif
+#if !defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) && !defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
         if (cold_read_yield_at && k_uptime_get() >= cold_read_yield_at) {
             k_sleep(K_TICKS(1));
             cold_read_yield_at = k_uptime_get() + 5;
         }
+#endif
         if(mapped){copy_xip_bytes(out,reinterpret_cast<const void *>(Xip+at),n);return true;}
         while(n) {
             uint32_t skip=at%4,count=n<256-skip?n:256-skip;
@@ -918,6 +927,8 @@ extern "C" bool steno_squid_native_flash_open(void) {
     flash_device.startup_read_ahead = {};
     flash_device.cold_read_yield_at = k_uptime_get_32() + 5u;
     BOOT_STAGE("dma_read_ahead", StartupReadAhead::PageBytes);
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+    flash_device.cold_read_yield_at = k_uptime_get_32() + 5u;
 #else
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
 #endif
@@ -932,6 +943,10 @@ extern "C" bool steno_squid_native_flash_open(void) {
         const auto status=validator.Validate(root, false
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
             , [](ValidationStage stage) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+                flash_device.journal_dma = stage == ValidationStage::Journal;
+                if (flash_device.journal_dma) flash_device.startup_read_ahead = {};
+#endif
                 switch (stage) {
                 case ValidationStage::Extents: BOOT_STAGE("extent_checks", flash_device.trust_bases); break;
                 case ValidationStage::Journal: BOOT_STAGE("journal_scan", 0); break;
@@ -942,8 +957,16 @@ extern "C" bool steno_squid_native_flash_open(void) {
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY
             , &store.live
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_BATCH
+            , true
+#endif
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_BATCH)
+            , nullptr, true
 #endif
         );
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
+        flash_device.journal_dma = false;
+#endif
         flash_device.trust_bases=false;
         BOOT_STAGE("root_validated", static_cast<uint32_t>(status));
         return status;

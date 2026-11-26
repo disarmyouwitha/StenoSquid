@@ -58,6 +58,7 @@ int main(int argc,char **argv) {
     std::vector<uint8_t> invalid(root.bytes);
     assert(device.Read(root.address, invalid.data(), invalid.size()));
     assert(validator.Validate(root, false) == CatalogResult::Ok);
+    assert(validator.Validate(root, false, nullptr, nullptr, nullptr, true) == CatalogResult::Ok);
     const auto forward = validator.ValidatedView().forward_address;
     assert(forward >= 2 * kSegmentBytes);
     nor.data[forward] ^= 1;

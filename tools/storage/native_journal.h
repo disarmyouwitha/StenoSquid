@@ -186,13 +186,17 @@ public:
         return JournalResult::Ok;
     }
 
-    JournalResult ReadEnvelope(uint32_t address, JournalRecord &record,uint8_t (&header)[32]) {
+private:
+    bool EnvelopeAddressValid(uint32_t address) const {
         const uint32_t offset = address % kSegmentBytes;
-        if (address / kSegmentBytes < 2 || address / kSegmentBytes >= NativePoolEnd(device) || address % 4 ||
-            offset < kPageBytes || offset > kSegmentBytes-32) return JournalResult::Invalid;
-        if (!device.Read(address, header, 32)) return JournalResult::IoError;
+        return address / kSegmentBytes >= 2 && address / kSegmentBytes < NativePoolEnd(device) &&
+               address % 4 == 0 && offset >= kPageBytes && offset <= kSegmentBytes - 32;
+    }
+
+    JournalResult DecodeEnvelope(uint32_t address, JournalRecord &record, const uint8_t *header) {
+        const uint32_t offset = address % kSegmentBytes;
         bool blank = true;
-        for (auto byte : header) blank &= byte == 255;
+        for (unsigned i = 0; i < 32; ++i) blank &= header[i] == 255;
         if (blank) return JournalResult::End;
         if (Word(header+28) != kCommit) return JournalResult::Sealed;
         uint32_t span=Word(header+4), size=Word(header+16);
@@ -202,6 +206,13 @@ public:
             span != ((size+35)&~3u) || Word(header+24)!=Crc(0,header,24)) return JournalResult::Corrupt;
         record={sequence,address,span,size};
         return JournalResult::Ok;
+    }
+
+public:
+    JournalResult ReadEnvelope(uint32_t address, JournalRecord &record,uint8_t (&header)[32]) {
+        if (!EnvelopeAddressValid(address)) return JournalResult::Invalid;
+        if (!device.Read(address, header, sizeof(header))) return JournalResult::IoError;
+        return DecodeEnvelope(address, record, header);
     }
 
     // Only for records validated at append/recovery and held in owned immutable
@@ -214,6 +225,23 @@ public:
         if (!DecodeKeyPrefix(bytes, record.payload_bytes, key)) return JournalResult::Corrupt;
         if (!device.Read(address + 40, bytes, 4u * key.count)) return JournalResult::IoError;
         return DecodeStrokes(bytes, key) ? JournalResult::Ok : JournalResult::Corrupt;
+    }
+
+    // One read for the header, key prefix, and first stroke. A multi-stroke
+    // outline needs one more read of exactly its remaining strokes.
+    JournalResult ReadIndexKey(uint32_t address, JournalRecord &record, JournalKey &key) {
+        if (!EnvelopeAddressValid(address)) return JournalResult::Invalid;
+        uint8_t prefix[44];
+        if (address % kSegmentBytes > kSegmentBytes - sizeof(prefix)) return ReadKey(address, record, key);
+        if (!device.Read(address, prefix, sizeof(prefix))) return JournalResult::IoError;
+        const auto status = DecodeEnvelope(address, record, prefix);
+        if (status != JournalResult::Ok) return status;
+        if (!DecodeKeyPrefix(prefix + 32, record.payload_bytes, key)) return JournalResult::Corrupt;
+        uint8_t strokes[64];
+        std::memcpy(strokes, prefix + 40, 4);
+        if (key.count > 1 && !device.Read(address + sizeof(prefix), strokes + 4, 4u * (key.count - 1)))
+            return JournalResult::IoError;
+        return DecodeStrokes(strokes, key) ? JournalResult::Ok : JournalResult::Corrupt;
     }
 
     JournalResult Read(uint32_t address, JournalRecord &record, JournalKey *decoded = nullptr) {

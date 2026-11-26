@@ -361,6 +361,20 @@ dictionaries and 17 blocks free. The recorder attached after USB enumeration,
 so no USB-to-ready interval was measured. See the
 [reboot trace](../../docs/benchmarks/phase1-startup-profile-reuse-recovery-reboot.json).
 
+The next two 16 MHz comparison builds keep recovery reuse enabled. The first
+adds `phase1-boot-index.conf` to batch index record key reads and reuse the
+previous translation prefix in the reverse pass. The second adds
+`phase1-boot-journal-dma.conf` to use DMA page fills only during the journal
+scan. Both still run extent CRCs and complete index ordering checks. The
+host fixture benchmark above reports these results, with zero flash writes
+and the same rejection of a corrupted forward index in each build.
+
+| Configuration | Read requests or page fills | Bytes |
+| --- | ---: | ---: |
+| Reused recovery | 813,897 | 16,943,926 |
+| Batched index reads | 413,787 | 15,263,696 |
+| Batched index reads and journal DMA | 274,705 | 15,558,552 |
+
 
 
 

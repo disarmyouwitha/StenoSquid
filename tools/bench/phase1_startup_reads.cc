@@ -35,6 +35,12 @@ struct StartupDevice : NativeDevice {
     }
 };
 
+static StartupDevice *hybrid_device;
+static void JournalDmaOnly(ValidationStage stage) {
+    hybrid_device->read_ahead = stage == ValidationStage::Journal;
+    if (hybrid_device->read_ahead) hybrid_device->cache = {};
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     std::ifstream stream(argv[1], std::ios::binary);
@@ -43,21 +49,29 @@ int main(int argc, char **argv) {
     assert(nor.data.size() == kLargePoolEnd * kSegmentBytes);
     nor.data.resize(nor.data.size() + kSegmentBytes, 255);
 
-    for (unsigned mode = 0; mode < 3; ++mode) {
+    const char *mode_name[] = {"direct requests", "DMA pages", "reused recovery", "batched index keys", "batched index + journal DMA"};
+    for (unsigned mode = 0; mode < sizeof(mode_name) / sizeof(mode_name[0]); ++mode) {
         const bool read_ahead = mode == 1;
-        const bool reuse_recovery = mode == 2;
+        const bool reuse_recovery = mode >= 2;
+        const bool batch_keys = mode >= 3;
+        const auto stage = mode == 4 ? JournalDmaOnly : nullptr;
         StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, {}, {}};
+        hybrid_device = &device;
         NativeStore<StartupDevice> store(device);
         NativeValidator<StartupDevice> validator(device, store.catalog);
         nor.reads = nor.read_bytes = 0;
         const auto writes = nor.operations;
-        const auto result = store.Open([&](const CatalogRoot &root) {
-            return validator.Validate(root, false, nullptr, nullptr, reuse_recovery ? &store.live : nullptr);
-        }, CatalogValidation::ReuseIdenticalPayload, reuse_recovery);
+        const auto validate = [&](const CatalogRoot &root) {
+            const auto result = validator.Validate(root, false, stage, nullptr,
+                                                   reuse_recovery ? &store.live : nullptr, batch_keys);
+            if (stage) device.read_ahead = false;
+            return result;
+        };
+        const auto result = store.Open(validate, CatalogValidation::ReuseIdenticalPayload, reuse_recovery);
         assert(result == CatalogResult::Ok && store.opened);
         assert(store.selected.root.generation == 2 && store.live.TailCount() == 17);
         assert(nor.operations == writes);
-        std::cout << (read_ahead ? "DMA pages" : reuse_recovery ? "reused recovery" : "direct requests") << ": "
+        std::cout << mode_name[mode] << ": "
                   << nor.reads << " reads, " << nor.read_bytes << " bytes\n";
 
         // The fixture's index bytes remain protected by their original CRCs.
@@ -65,9 +79,7 @@ int main(int argc, char **argv) {
         assert(forward_index >= 2 * kSegmentBytes);
         nor.data[forward_index] ^= 1;
         device.cache = {};
-        assert(store.Open([&](const CatalogRoot &root) {
-            return validator.Validate(root, false, nullptr, nullptr, reuse_recovery ? &store.live : nullptr);
-        }, CatalogValidation::ReuseIdenticalPayload, reuse_recovery) == CatalogResult::Corrupt);
+        assert(store.Open(validate, CatalogValidation::ReuseIdenticalPayload, reuse_recovery) == CatalogResult::Corrupt);
         assert(!store.opened && nor.operations == writes);
         nor.data[forward_index] ^= 1;
     }
