@@ -1,0 +1,149 @@
+{
+  "profile": [
+    {
+      "index": 0,
+      "stage": "hfxo_held",
+      "uptime_ms": 928,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "qspi_start",
+      "uptime_ms": 928,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "quad_setup",
+      "uptime_ms": 1046,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "resume_check",
+      "uptime_ms": 1046,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "base_trust",
+      "uptime_ms": 1046,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "mapping_probe",
+      "uptime_ms": 1163,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "catalog",
+      "uptime_ms": 1164,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1265,
+      "detail": 0,
+      "mapped_reads": 160,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "extent_checks",
+      "uptime_ms": 1278,
+      "detail": 1,
+      "mapped_reads": 278,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "journal_scan",
+      "uptime_ms": 4307,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "forward_index",
+      "uptime_ms": 12501,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 2760
+    },
+    {
+      "index": 11,
+      "stage": "reverse_index",
+      "uptime_ms": 21826,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 100258
+    },
+    {
+      "index": 12,
+      "stage": "root_validated",
+      "uptime_ms": 28925,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 124013
+    },
+    {
+      "index": 13,
+      "stage": "catalog_result",
+      "uptime_ms": 28925,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 124013
+    },
+    {
+      "index": 14,
+      "stage": "bind",
+      "uptime_ms": 28925,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 124013
+    },
+    {
+      "index": 15,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 28947,
+      "detail": 32,
+      "mapped_reads": 3162,
+      "dma_reads": 124013
+    },
+    {
+      "index": 16,
+      "stage": "flash_ready",
+      "uptime_ms": 28982,
+      "detail": 1,
+      "mapped_reads": 3162,
+      "dma_reads": 124013
+    }
+  ],
+  "ready": true,
+  "uptime_to_ready_ms": 28982,
+  "generation": 3,
+  "dictionaries": 32,
+  "geometry": "OK POOL1 1023",
+  "lookups": {
+    "fixture_matches": 232,
+    "expected_misses_disabled": 1
+  }
+}

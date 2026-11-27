@@ -554,3 +554,13 @@ the last root validation and catalog selection. All 233 fixture probes
 behaved as expected for the current enable flags. Both root validation
 passes still ran. See the [baseline](../../docs/benchmarks/phase1-64mib-distinct-catalog-cold.json)
 and [cold retest](../../docs/benchmarks/phase1-64mib-newest-last-cold.json).
+
+When complete catalog payloads differ only in valid dictionary enable flags,
+the profiled boot now validates the newest root and reuses its journal/index
+validation for the other root. Both committed payload CRCs are checked, and
+the comparison includes all dictionary metadata and extent bytes outside the
+enable field. The 32 MHz fixture took 24.296 seconds after flashing and
+28.982 seconds after a physical power cycle. Both measured one validation
+pass and all 233 probes matched the current dictionary settings.
+See the [post-UF2 trace](../../docs/benchmarks/phase1-64mib-shared-flags-after-uf2.json)
+and [physical cold trace](../../docs/benchmarks/phase1-64mib-shared-flags-cold.json).
