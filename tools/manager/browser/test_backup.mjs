@@ -43,6 +43,11 @@ for (const c of vectors.cases) {
   assert.equal(next, c.log.length, `${c.title}: JS sent ${next} of ${c.log.length} commands`);
 }
 
+// Python isoformat: microseconds (milliseconds x 1000, six digits) only when not zero.
+assert.equal(isoNow(new Date(Date.UTC(2026, 10, 26, 12, 0, 0, 0))), "2026-11-26T12:00:00+00:00");
+assert.equal(isoNow(new Date(Date.UTC(2026, 10, 26, 12, 0, 0, 7))), "2026-11-26T12:00:00.007000+00:00");
+assert.equal(isoNow(new Date(Date.UTC(2026, 10, 26, 12, 0, 0, 999))), "2026-11-26T12:00:00.999000+00:00");
+assert.equal(isoNow(new Date(Date.UTC(2026, 0, 2, 3, 4, 5, 120))), "2026-01-02T03:04:05.120000+00:00");
 // The real timestamp has Python's isoformat shape: seconds, optional six-digit microseconds, +00:00.
 for (let i = 0; i < 50; i++) assert.match(isoNow(), /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00$/);
 console.log(`PASS backup (JS): ${vectors.cases.length} cases behave like native_update.backup_all`);

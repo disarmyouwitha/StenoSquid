@@ -7,8 +7,7 @@ import {PY_SPACE} from "./console.js";
 import {runtimeError} from "./errors.js";
 
 // datetime.now(timezone.utc).isoformat(): microseconds only when they are not zero.
-export function isoNow() {
-  const now = new Date();
+export function isoNow(now = new Date()) {
   const micros = String(now.getUTCMilliseconds() * 1000).padStart(6, "0");
   return now.toISOString().slice(0, 19) + (micros === "000000" ? "" : "." + micros) + "+00:00";
 }
