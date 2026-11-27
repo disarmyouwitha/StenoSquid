@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 import struct
 import subprocess
+import os
 import sys
 import tempfile
 import time
@@ -23,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 for sub in ("tools/storage", "tools/dictionaries", "tools/dict_compiler"):
     sys.path.insert(0, str(ROOT / sub))
 import native_base_update
-from import_personal import open_console
+from import_personal import open_bluetooth_console, open_console
 
 SCRIPT = ROOT / "tools/bench/js/hw_upload.mjs"
 LAST = {}
@@ -80,9 +81,14 @@ def open_when_ready(limit=300):
     """open_console() is itself a context manager, so entering it is what must be retried."""
     begun = time.time()
     while True:
-        manager = open_console()
+        manager = open_bluetooth_console() if os.environ.get("STENO_BLE") else open_console()
         try:
             console = manager.__enter__()
+            tuning = os.environ.get("STENO_BLE_PARAMS")  # lab: e.g. "6 6 0 400" (needs lab-ble.conf)
+            if tuning and os.environ.get("STENO_BLE"):
+                print("   ble params:", console.command(f"native_install lab-ble params {tuning}"), flush=True)
+                time.sleep(3)
+                print("   ble link:", console.command("native_install lab-ble info"), flush=True)
             break
         except RuntimeError:
             if time.time() - begun > limit:

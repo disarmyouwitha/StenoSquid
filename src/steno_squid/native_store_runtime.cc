@@ -1787,6 +1787,12 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
         return;
     }
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_LAB_BLE_TUNING
+    if (!std::strncmp(command, "lab-ble ", 8)) {
+        steno_squid_javelin_ble_lab(command + 8, reply, bytes);
+        return;
+    }
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
     if (!bluetooth_session && !std::strcmp(command, "diagnostic-fault\n")) {
         steno_squid_replay_diagnostic_status(reply, bytes, atomic_get(&native_fault_pc));

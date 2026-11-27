@@ -263,6 +263,24 @@ config ZMK_STENO_SQUID_LAB_BOOTLOADER
       (what ZMK's &bootloader key does) so a lab build can be flashed from the host without touching the board. Never in
       release builds; enabled by config/boardsource-wireless-corne/lab-bootloader.conf.
 
+config ZMK_STENO_SQUID_LAB_BLE_TUNING
+    bool "Lab: console command that reads and changes the Bluetooth link parameters"
+    depends on ZMK_JAVELIN_STENO_BLE_HID && ZMK_STENO_SQUID_NATIVE_STORE
+    default n
+    help
+      Adds "native_install lab-ble info | params MIN MAX LAT TO | phy2m | datalen" for measuring and tuning the console's
+      Bluetooth throughput. Never in release builds; enabled by config/boardsource-wireless-corne/lab-ble.conf.
+
+config ZMK_STENO_SQUID_BLE_FAST_LINK
+    bool "Ask for a fast Bluetooth link while the Manager is using the console"
+    depends on ZMK_JAVELIN_STENO_BLE_HID
+    default n
+    help
+      On the first console write the keyboard requests a 7.5-11.25 ms connection interval with no peripheral latency, and
+      ten seconds after the last write it requests ZMK's normal parameters again. Measured on the nice!nano with Windows: a
+      console round trip falls from about 120 ms to 30 ms and a 260 KB upload from 417 s to 45 s. Opt-in until typing, battery
+      and macOS behaviour are checked; enabled by config/boardsource-wireless-corne/lab-ble.conf.
+
 config ZMK_JAVELIN_STENO_BLE_HID
     bool "Expose the Javelin browser console over Bluetooth HID"
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY && ZMK_BLE
