@@ -639,3 +639,14 @@ power-off. Extent validation took 18.901 and 19.047 seconds respectively.
 Both runs reopened generation 6 with all 32 dictionaries and passed all
 233 lookup probes. See the [post-UF2 trace](../../docs/benchmarks/phase1-64mib-fast-checksum-dma-after-uf2.json)
 and [cold trace](../../docs/benchmarks/phase1-64mib-fast-checksum-dma-cold.json).
+
+### Index validation timing
+
+`CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING=y` samples one index entry per
+64, rotating the position within each group. The boot trace records
+`index_timer_hz`, sample counts and elapsed ticks for fetching and decoding
+journal keys, reading reverse text prefixes, and comparing index order.
+Ordering includes any reads for text past the cached prefix. Estimate the
+time for a category by dividing its ticks by the timer frequency and
+multiplying by the entry count divided by the sample count. The full stage
+time also includes index address reads and loop overhead.

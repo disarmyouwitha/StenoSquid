@@ -5,6 +5,11 @@
 #include "native_merge_ops.h"
 namespace candidate_b {
 enum class ValidationStage { Extents, Journal, Forward, Reverse };
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+struct IndexTiming {
+    uint32_t samples = 0, keys = 0, text = 0, ordering = 0;
+};
+#endif
 struct RejectedExtent {
     uint32_t kind, address, bytes, expected, actual;
     bool checksum_read;
@@ -46,7 +51,12 @@ public:
     CatalogResult Validate(const CatalogRoot &root, bool cross_check = true,
                            void (*stage)(ValidationStage) = nullptr,
                            void (*extent_failed)(const RejectedExtent &) = nullptr,
-                           LiveJournal<Device> *startup = nullptr, bool batch_index_keys = false) {
+                           LiveJournal<Device> *startup = nullptr, bool batch_index_keys = false
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+                           , uint32_t (*clock)() = nullptr,
+                           void (*index_timing)(ValidationStage, const IndexTiming &) = nullptr
+#endif
+                           ) {
         if (stage) stage(ValidationStage::Extents);
         const auto schema = catalog.Validate(root, [&](uint32_t i, const uint8_t *row) {
             return Extent(i, row, extent_failed);
@@ -102,6 +112,9 @@ public:
             uint8_t prefixes[2][32];
             const bool cache_prefix = reverse && batch_index_keys;
             constexpr uint32_t batch = sizeof(addresses) / 4;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+            IndexTiming timing;
+#endif
             for(uint32_t i=0;i<entries;++i) {
                 const uint32_t slot = i % batch;
                 if (!slot) {
@@ -111,20 +124,43 @@ public:
                 }
                 const uint32_t address = Word(addresses + slot*4);
                 MergeRecord record;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+                // Rotate the sample within each group to cover different page
+                // and index-batch positions. Unsigned subtraction handles wrap.
+                const bool sample = clock && index_timing && (i & 63u) == ((i >> 6) & 63u);
+                const uint32_t key_start = sample ? clock() : 0;
+#endif
                 if(!ops.Record(address,record,cross_check,batch_index_keys) || record.identity>=Word(prefix) ||
                    record.record.sequence>view.through || record.operation==2 || (reverse && record.operation))
                     return CatalogResult::Corrupt;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+                const uint32_t text_start = sample ? clock() : 0;
+#endif
                 const unsigned current = i % 2;
                 if (cache_prefix && record.text_bytes &&
                     !device.Read(record.text_address, prefixes[current], std::min<uint32_t>(record.text_bytes, 32)))
                     return CatalogResult::Corrupt;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+                const uint32_t ordering_start = sample ? clock() : 0;
+#endif
                 if ((i && (reverse ? ops.ReverseKeys(previous, record, cache_prefix ? prefixes[1-current] : nullptr,
                                                      cache_prefix ? prefixes[current] : nullptr)
                                   : ops.Keys(previous, record)) >= 0) ||
                    (cross_check && (reverse?!MatchIndex(false,record):(!record.operation && !MatchIndex(true,record)))))return CatalogResult::Corrupt;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+                if (sample) {
+                    timing.ordering += clock() - ordering_start;
+                    timing.keys += text_start - key_start;
+                    timing.text += ordering_start - text_start;
+                    ++timing.samples;
+                }
+#endif
                 if (!reverse && !record.operation) ++translations;
                 previous=record;
             }
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
+            if (index_timing) index_timing(reverse ? ValidationStage::Reverse : ValidationStage::Forward, timing);
+#endif
         }
         if (translations != reverse_count) return CatalogResult::Corrupt;
         if (staged) startup->staged_recovery = true;
