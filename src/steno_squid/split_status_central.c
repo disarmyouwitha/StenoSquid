@@ -117,8 +117,8 @@ static enum steno_squid_mode dictionary_mode(enum steno_squid_mode ready) {
     return zmk_javelin_steno_ready() ? ready : STENO_SQUID_MODE_LOADING;
 }
 
-static enum steno_squid_mode current_mode(void) {
-    switch (steno_squid_active_layer()) {
+static enum steno_squid_mode current_mode(zmk_keymap_layer_id_t layer) {
+    switch (layer) {
     case JAVELIN_LAYER_SYM_NUM:
         return STENO_SQUID_MODE_SYMBOLS;
     case JAVELIN_LAYER_STENO:
@@ -134,8 +134,7 @@ static enum steno_squid_mode current_mode(void) {
 /* The active layer's name when the display should show it: the layer was
  * renamed in ZMK Studio, or it has no mode of its own. Otherwise NULL.
  */
-static const char *custom_layer_name(void) {
-    const zmk_keymap_layer_id_t layer = steno_squid_active_layer();
+static const char *custom_layer_name(zmk_keymap_layer_id_t layer) {
     const char *name = zmk_keymap_layer_name(layer);
     if (!name || !name[0]) {
         return NULL;
@@ -161,6 +160,7 @@ static void send_status(struct k_work *work) {
         return;
     }
 
+    const zmk_keymap_layer_id_t layer = steno_squid_active_layer();
     unsigned status_override = atomic_get(&upload_mode);
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE)
     if (!status_override && atomic_get(&native_maintenance)) {
@@ -168,7 +168,7 @@ static void send_status(struct k_work *work) {
     }
 #endif
 #if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
-    if (!status_override) {
+    if (!status_override && layer == JAVELIN_LAYER_STENO) {
         const enum steno_squid_mode phase = atomic_get(&dictionary_phase);
         const enum dictionary_flash_state flash = dictionary_flash_status();
         if (phase && flash == DICTIONARY_FLASH_LOADING) {
@@ -180,11 +180,11 @@ static void send_status(struct k_work *work) {
 #endif
     struct zmk_behavior_binding binding = {
         .behavior_dev = STENO_SQUID_STATUS_BEHAVIOR,
-        .param1 = status_override ? status_override : current_mode(),
+        .param1 = status_override ? status_override : current_mode(layer),
         .param2 = STENO_SQUID_STATUS_PROTOCOL,
     };
     /* Loading and No dictionary take the place of a layer's name. */
-    const char *name = custom_layer_name();
+    const char *name = custom_layer_name(layer);
     if (!status_override && name && binding.param1 != STENO_SQUID_MODE_LOADING &&
         binding.param1 != STENO_SQUID_MODE_NO_DICTIONARY) {
         pack_layer_name(name, &binding);
