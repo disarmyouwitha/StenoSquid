@@ -5,6 +5,9 @@
 import {parseNamed} from "./importer.js";
 import {formatStroke} from "./decode.js";
 import {sha256Hex} from "./snapshot_plan.js";
+import {compile} from "./compile.js";
+import {reader} from "./lookup.js";
+import {assertionError} from "./errors.js";
 
 // (identity, name) -> path of the source file under build/ (build_native_image.SOURCES).
 const SOURCES = new Map([
@@ -67,5 +70,39 @@ export function makeFactorySource(archive) {
     remembered.set(key, result);
     if (remembered.size > 6) remembered.delete(remembered.keys().next().value);
     return result === null ? null : new Map(result);
+  };
+}
+
+// manifest.py: the SHA-256 of each pinned source file, by dictionary name.
+const PINNED = {
+  "Lapwing Commands": "6160e19084c77381f66aeda72473d807bcf3ea7f0c6303a37189ca60bf59ff3d",
+  "Lapwing Numbers": "d104b9d6f8ea7935bdf3129d69bcdc4100e2b55fa717b41be2307043a4bd4b73",
+  "Lapwing UK Additions": "e6d3190d0417c9912b34ebf9a3d02be08935d5c1c1b46bb47f0b580ed21717d3",
+  "Lapwing Proper Nouns": "aef0205fa4bc6bcb1bc11c199b0c01737ada5ffa7a0f0a56d48154d024ce66e8",
+  "Lapwing Base": "2750c20466bc5040d69167e02095776531afb6c3c1f6f662bba01006e7e0e484",
+  "Plover Base": "6570873c7f703ecd39c9870083f643db3475b49462a8db80fe22fe33ac3cfe92",
+};
+
+// native_base_update.prepare: compile the pinned factory dictionary (from the bundled archive) into the relocatable image that
+// restoring it installs, and check every entry through the lookup reader. Resolves to {contents, pointers, digest}.
+export function makePrepare(archive) {
+  return async (name) => {
+    const source = [...SOURCES.values()].find(([label]) => label === name);
+    const digest = PINNED[name];
+    if (!source || !digest) throw new Error(`Unknown pinned dictionary: ${name}`);
+    const zip = archive();
+    const raw = zip ? await readZipEntry(zip, `build/${source[1]}`) : null;
+    if (raw === null) throw new Error(`The bundled factory dictionary is missing: ${name}.`);
+    if (await sha256Hex(raw) !== digest) throw new Error(`Pinned dictionary checksum mismatch: ${name}. Run tools/dictionaries/prepare.py first.`);
+    const {entries, names} = parseNamed(new TextDecoder("utf-8", {fatal: true}).decode(raw));
+    const decoder = new TextDecoder("utf-8", {fatal: true});
+    const pairs = entries.map(([, text], i) => [names[i][1], decoder.decode(text)]);
+    const {image, pointerOffsets} = compile([{name, entries: pairs}], {baseAddr: 0});
+    const lookup = reader(image, 0, 0, 1);
+    for (const [outline, expected] of pairs) {
+      const actual = lookup(outline);
+      if (actual !== expected) throw assertionError(`${outline}: expected ${expected}, found ${actual}`);
+    }
+    return {contents: image, pointers: pointerOffsets, digest: Uint8Array.from(digest.match(/../g), (pair) => parseInt(pair, 16))};
   };
 }

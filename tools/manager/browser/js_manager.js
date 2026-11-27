@@ -11,10 +11,12 @@ import {makeEditor} from "./editor.js";
 import {exportDictionary} from "./export.js";
 import {backupAll} from "./backup.js";
 import {transfer} from "./publish.js";
+import {mergeSnapshots, clearPersonal, changeSnapshot, namedImport, factoryPackage} from "./snapshot_ops.js";
 
 // Requests whose whole path is ported. Everything else runs in the Python Manager until its operation is ported.
 export const JS_ACTIONS = new Set(["disconnect", "refresh", "layout_map", "open_installer", "enable", "hints", "layout", "set", "remove", "reset",
-  "open_editor", "preview_editor", "apply_editor", "export", "backup", "move", "rename", "import", "compact", "preview_compact"]);
+  "open_editor", "preview_editor", "apply_editor", "export", "backup", "move", "rename", "delete", "import", "compact", "preview_compact", "preview_import", "apply_import", "preview_optimize", "apply_optimize",
+  "apply_merge", "preview_merge", "clear_personal", "preview_package", "apply_package"]);
 const SELECTING = new Set(["refresh", "open_installer"]);
 
 const realClock = {
@@ -22,7 +24,7 @@ const realClock = {
   sleep: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
 };
 
-export function createJsManager({hid, factorySource = async () => null, clock = realClock}) {
+export function createJsManager({hid, factorySource = async () => null, prepare = undefined, clock = realClock}) {
   const device = {write: (report) => hid.write(report), read: (timeout) => hid.read(timeout)};
   const manager = {connectedSerial: null};
 
@@ -54,11 +56,16 @@ export function createJsManager({hid, factorySource = async () => null, clock = 
     changeDocument: (...args) => editor.changeDocument(...args),
     exportDictionary: (console, name) => exportDictionary(console, name),
     backupAll: (console) => backupAll(console),
+    changeSnapshot: (console, operation, name, options) => changeSnapshot(console, operation, name, options),
+    clearPersonal: (console, identity, progress) => clearPersonal(console, identity, progress),
+    mergeSnapshots: (console, upper, lower, options) => mergeSnapshots(console, upper, lower, options),
+    namedImport: (console, name, entries, options) => namedImport(console, name, entries, options),
+    factoryPackage: (console, pkg, options) => factoryPackage(console, pkg, options, prepare),
     transfer: (console, entries, progress, options = {}) => transfer(console, entries, progress, {move: options.move ?? null,
       rename: options.rename ?? null, delete: options.delete ?? null, previewCompact: options.preview_compact === true,
       expectedCompact: options.expected_compact ?? null}),
     ...Object.fromEntries(["previewRepack", "captureApprovedRepack", "installRepack", "restoreOriginal", "captureApprovedMerge", "installOfflineMerge",
-      "factoryPackage", "changeSnapshot", "clearPersonal", "mergeSnapshots", "namedImport", "prepareInstallImage", "provision"]
+      "prepareInstallImage", "provision"]
       .map((name) => [name, unported(name)])),
   };
 

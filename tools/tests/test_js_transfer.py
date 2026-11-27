@@ -91,6 +91,10 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: transfer() (move, rename, delete, import, compact) publishes through the same console commands."""
         self.run_node("test_transfer.mjs")
 
+    def test_snapshot_operations_match_python(self):
+        """Manager milestone M3: merge, clear, optimize, named import and factory packages stage the same updates as Python."""
+        self.run_node("test_snapshot_ops.mjs")
+
     def test_dictionary_export_matches_python(self):
         """Manager milestone M3: export_dictionary sends the same console commands and returns the same entries."""
         self.run_node("test_export.mjs")
@@ -128,7 +132,7 @@ class JavaScriptScriptedTests(unittest.TestCase):
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py", "golden_export.py", "golden_transfer.py", "golden_recovery.py", "golden_backup.py", "golden_editor.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py", "golden_export.py", "golden_transfer.py", "golden_snapshot_ops.py", "golden_recovery.py", "golden_backup.py", "golden_editor.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)
