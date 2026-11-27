@@ -647,24 +647,4 @@ typing buffers and stack sizes kept their existing limits.
 - The worst-case replay runs for this fixture are complete. Use the
   populated board for the remaining storage qualification.
 
-### Owner storage test on the populated board
-
-1. Connect over USB. Record the catalog order and enabled flags, free
-   blocks and largest free run, and a couple of known lookups. Export a
-   dictionary you plan to delete so you can compare its entries later.
-2. Use **Download full backup** before changing the pool and verify the saved file. Save it
-   outside the browser. Keep the initial backup if you later want to
-   restore the original fixture and priorities.
-3. Delete a selected test dictionary, rescan, and verify that the intended
-   dictionary disappeared and unrelated dictionaries and lookups remain.
-4. Run **Preview USB Repack**. Compare the proposed free run with the
-   current map, then confirm **Repack**. After reconnect, check the map,
-   dictionary order, enabled flags and known lookups.
-5. Reinstall the selected dictionary and compare its exported entries
-   with the original. Check the enabled state and priority, then reboot
-   and recheck lookups and persistence. Capture elapsed times, any errors,
-   and the before/after maps. Keep the existing 32-slot lab firmware
-   while the fixture or its full backup requires more than 16 slots.
-
-This owner test covers backup, delete, repack and reinstall. Near-full
-bulk transfer rates and physical Bluetooth sleep/wake are still open.
+Near-full bulk transfer rates and physical Bluetooth sleep/wake remain open.
