@@ -115,6 +115,10 @@ config ZMK_STENO_SQUID_BOOT_CPU_BATCH
     bool "Use byte-table CRC32 and batch ASCII verification in Native storage"
     depends on ZMK_STENO_SQUID_BOOT_PROFILE
 
+config ZMK_STENO_SQUID_BOOT_RUNTIME_SPEED
+    bool "Optimize the Native runtime for speed in startup experiments"
+    depends on ZMK_STENO_SQUID_BOOT_PROFILE
+
 config ZMK_STENO_SQUID_BOOT_BASE_DMA
     bool "Read base checksums in 2 KiB DMA blocks at startup"
     depends on ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS

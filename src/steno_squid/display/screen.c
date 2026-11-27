@@ -274,6 +274,15 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
         [STENO_SQUID_MODE_VERIFY] = "Verify",
         [STENO_SQUID_MODE_BUSY] = "Busy",
         [STENO_SQUID_MODE_SAVING] = "Saving",
+        [STENO_SQUID_MODE_FLASH_START] = "Loading\nFlash",
+        [STENO_SQUID_MODE_CHECK_CATALOG] = "Loading\nCatalog",
+        [STENO_SQUID_MODE_CHECK_EXTENTS] = "Loading\nChecksums",
+        [STENO_SQUID_MODE_CHECK_JOURNAL] = "Loading\nJournal",
+        [STENO_SQUID_MODE_CHECK_FORWARD] = "Loading\nForward",
+        [STENO_SQUID_MODE_CHECK_REVERSE] = "Loading\nReverse",
+        [STENO_SQUID_MODE_FLASH_RETRY] = "Loading\nRetrying",
+        [STENO_SQUID_MODE_FLASH_ERROR] = "Flash err",
+        [STENO_SQUID_MODE_DICTIONARY_ERROR] = "Dict err",
     };
     char battery[8];
     snprintf(battery, sizeof(battery), "%u%%", charge);
@@ -284,7 +293,7 @@ void steno_squid_screen_update(unsigned mode, const char *layer_name, uint32_t p
 
     bool layer_changed = false;
     const bool uploading = steno_squid_upload_mode(mode);
-    const bool storage_activity = mode == STENO_SQUID_MODE_SAVING || mode == STENO_SQUID_MODE_BUSY;
+    const bool storage_activity = mode >= STENO_SQUID_MODE_BUSY && mode < STENO_SQUID_MODE_COUNT;
     const bool practicing = !uploading && !storage_activity && (practice & STENO_SQUID_PRACTICE_ACTIVE) != 0;
     const bool done = practicing && steno_squid_practice_feedback_value(practice) == STENO_SQUID_PRACTICE_DONE;
     steno_squid_pet_set_visible(!practicing || done);

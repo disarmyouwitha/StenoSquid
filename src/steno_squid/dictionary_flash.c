@@ -27,6 +27,7 @@ __weak void dictionary_flash_ready_changed(void) {
 void dictionary_flash_recover(void) {
     atomic_clear(&lf_checked);
     atomic_set(&fault_recovery, 1);
+    steno_squid_dictionary_phase(STENO_SQUID_MODE_FLASH_RETRY);
     k_sem_give(&lf_restart_wake);
 }
 
