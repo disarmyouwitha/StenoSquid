@@ -659,3 +659,11 @@ and without this option changed journal requests from 160,598 to 80,549.
 The 256-byte index-cache comparison went from 110,920 to 110,922 total
 physical reads. The experiment reduces software read calls. Its hardware
 timing remains unmeasured.
+
+The 32 MHz build combining journal record batching and two reusable index
+key slots reached ready in 12.754 seconds after UF2 and 12.682 seconds from
+physical power-on. Each run used saved base checksums and passed all 233
+fixture probes. On the physical run, journal recovery took 5.108 seconds,
+forward validation 2.564 seconds, and reverse validation 3.484 seconds.
+The previous physical result was 17.529 seconds. These are bundle results.
+See the [physical cold trace](../../docs/benchmarks/phase1-64mib-startup-bundle-cold.json).

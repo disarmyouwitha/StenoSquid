@@ -1,0 +1,253 @@
+{
+  "profile": [
+    {
+      "index": 0,
+      "stage": "hfxo_held",
+      "uptime_ms": 939,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "qspi_start",
+      "uptime_ms": 939,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "quad_setup",
+      "uptime_ms": 1058,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "resume_check",
+      "uptime_ms": 1059,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "base_trust",
+      "uptime_ms": 1059,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "mapping_probe",
+      "uptime_ms": 1175,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "catalog",
+      "uptime_ms": 1175,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "journal_record_batch",
+      "uptime_ms": 1175,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "crc_word_bytes",
+      "uptime_ms": 1175,
+      "detail": 4,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "index_timer_hz",
+      "uptime_ms": 1175,
+      "detail": 32768,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "native_runtime_o2",
+      "uptime_ms": 1175,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 11,
+      "stage": "index_dma_page_bytes",
+      "uptime_ms": 1175,
+      "detail": 512,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 12,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1182,
+      "detail": 1,
+      "mapped_reads": 160,
+      "dma_reads": 0
+    },
+    {
+      "index": 13,
+      "stage": "extent_checks",
+      "uptime_ms": 1183,
+      "detail": 1,
+      "mapped_reads": 278,
+      "dma_reads": 0
+    },
+    {
+      "index": 14,
+      "stage": "journal_scan",
+      "uptime_ms": 1517,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 0
+    },
+    {
+      "index": 15,
+      "stage": "direct_forward_keys",
+      "uptime_ms": 6625,
+      "detail": 1,
+      "mapped_reads": 3162,
+      "dma_reads": 2762
+    },
+    {
+      "index": 16,
+      "stage": "forward_index",
+      "uptime_ms": 6625,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 2762
+    },
+    {
+      "index": 17,
+      "stage": "forward_samples",
+      "uptime_ms": 9189,
+      "detail": 1250,
+      "mapped_reads": 3162,
+      "dma_reads": 83420
+    },
+    {
+      "index": 18,
+      "stage": "forward_key_ticks",
+      "uptime_ms": 9189,
+      "detail": 1264,
+      "mapped_reads": 3162,
+      "dma_reads": 83420
+    },
+    {
+      "index": 19,
+      "stage": "forward_order_ticks",
+      "uptime_ms": 9189,
+      "detail": 75,
+      "mapped_reads": 3162,
+      "dma_reads": 83420
+    },
+    {
+      "index": 20,
+      "stage": "reverse_index",
+      "uptime_ms": 9189,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 83420
+    },
+    {
+      "index": 21,
+      "stage": "reverse_samples",
+      "uptime_ms": 12673,
+      "detail": 1250,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 22,
+      "stage": "reverse_key_ticks",
+      "uptime_ms": 12673,
+      "detail": 1014,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 23,
+      "stage": "reverse_text_ticks",
+      "uptime_ms": 12673,
+      "detail": 484,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 24,
+      "stage": "reverse_order_ticks",
+      "uptime_ms": 12673,
+      "detail": 299,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 25,
+      "stage": "root_validated",
+      "uptime_ms": 12673,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 26,
+      "stage": "catalog_result",
+      "uptime_ms": 12673,
+      "detail": 0,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 27,
+      "stage": "bind",
+      "uptime_ms": 12673,
+      "detail": 1,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 28,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 12677,
+      "detail": 32,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    },
+    {
+      "index": 29,
+      "stage": "flash_ready",
+      "uptime_ms": 12682,
+      "detail": 1,
+      "mapped_reads": 3162,
+      "dma_reads": 96590
+    }
+  ],
+  "last_host_error": "Expecting value: line 1 column 1 (char 0)",
+  "ready": true,
+  "uptime_to_ready_ms": 12682,
+  "generation": 6,
+  "dictionaries": 32,
+  "geometry": "OK POOL1 1023",
+  "lookups": {
+    "fixture_matches": 233
+  }
+}
