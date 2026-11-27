@@ -42,7 +42,7 @@ const equalBytes = (a, b) => a.length === b.length && a.every((byte, i) => byte 
 const isErased = (bytes) => bytes.every((byte) => byte === 0xff);
 const grouped = (number) => number.toLocaleString("en-US");
 
-function packExtent(segment, span, bytes, crc, kind, auxiliary) {
+export function packExtent(segment, span, bytes, crc, kind, auxiliary) {
   const out = new Uint8Array(24);
   const v = view(out);
   v.setUint16(0, segment, true); v.setUint16(2, span, true); v.setUint32(4, bytes, true);
@@ -62,7 +62,7 @@ function catalogHeader(generation, payload) {
   return concat(header, tail);
 }
 
-function writeJournalHeader(image, segment, epoch) {
+export function writeJournalHeader(image, segment, epoch) {
   const header = new Uint8Array(32);
   header.set(encoder.encode("SQJSEG01"));
   view(header).setBigUint64(8, BigInt(epoch), true);
@@ -182,13 +182,15 @@ export async function checkImage(image, manifest) {
   return absent;
 }
 
-async function command(console, text, timeout = 30) {
+export async function command(console, text, timeout = 30) {
   const result = await console.command("native_install " + text, timeout);
   if (!result.startsWith("OK")) throw runtimeError(result);
   return result;
 }
 
-async function readPoolEnd(console) {
+export const beginForPool = (text, poolEnd) => (poolEnd === LARGE_POOL_END ? `large ${poolEnd} ${text}` : text);
+
+export async function readPoolEnd(console) {
   const reply = await console.command("native_install geometry", 30);
   if (reply === "ERR No native installation active" || reply === "ERR Command unavailable on this keyboard") return SMALL_POOL_END;
   if (reply === `OK POOL1 ${SMALL_POOL_END}`) return SMALL_POOL_END;
@@ -202,7 +204,7 @@ function toBase64(bytes) {
   return btoa(text);
 }
 
-async function writePool(console, image, progress, {finish = true, writeLabel = "Writing native image"} = {}) {
+export async function writePool(console, image, progress, {finish = true, writeLabel = "Writing native image"} = {}) {
   // Write all referenced data before making either catalog visible at boot.
   const catalogEnd = 2 * SEGMENT, blockSize = 512;
   const offsets = [];

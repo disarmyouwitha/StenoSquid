@@ -12,12 +12,13 @@ import {exportDictionary} from "./export.js";
 import {backupAll} from "./backup.js";
 import {transfer} from "./publish.js";
 import {buildImage, provision} from "./install.js";
+import {makeRepackJobs} from "./repack_jobs.js";
 import {mergeSnapshots, clearPersonal, changeSnapshot, namedImport, factoryPackage} from "./snapshot_ops.js";
 
 // Requests whose whole path is ported. Everything else runs in the Python Manager until its operation is ported.
 export const JS_ACTIONS = new Set(["disconnect", "refresh", "layout_map", "open_installer", "enable", "hints", "layout", "set", "remove", "reset",
   "open_editor", "preview_editor", "apply_editor", "export", "backup", "move", "rename", "delete", "import", "compact", "preview_compact", "preview_import", "apply_import", "preview_optimize", "apply_optimize",
-  "apply_merge", "preview_merge", "clear_personal", "preview_package", "apply_package", "setup"]);
+  "apply_merge", "preview_merge", "clear_personal", "preview_package", "apply_package", "setup", "preview_repack", "apply_repack", "restore_repack_backup", "apply_offline_merge"]);
 const SELECTING = new Set(["refresh", "open_installer"]);
 
 const realClock = {
@@ -25,7 +26,7 @@ const realClock = {
   sleep: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
 };
 
-export function createJsManager({hid, factorySource = async () => null, prepare = undefined, readSource = undefined, clock = realClock}) {
+export function createJsManager({hid, factorySource = async () => null, prepare = undefined, readSource = undefined, recoveryStore = null, clock = realClock}) {
   const device = {write: (report) => hid.write(report), read: (timeout) => hid.read(timeout)};
   const manager = {connectedSerial: null};
 
@@ -48,10 +49,9 @@ export function createJsManager({hid, factorySource = async () => null, prepare 
   }
 
   const editor = makeEditor({factorySource, clock});
-  const unported = (name) => async () => { throw new Error(`${name} is not available in the JavaScript Manager yet.`); };
+  const repack = makeRepackJobs({opener: open, clock, store: recoveryStore});
   const deps = {
     opener: open, bluetoothOpener: open, clock,
-    lastRepackBackup: async () => null,
     clearDocuments: async (serial) => editor.clearDocuments(serial),
     readDocument: (...args) => editor.readDocument(...args),
     changeDocument: (...args) => editor.changeDocument(...args),
@@ -70,8 +70,7 @@ export function createJsManager({hid, factorySource = async () => null, prepare 
       return buildImage(readSource, packages);
     },
     provision: (console, image, manifest, progress, options) => provision(console, image, manifest, progress, options),
-    ...Object.fromEntries(["previewRepack", "captureApprovedRepack", "installRepack", "restoreOriginal", "captureApprovedMerge", "installOfflineMerge"]
-      .map((name) => [name, unported(name)])),
+    ...repack,
   };
 
   manager.supports = (action) => JS_ACTIONS.has(action);
