@@ -107,6 +107,10 @@ config ZMK_STENO_SQUID_BOOT_INDEX_WIDE_PAGE
     bool "Use 512-byte cache pages for startup index DMA"
     depends on ZMK_STENO_SQUID_BOOT_INDEX_CACHE
 
+config ZMK_STENO_SQUID_BOOT_INDEX_DIRECT_KEYS
+    bool "Read forward index key headers directly with DMA at startup"
+    depends on ZMK_STENO_SQUID_BOOT_INDEX_DMA
+
 config ZMK_STENO_SQUID_BOOT_CPU_BATCH
     bool "Use byte-table CRC32 and batch ASCII verification in Native storage"
     depends on ZMK_STENO_SQUID_BOOT_PROFILE

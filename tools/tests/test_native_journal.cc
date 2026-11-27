@@ -37,6 +37,16 @@ struct Nor {
         return true;
     }
 };
+struct DirectNor : Nor {
+    using Nor::Nor;
+    unsigned key_reads = 0;
+    bool fail_key = false;
+    bool ReadIndexKeyPrefix(uint32_t at, uint8_t *out, size_t bytes) {
+        assert(at % 4 == 0 && reinterpret_cast<uintptr_t>(out) % 4 == 0 && bytes == 44);
+        ++key_reads;
+        return !fail_key && Read(at, out, bytes);
+    }
+};
 std::vector<uint8_t> load(const char *path) {
     std::ifstream file(path,std::ios::binary);
     return {(std::istreambuf_iterator<char>(file)),{}};
@@ -95,10 +105,22 @@ int main(int argc,char **argv) {
     assert(journal.Open(2,1)==JournalResult::Ok);
     JournalRecord record;
     uint32_t at=2*65536+256;
+    DirectNor direct(nor.data);
+    NativeJournal<DirectNor> direct_journal(direct);
     for(unsigned i=1;i<=4;++i) {
-        assert(journal.Read(at,record)==JournalResult::Ok && record.sequence==i);
+        JournalKey expected, key;
+        JournalRecord index_record;
+        assert(journal.Read(at,record,&expected)==JournalResult::Ok && record.sequence==i);
+        assert(direct_journal.ReadIndexKey(at,index_record,key)==JournalResult::Ok);
+        assert(index_record.sequence==record.sequence && key.identity==expected.identity &&
+               key.count==expected.count && key.operation==expected.operation && key.text_bytes==expected.text_bytes);
+        assert(std::memcmp(key.strokes,expected.strokes,4u*key.count)==0);
         at+=record.span;
     }
+    assert(direct.key_reads==4);
+    direct.fail_key=true;
+    JournalKey failed_key;
+    assert(direct_journal.ReadIndexKey(2*65536+256,record,failed_key)==JournalResult::IoError);
     assert(journal.Read(at,record)==JournalResult::End);
     JournalScan scan;
     static_assert(sizeof(scan)<=24);

@@ -13,6 +13,7 @@ struct StartupDevice : NativeDevice {
     StartupReadAhead cache;
     uint8_t buffer[StartupReadAhead::PageBytes]{};
     uint8_t wide_buffer[2048]{};
+    bool direct_forward_keys = false;
 
     bool Read(uint32_t at, uint8_t *out, uint32_t bytes) {
         if (at > nor.data.size() || bytes > nor.data.size() - at) return false;
@@ -27,6 +28,10 @@ struct StartupDevice : NativeDevice {
         };
         return wide_read_ahead ? cache.Read(at, out, bytes, wide_buffer, fill)
                                : cache.Read(at, out, bytes, buffer, fill);
+    }
+
+    bool ReadIndexKeyPrefix(uint32_t at, uint8_t *out, uint32_t bytes) {
+        return direct_forward_keys ? NativeDevice::Read(at, out, bytes) : Read(at, out, bytes);
     }
 
     // The measured pool already has verified bases. Index CRCs still read
@@ -46,6 +51,7 @@ struct StartupDevice : NativeDevice {
 };
 
 static StartupDevice *hybrid_device;
+static bool test_direct_forward_keys;
 static void JournalDmaOnly(ValidationStage stage) {
     hybrid_device->read_ahead = stage == ValidationStage::Journal;
     if (hybrid_device->read_ahead) hybrid_device->cache = {};
@@ -53,6 +59,7 @@ static void JournalDmaOnly(ValidationStage stage) {
 static void JournalAndIndexDma(ValidationStage stage) {
     hybrid_device->read_ahead = stage != ValidationStage::Extents;
     hybrid_device->wide_read_ahead = stage == ValidationStage::Journal;
+    hybrid_device->direct_forward_keys = test_direct_forward_keys && stage == ValidationStage::Forward;
     if (hybrid_device->read_ahead) hybrid_device->cache = {};
     if (hybrid_device->index_cache && !hybrid_device->wide_read_ahead)
         StartupIndexCache::Reset(hybrid_device->wide_buffer);
@@ -68,14 +75,16 @@ int main(int argc, char **argv) {
 
     const char *mode_name[] = {"direct requests", "DMA pages", "reused recovery", "batched index keys",
                                "batched index + journal DMA", "batched index + 2 KiB journal DMA",
-                               "DMA for journal and batched indexes", "DMA with index page cache"};
+                               "DMA for journal and batched indexes", "DMA with index page cache",
+                               "DMA with direct forward key reads"};
     for (unsigned mode = 0; mode < sizeof(mode_name) / sizeof(mode_name[0]); ++mode) {
         const bool read_ahead = mode == 1;
         const bool reuse_recovery = mode >= 2;
         const bool batch_keys = mode >= 3;
         const auto stage = mode >= 6 ? JournalAndIndexDma : mode >= 4 ? JournalDmaOnly : nullptr;
-        StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, mode == 5, mode == 7, {}, {}, {}};
+        StartupDevice device{{{nor}, kLargePoolEnd}, read_ahead, mode == 5, mode >= 7, {}, {}, {}};
         hybrid_device = &device;
+        test_direct_forward_keys = mode == 8;
         NativeStore<StartupDevice> store(device);
         NativeValidator<StartupDevice> validator(device, store.catalog);
         nor.reads = nor.read_bytes = 0;
@@ -83,7 +92,7 @@ int main(int argc, char **argv) {
         const auto validate = [&](const CatalogRoot &root) {
             const auto result = validator.Validate(root, false, stage, nullptr,
                                                    reuse_recovery ? &store.live : nullptr, batch_keys);
-            if (stage) device.read_ahead = false;
+            if (stage) device.read_ahead = device.direct_forward_keys = false;
             return result;
         };
         const auto result = store.Open(validate, CatalogValidation::ReuseIdenticalPayload, reuse_recovery);
