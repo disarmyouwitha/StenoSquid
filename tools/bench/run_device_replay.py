@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 import sys
 from tempfile import NamedTemporaryFile
+from threading import Event, Thread
 from time import monotonic
 import tkinter as tk
 
@@ -158,42 +159,65 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
     tk.Label(window, textvariable=message, wraplength=740).pack(pady=6)
     editor = tk.Text(window, width=90, height=12, wrap="word")
     editor.pack(padx=10, pady=6)
+    keypress_text = []
     active = False
+    collecting = False
+    collected = Event()
     connection = ExitStack()
     console = None
     drain_deadline = 0.0
     app_active = foreground_check()
 
-    def stop():
-        nonlocal active
-        if active:
-            for operation in ("replay stop", "capture stop"):
-                with suppress(OSError, RuntimeError, TimeoutError):
-                    bench(console, operation)
-        active = False
+    def stop_device():
+        for operation in ("replay stop", "capture stop"):
+            with suppress(OSError, RuntimeError):
+                bench(console, operation)
+
+    def record_keypress(event):
+        # Compare the incoming Tk key events with the Text widget's own editing.
+        if not active:
+            return
+        if event.keysym == "BackSpace" or event.char == "\b":
+            if keypress_text:
+                keypress_text.pop()
+        elif event.char and event.char.isprintable():
+            keypress_text.extend(event.char)
 
     def cancel(reason):
+        nonlocal active
+        if collecting:
+            return
         if active or report["result"] == "armed":
-            report.update(result="fail", error=reason, captured_text=editor.get("1.0", "end-1c"))
+            report.update(result="fail", error=reason, captured_text=editor.get("1.0", "end-1c"),
+                          host_keypress_text="".join(keypress_text))
             save_report(args.report, report)
-            stop()
+            if active:
+                active = False
+                stop_device()
             connection.close()
         window.quit()
 
     def finish():
+        nonlocal active, collecting
         if not active:
             return
+        active = False
+        collecting = True
         received = editor.get("1.0", "end-1c")
-        report.update(result="collecting", captured_text=received)
+        report.update(result="collecting", captured_text=received, host_keypress_text="".join(keypress_text))
         save_report(args.report, report)
         message.set("Typing finished. Reading diagnostics…")
-        window.update_idletasks()
+        Thread(target=collect_diagnostics, args=(received,), name="replay-diagnostics").start()
+        window.after(50, show_result)
+
+    def collect_diagnostics(received):
+        started = monotonic()
         stage = "replay status"
         try:
             replay = json.loads(bench(console, "replay status"))
             report["device_replay"] = replay
             save_report(args.report, report)
-            stop()
+            stop_device()
             stage = "capture read"
             trace = json.loads(bench(console, "capture read", timeout=30))
             report["device_trace"] = trace
@@ -206,10 +230,24 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
             summarize_run(report, masks, expected, words, interval, status, replay, trace, received)
         except (RuntimeError, OSError, ValueError, KeyError, TypeError, IndexError) as error:
             report.update(result="incomplete", error=f"{stage}: {error}")
-            stop()
+            if stage == "replay status":
+                stop_device()
         finally:
-            connection.close()
-        save_report(args.report, report)
+            try:
+                connection.close()
+                report["diagnostics_seconds"] = round(monotonic() - started, 3)
+                save_report(args.report, report)
+            except (RuntimeError, OSError) as error:
+                report.update(result="incomplete", error=f"finalizing the report: {error}")
+            finally:
+                collected.set()
+
+    def show_result():
+        nonlocal collecting
+        if not collected.is_set():
+            window.after(50, show_result)
+            return
+        collecting = False
         if report["result"] == "incomplete":
             message.set(f"Typing saved. Diagnostics incomplete. {report['error']}")
         else:
@@ -288,6 +326,7 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
 
     button = tk.Button(window, text="Start replay", command=start)
     button.pack(pady=6)
+    editor.bind("<KeyPress>", record_keypress)
     editor.bind("<FocusOut>", lost_focus)
     window.bind("<Escape>", lambda _: cancel("Stopped by operator."))
     window.protocol("WM_DELETE_WINDOW", lambda: cancel("Capture window closed."))
@@ -297,8 +336,10 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
         print("Replay window is open. Click Start replay when ready.", flush=True)
         window.mainloop()
     finally:
-        stop()
-        connection.close()
+        if active:
+            stop_device()
+        if not collecting:
+            connection.close()
         window.destroy()
 
 
