@@ -109,6 +109,8 @@ void check_native_store_engine() {
     StenoStroke key;key.Set(outline);assert(storage.Edit(id,key.GetKeyState(),text,op)==LiveResult::Ok);root.OnLookupDataChanged();
   };
   edit(1,"KAT","dog");play({"KAT","#","*"},"dog");
+  play({"KAT","STKPHRO*EUFPBTSD"},"dog STKPHRO*EUFPBTSD");
+  play({"KAT","STKPHRO*EUFPBTSD","*"},"dog");
   edit(1,"KAT","",2);edit(2,"KAT","",1);play({"KAT"},"lower");
   edit(2,"KAT","",2);play({"KAT"},"cat");
   const uint32_t multi[]={StenoStroke("HE").GetKeyState(),StenoStroke("HROE").GetKeyState()};
