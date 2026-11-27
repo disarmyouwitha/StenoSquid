@@ -1,0 +1,210 @@
+{
+  "result": "pass",
+  "status": [
+    {
+      "seconds": 39.286,
+      "reply": "NATIVE2 READY 3"
+    }
+  ],
+  "profile": [
+    {
+      "index": 0,
+      "stage": "hfxo_held",
+      "uptime_ms": 915,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "qspi_start",
+      "uptime_ms": 915,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "quad_setup",
+      "uptime_ms": 1028,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "resume_check",
+      "uptime_ms": 1028,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "base_trust",
+      "uptime_ms": 1028,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "mapping_probe",
+      "uptime_ms": 1139,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "catalog",
+      "uptime_ms": 1139,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1143,
+      "detail": 1,
+      "mapped_reads": 50,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "extent_checks",
+      "uptime_ms": 1145,
+      "detail": 1,
+      "mapped_reads": 168,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "journal_scan",
+      "uptime_ms": 1480,
+      "detail": 0,
+      "mapped_reads": 3052,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "forward_index",
+      "uptime_ms": 8589,
+      "detail": 0,
+      "mapped_reads": 3052,
+      "dma_reads": 2760
+    },
+    {
+      "index": 11,
+      "stage": "reverse_index",
+      "uptime_ms": 15557,
+      "detail": 0,
+      "mapped_reads": 3052,
+      "dma_reads": 100258
+    },
+    {
+      "index": 12,
+      "stage": "root_validated",
+      "uptime_ms": 21560,
+      "detail": 0,
+      "mapped_reads": 3052,
+      "dma_reads": 124013
+    },
+    {
+      "index": 13,
+      "stage": "root_fingerprint",
+      "uptime_ms": 21560,
+      "detail": 0,
+      "mapped_reads": 3052,
+      "dma_reads": 124013
+    },
+    {
+      "index": 14,
+      "stage": "extent_checks",
+      "uptime_ms": 21561,
+      "detail": 1,
+      "mapped_reads": 3170,
+      "dma_reads": 124013
+    },
+    {
+      "index": 15,
+      "stage": "journal_scan",
+      "uptime_ms": 21899,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 124013
+    },
+    {
+      "index": 16,
+      "stage": "forward_index",
+      "uptime_ms": 28865,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 126773
+    },
+    {
+      "index": 17,
+      "stage": "reverse_index",
+      "uptime_ms": 35836,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 224271
+    },
+    {
+      "index": 18,
+      "stage": "root_validated",
+      "uptime_ms": 41826,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 248026
+    },
+    {
+      "index": 19,
+      "stage": "catalog_result",
+      "uptime_ms": 41826,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 248026
+    },
+    {
+      "index": 20,
+      "stage": "bind",
+      "uptime_ms": 41826,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 248026
+    },
+    {
+      "index": 21,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 41831,
+      "detail": 32,
+      "mapped_reads": 6054,
+      "dma_reads": 248026
+    },
+    {
+      "index": 22,
+      "stage": "flash_ready",
+      "uptime_ms": 41835,
+      "detail": 1,
+      "mapped_reads": 6054,
+      "dma_reads": 248026
+    }
+  ],
+  "geometry": "OK POOL1 1023",
+  "dictionaries": 32,
+  "generation": 3,
+  "lookup_verification": {
+    "fixture_matches": 232,
+    "expected_misses_disabled": 1
+  },
+  "uptime_to_ready_ms": 41835,
+  "post_validation_ms": 0,
+  "post_validation_mapped_reads": 0,
+  "initial_probe": {
+    "outline": "KAT",
+    "result": "Startup lookup failed: ERR No translation",
+    "verification": "Rechecked using all fixture probes and current dictionary enable flags."
+  }
+}

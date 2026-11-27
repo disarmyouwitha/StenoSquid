@@ -542,3 +542,15 @@ DMA-index configuration above. Then add
 build uses the same CRC and 2 KiB of existing scratch space for DMA. Compare
 `extent_checks` to `journal_scan` in both traces and verify the same catalog
 and fixture lookups. Use the normal build for trusted-base timings.
+
+### Distinct catalog roots
+
+The 32 MHz 64 MiB fixture took 80.068 seconds from power-on with two
+distinct valid roots. A journal recovery pass after root validation alone
+took 28.458 seconds and 160,480 mapped reads. The firmware now validates
+the newer root last so it can reuse its staged journal state. The next
+physical cold boot reached ready at 41.835 seconds with zero reads between
+the last root validation and catalog selection. All 233 fixture probes
+behaved as expected for the current enable flags. Both root validation
+passes still ran. See the [baseline](../../docs/benchmarks/phase1-64mib-distinct-catalog-cold.json)
+and [cold retest](../../docs/benchmarks/phase1-64mib-newest-last-cold.json).
