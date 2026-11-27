@@ -67,7 +67,7 @@ def package(output, runtime=None):
     encoded = lambda data: base64.b64encode(data).decode("ascii")
     assets = {
         "runtime": encoded(runtime_zip.getvalue()),
-        "lock": json.loads((destination / "pyodide-lock.json").read_text()),
+        "lock": json.loads((destination / "pyodide-lock.json").read_text(encoding="utf-8")),
         "files": {name: encoded((destination / name).read_bytes()) for name in ("pyodide.asm.wasm", "python_stdlib.zip")},
     }
     setup = "globalThis.offlineAssets = " + json.dumps(assets, separators=(",", ":")) + ";\n" + r"""
@@ -81,19 +81,19 @@ globalThis.fetch = async (input) => {
   return new Response(offlineBytes(offlineAssets.files[name]), {headers: {"Content-Type": name.endsWith(".wasm") ? "application/wasm" : "application/zip"}});
 };
 """
-    shim = (destination / "pyodide.mjs").read_text().replace("export{ct as loadPyodide,U as version};", "globalThis.loadPyodide = ct;")
+    shim = (destination / "pyodide.mjs").read_text(encoding="utf-8").replace("export{ct as loadPyodide,U as version};", "globalThis.loadPyodide = ct;")
     # The page's modules (hid, console, the JavaScript Manager and everything they import) become one scoped script; see bundle_modules.py.
     backend = bundle_modules(manager / "browser/backend.js") + 'const {BrowserBackend} = __modules["backend"];\n'
-    ui = (manager / "manager.js").read_text().replace('new (await import("./backend.js")).BrowserBackend()', 'new BrowserBackend()')
+    ui = (manager / "manager.js").read_text(encoding="utf-8").replace('new (await import("./backend.js")).BrowserBackend()', 'new BrowserBackend()')
     script = lambda code, module=False: '<script' + (' type="module"' if module else '') + '>' + re.sub(r"</script", r"<\\/script", code, flags=re.I) + '</script>'
-    html = (manager / "index.html").read_text().replace('<html lang="en">', '<html lang="en" data-backend="browser">')
+    html = (manager / "index.html").read_text(encoding="utf-8").replace('<html lang="en">', '<html lang="en" data-backend="browser">')
     html = html.replace('  <meta name="manager-token" content="MANAGER_SESSION_TOKEN">\n', '')
-    html = html.replace('  <link rel="stylesheet" href="/manager.css">', '<style>' + (manager / "manager.css").read_text() + '</style>')
+    html = html.replace('  <link rel="stylesheet" href="/manager.css">', '<style>' + (manager / "manager.css").read_text(encoding="utf-8") + '</style>')
     html = html.replace('  <script type="module" src="/manager.js"></script>', '')
-    notices = json.dumps({"project": (ROOT / "LICENSE").read_text(),
-                          "third_party": (manager / "browser/THIRD_PARTY_LICENSES.txt").read_text()}).replace("<", "\\u003c")
+    notices = json.dumps({"project": (ROOT / "LICENSE").read_text(encoding="utf-8"),
+                          "third_party": (manager / "browser/THIRD_PARTY_LICENSES.txt").read_text(encoding="utf-8")}).replace("<", "\\u003c")
     html = html.replace('</body>', '<script id="manager-licenses" type="application/json">' + notices + '</script></body>')
-    html = html.replace('</body>', script(setup) + script((destination / "pyodide.asm.js").read_text()) + script(shim, True) + script(backend + ui, True) + '</body>')
+    html = html.replace('</body>', script(setup) + script((destination / "pyodide.asm.js").read_text(encoding="utf-8")) + script(shim, True) + script(backend + ui, True) + '</body>')
     (output / "StenoSquidManager.html").write_text(html, encoding="utf-8")
     shutil.copyfile(ROOT / "LICENSE", output / "LICENSE")
     shutil.copyfile(manager / "browser/README.md", output / "README.md")

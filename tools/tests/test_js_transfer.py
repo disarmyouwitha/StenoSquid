@@ -103,6 +103,10 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: read_document / change_document sessions (cache, previews, saves) match manager_editor.py."""
         self.run_node("test_editor.mjs")
 
+    def test_bundled_factory_dictionaries(self):
+        """The editor's bundled-factory lookup (zip reader, digest rules) behaves like manager_editor.factory_source."""
+        self.run_node("test_factory.mjs")
+
     def test_page_bundle_runs_like_python(self):
         """The offline page's bundled modules load, route requests and refresh through the console like the Python Manager."""
         import tempfile

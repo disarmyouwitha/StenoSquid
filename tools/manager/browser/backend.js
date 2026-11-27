@@ -1,5 +1,6 @@
 import {HidConnection} from "./hid.js";
 import {createJsManager} from "./js_manager.js";
+import {makeFactorySource} from "./factory.js";
 
 export function unsupportedReason(scope = globalThis) {
   if (!scope.isSecureContext) return "Open the downloaded StenoSquid Manager HTML file in desktop Chrome or Edge.";
@@ -18,7 +19,10 @@ export class BrowserBackend {
     this.forceChooser = false;
     this.hid = this.reason ? null : new HidConnection(navigator.hid, () => { this.job.connection_lost = true; });
     // Requests whose whole path is ported run in JavaScript (no Python runtime needed); the rest run in the Python Manager.
-    this.js = this.hid ? createJsManager({hid: this.hid}) : null;
+    // The pinned factory dictionaries ride inside the bundled runtime zip; the editor opens them from there, not from the keyboard.
+    let runtime = null;
+    const archive = () => (runtime ??= globalThis.offlineAssets ? offlineBytes(offlineAssets.runtime) : null);
+    this.js = this.hid ? createJsManager({hid: this.hid, factorySource: makeFactorySource(archive)}) : null;
     globalThis.browser_rpc = async (source) => JSON.stringify(await this.service(JSON.parse(source)));
     globalThis.browser_sleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
     addEventListener("beforeunload", (event) => {
