@@ -1,6 +1,6 @@
 import {HidConnection} from "./hid.js";
 import {createJsManager} from "./js_manager.js";
-import {makeFactorySource} from "./factory.js";
+import {makeFactorySource, makePrepare, makeSourceReader} from "./factory.js";
 
 export function unsupportedReason(scope = globalThis) {
   if (!scope.isSecureContext) return "Open the downloaded StenoSquid Manager HTML file in desktop Chrome or Edge.";
@@ -22,7 +22,7 @@ export class BrowserBackend {
     // The pinned factory dictionaries ride inside the bundled runtime zip; the editor opens them from there, not from the keyboard.
     let runtime = null;
     const archive = () => (runtime ??= globalThis.offlineAssets ? offlineBytes(offlineAssets.runtime) : null);
-    this.js = this.hid ? createJsManager({hid: this.hid, factorySource: makeFactorySource(archive)}) : null;
+    this.js = this.hid ? createJsManager({hid: this.hid, factorySource: makeFactorySource(archive), prepare: makePrepare(archive), readSource: makeSourceReader(archive), recoveryStore: this.recoveryStore()}) : null;
     globalThis.browser_rpc = async (source) => JSON.stringify(await this.service(JSON.parse(source)));
     globalThis.browser_sleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
     addEventListener("beforeunload", (event) => {
@@ -99,6 +99,47 @@ export class BrowserBackend {
     const keyboard = await this.folder.getDirectoryHandle(match[1], {create});
     const plan = await keyboard.getDirectoryHandle(match[2], {create});
     return {plan, name: match[3] + ".json"};
+  }
+  // The recovery folder the user chose, as the JavaScript Manager's store of verified repack backups (see repack_jobs.js).
+  recoveryStore() {
+    const backend = this;
+    const directory = async (identity, token, create) => {
+      if (!backend.folder) throw new Error("Choose a recovery folder before repacking or restoring dictionaries.");
+      const keyboard = await backend.folder.getDirectoryHandle(identity, {create});
+      return keyboard.getDirectoryHandle(token, {create});
+    };
+    return {
+      async save(identity, token, name, text) {
+        const plan = await directory(identity, token, true);
+        const file = name + ".json";
+        let exists = true;
+        try { await plan.getFileHandle(file); } catch (error) { if (error.name !== "NotFoundError") throw error; exists = false; }
+        if (exists) throw new Error("An existing recovery file cannot be replaced.");
+        const stream = await (await plan.getFileHandle(file, {create: true})).createWritable();
+        try { await stream.write(text); await stream.close(); }
+        catch (error) { await stream.abort().catch(() => {}); throw error; }
+      },
+      async load(identity, token, name) {
+        const plan = await directory(identity, token, false);
+        return (await (await plan.getFileHandle(name + ".json")).getFile()).text();
+      },
+      async latest(identity) {
+        if (!backend.folder) return null;
+        let keyboard;
+        try { keyboard = await backend.folder.getDirectoryHandle(identity); }
+        catch (error) { if (error.name === "NotFoundError") return null; throw error; }
+        let best = null, bestTime = -1;
+        for await (const [token, plan] of keyboard.entries()) {
+          if (plan.kind !== "directory" || !/^[a-f0-9]{32}$/.test(token)) continue;
+          try {
+            await plan.getFileHandle("original.json");
+            const attempt = await (await plan.getFileHandle("attempt.json")).getFile();
+            if (attempt.lastModified > bestTime) { best = token; bestTime = attempt.lastModified; }
+          } catch (error) { if (error.name !== "NotFoundError") throw error; }
+        }
+        return best;
+      },
+    };
   }
   async restoreFiles() {
     for await (const [identity, keyboard] of this.folder.entries()) {

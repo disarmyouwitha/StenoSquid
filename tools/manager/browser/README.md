@@ -15,12 +15,14 @@ Use matching left firmware
 that supports the `native_install connection` query; older firmware gets an
 update message rather than guessing whether a connection is USB or Bluetooth.
 
-The offline app is moving from the bundled Python runtime to JavaScript, one operation at a time. These requests already
-run entirely in JavaScript and never start Python: Connect and refresh, the flash map, enabling and disabling dictionaries,
-stroke hints, the host layout, adding/removing/reverting a single entry, the JSON editor (read, preview, save), exporting one
-dictionary and the full backup. Each is checked against the Python Manager by recorded transcripts (see the golden-vector
-tests). Everything else still runs in Python, which starts the first time such a request is made. Known difference: the JSON
-editor opens a factory dictionary by reading it from the keyboard (same result, slower) instead of from the bundled file.
+Every Manager request now runs in JavaScript: Connect and refresh, the flash map, enabling and disabling dictionaries, stroke
+hints, the host layout, single-entry edits, the JSON editor (read, preview, save), import, export and the full backup, moving,
+renaming and deleting dictionaries, compacting journals, converting and consolidating compact dictionaries, merging, named
+imports, factory dictionary install/restore, first-time setup (the install image is built in the page from the bundled pinned
+dictionaries), and guarded USB repack, offline merge and restore of the original backup (verified backups are kept in the
+recovery folder you choose). Each operation is checked against the Python Manager by recorded console transcripts and
+byte-identical images and bundles (see the golden-vector tests). The bundled Python runtime is a fallback that starts only for a
+request the JavaScript Manager does not recognise, and is scheduled for removal.
 
 The rest of the offline app's dictionary logic runs in the bundled Python runtime:
 imports, exports, edits, ordering, factory setup, compacting, merging, repacking,

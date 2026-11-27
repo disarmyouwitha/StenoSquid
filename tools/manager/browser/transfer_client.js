@@ -36,7 +36,7 @@ export class TransferUnavailable extends Error {}
 
 const now = () => performance.now();
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const errorFor = (code) => new Error(`The keyboard stopped the transfer: ${ERROR_TEXT[code] ?? "error " + code}.`);
+const errorFor = (code) => Object.assign(new Error(`Binary transfer failed: ${ERROR_TEXT[code] ?? "error " + code}.`), {kind: "RuntimeError"});
 
 // The staged update as ERASE/WRITE records, in the order the Base64 path would send them.
 // update.segments: Map or array of [segment, Uint8Array] pairs.

@@ -65,11 +65,8 @@ const identity = [["native_install identity", "OK SQMANAGER1 AB12"], ["native_in
 
 // 1. Which requests the page runs in JavaScript.
 for (const action of ["refresh", "layout_map", "open_installer", "enable", "hints", "layout", "set", "remove", "reset", "open_editor", "preview_editor",
-  "apply_editor", "export", "backup", "disconnect"]) assert.ok(JS_ACTIONS.has(action), action);
-for (const action of ["move", "rename", "delete", "import", "apply_import", "compact", "preview_compact", "apply_package", "preview_package", "setup",
-  "apply_repack", "preview_repack", "restore_repack_backup", "apply_offline_merge", "preview_optimize", "apply_merge", "clear_personal"]) {
-  assert.ok(!JS_ACTIONS.has(action), `${action} must stay in the Python Manager until it is ported`);
-}
+  "apply_editor", "export", "backup", "disconnect", "move", "rename", "delete", "import", "compact", "preview_compact", "preview_import", "apply_import",
+  "preview_optimize", "apply_optimize", "preview_merge", "apply_merge", "clear_personal", "preview_package", "apply_package", "setup", "preview_repack", "apply_repack", "restore_repack_backup", "apply_offline_merge"]) assert.ok(JS_ACTIONS.has(action), action);
 
 // 2. Probing a connection reads identity and transport and nothing else.
 {
@@ -120,11 +117,11 @@ for (const [reply, message] of [["OK SQMANAGER1 ab12", /identity differs/], ["ER
   assert.equal(hid.state.closed, 1);
   assert.equal(manager.connectedSerial, null);
 }
-// 5. A request that is not ported fails loudly if it is ever routed here.
+// 5. A repack needs a recovery folder: without one the JavaScript Manager says so instead of touching the keyboard.
 {
-  const hid = fakeHid([...identity, ...identity, ["native_install status", "NATIVE2 READY 12"]], "unported");
+  const hid = fakeHid([...identity, ...identity, ["native_install update repack-capabilities", "OK REPACK1"]], "no folder");
   const manager = createJsManager({hid});
   manager.connectedSerial = "AB12";
-  await assert.rejects(() => manager.run({action: "compact"}, () => {}, () => {}), /./);
+  await assert.rejects(() => manager.run({action: "restore_repack_backup", serial: "AB12", confirm: "AB12", token: "0".repeat(32)}, () => {}, () => {}), /Choose a recovery folder|Refresh the keyboard/);
 }
 console.log("PASS page bundle (JS): the bundled modules load, route requests and refresh through the console like the Python Manager");
