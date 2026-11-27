@@ -254,7 +254,11 @@ struct FlashDevice {
             const uint32_t count = std::min<uint32_t>(bytes, sizeof(export_buffer));
             ++boot_dma_reads;
             if (nrfx_qspi_read(export_buffer, (count + 3u) & ~3u, at) != NRFX_SUCCESS) return false;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CPU_BATCH
+            crc = Crc(crc, export_buffer, count);
+#else
             crc = crc32_ieee_update(crc, export_buffer, count);
+#endif
             at += count;
             bytes -= count;
         }
