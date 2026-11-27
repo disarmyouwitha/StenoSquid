@@ -25,7 +25,19 @@ constexpr unsigned CAPACITY = 128;
 #endif
 constexpr unsigned REPETITIONS = 32;
 struct Sample { uint32_t outline, cycles, uptime_ms; uint8_t outcome; };
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+constexpr unsigned REPLAY_LOOP_CAPACITY = 1536;
+struct LoopSample {
+    uint16_t engine_4us, completion_ms;
+};
+// A capture reports either individual strokes or compact samples for a loop.
+union {
+    Sample strokes[CAPACITY];
+    LoopSample loop[REPLAY_LOOP_CAPACITY];
+} trace{};
+#else
 Sample samples[CAPACITY];
+#endif
 struct k_spinlock trace_lock;
 atomic_t capturing;
 unsigned count, overflow;
@@ -105,8 +117,15 @@ StenoSquidKeyBenchmark::~StenoSquidKeyBenchmark() {
         } else
 #endif
         {
-            if (count<CAPACITY) samples[count++]={outline,elapsed,k_uptime_get_32(),uint8_t(failed?0:outcome)};
-            else overflow++;
+            if (count < CAPACITY) {
+#ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
+                trace.strokes[count].outline = outline;
+                auto &samples = trace.strokes;
+#endif
+                samples[count++] = {outline, elapsed, k_uptime_get_32(), uint8_t(failed ? 0 : outcome)};
+            } else {
+                ++overflow;
+            }
         }
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
         atomic_inc(&completed_chords);
@@ -158,6 +177,7 @@ void steno_squid_dictionary_benchmark(void *, const char *line) {
         if (atomic_get(&capturing)) { Console::Printf("ERR Stop capture before reading\n\n");return; }
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
         if (ReplayingLoop()) { PrintLoopCapture(); return; }
+        const auto &samples = trace.strokes;
 #endif
         Console::Printf("{\"timer_hz\":%u,\"overflow\":%u,\"samples\":[",SystemCoreClock,overflow);
         for (unsigned i=0;i<count;i++) {
