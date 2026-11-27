@@ -106,9 +106,12 @@ public:
         }
         if(!boundary || view.through>view.highwater || view.forward_count>kMaxEntries || reverse_count>kMaxEntries)return CatalogResult::Corrupt;
         uint32_t translations = 0;
+        const uint32_t next_identity = Word(prefix);
         for(unsigned reverse=0;reverse<2;++reverse) {
             if (stage) stage(reverse ? ValidationStage::Reverse : ValidationStage::Forward);
-            MergeRecord previous;
+            // Comparisons only use the decoded fields and strokes up to count.
+            // Alternate slots to retain the previous key without copying it.
+            MergeRecord records[2];
             const uint32_t index_address = reverse ? reverse_address : view.forward_address;
             const uint32_t entries = reverse ? reverse_count : view.forward_count;
             uint8_t addresses[64];
@@ -126,20 +129,21 @@ public:
                         return CatalogResult::Corrupt;
                 }
                 const uint32_t address = Word(addresses + slot*4);
-                MergeRecord record;
+                const unsigned current = i % 2;
+                auto &record = records[current];
+                const auto &previous = records[1 - current];
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
                 // Rotate the sample within each group to cover different page
                 // and index-batch positions. Unsigned subtraction handles wrap.
                 const bool sample = clock && index_timing && (i & 63u) == ((i >> 6) & 63u);
                 const uint32_t key_start = sample ? clock() : 0;
 #endif
-                if(!ops.Record(address,record,cross_check,batch_index_keys) || record.identity>=Word(prefix) ||
+                if(!ops.Record(address,record,cross_check,batch_index_keys) || record.identity>=next_identity ||
                    record.record.sequence>view.through || record.operation==2 || (reverse && record.operation))
                     return CatalogResult::Corrupt;
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
                 const uint32_t text_start = sample ? clock() : 0;
 #endif
-                const unsigned current = i % 2;
                 if (cache_prefix && record.text_bytes &&
                     !device.Read(record.text_address, prefixes[current], std::min<uint32_t>(record.text_bytes, 32)))
                     return CatalogResult::Corrupt;
@@ -159,7 +163,6 @@ public:
                 }
 #endif
                 if (!reverse && !record.operation) ++translations;
-                previous=record;
             }
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
             if (index_timing) index_timing(reverse ? ValidationStage::Reverse : ValidationStage::Forward, timing);
