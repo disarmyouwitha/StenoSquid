@@ -254,6 +254,15 @@ config ZMK_STENO_SQUID_TRANSFER_SESSION
       0.9 KiB of SRAM (decoder, session, page buffer). Not for release builds
       until reviewed; see docs/transfer-session.md.
 
+config ZMK_STENO_SQUID_LAB_BOOTLOADER
+    bool "Lab: console command that restarts into the UF2 bootloader"
+    depends on ZMK_STENO_SQUID_NATIVE_STORE
+    default n
+    help
+      Adds the USB-only console command "native_install lab-bootloader", which reboots into the UF2 bootloader
+      (what ZMK's &bootloader key does) so a lab build can be flashed from the host without touching the board. Never in
+      release builds; enabled by config/boardsource-wireless-corne/lab-bootloader.conf.
+
 config ZMK_JAVELIN_STENO_BLE_HID
     bool "Expose the Javelin browser console over Bluetooth HID"
     depends on ZMK_JAVELIN_STENO_BROWSER_DICTIONARY && ZMK_BLE

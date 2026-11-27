@@ -251,7 +251,7 @@ jobs:
                 args+=("-DEXTRA_DTC_OVERLAY_FILE=$repo/config/boardsource-wireless-corne/logging.overlay")
               fi
               if [ "${{ matrix.measure }}" = "true" ]; then
-                conf="$conf;$repo/config/boardsource-wireless-corne/phase1-everyday.conf;$repo/config/boardsource-wireless-corne/transfer.conf;$repo/config/boardsource-wireless-corne/memory.conf"
+                conf="$conf;$repo/config/boardsource-wireless-corne/phase1-everyday.conf;$repo/config/boardsource-wireless-corne/transfer.conf;$repo/config/boardsource-wireless-corne/memory.conf;$repo/config/boardsource-wireless-corne/lab-bootloader.conf"
               fi
               args+=("-DBOARD_ROOT=$GITHUB_WORKSPACE/vendor"
                      "-DZMK_CONFIG=$repo/config/boardsource-wireless-corne"
@@ -288,7 +288,7 @@ jobs:
                        "-DEXTRA_DTC_OVERLAY_FILE=$split/logging.overlay")
               fi
               if [ "${{ matrix.measure }}" = "true" ]; then
-                args+=("-DEXTRA_CONF_FILE=$repo/config/boardsource-wireless-corne/phase1-everyday.conf;$repo/config/boardsource-wireless-corne/transfer.conf;$repo/config/boardsource-wireless-corne/memory.conf")
+                args+=("-DEXTRA_CONF_FILE=$repo/config/boardsource-wireless-corne/phase1-everyday.conf;$repo/config/boardsource-wireless-corne/transfer.conf;$repo/config/boardsource-wireless-corne/memory.conf;$repo/config/boardsource-wireless-corne/lab-bootloader.conf")
               fi
               ;;
           esac
@@ -311,7 +311,7 @@ jobs:
           esac
           case "${{ matrix.name }}" in
             *-Left-Measure)
-              for expected in CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES=32 CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION=y CONFIG_ZMK_STENO_SQUID_MEMORY_DIAGNOSTICS=y; do
+              for expected in CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES=32 CONFIG_ZMK_STENO_SQUID_TRANSFER_SESSION=y CONFIG_ZMK_STENO_SQUID_MEMORY_DIAGNOSTICS=y CONFIG_ZMK_STENO_SQUID_LAB_BOOTLOADER=y; do
                 if ! awk -v expected="$expected" '$0 == expected { found = 1 } END { exit !found }' "$config"; then
                   echo "::error::Measurement firmware is missing $expected"
                   exit 1

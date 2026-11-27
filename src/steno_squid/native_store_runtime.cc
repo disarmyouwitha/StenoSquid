@@ -48,6 +48,9 @@
 #include <zephyr/sys/crc.h>
 #include <zephyr/sys/base64.h>
 #include <zephyr/sys/reboot.h>
+#if IS_ENABLED(CONFIG_RETENTION_BOOT_MODE)
+#include <zephyr/retention/bootmode.h>
+#endif
 #include <zephyr/settings/settings.h>
 #include <new>
 #include <cstdlib>
@@ -1282,6 +1285,18 @@ uint32_t stage_epoch;    // Changes each time a staged update begins; lets a los
 alignas(4) uint8_t incoming[512];
 void reboot_worker(k_work *){sys_reboot(SYS_REBOOT_COLD);}
 K_WORK_DELAYABLE_DEFINE(reboot_work,reboot_worker);
+#ifdef CONFIG_ZMK_STENO_SQUID_LAB_BOOTLOADER
+// Lab builds only: restart into the UF2 bootloader (the same reboot ZMK's &bootloader key does), so a build can be flashed
+// without touching the board. Dictionary flash and settings are untouched.
+void bootloader_worker(k_work *) {
+#if IS_ENABLED(CONFIG_RETENTION_BOOT_MODE)
+    if (bootmode_set(BOOT_MODE_TYPE_BOOTLOADER) == 0) sys_reboot(SYS_REBOOT_WARM);
+#else
+    sys_reboot(0x57); // Adafruit nRF52 bootloader DFU_MAGIC_UF2_RESET
+#endif
+}
+K_WORK_DELAYABLE_DEFINE(bootloader_work,bootloader_worker);
+#endif
 int64_t install_deadline=0;
 void install_timeout(k_work *);
 K_WORK_DELAYABLE_DEFINE(install_timeout_work,install_timeout);
@@ -1765,6 +1780,13 @@ extern "C" size_t steno_squid_native_transfer_report(const uint8_t *report, size
 }
 #endif
 extern "C" void steno_squid_native_install_command(const char *command,char *reply,size_t bytes,uint32_t bluetooth_session) {
+#ifdef CONFIG_ZMK_STENO_SQUID_LAB_BOOTLOADER
+    if (!bluetooth_session && !std::strcmp(command, "lab-bootloader\n")) {
+        k_work_schedule(&bootloader_work, K_MSEC(300)); // after this reply has been sent
+        snprintk(reply, bytes, "OK Entering the UF2 bootloader");
+        return;
+    }
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
     if (!bluetooth_session && !std::strcmp(command, "diagnostic-fault\n")) {
         steno_squid_replay_diagnostic_status(reply, bytes, atomic_get(&native_fault_pc));

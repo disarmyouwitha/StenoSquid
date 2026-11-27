@@ -8,6 +8,8 @@
   measured speeds.
 - [Run development checks](development.md) for host tests, CI, and hardware
   validation.
+- [Flash lab builds without touching the board](lab-flashing.md) for agents and
+  scripts (`native_install lab-bootloader`).
 - [Boardsource bring-up](boardsource-bringup.md) and
   [power validation](boardsource-power-validation.md) for hardware details.
 - [Engineering archive](archive/) for design decisions, benchmarks, and
