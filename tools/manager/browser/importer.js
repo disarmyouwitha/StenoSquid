@@ -21,6 +21,7 @@ export function pyRepr(text) {
 
 class JsonError extends Error { constructor(message, pos = 0) { super(message); this.name = "JSONDecodeError"; this.pos = pos; } }
 const OBJECT = Symbol("object");
+export const isOrderedObject = (value) => Boolean(value) && typeof value === "object" && OBJECT in value;
 
 // Returns {[OBJECT]: true, pairs: [[key, value], ...]} for objects, arrays for arrays, and plain values otherwise.
 export function parseOrderedJson(source) {

@@ -40,7 +40,7 @@ export function safeName(value) {
   return value;
 }
 
-function lineAndColumn(source, pos) {
+export function lineAndColumn(source, pos) {
   const before = source.slice(0, pos);
   const lineno = before.split("\n").length;
   const last = before.lastIndexOf("\n");
