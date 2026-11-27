@@ -106,3 +106,13 @@ export function makePrepare(archive) {
     return {contents: image, pointers: pointerOffsets, digest: Uint8Array.from(digest.match(/../g), (pair) => parseInt(pair, 16))};
   };
 }
+
+// The pinned source files bundled in the page, for building the install image: path under build/ -> bytes.
+export function makeSourceReader(archive) {
+  return async (path) => {
+    const zip = archive();
+    const raw = zip ? await readZipEntry(zip, `build/${path}`) : null;
+    if (raw === null) throw new Error(`The bundled factory dictionary is missing: ${path}.`);
+    return raw;
+  };
+}
