@@ -12,6 +12,7 @@ settings are not touched by the reboot. Back up first if the test will write to 
 --backup-to or the Manager's full backup). Never use this on a board you have not agreed to flash.
 """
 import argparse
+import errno
 import os
 from pathlib import Path
 import shutil
@@ -28,12 +29,18 @@ def uf2_drives():
     roots = []
     if os.name == "nt":
         roots = [Path(f"{letter}:/") for letter in string.ascii_uppercase]
+    elif sys.platform == "darwin":
+        roots = list(Path("/Volumes").iterdir())
     else:
-        for base in ("/Volumes", "/media", "/run/media", "/mnt"):
+        for base in ("/media", "/run/media", "/mnt"):
             base = Path(base)
             if base.is_dir():
-                roots += [p for p in base.iterdir() if p.is_dir()]
-                roots += [q for p in base.iterdir() if p.is_dir() for q in p.iterdir() if q.is_dir()]
+                for root in base.iterdir():
+                    roots.append(root)
+                    try:
+                        roots.extend(root.iterdir())
+                    except OSError:
+                        pass
     found = []
     for root in roots:
         try:
@@ -64,13 +71,15 @@ def main():
         raise SystemExit(f"Not a .uf2 file: {args.uf2}")
 
     drive = args.drive
+    serial = args.serial
     if drive is None:
         existing = uf2_drives()
         if existing:
             raise SystemExit(f"A UF2 drive is already mounted ({existing[0]}); pass --drive {existing[0]} to flash it.")
         from import_personal import open_console
 
-        with open_console(args.serial) as console:
+        with open_console(serial) as console:
+            serial = console.serial
             reply = console.command("native_install lab-bootloader", timeout=5)
         print(reply)
         if not reply.startswith("OK"):
@@ -78,17 +87,30 @@ def main():
                              "Flash one by hand (double-tap reset) once.")
         drive = wait_for(lambda: (uf2_drives() or [None])[0], 30, "the UF2 bootloader drive")
     print(f"copying {args.uf2.name} to {drive}")
-    shutil.copyfile(args.uf2, drive / args.uf2.name)  # the bootloader reboots as soon as the file is complete
+    copy_error = False
+    try:
+        shutil.copyfile(args.uf2, drive / args.uf2.name)
+    except OSError as error:
+        # macOS can report either error when the bootloader ejects during the final write.
+        if sys.platform != "darwin" or error.errno not in (errno.EIO, errno.ENXIO) or not serial:
+            raise
+        copy_error = True
+        print("macOS reported an I/O error during the UF2 copy. Waiting for the same keyboard to return.",
+              file=sys.stderr)
     time.sleep(2)
     from import_personal import usb_console_devices
 
     def back():
         try:
-            return usb_console_devices(args.serial)
+            if copy_error and (drive / "INFO_UF2.TXT").is_file():
+                return None
+            return usb_console_devices(serial)
         except Exception:
             return None
 
     wait_for(back, 40, "the keyboard to enumerate again")
+    if copy_error:
+        raise SystemExit("The keyboard is back on USB. Check the installed firmware to confirm the flash.")
     print("flashed; the keyboard is back on USB")
 
 
