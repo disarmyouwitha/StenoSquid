@@ -632,3 +632,10 @@ used saved base checksums. These runs characterize the forced-checksum path.
 A paired forced mapped read was not run, so the DMA speedup is unmeasured.
 See the [post-UF2 trace](../../docs/benchmarks/phase1-64mib-full-checksum-dma-after-uf2.json)
 and [cold trace](../../docs/benchmarks/phase1-64mib-full-checksum-dma-cold.json).
+
+With the byte-table CRC on the same 2 KiB DMA path, the 32 MHz fixture
+reached ready in 36.164 seconds after UF2 and 36.507 seconds after physical
+power-off. Extent validation took 18.901 and 19.047 seconds respectively.
+Both runs reopened generation 6 with all 32 dictionaries and passed all
+233 lookup probes. See the [post-UF2 trace](../../docs/benchmarks/phase1-64mib-fast-checksum-dma-after-uf2.json)
+and [cold trace](../../docs/benchmarks/phase1-64mib-fast-checksum-dma-cold.json).
