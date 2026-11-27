@@ -10,10 +10,11 @@ import {runJob} from "./jobs.js";
 import {makeEditor} from "./editor.js";
 import {exportDictionary} from "./export.js";
 import {backupAll} from "./backup.js";
+import {transfer} from "./publish.js";
 
 // Requests whose whole path is ported. Everything else runs in the Python Manager until its operation is ported.
 export const JS_ACTIONS = new Set(["disconnect", "refresh", "layout_map", "open_installer", "enable", "hints", "layout", "set", "remove", "reset",
-  "open_editor", "preview_editor", "apply_editor", "export", "backup"]);
+  "open_editor", "preview_editor", "apply_editor", "export", "backup", "move", "rename", "import", "compact", "preview_compact"]);
 const SELECTING = new Set(["refresh", "open_installer"]);
 
 const realClock = {
@@ -53,8 +54,11 @@ export function createJsManager({hid, factorySource = async () => null, clock = 
     changeDocument: (...args) => editor.changeDocument(...args),
     exportDictionary: (console, name) => exportDictionary(console, name),
     backupAll: (console) => backupAll(console),
+    transfer: (console, entries, progress, options = {}) => transfer(console, entries, progress, {move: options.move ?? null,
+      rename: options.rename ?? null, delete: options.delete ?? null, previewCompact: options.preview_compact === true,
+      expectedCompact: options.expected_compact ?? null}),
     ...Object.fromEntries(["previewRepack", "captureApprovedRepack", "installRepack", "restoreOriginal", "captureApprovedMerge", "installOfflineMerge",
-      "factoryPackage", "changeSnapshot", "clearPersonal", "mergeSnapshots", "namedImport", "transfer", "prepareInstallImage", "provision"]
+      "factoryPackage", "changeSnapshot", "clearPersonal", "mergeSnapshots", "namedImport", "prepareInstallImage", "provision"]
       .map((name) => [name, unported(name)])),
   };
 

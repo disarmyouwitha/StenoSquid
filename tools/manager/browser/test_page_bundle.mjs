@@ -65,8 +65,8 @@ const identity = [["native_install identity", "OK SQMANAGER1 AB12"], ["native_in
 
 // 1. Which requests the page runs in JavaScript.
 for (const action of ["refresh", "layout_map", "open_installer", "enable", "hints", "layout", "set", "remove", "reset", "open_editor", "preview_editor",
-  "apply_editor", "export", "backup", "disconnect"]) assert.ok(JS_ACTIONS.has(action), action);
-for (const action of ["move", "rename", "delete", "import", "apply_import", "compact", "preview_compact", "apply_package", "preview_package", "setup",
+  "apply_editor", "export", "backup", "disconnect", "move", "rename", "import", "compact", "preview_compact"]) assert.ok(JS_ACTIONS.has(action), action);
+for (const action of ["delete", "apply_import", "apply_package", "preview_package", "setup",
   "apply_repack", "preview_repack", "restore_repack_backup", "apply_offline_merge", "preview_optimize", "apply_merge", "clear_personal"]) {
   assert.ok(!JS_ACTIONS.has(action), `${action} must stay in the Python Manager until it is ported`);
 }
@@ -125,6 +125,6 @@ for (const [reply, message] of [["OK SQMANAGER1 ab12", /identity differs/], ["ER
   const hid = fakeHid([...identity, ...identity, ["native_install status", "NATIVE2 READY 12"]], "unported");
   const manager = createJsManager({hid});
   manager.connectedSerial = "AB12";
-  await assert.rejects(() => manager.run({action: "compact"}, () => {}, () => {}), /./);
+  await assert.rejects(() => manager.run({action: "delete"}, () => {}, () => {}), /./);
 }
 console.log("PASS page bundle (JS): the bundled modules load, route requests and refresh through the console like the Python Manager");
