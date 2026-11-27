@@ -580,3 +580,18 @@ all 233 expected lookup results. The 256-byte build took 24.296 and
 directions, so the wider page remains an opt-in experiment. See the
 [post-UF2 trace](../../docs/benchmarks/phase1-64mib-wide-index-after-uf2.json)
 and [cold trace](../../docs/benchmarks/phase1-64mib-wide-index-cold.json).
+
+### Direct forward index headers
+
+`CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DIRECT_KEYS=y` reads each aligned
+44-byte forward key header directly into RAM. Remaining strokes and reverse
+keys use the existing read path. Catalog, record and index validation stay
+enabled. With 512-byte cached index pages, the host fixture fell from
+110,207 reads and 59,754,760 bytes to 99,710 reads and 16,925,320 bytes.
+The validator still rejected a corrupt forward index.
+
+On the 64 MiB fixture at 32 MHz, the after-UF2 run took 19.431 seconds.
+The forward pass took 5.065 seconds and 80,658 DMA transactions, compared
+with 9.680 seconds and 91,155 in the earlier cached run. All 233 probes
+behaved as expected. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-64mib-direct-keys-after-uf2.json).
