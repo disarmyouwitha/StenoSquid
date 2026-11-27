@@ -486,3 +486,120 @@ The 20-second power-on ceiling remains open. See the
 [post-UF2 trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-after-uf2.json),
 [cold trace](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-cold.json), and
 [lookup results](../../docs/benchmarks/phase1-startup-profile-hfxo-index-dma-lookups.json).
+
+### 16 MiB runtime loss
+
+The USB console reported a 255-segment pool and `NATIVE2 UNPROVISIONED 3`
+while Javelin showed No Dict. The retained trace shows three successful
+opens within one boot. The latest completed at 1,116,524 ms of device
+uptime. The console later reported that dictionary flash was unavailable.
+This captures loss after a successful open, with the original fault site
+still unknown. See the [live trace](../../docs/benchmarks/phase1-16mib-live-no-dict.json).
+
+The reliability candidate resets the background CRC scan state when the
+store closes or fully reopens. A fault on a previously mapped store asks
+the flash worker for one verified reopen. The worker waits for read sessions
+and pending flash operations to finish before power-cycling the flash.
+The candidate records background scrub failures and runtime flash failures
+in the profile so the next reproduction can identify the failing path.
+
+The recovery candidate was flashed on the same 16 MiB left half at 32 MHz.
+The original generation 3 opened and stayed ready during a 75-second USB
+observation. Both enabled personal translations matched the stored entries.
+The full open checked the bases, so this run did not exercise the early
+background scan used after a trusted-base open.
+See the [post-UF2 observation](../../docs/benchmarks/phase1-16mib-recovery-after-uf2.json).
+
+After physically switching the left half off and back on, the dictionary
+opened at 1.092 seconds of device uptime. At 103.938 seconds the trace
+recorded a same-boot resume after external flash idle power-down. The
+flash became ready 52 ms after that resume began. Both personal entries
+still resolved, with no recorded scrub or runtime flash fault. The trace
+records scan errors only, and the scan can wait while flash is suspended.
+The test verified USB idle resume. A Bluetooth deep-sleep wake remains
+unverified. See the [cold trace](../../docs/benchmarks/phase1-16mib-recovery-cold.json).
+
+On the Bluetooth reproduction build, read `native_install boot-profile <index>`
+over USB before resetting the left half. `lookup_outline_error` and
+`lookup_text_error` carry the Native `LiveResult`. `resume_probe_error` and
+`scrub_read_error` identify the affected flash addresses. `scrub_crc_error`
+is followed by the expected and observed checksums. `qspi_unsupported_jedec`
+records the full chip ID for a flash that the firmware rejected at startup.
+
+### Full base checksum comparison
+
+On the 64 MiB fixture, the previous physical cold boot reached ready at
+24.221 seconds with saved base checksums. A later diagnostic boot after UF2
+reached ready at 53.981 seconds and spent 31.400 seconds in extent validation
+with base trust unavailable. The fixture has 31 base extents totaling
+58,075,492 bytes. An offline scan in 2 KiB chunks matched every catalog CRC,
+with 28,369 chunks compared with 226,861 at 256 bytes.
+
+To measure full base verification on both builds, add
+`CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC=y` to the profiled 32 MHz
+DMA-index configuration above. Then add
+`CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA=y` for the second build. The second
+build uses the same CRC and 2 KiB of existing scratch space for DMA. Compare
+`extent_checks` to `journal_scan` in both traces and verify the same catalog
+and fixture lookups. Use the normal build for trusted-base timings.
+
+### Distinct catalog roots
+
+The 32 MHz 64 MiB fixture took 80.068 seconds from power-on with two
+distinct valid roots. A journal recovery pass after root validation alone
+took 28.458 seconds and 160,480 mapped reads. The firmware now validates
+the newer root last so it can reuse its staged journal state. The next
+physical cold boot reached ready at 41.835 seconds with zero reads between
+the last root validation and catalog selection. All 233 fixture probes
+behaved as expected for the current enable flags. Both root validation
+passes still ran. See the [baseline](../../docs/benchmarks/phase1-64mib-distinct-catalog-cold.json)
+and [cold retest](../../docs/benchmarks/phase1-64mib-newest-last-cold.json).
+
+When complete catalog payloads differ only in valid dictionary enable flags,
+the profiled boot now validates the newest root and reuses its journal/index
+validation for the other root. Both committed payload CRCs are checked, and
+the comparison includes all dictionary metadata and extent bytes outside the
+enable field. The 32 MHz fixture took 24.296 seconds after flashing and
+28.982 seconds after a physical power cycle. Both measured one validation
+pass and all 233 probes matched the current dictionary settings.
+See the [post-UF2 trace](../../docs/benchmarks/phase1-64mib-shared-flags-after-uf2.json)
+and [physical cold trace](../../docs/benchmarks/phase1-64mib-shared-flags-cold.json).
+
+### 512-byte index DMA pages
+
+`CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_WIDE_PAGE=y` changes only the index
+cache from seven 256-byte pages to three 512-byte pages in the same scratch
+buffer. On the host fixture, total validation read requests fell from
+127,135 to 110,207 and bytes transferred rose from 37,381,128 to 59,754,760.
+Both host runs still rejected a corrupt forward index.
+
+The 32 MHz hardware took 26.311 seconds after UF2 and 26.295 seconds after
+physical power-off. Both boots validated the generation 3 catalog and got
+all 233 expected lookup results. The 256-byte build took 24.296 and
+28.982 seconds respectively. The two comparisons point in opposite
+directions, so the wider page remains an opt-in experiment. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-64mib-wide-index-after-uf2.json)
+and [cold trace](../../docs/benchmarks/phase1-64mib-wide-index-cold.json).
+
+### Direct forward index headers
+
+`CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DIRECT_KEYS=y` reads each aligned
+44-byte forward key header directly into RAM. Remaining strokes and reverse
+keys use the existing read path. Catalog, record and index validation stay
+enabled. With 512-byte cached index pages, the host fixture fell from
+110,207 reads and 59,754,760 bytes to 99,710 reads and 16,925,320 bytes.
+The validator still rejected a corrupt forward index.
+
+On the 64 MiB fixture at 32 MHz, the after-UF2 run took 19.431 seconds.
+The forward pass took 5.065 seconds and 80,658 DMA transactions, compared
+with 9.680 seconds and 91,155 in the earlier cached run. All 233 probes
+behaved as expected. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-64mib-direct-keys-after-uf2.json).
+
+The physical cold boot reached ready in 19.352 seconds with saved base
+checksums, versus 26.295 seconds for the prior 512-byte cache build. The
+forward pass took 5.059 seconds and all 233 probes behaved as expected.
+The first USB response after ready could not be parsed, so the verifier
+retried and confirmed the generation 3 catalog and all lookups. The device
+trace supplies the time from power-on. See the
+[physical cold trace](../../docs/benchmarks/phase1-64mib-direct-keys-cold.json).

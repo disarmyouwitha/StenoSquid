@@ -67,6 +67,7 @@ constexpr uintptr_t Xip=DT_REG_ADDR_BY_NAME(DT_NODELABEL(qspi),qspi_mm);
 static_assert(DT_REG_SIZE_BY_NAME(DT_NODELABEL(qspi),qspi_mm) >= kMaxSegments*kSegmentBytes);
 bool ForgetBaseTrust();
 extern int64_t scrub_due;
+void ResetNativeScrub();
 constexpr size_t MaxDictionaries=CONFIG_ZMK_STENO_SQUID_NATIVE_DICTIONARIES;
 // Startup uses this buffer under the flash lock before the engine opens. An
 // export holds a read session and also prevents borrowing the buffer.
@@ -85,11 +86,17 @@ bool boot_count_reads = false;
 
 struct FlashDevice {
     bool mapped=false,trust_bases=false;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    bool boot_base_dma = false;
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
     bool journal_dma = false;
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
     bool index_dma = false;
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DIRECT_KEYS
+    bool forward_key_dma = false;
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
     bool index_cache = false;
@@ -107,13 +114,28 @@ struct FlashDevice {
     uint32_t Limit() const { return PoolEnd()*kSegmentBytes; }
     void Invalidate(){for(auto &c:cached)c.bytes=0;}
     void Dirty(uint32_t at,uint32_t n){for(auto &c:cached)if(c.bytes && at<c.at+c.bytes && c.at<at+n)c.bytes=0;}
-    bool Read(uint32_t at,uint8_t *out,uint32_t n) {
-        if(at>lf_flash_bytes || n>lf_flash_bytes-at)return false;
 #if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+    void YieldStartupRead() {
         if (cold_read_yield_at && static_cast<int32_t>(k_uptime_get_32() - cold_read_yield_at) >= 0) {
             k_sleep(K_TICKS(1));
             cold_read_yield_at = k_uptime_get_32() + 5u;
         }
+    }
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DIRECT_KEYS
+    bool ReadIndexKeyPrefix(uint32_t at, uint8_t *out, uint32_t n) {
+        if (!forward_key_dma) return Read(at, out, n);
+        if (at > lf_flash_bytes || n > lf_flash_bytes - at) return false;
+        // NativeJournal supplies a word-aligned flash address, length and buffer.
+        YieldStartupRead();
+        ++boot_dma_reads;
+        return nrfx_qspi_read(out, n, at) == NRFX_SUCCESS;
+    }
+#endif
+    bool Read(uint32_t at,uint8_t *out,uint32_t n) {
+        if(at>lf_flash_bytes || n>lf_flash_bytes-at)return false;
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA)
+        YieldStartupRead();
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
         if (journal_dma
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
@@ -191,13 +213,39 @@ struct FlashDevice {
     }
     bool CheckBase(uint32_t at,uint32_t bytes,uint32_t expected) {
         if(trust_bases){cached[cache_next++%32]={at,bytes,expected};return true;}
-        uint32_t crc;return Checksum(at,bytes,crc) && crc==expected;
+        uint32_t crc;return Checksum(at,bytes,crc,true) && crc==expected;
     }
-    bool Checksum(uint32_t at,uint32_t bytes,uint32_t &crc) {
+    bool Checksum(uint32_t at,uint32_t bytes,uint32_t &crc,[[maybe_unused]] bool for_base=false) {
         for(const auto &c:cached)if(c.bytes==bytes && c.at==at){crc=c.crc;return true;}
-        if (!ChecksumUncached(at, bytes, crc)) return false;
+        bool ok;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+        if (for_base && boot_base_dma && !(at % 4))
+            ok = ChecksumBootBase(at, bytes, crc);
+        else
+#endif
+            ok = ChecksumUncached(at, bytes, crc);
+        if (!ok) return false;
         cached[cache_next++%32]={at,bytes,crc};return true;
     }
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    bool ChecksumBootBase(uint32_t at, uint32_t bytes, uint32_t &crc) {
+        if (at > lf_flash_bytes || bytes > lf_flash_bytes - at) return false;
+        crc = 0;
+        while (bytes) {
+            if (static_cast<int32_t>(k_uptime_get_32() - cold_read_yield_at) >= 0) {
+                k_sleep(K_TICKS(1));
+                cold_read_yield_at = k_uptime_get_32() + 5u;
+            }
+            const uint32_t count = std::min<uint32_t>(bytes, sizeof(export_buffer));
+            ++boot_dma_reads;
+            if (nrfx_qspi_read(export_buffer, (count + 3u) & ~3u, at) != NRFX_SUCCESS) return false;
+            crc = crc32_ieee_update(crc, export_buffer, count);
+            at += count;
+            bytes -= count;
+        }
+        return true;
+    }
+#endif
     bool ChecksumUncached(uint32_t at, uint32_t bytes, uint32_t &crc) {
         alignas(4) uint8_t chunk[256];crc=0;
         for(uint32_t offset=0;offset<bytes;) {
@@ -238,7 +286,19 @@ public:
 #ifdef CONFIG_ZMK_STENO_SQUID_REPLAY_DIAGNOSTICS
         atomic_cas(&native_fault_pc, 0, reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
 #endif
-        (void)ForgetBaseTrust();healthy=store.opened=false;atomic_clear(&lf_mapped_ready);atomic_set(&lf_checked,1);dictionary_flash_ready_changed();
+        const bool was_open = atomic_clear(&lf_mapped_ready) != 0;
+        (void)ForgetBaseTrust();
+        healthy = store.opened = false;
+        ResetNativeScrub();
+        if (was_open) {
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+            steno_squid_boot_stage("runtime_flash_fault", 0);
+#endif
+            dictionary_flash_recover();
+        } else {
+            atomic_set(&lf_checked, 1);
+        }
+        dictionary_flash_ready_changed();
     }
     const StenoDictionary *FindBase(uint32_t) const override;
 } base_provider;
@@ -878,6 +938,9 @@ extern "C" void steno_squid_boot_stage(const char *stage, uint32_t detail) {
     ++boot_event_next;
     k_spin_unlock(&boot_event_lock, key);
 }
+void candidate_b::ProfileLookupFault(const char *stage, LiveResult result) {
+    steno_squid_boot_stage(stage, static_cast<uint32_t>(result));
+}
 #define BOOT_STAGE(stage, detail) steno_squid_boot_stage(stage, detail)
 static void profile_extent_rejection(const RejectedExtent &extent) {
     switch (static_cast<ExtentKind>(extent.kind)) {
@@ -923,12 +986,19 @@ extern "C" bool steno_squid_native_flash_open(void) {
     if(healthy && loaded && last_open_pool_end == flash_device.PoolEnd() && NativeWarmResumeEligible(store)) {
         BOOT_STAGE("resume_bind", 0);
         flash_device.mapped=true;
-        for(size_t i=0;i<cell_count;++i)if(!cells[i].Probe()){base_provider.Fault();return false;}
+        for (size_t i = 0; i < cell_count; ++i) {
+            if (cells[i].Probe()) continue;
+            BOOT_STAGE("resume_probe_error", cells[i].base_offset);
+            base_provider.Fault();
+            return false;
+        }
         NoteIdleMaintenance();
         ++warm_resumes;return true;
     }
     last_open_pool_end=flash_device.PoolEnd();
     healthy=false;snapshot_format_rejected=false;++full_opens;
+    ResetNativeScrub();
+    if (IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC)) flash_device.Invalidate();
     BOOT_STAGE("base_trust", full_opens);
     LoadNativeTrust();
     BOOT_STAGE("mapping_probe", 0);
@@ -958,13 +1028,22 @@ extern "C" bool steno_squid_native_flash_open(void) {
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
 #endif
     BOOT_STAGE("catalog", mapping_ok);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_WIDE_PAGE
+    BOOT_STAGE("index_dma_page_bytes", StartupIndexCache::PageBytes);
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    // The startup flash lock protects the export buffer when no export owns it.
+    flash_device.boot_base_dma = !exporting;
+    if (flash_device.boot_base_dma) BOOT_STAGE("base_dma", sizeof(export_buffer));
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
     boot_count_reads = true;
 #endif
     const auto result=store.Open([](const CatalogRoot &root){
         BOOT_STAGE("root_fingerprint", root.address / kSegmentBytes);
         const uint32_t fingerprint=BaseFingerprint(root);
-        flash_device.trust_bases=fingerprint && fingerprint==verified_fingerprint;
+        flash_device.trust_bases=!IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC) &&
+                                 fingerprint && fingerprint==verified_fingerprint;
         const auto status=validator.Validate(root, false
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
             , [](ValidationStage stage) {
@@ -978,6 +1057,10 @@ extern "C" bool steno_squid_native_flash_open(void) {
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
                 flash_device.index_dma = stage == ValidationStage::Forward || stage == ValidationStage::Reverse;
                 if (flash_device.index_dma) flash_device.startup_read_ahead = {};
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DIRECT_KEYS
+                flash_device.forward_key_dma = stage == ValidationStage::Forward;
+                if (flash_device.forward_key_dma) BOOT_STAGE("direct_forward_keys", 1);
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
                 flash_device.index_cache = flash_device.index_dma && !exporting;
@@ -1006,14 +1089,21 @@ extern "C" bool steno_squid_native_flash_open(void) {
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DMA
         flash_device.index_dma = false;
 #endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_DIRECT_KEYS
+        flash_device.forward_key_dma = false;
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_CACHE
         flash_device.index_cache = false;
 #endif
         flash_device.trust_bases=false;
         BOOT_STAGE("root_validated", static_cast<uint32_t>(status));
         return status;
-    }, CatalogValidation::ReuseIdenticalPayload,
+    }, IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY)
+           ? CatalogValidation::ReuseEnableOnlyPayload : CatalogValidation::ReuseIdenticalPayload,
        IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY));
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
+    flash_device.boot_base_dma = false;
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
     boot_count_reads = false;
 #endif
@@ -1681,6 +1771,10 @@ extern "C" void steno_squid_native_install_command(const char *command,char *rep
 namespace {
 int64_t scrub_due=0;size_t scrub_cell=0;uint32_t scrub_offset=0,scrub_crc=0;
 alignas(4) uint8_t scrub_chunk[256];
+void ResetNativeScrub() {
+    scrub_due = 0;
+    scrub_cell = scrub_offset = scrub_crc = 0;
+}
 }
 extern "C" int32_t steno_squid_native_scrub_wait(void) {
     if(!healthy || !dictionary_flash_mapped_address() || lf_suspended)return -1;
@@ -1703,10 +1797,20 @@ extern "C" void steno_squid_native_scrub_step(void) {
     }
     if(scrub_cell==cell_count){scrub_cell=0;scrub_due=k_uptime_get()+24*60*60*1000LL;return;}
     const auto &cell=cells[scrub_cell];uint32_t n=cell.base_bytes-scrub_offset;if(n>sizeof(scrub_chunk))n=sizeof(scrub_chunk);
-    if(!flash_device.Read(cell.base_offset+scrub_offset,scrub_chunk,n)){base_provider.Fault();return;}
+    if (!flash_device.Read(cell.base_offset+scrub_offset,scrub_chunk,n)) {
+        BOOT_STAGE("scrub_read_error", cell.base_offset + scrub_offset);
+        base_provider.Fault();
+        return;
+    }
     scrub_crc=crc32_ieee_update(scrub_crc,scrub_chunk,n);scrub_offset+=n;
     if(scrub_offset==cell.base_bytes) {
-        if(scrub_crc!=cell.base_crc){base_provider.Fault();return;}
+        if (scrub_crc != cell.base_crc) {
+            BOOT_STAGE("scrub_crc_error", cell.base_offset);
+            BOOT_STAGE("scrub_expected_crc", cell.base_crc);
+            BOOT_STAGE("scrub_actual_crc", scrub_crc);
+            base_provider.Fault();
+            return;
+        }
         ++scrub_cell;scrub_offset=scrub_crc=0;
     }
     scrub_due=k_uptime_get()+8;

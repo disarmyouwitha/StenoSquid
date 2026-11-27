@@ -34,11 +34,15 @@ struct StartupReadAhead {
     }
 };
 
-// Use seven aligned pages of the existing scratch buffer. Keep the tags and
+// Use aligned pages of the existing scratch buffer. Keep the tags and
 // replacement cursor in the first page so the lab build adds no static RAM.
 struct StartupIndexCache {
     static constexpr size_t BufferBytes = 2048;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_WIDE_PAGE
+    static constexpr uint32_t PageBytes = 512;
+#else
     static constexpr uint32_t PageBytes = StartupReadAhead::PageBytes;
+#endif
     static constexpr unsigned Slots = BufferBytes / PageBytes - 1;
 
     static void Reset(uint8_t (&buffer)[BufferBytes]) {

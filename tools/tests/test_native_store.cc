@@ -2,17 +2,29 @@
 #include "native_overlay_usage.h"
 #include <iostream>
 
-static void TestStagedRecovery() {
+static void TestStagedRecovery(CatalogValidation mode, unsigned expected_validations) {
     NativeFixture fixture;
     assert(fixture.Edit(1, 1, "before boot") == LiveResult::Ok);
     LiveView scratch;
+    assert(fixture.store.Enable(3, false, scratch, fixture.Check()) == CatalogResult::Ok);
     assert(fixture.store.Enable(2, false, scratch, fixture.Check()) == CatalogResult::Ok);
+    assert(fixture.store.selected.slot == 0);
+    bool reuse_selected = false;
+    unsigned validations = 0;
     const auto open = [&] {
-        return fixture.store.Open([&](const CatalogRoot &root) {
-            return fixture.validator.Validate(root, false, nullptr, nullptr, &fixture.store.live);
-        }, CatalogValidation::ReuseIdenticalPayload, true);
+        reuse_selected = false;
+        validations = 0;
+        unsigned reads_after_validation = 0;
+        const auto result = fixture.store.Open([&](const CatalogRoot &root) {
+            ++validations;
+            const auto validated = fixture.validator.Validate(root, false, nullptr, nullptr, &fixture.store.live);
+            reads_after_validation = fixture.nor.reads;
+            return validated;
+        }, mode, true);
+        reuse_selected = fixture.nor.reads == reads_after_validation;
+        return result;
     };
-    assert(open() == CatalogResult::Ok);
+    assert(open() == CatalogResult::Ok && reuse_selected && validations == expected_validations);
     const auto newer = fixture.store.live.Root();
     uint8_t row[96];
     assert(fixture.store.Row(1, row) && !Word(row + 4));
@@ -31,7 +43,8 @@ static void TestStagedRecovery() {
 }
 
 int main() {
-    TestStagedRecovery();
+    TestStagedRecovery(CatalogValidation::ReuseIdenticalPayload, 2);
+    TestStagedRecovery(CatalogValidation::ReuseEnableOnlyPayload, 1);
     NativeFixture f;assert(f.Edit(1,1,"first")==LiveResult::Ok);
     LiveView scratch;
     const auto high=f.store.live.Highwater();assert(f.store.Enable(2,false,scratch,f.Check())==CatalogResult::Ok);

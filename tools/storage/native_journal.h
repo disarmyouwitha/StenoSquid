@@ -243,6 +243,16 @@ private:
         return JournalResult::Ok;
     }
 
+    template<class Reader>
+    static auto ReadIndexPrefix(Reader &reader, uint32_t address, uint8_t *out, size_t bytes, int)
+        -> decltype(reader.ReadIndexKeyPrefix(address, out, bytes)) {
+        return reader.ReadIndexKeyPrefix(address, out, bytes);
+    }
+    template<class Reader>
+    static bool ReadIndexPrefix(Reader &reader, uint32_t address, uint8_t *out, size_t bytes, long) {
+        return reader.Read(address, out, bytes);
+    }
+
 public:
     JournalResult ReadEnvelope(uint32_t address, JournalRecord &record,uint8_t (&header)[32]) {
         if (!EnvelopeAddressValid(address)) return JournalResult::Invalid;
@@ -266,9 +276,9 @@ public:
     // outline needs one more read of exactly its remaining strokes.
     JournalResult ReadIndexKey(uint32_t address, JournalRecord &record, JournalKey &key) {
         if (!EnvelopeAddressValid(address)) return JournalResult::Invalid;
-        uint8_t prefix[44];
+        alignas(4) uint8_t prefix[44];
         if (address % kSegmentBytes > kSegmentBytes - sizeof(prefix)) return ReadKey(address, record, key);
-        if (!device.Read(address, prefix, sizeof(prefix))) return JournalResult::IoError;
+        if (!ReadIndexPrefix(device, address, prefix, sizeof(prefix), 0)) return JournalResult::IoError;
         const auto status = DecodeEnvelope(address, record, prefix);
         if (status != JournalResult::Ok) return status;
         if (!DecodeKeyPrefix(prefix + 32, record.payload_bytes, key)) return JournalResult::Corrupt;

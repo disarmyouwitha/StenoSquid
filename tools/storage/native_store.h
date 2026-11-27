@@ -28,7 +28,9 @@ public:
         if(work!=Work::None)return CatalogResult::Busy;
         opened=false;
         live.staged_recovery = false;
-        const auto result=catalog.OpenValidated(selected,validate,mode);
+        // The validator stages recovery for one root at a time. Leave the
+        // newest candidate last so a distinct older root cannot replace it.
+        const auto result=catalog.OpenValidated(selected,validate,mode,reuse_recovery);
         if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined)return result;
         if (reuse_recovery && live.AcceptStagedRecovery(selected)) {
             opened = true;

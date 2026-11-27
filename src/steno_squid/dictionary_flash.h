@@ -27,6 +27,9 @@ void dictionary_flash_hold(bool hold);
  */
 void dictionary_flash_ready_changed(void);
 
+/* Queue a power cycle after a runtime failure of a previously open store. */
+void dictionary_flash_recover(void);
+
 #ifdef CONFIG_ZMK_JAVELIN_BATTERY_LOG
 bool dictionary_flash_is_powered(void);
 #endif
