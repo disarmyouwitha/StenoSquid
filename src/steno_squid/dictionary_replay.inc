@@ -12,11 +12,6 @@ uint32_t replay_times[CAPACITY];
 unsigned replay_count;
 unsigned replay_total, replay_interval, replay_mismatches, replay_overruns, replay_saturations;
 uint32_t replay_first_ms, replay_last_ms;
-constexpr unsigned REPLAY_LOOP_CAPACITY = 1536;
-struct LoopSample {
-    uint16_t engine_4us, completion_ms;
-};
-LoopSample replay_loop_samples[REPLAY_LOOP_CAPACITY];
 atomic_t replay_sent, replay_active, replay_aborted, replay_hints = ATOMIC_INIT(1);
 
 struct ReplayFault {
@@ -74,10 +69,12 @@ void RecordLoopChord(unsigned index, uint32_t outline, uint32_t elapsed, bool su
         ++replay_overruns;
     if (engine_4us > UINT16_MAX)
         ++replay_saturations;
-    if (index < REPLAY_LOOP_CAPACITY)
-        replay_loop_samples[index] = {uint16_t(MIN(engine_4us, UINT16_MAX)), uint16_t(MIN(delay, UINT16_MAX))};
-    else
+    if (index < REPLAY_LOOP_CAPACITY) {
+        trace.loop[index].engine_4us = uint16_t(MIN(engine_4us, UINT16_MAX));
+        trace.loop[index].completion_ms = uint16_t(MIN(delay, UINT16_MAX));
+    } else {
         ++overflow;
+    }
 }
 
 void PrintLoopCapture() {
@@ -86,7 +83,7 @@ void PrintLoopCapture() {
                     "\"engine_saturations\":%u,\"samples\":[",
                     completed, overflow, replay_mismatches, replay_overruns, replay_saturations);
     for (unsigned i = 0; i < MIN(completed, REPLAY_LOOP_CAPACITY); ++i) {
-        const auto &sample = replay_loop_samples[i];
+        const auto &sample = trace.loop[i];
         Console::Printf("%s[%u,%u]", i ? "," : "", 4u * sample.engine_4us, sample.completion_ms);
     }
     Console::Printf("]}\n\n");
@@ -158,6 +155,8 @@ bool ReplayCommand(const char *args) {
             atomic_clear(&completed_chords);
             replay_total = replay_count * repeats;
             replay_interval = interval;
+            // Loop samples reuse the individual-stroke buffer.
+            if (ReplayingLoop()) count = 0;
             replay_mismatches = replay_overruns = replay_saturations = 0;
             replay_fault.magic = 0;
             dictionary_flash_read_session(true);
@@ -193,12 +192,14 @@ void ReplayJournalFault(unsigned line, uint32_t address, unsigned status) {
 void steno_squid_replay_diagnostic_status(char *reply, size_t bytes, uint32_t store_fault) {
     const bool fatal = replay_fault.magic == FaultMagic;
     const auto used = snprintk(reply, bytes,
-             "{\"store_fault_pc\":%u,\"fatal\":%s,\"reason\":%u,\"pc\":%u,\"r0\":%u,"
+             "{\"store_fault_pc\":%u,\"fatal\":%s,\"reason\":%u,\"pc\":%u,\"lr\":%u,\"r0\":%u,\"r1\":%u,\"cfsr\":%u,\"hfsr\":%u,"
              "\"sent\":%u,\"completed\":%u,\"outline\":%u,"
              "\"lookup_result\":%u,\"lookup_id\":%u,\"journal_line\":%u,\"journal_address\":%u,"
              "\"journal_status\":%u,\"lookup_strokes\":[",
              store_fault, fatal ? "true" : "false", fatal ? replay_fault.reason : 0,
-             fatal ? replay_fault.pc : 0, fatal ? replay_fault.address : 0,
+             fatal ? replay_fault.pc : 0, fatal ? replay_fault.lr : 0, fatal ? replay_fault.address : 0,
+             fatal ? replay_fault.unaligned_address : 0, fatal ? replay_fault.cfsr : 0,
+             fatal ? replay_fault.hfsr : 0,
              fatal ? replay_fault.sent : uint32_t(atomic_get(&replay_sent)),
              fatal ? replay_fault.completed : uint32_t(atomic_get(&completed_chords)),
              fatal ? replay_fault.outline : uint32_t(atomic_get(&processing_outline)),
