@@ -10,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import sys
+from tempfile import NamedTemporaryFile
 from time import monotonic
 import tkinter as tk
 
@@ -57,6 +58,24 @@ def latency(values):
         return {}
     return {**{f"p{p}": round(percentile(values, p / 100), 3) for p in (50, 95, 99)},
             "max": round(max(values), 3)}
+
+
+def save_report(path, report, *, create=False):
+    if create:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("x", encoding="utf-8") as stream:
+            json.dump(report, stream, indent=2)
+            stream.write("\n")
+        return
+    with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(report, stream, indent=2)
+            stream.write("\n")
+            stream.close()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def foreground_check():
@@ -154,6 +173,7 @@ def capture_window(console, args, report, masks, expected, words, interval):
     def cancel(reason):
         stop()
         report.update(result="fail", error=reason, captured_text=editor.get("1.0", "end-1c"))
+        save_report(args.report, report)
         window.quit()
 
     def finish():
@@ -161,8 +181,10 @@ def capture_window(console, args, report, masks, expected, words, interval):
             return
         try:
             replay = json.loads(bench(console, "replay status"))
+            report["device_replay"] = replay
             stop()
             trace = json.loads(bench(console, "capture read"))
+            report["device_trace"] = trace
             status = json.loads(console.command("user_dictionary_status"))
             summarize_run = summarize if args.repeat == 1 else summarize_loop
             summarize_run(report, masks, expected, words, interval, status, replay, trace,
@@ -170,6 +192,7 @@ def capture_window(console, args, report, masks, expected, words, interval):
         except (RuntimeError, OSError, ValueError, TimeoutError) as error:
             cancel(str(error))
             return
+        save_report(args.report, report)
         message.set(f"Replay {report['result']}.")
         window.after(900, window.quit)
 
@@ -192,6 +215,8 @@ def capture_window(console, args, report, masks, expected, words, interval):
             message.set("Bring this window to the front and click Start replay.")
             return
         active = True
+        report["result"] = "running"
+        save_report(args.report, report)
         button.configure(state="disabled")
         strokes = len(masks) * args.repeat
         message.set(f"Capturing {strokes} strokes. Leave the keys alone. Escape stops the test.")
@@ -263,16 +288,15 @@ def main():
             parser.error("This loop requires the opt-in firmware with sufficient loop capture capacity.")
         print("Checking live fixture lookups…", flush=True)
         status, catalog = inspect_board(console, fixture)
-        report.update(firmware=meta, serial=console.serial, state_before=status, catalog=catalog)
+        report.update(firmware=meta, serial=console.serial, state_before=status, catalog=catalog,
+                      expected_text=expected, result="armed")
         bench(console, "replay clear")
         bench(console, "replay hints on")
         for mask in masks:
             bench(console, f"replay add {mask:x}")
+        save_report(args.report, report, create=True)
         print("Bring the capture window forward and click Start replay.", flush=True)
         capture_window(console, args, report, masks, expected, words, interval)
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    with args.report.open("x") as stream:
-        stream.write(json.dumps(report, indent=2) + "\n")
     print(f"{report['result']}: {args.report}")
     return 0 if report["result"] == "pass" else 1
 
