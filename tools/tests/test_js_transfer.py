@@ -103,6 +103,18 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: read_document / change_document sessions (cache, previews, saves) match manager_editor.py."""
         self.run_node("test_editor.mjs")
 
+    def test_page_bundle_runs_like_python(self):
+        """The offline page's bundled modules load, route requests and refresh through the console like the Python Manager."""
+        import tempfile
+        sys.path.insert(0, str(ROOT / "tools/ci"))
+        from bundle_modules import bundle
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "page_bundle.js"
+            path.write_text(bundle(BROWSER / "backend.js"), encoding="utf-8")
+            result = subprocess.run(["node", str(BROWSER / "test_page_bundle.mjs"), str(path)], capture_output=True, text=True, timeout=300)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS", result.stdout)
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")

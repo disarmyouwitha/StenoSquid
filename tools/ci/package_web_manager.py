@@ -17,6 +17,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/dictionaries"))
 from manifest import BASES
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bundle_modules import bundle as bundle_modules
 
 # Keep the runtime pinned. Every runtime asset is embedded in the HTML,
 # so opening Manager never needs network access.
@@ -80,8 +82,8 @@ globalThis.fetch = async (input) => {
 };
 """
     shim = (destination / "pyodide.mjs").read_text().replace("export{ct as loadPyodide,U as version};", "globalThis.loadPyodide = ct;")
-    hid = (manager / "browser/hid.js").read_text().replace("export ", "")
-    backend = (manager / "browser/backend.js").read_text().replace('import {HidConnection} from "./hid.js";\n', "").replace("export ", "")
+    # The page's modules (hid, console, the JavaScript Manager and everything they import) become one scoped script; see bundle_modules.py.
+    backend = bundle_modules(manager / "browser/backend.js") + 'const {BrowserBackend} = __modules["backend"];\n'
     ui = (manager / "manager.js").read_text().replace('new (await import("./backend.js")).BrowserBackend()', 'new BrowserBackend()')
     script = lambda code, module=False: '<script' + (' type="module"' if module else '') + '>' + re.sub(r"</script", r"<\\/script", code, flags=re.I) + '</script>'
     html = (manager / "index.html").read_text().replace('<html lang="en">', '<html lang="en" data-backend="browser">')
@@ -91,8 +93,8 @@ globalThis.fetch = async (input) => {
     notices = json.dumps({"project": (ROOT / "LICENSE").read_text(),
                           "third_party": (manager / "browser/THIRD_PARTY_LICENSES.txt").read_text()}).replace("<", "\\u003c")
     html = html.replace('</body>', '<script id="manager-licenses" type="application/json">' + notices + '</script></body>')
-    html = html.replace('</body>', script(setup) + script((destination / "pyodide.asm.js").read_text()) + script(shim, True) + script(hid + backend + ui, True) + '</body>')
-    (output / "StenoSquidManager.html").write_text(html)
+    html = html.replace('</body>', script(setup) + script((destination / "pyodide.asm.js").read_text()) + script(shim, True) + script(backend + ui, True) + '</body>')
+    (output / "StenoSquidManager.html").write_text(html, encoding="utf-8")
     shutil.copyfile(ROOT / "LICENSE", output / "LICENSE")
     shutil.copyfile(manager / "browser/README.md", output / "README.md")
     shutil.copyfile(manager / "browser/THIRD_PARTY_LICENSES.txt", output / "THIRD_PARTY_LICENSES.txt")

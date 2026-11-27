@@ -1,4 +1,5 @@
 import {HidConnection} from "./hid.js";
+import {createJsManager} from "./js_manager.js";
 
 export function unsupportedReason(scope = globalThis) {
   if (!scope.isSecureContext) return "Open the downloaded StenoSquid Manager HTML file in desktop Chrome or Edge.";
@@ -16,6 +17,8 @@ export class BrowserBackend {
     this.serial = null;
     this.forceChooser = false;
     this.hid = this.reason ? null : new HidConnection(navigator.hid, () => { this.job.connection_lost = true; });
+    // Requests whose whole path is ported run in JavaScript (no Python runtime needed); the rest run in the Python Manager.
+    this.js = this.hid ? createJsManager({hid: this.hid}) : null;
     globalThis.browser_rpc = async (source) => JSON.stringify(await this.service(JSON.parse(source)));
     globalThis.browser_sleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
     addEventListener("beforeunload", (event) => {
@@ -68,7 +71,7 @@ export class BrowserBackend {
       this.job.message = "Checking keyboard connections; preferring USB…";
       try {
         await this.hid.select([device]);
-        const info = JSON.parse(await this.python.runPythonAsync("probe_connection()"));
+        const info = await this.js.probe();
         if (info.error) throw new Error(info.error);
         if (explicit && index === 0) chosenSerial = info.serial;
         candidates.push({device, ...info});
@@ -165,11 +168,24 @@ export class BrowserBackend {
       try {
         const devices = selection ? await selection : null;
         if (recovery) this.folder = await recovery;
-        await this.initialize();
+        const inJs = this.js.supports(payload.action);
+        if (!inJs || recovery) await this.initialize();
         if (devices) await this.connect(devices);
         if (recovery) await this.restoreFiles();
-        this.python.globals.set("browser_request", JSON.stringify(payload));
-        const result = JSON.parse(await this.python.runPythonAsync("run_request(browser_request)"));
+        let result;
+        if (inJs) {
+          // The same contract as bridge.run_request: a failure is reported to the page without dropping the connection.
+          try {
+            result = await this.js.run(payload, (message) => { this.job.message = message; }, (view) => { this.job.view = view; });
+          } catch (error) { result = {_browser_error: error.message || String(error)}; }
+        } else {
+          // The Python Manager keeps its own idea of the connected keyboard; hand it the one JavaScript last saw.
+          const connected = this.js.connectedSerial;
+          this.python.runPython(`connected_serial = ${connected === null ? "None" : JSON.stringify(connected)}`);
+          this.python.globals.set("browser_request", JSON.stringify(payload));
+          result = JSON.parse(await this.python.runPythonAsync("run_request(browser_request)"));
+          this.js.connectedSerial = this.python.globals.get("connected_serial") ?? null;
+        }
         if (result._browser_error) {
           // Validation and stale-preview errors leave the device connected so
           // the draft can be corrected or reloaded without leaving the modal.
