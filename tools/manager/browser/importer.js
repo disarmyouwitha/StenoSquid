@@ -21,10 +21,11 @@ export function pyRepr(text) {
 
 class JsonError extends Error { constructor(message, pos = 0) { super(message); this.name = "JSONDecodeError"; this.pos = pos; } }
 const OBJECT = Symbol("object");
+export const isOrderedObject = (value) => Boolean(value) && typeof value === "object" && OBJECT in value;
 
 // Returns {[OBJECT]: true, pairs: [[key, value], ...]} for objects, arrays for arrays, and plain values otherwise.
 export function parseOrderedJson(source) {
-  if (source.startsWith("﻿")) throw new JsonError("Unexpected UTF-8 BOM (decode using utf-8-sig)", 0);
+  if (source.startsWith("\ufeff")) throw new JsonError("Unexpected UTF-8 BOM (decode using utf-8-sig)", 0);
   let i = 0;
   const fail = (what, pos = i) => { throw new JsonError(`${what}: char ${pos}`, pos); };
   const skip = () => { while (i < source.length && WS.has(source[i])) i++; };

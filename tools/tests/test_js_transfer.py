@@ -99,12 +99,32 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: backup_all reads, stamps and aborts exactly as native_update.backup_all does."""
         self.run_node("test_backup.mjs")
 
+    def test_dictionary_editor_matches_python(self):
+        """Manager milestone M3: read_document / change_document sessions (cache, previews, saves) match manager_editor.py."""
+        self.run_node("test_editor.mjs")
+
+    def test_bundled_factory_dictionaries(self):
+        """The editor's bundled-factory lookup (zip reader, digest rules) behaves like manager_editor.factory_source."""
+        self.run_node("test_factory.mjs")
+
+    def test_page_bundle_runs_like_python(self):
+        """The offline page's bundled modules load, route requests and refresh through the console like the Python Manager."""
+        import tempfile
+        sys.path.insert(0, str(ROOT / "tools/ci"))
+        from bundle_modules import bundle
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "page_bundle.js"
+            path.write_text(bundle(BROWSER / "backend.js"), encoding="utf-8")
+            result = subprocess.run(["node", str(BROWSER / "test_page_bundle.mjs"), str(path)], capture_output=True, text=True, timeout=300)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS", result.stdout)
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py", "golden_export.py", "golden_recovery.py", "golden_backup.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py", "golden_export.py", "golden_recovery.py", "golden_backup.py", "golden_editor.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)

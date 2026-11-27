@@ -87,6 +87,7 @@ def generate():
         case("flash busy on a read", image, script={("read", 4): "ERR Native flash busy"}),
         case("short read", image, script={("read", 4): "OK AAAA"}),
         case("generation 0", image, status="NATIVE2 READY 0"),
+        case("generation 9", image, status="NATIVE2 READY 9"),
         case("a large generation", image, status="NATIVE2 READY 4000000000"),
         case("leading zeros in the generation", image, status="NATIVE2 READY 0042"),
         case("status with extra whitespace", image, status="  NATIVE2   READY\t42 "),
