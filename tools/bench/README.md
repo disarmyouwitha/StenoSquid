@@ -650,3 +650,12 @@ Ordering includes any reads for text past the cached prefix. Estimate the
 time for a category by dividing its ticks by the timer frequency and
 multiplying by the entry count divided by the sample count. The full stage
 time also includes index address reads and loop overhead.
+
+`CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_RECORD_BATCH=y` reads up to 68 bytes
+within a journal segment during staged startup recovery. It uses the same
+header, payload CRC, and UTF-8 checks. Longer records retain the streamed
+read path. In the direct-forward-key host case, compiling the benchmark with
+and without this option changed journal requests from 160,598 to 80,549.
+The 256-byte index-cache comparison went from 110,920 to 110,922 total
+physical reads. The experiment reduces software read calls. Its hardware
+timing remains unmeasured.

@@ -299,7 +299,11 @@ private:
         if(scanning) {
             JournalRecord record;
             JournalKey key;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_RECORD_BATCH
+            const auto status = journal.Step(scan, record, &key, !require_trusted);
+#else
             const auto status = journal.Step(scan, record, &key);
+#endif
             if(status==JournalResult::IoError)return Fail(LiveResult::IoError);
             if(status==JournalResult::Ok) {
                 Observe(key.identity, key.count);

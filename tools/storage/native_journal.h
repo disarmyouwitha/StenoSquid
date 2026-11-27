@@ -229,12 +229,13 @@ public:
     // One committed record per call, at most 2119 payload bytes streamed through
     // fixed workspace. Caller can yield/cancel between steps. IO errors leave
     // cursor unchanged; committed corruption never looks like an unfinished tail.
-    JournalResult Step(JournalScan &scan, JournalRecord &record, JournalKey *key = nullptr) {
+    JournalResult Step(JournalScan &scan, JournalRecord &record, JournalKey *key = nullptr,
+                       bool batch_record = false) {
         if (!scan.ready || scan.next > scan.end || scan.end % kSegmentBytes ||
             scan.end > NativePoolEnd(device)*kSegmentBytes || scan.end < 3*kSegmentBytes ||
             scan.next < scan.end-kSegmentBytes+kPageBytes) return JournalResult::Invalid;
         if (scan.end-scan.next < 32) return JournalResult::End;
-        const auto status=Read(scan.next,record,key);
+        const auto status=Read(scan.next,record,key,batch_record);
         if (status!=JournalResult::Ok) return status;
         if (record.sequence<=scan.previous) return JournalResult::Corrupt;
         scan.previous=record.sequence;
@@ -322,11 +323,26 @@ public:
         return JournalResult::Ok;
     }
 
-    JournalResult Read(uint32_t address, JournalRecord &record, JournalKey *decoded = nullptr) {
-        uint8_t header[32];
-        auto status=ReadEnvelope(address,record,header);
+    JournalResult Read(uint32_t address, JournalRecord &record, JournalKey *decoded = nullptr,
+                       [[maybe_unused]] bool batch_record = false) {
+        constexpr uint32_t header_bytes = 32;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_RECORD_BATCH
+        constexpr uint32_t prefix_bytes = 68;
+#else
+        constexpr uint32_t prefix_bytes = header_bytes;
+#endif
+        uint8_t header[prefix_bytes];
+        if (!EnvelopeAddressValid(address)) return JournalResult::Invalid;
+        uint32_t fetched = header_bytes;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_RECORD_BATCH
+        if (batch_record && address % kSegmentBytes <= kSegmentBytes - prefix_bytes)
+            fetched = prefix_bytes;
+#endif
+        if (!device.Read(address, header, fetched)) return JournalResult::IoError;
+        const auto status = DecodeEnvelope(address, record, header);
         if(status!=JournalResult::Ok)return status;
         const uint32_t size=record.payload_bytes;
+        const bool prefetched = size <= fetched - header_bytes;
         uint32_t crc=Crc(0, header+8, 8), position=0;
         JournalKey key;
         uint32_t text_start=0;
@@ -334,15 +350,16 @@ public:
         while (position < size) {
             uint32_t n=size-position;
             if (n>sizeof(buffer)) n=sizeof(buffer);
-            if (!device.Read(address+32+position,buffer,n)) return JournalResult::IoError;
-            crc=Crc(crc,buffer,n);
+            if (!prefetched && !device.Read(address+header_bytes+position,buffer,n)) return JournalResult::IoError;
+            const auto *bytes = prefetched ? header + header_bytes : buffer;
+            crc=Crc(crc,bytes,n);
             if (!position) {
-                if (!DecodeKeyPrefix(buffer, size, key) || !DecodeStrokes(buffer + 8, key))
+                if (!DecodeKeyPrefix(bytes, size, key) || !DecodeStrokes(bytes + 8, key))
                     return JournalResult::Corrupt;
                 text_start = 8u + 4u * key.count;
             }
             const uint32_t first_text_byte = position == 0 ? text_start : 0;
-            if (!utf.PushText(buffer + first_text_byte, n - first_text_byte)) return JournalResult::Corrupt;
+            if (!utf.PushText(bytes + first_text_byte, n - first_text_byte)) return JournalResult::Corrupt;
             position+=n;
         }
         if (utf.remaining || crc!=Word(header+20)) return JournalResult::Corrupt;

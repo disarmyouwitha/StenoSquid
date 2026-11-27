@@ -14,8 +14,10 @@ struct StartupDevice : NativeDevice {
     uint8_t buffer[StartupReadAhead::PageBytes]{};
     uint8_t wide_buffer[2048]{};
     bool direct_forward_keys = false;
+    unsigned journal_requests = 0;
 
     bool Read(uint32_t at, uint8_t *out, uint32_t bytes) {
+        if (read_ahead && wide_read_ahead) ++journal_requests;
         if (at > nor.data.size() || bytes > nor.data.size() - at) return false;
         if (!read_ahead) return NativeDevice::Read(at, out, bytes);
         if (index_cache && !wide_read_ahead) {
@@ -104,6 +106,7 @@ int main(int argc, char **argv) {
             std::cout << " (" << StartupIndexCache::Slots << " x " << StartupIndexCache::PageBytes << " bytes)";
         }
         std::cout << ": " << nor.reads << " reads, " << nor.read_bytes << " bytes\n";
+        if (mode >= 7) std::cout << "  journal requests: " << device.journal_requests << '\n';
 
         // The fixture's index bytes remain protected by their original CRCs.
         const auto forward_index = validator.ValidatedView().forward_address;

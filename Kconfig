@@ -123,6 +123,10 @@ config ZMK_STENO_SQUID_BOOT_CRC_WORDS
     bool "Process four bytes at a time in the Native storage CRC"
     depends on ZMK_STENO_SQUID_BOOT_CPU_BATCH
 
+config ZMK_STENO_SQUID_BOOT_JOURNAL_RECORD_BATCH
+    bool "Read short journal records in one request during startup recovery"
+    depends on ZMK_STENO_SQUID_BOOT_JOURNAL_BLOCKS
+
 config ZMK_STENO_SQUID_BOOT_RUNTIME_SPEED
     bool "Optimize the Native runtime for speed in startup experiments"
     depends on ZMK_STENO_SQUID_BOOT_PROFILE
