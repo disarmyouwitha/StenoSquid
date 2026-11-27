@@ -17,8 +17,8 @@ import tkinter as tk
 from run_dictionary_benchmark import open_console, parse_outline, percentile
 
 
-def bench(console, operation):
-    reply = console.command(f"dictionary_benchmark {operation}", timeout=10)
+def bench(console, operation, *, timeout=10):
+    reply = console.command(f"dictionary_benchmark {operation}", timeout=timeout)
     if reply.startswith("ERR"):
         raise RuntimeError(reply)
     return reply
@@ -171,30 +171,45 @@ def capture_window(console, args, report, masks, expected, words, interval):
         active = False
 
     def cancel(reason):
-        stop()
-        report.update(result="fail", error=reason, captured_text=editor.get("1.0", "end-1c"))
-        save_report(args.report, report)
+        if active or report["result"] == "armed":
+            report.update(result="fail", error=reason, captured_text=editor.get("1.0", "end-1c"))
+            save_report(args.report, report)
+            stop()
         window.quit()
 
     def finish():
         if not active:
             return
+        received = editor.get("1.0", "end-1c")
+        report.update(result="collecting", captured_text=received)
+        save_report(args.report, report)
+        message.set("Typing finished. Reading diagnostics…")
+        window.update_idletasks()
+        stage = "replay status"
         try:
             replay = json.loads(bench(console, "replay status"))
             report["device_replay"] = replay
+            save_report(args.report, report)
             stop()
-            trace = json.loads(bench(console, "capture read"))
+            stage = "capture read"
+            trace = json.loads(bench(console, "capture read", timeout=30))
             report["device_trace"] = trace
+            save_report(args.report, report)
+            stage = "dictionary status"
             status = json.loads(console.command("user_dictionary_status"))
+            report["state_after"] = status
+            stage = "result calculation"
             summarize_run = summarize if args.repeat == 1 else summarize_loop
-            summarize_run(report, masks, expected, words, interval, status, replay, trace,
-                          editor.get("1.0", "end-1c"))
-        except (RuntimeError, OSError, ValueError, TimeoutError) as error:
-            cancel(str(error))
-            return
+            summarize_run(report, masks, expected, words, interval, status, replay, trace, received)
+        except (RuntimeError, OSError, ValueError, KeyError, TypeError, IndexError) as error:
+            report.update(result="incomplete", error=f"{stage}: {error}")
+            stop()
         save_report(args.report, report)
-        message.set(f"Replay {report['result']}.")
-        window.after(900, window.quit)
+        if report["result"] == "incomplete":
+            message.set(f"Typing saved. Diagnostics incomplete. {report['error']}")
+        else:
+            message.set(f"Replay {report['result']}. Report saved.")
+        button.configure(text="Close", state="normal", command=window.quit)
 
     def wait_for_text():
         if not active:
@@ -279,7 +294,7 @@ def main():
                   fixture_sha256=hashlib.sha256(fixture_bytes).hexdigest(), words=words,
                   strokes=len(masks) * args.repeat, repeats=args.repeat,
                   interval_us=interval, planned_chords_per_second=1_000_000 / interval,
-                  scope="Onboard replay with USB capture. Physical key scanning and split input are excluded.")
+                  scope="Onboard replay with USB capture. Physical key scanning, split input and Bluetooth are excluded.")
     with open_console(args.serial) as console:
         meta = json.loads(bench(console, "meta"))
         if meta["firmware"] != "hardware-typing-replay" or len(masks) > meta["capture_capacity"]:
