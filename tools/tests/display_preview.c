@@ -570,8 +570,11 @@ int main(void) {
     }
     save_gallery_states();
     steno_squid_screen_update(STENO_SQUID_MODE_CHECK_JOURNAL, NULL, 0, 85, true);
+    assert(!lv_obj_has_flag(mode_above, LV_OBJ_FLAG_HIDDEN));
+    assert(!strcmp(lv_label_get_text(mode_above), "Loading"));
     assert(!strcmp(lv_label_get_text(mode_below), "Journal"));
     steno_squid_screen_update(STENO_SQUID_MODE_DICTIONARY_ERROR, NULL, 0, 85, true);
+    assert(lv_obj_has_flag(mode_above, LV_OBJ_FLAG_HIDDEN));
     assert(!strcmp(lv_label_get_text(mode_below), "Dict err"));
     for (unsigned pass=0; pass<30; pass++) {
         for (unsigned mode=0; mode<STENO_SQUID_MODE_COUNT; mode++) {
