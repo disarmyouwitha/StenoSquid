@@ -2,12 +2,11 @@
 
 Download and extract `boardsource.zip` or `nicenano.zip` for your board. Each
 contains `Left.uf2`, `Right.uf2`, and `StenoSquidManager.html`. Open
-**StenoSquidManager.html in desktop Chrome or Edge 137 or newer**. Connect the
+**StenoSquidManager.html in desktop Chrome or Edge**. Connect the
 left half and choose **Connect**. You can also drag the HTML file into Chrome.
 
-The HTML contains the complete application, Python WebAssembly runtime, and
-pinned factory dictionaries. **It works on first launch with no internet.**
-There is no installation, Python dependency, local server, hosting, account,
+The HTML contains the complete application and the pinned factory dictionaries. **It works on first launch with no internet.**
+There is no installation, runtime dependency, local server, hosting, account,
 extension, or browser flag. License notices are embedded in the HTML.
 
 Safari and Firefox cannot connect directly because they do not support WebHID.
@@ -15,20 +14,16 @@ Use matching left firmware
 that supports the `native_install connection` query; older firmware gets an
 update message rather than guessing whether a connection is USB or Bluetooth.
 
-Every Manager request now runs in JavaScript: Connect and refresh, the flash map, enabling and disabling dictionaries, stroke
+The Manager runs entirely in the page's own JavaScript: Connect and refresh, the flash map, enabling and disabling dictionaries, stroke
 hints, the host layout, single-entry edits, the JSON editor (read, preview, save), import, export and the full backup, moving,
 renaming and deleting dictionaries, compacting journals, converting and consolidating compact dictionaries, merging, named
 imports, factory dictionary install/restore, first-time setup (the install image is built in the page from the bundled pinned
 dictionaries), and guarded USB repack, offline merge and restore of the original backup (verified backups are kept in the
-recovery folder you choose). Each operation is checked against the Python Manager by recorded console transcripts and
-byte-identical images and bundles (see the golden-vector tests). The bundled Python runtime is a fallback that starts only for a
-request the JavaScript Manager does not recognise, and is scheduled for removal.
+recovery folder you choose). Each operation was checked against the Python Manager it replaced, by recorded console transcripts and
+byte-identical images and bundles (the recordings are in `golden/`).
 
-The rest of the offline app's dictionary logic runs in the bundled Python runtime:
-imports, exports, edits, ordering, factory setup, compacting, merging, repacking,
-flash maps, and guarded recovery all run in that backend. USB-only operations
-keep their existing restrictions. OS-paired Bluetooth depends on the browser and
-OS exposing the keyboard's vendor HID console.
+USB-only operations keep their restrictions. OS-paired Bluetooth depends on the browser and OS exposing the keyboard's vendor HID
+console.
 
 ## JSON editor
 
@@ -99,30 +94,18 @@ python3 tools/dictionaries/prepare.py
 python3 tools/ci/package_web_manager.py build/offline-manager
 ```
 
-The builder verifies pinned dictionary hashes and a pinned Pyodide 0.29.3 runtime.
-It emits the standalone HTML and offline ZIP. All inputs are embedded, and the
-app's runtime loader serves bytes from the HTML itself. Unexpected network
-requests are blocked. Subsequent builds can reuse the downloaded runtime:
-
-```sh
-python3 tools/ci/package_web_manager.py build/offline-manager --pyodide build/offline-manager/pyodide
-```
-
-Pyodide uses JavaScript Promise Integration to call asynchronous WebHID and local
-file APIs from the existing synchronous Python code. No cross-origin isolation
-headers, SharedArrayBuffer, or HTTP server are required.
+The builder verifies the pinned dictionary hashes and joins the Manager's JavaScript modules, the page and the pinned
+dictionaries into one standalone HTML file (plus an offline ZIP). Nothing else is embedded: there is no language runtime,
+and any attempt to reach the network is blocked. No cross-origin isolation headers, SharedArrayBuffer or HTTP server are
+required.
 
 ## Verification
 
 ```sh
-python3 tools/manager/test_manager.py
-npm install --no-save playwright@1.62.1
-npx playwright install chromium
-node tools/manager/browser/test_browser.mjs build/offline-manager/StenoSquidManager.html
+node tools/manager/browser/run_tests.mjs
 ```
 
-The browser test opens the actual HTML with `file://`, disables networking,
-loads real Python WebAssembly, and drives the Manager through a simulated HID
-device. It also runs 48 existing Python Manager and editor regression cases inside the
-browser and checks local backup file safety. Physical-keyboard flash, reboot, Bluetooth, and recovery trials are still
-required before publishing a release.
+These tests need no browser and no keyboard. Most replay recordings made from the retired Python Manager
+(`golden/*.json`): the same console commands, progress, results, failures, built images and recovery bundles. They are kept as
+frozen recordings and are not part of CI. Physical-keyboard flash, reboot, Bluetooth and recovery trials are still required
+before publishing a release.

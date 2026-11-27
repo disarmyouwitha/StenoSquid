@@ -1,6 +1,6 @@
 """Binary upload client for the experimental transfer session (Phase 2 prototype).
 
-Used by native_update.publish() in the desktop and browser (Pyodide) Managers.
+Used by native_update.publish() in the desktop Manager and tests.
 Frames and records mirror src/steno_squid/transfer_frame.h and
 transfer_staged_sink.h; see docs/transfer-session.md. The legacy Base64 console
 path stays the default and the fallback: if the keyboard does not advertise the

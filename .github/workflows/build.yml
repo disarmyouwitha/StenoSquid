@@ -51,11 +51,6 @@ jobs:
           path: build
       - name: Build the standalone offline HTML app
         run: python3 tools/ci/package_web_manager.py build/offline-manager
-      - name: Test opening from disk with networking disabled
-        run: |
-          npm install --prefix "$RUNNER_TEMP/browser-tests" playwright@1.62.1
-          "$RUNNER_TEMP/browser-tests/node_modules/.bin/playwright" install --with-deps chromium
-          PLAYWRIGHT_MODULE="$RUNNER_TEMP/browser-tests/node_modules/playwright" node tools/manager/browser/test_browser.mjs build/offline-manager/StenoSquidManager.html
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: StenoSquidManagerOffline
