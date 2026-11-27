@@ -2,7 +2,7 @@
 """Manually start a paced USB replay using a worst-case fixture on the board."""
 
 import argparse
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from ctypes import CDLL, CFUNCTYPE, c_bool, c_char_p, c_void_p, cast
 from datetime import datetime, timezone
 import hashlib
@@ -151,7 +151,7 @@ def summarize_loop(report, masks, expected, words, interval, status, replay, cap
                   device_replay=replay, device_trace=capture)
 
 
-def capture_window(console, args, report, masks, expected, words, interval):
+def capture_window(args, report, fixture, masks, expected, words, interval):
     window = tk.Tk()
     window.title("StenoSquid hardware typing replay")
     message = tk.StringVar(value=f"Click Start replay for the {args.wpm} WPM run.")
@@ -159,6 +159,8 @@ def capture_window(console, args, report, masks, expected, words, interval):
     editor = tk.Text(window, width=90, height=12, wrap="word")
     editor.pack(padx=10, pady=6)
     active = False
+    connection = ExitStack()
+    console = None
     drain_deadline = 0.0
     app_active = foreground_check()
 
@@ -175,6 +177,7 @@ def capture_window(console, args, report, masks, expected, words, interval):
             report.update(result="fail", error=reason, captured_text=editor.get("1.0", "end-1c"))
             save_report(args.report, report)
             stop()
+            connection.close()
         window.quit()
 
     def finish():
@@ -204,6 +207,8 @@ def capture_window(console, args, report, masks, expected, words, interval):
         except (RuntimeError, OSError, ValueError, KeyError, TypeError, IndexError) as error:
             report.update(result="incomplete", error=f"{stage}: {error}")
             stop()
+        finally:
+            connection.close()
         save_report(args.report, report)
         if report["result"] == "incomplete":
             message.set(f"Typing saved. Diagnostics incomplete. {report['error']}")
@@ -223,16 +228,36 @@ def capture_window(console, args, report, masks, expected, words, interval):
             window.after(150, wait_for_text)
 
     def start():
-        nonlocal active, drain_deadline
+        nonlocal active, console, drain_deadline
         editor.delete("1.0", "end")
         editor.focus_set()
         if not in_foreground():
             message.set("Bring this window to the front and click Start replay.")
             return
+        button.configure(state="disabled")
+        message.set("Checking the current dictionaries and preparing the tape…")
+        window.update_idletasks()
+        try:
+            console = connection.enter_context(open_console(args.serial))
+            status, catalog = inspect_board(console, fixture)
+            bench(console, "replay clear")
+            bench(console, "replay hints on")
+            for mask in masks:
+                bench(console, f"replay add {mask:x}")
+            if not in_foreground():
+                raise RuntimeError("Bring this window to the front before starting the replay.")
+        except (RuntimeError, OSError, ValueError, KeyError) as error:
+            connection.close()
+            message.set(f"{error} Click Start replay to retry.")
+            report["start_error"] = str(error)
+            save_report(args.report, report)
+            button.configure(state="normal")
+            return
         active = True
+        report.update(state_before=status, catalog=catalog)
+        report.pop("start_error", None)
         report["result"] = "running"
         save_report(args.report, report)
-        button.configure(state="disabled")
         strokes = len(masks) * args.repeat
         message.set(f"Capturing {strokes} strokes. Leave the keys alone. Escape stops the test.")
         try:
@@ -267,9 +292,13 @@ def capture_window(console, args, report, masks, expected, words, interval):
     window.bind("<Escape>", lambda _: cancel("Stopped by operator."))
     window.protocol("WM_DELETE_WINDOW", lambda: cancel("Capture window closed."))
     try:
+        window.update_idletasks()
+        window.lift()
+        print("Replay window is open. Click Start replay when ready.", flush=True)
         window.mainloop()
     finally:
         stop()
+        connection.close()
         window.destroy()
 
 
@@ -305,13 +334,8 @@ def main():
         status, catalog = inspect_board(console, fixture)
         report.update(firmware=meta, serial=console.serial, state_before=status, catalog=catalog,
                       expected_text=expected, result="armed")
-        bench(console, "replay clear")
-        bench(console, "replay hints on")
-        for mask in masks:
-            bench(console, f"replay add {mask:x}")
-        save_report(args.report, report, create=True)
-        print("Bring the capture window forward and click Start replay.", flush=True)
-        capture_window(console, args, report, masks, expected, words, interval)
+    save_report(args.report, report, create=True)
+    capture_window(args, report, fixture, masks, expected, words, interval)
     print(f"{report['result']}: {args.report}")
     return 0 if report["result"] == "pass" else 1
 
