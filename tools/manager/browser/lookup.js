@@ -1,6 +1,7 @@
 // Manager milestone M1/M2: the steno stroke parser and the JSC4 lookup reader, ported from compile_dict.parse_stroke /
 // parse_outline and jsc4.reader. Same hashing, probing and checks as the pinned engine's lookup, so a base replacement
 // can compare what an outline translated to before and after. golden_replace.py supplies the golden vectors.
+import {assertionError} from "./errors.js";
 import {crc32} from "./transfer_frame.js";
 
 // Order matters: the parser walks this list once, consuming matching characters (numeric aliases set the number bar too).
@@ -39,16 +40,16 @@ export function reader(blob, base = 0, index = 0, count = 1) {
   const word = (offset) => view.getUint32(offset, true);
   const pointer = (offset) => {
     const value = word(offset) - base;
-    if (!(value >= 0 && value < blob.length)) throw new Error(`Pointer outside image at 0x${offset.toString(16)}`);
+    if (!(value >= 0 && value < blob.length)) throw assertionError(`Pointer outside image at 0x${offset.toString(16)}`);
     return value;
   };
-  if (blob.length % 4 !== 0) throw new Error("assertion failed");
-  if (!(String.fromCharCode(...blob.subarray(0, 4)) === "JSC4" && word(4) === count && index < count)) throw new Error("assertion failed");
-  if (word(32) !== word(pointer(12) + word(8))) throw new Error("Timestamp mismatch");
+  if (blob.length % 4 !== 0) throw assertionError("assertion failed");
+  if (!(String.fromCharCode(...blob.subarray(0, 4)) === "JSC4" && word(4) === count && index < count)) throw assertionError("assertion failed");
+  if (word(32) !== word(pointer(12) + word(8))) throw assertionError("Timestamp mismatch");
   const definition = pointer(36 + 4 * index);
   if (definition + 1 >= blob.length) throw new RangeError("index out of range");
   const maximum = blob[definition + 1];
-  if (!(maximum > 0 && maximum <= 16)) throw new Error("assertion failed");
+  if (!(maximum > 0 && maximum <= 16)) throw assertionError("assertion failed");
   const text = pointer(definition + 8), table = pointer(definition + 12);
   const decoder = new TextDecoder("utf-8", {fatal: true});
 
@@ -72,7 +73,7 @@ export function reader(blob, base = 0, index = 0, count = 1) {
       for (let j = 0; j < part; j++) below += popcount(word(block + 4 * j));
       const rank = (popcount((bits << (31 - shift)) >>> 0) + word(block + 16) + below) >>> 0;
       const offset = data + rank * (3 + 3 * length);
-      if (!(data <= offset && offset + 3 + 3 * length <= blocks)) throw new Error("assertion failed");
+      if (!(data <= offset && offset + 3 + 3 * length <= blocks)) throw assertionError("assertion failed");
       let same = true;
       for (let j = 0; j < length; j++) {
         const at = offset + 3 + 3 * j;

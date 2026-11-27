@@ -2,8 +2,9 @@
 // load_view, installer_view, read_catalog, scan_layout, image_details) and overlay_usage in tools/storage/native_update.py.
 // `console` is the vendor console (console.js or a fake). `deps` carries what the browser supplies:
 //   lastRepackBackup(serial) -> name | null     (the recovery folder's latest repack backup; USB only)
-//   sleep(seconds) -> Promise                   (the layout-scan retry wait)
+//   sleep(seconds) -> Promise                   (the layout-scan retry wait; or deps.clock.sleep)
 // golden_state.py supplies the golden vectors.
+import {isRuntimeError, runtimeError} from "./errors.js";
 import {SEGMENT} from "./snapshot.js";
 import {readSnapshot, updateCommand} from "./device_reads.js";
 import {readImages, readLayout} from "./layout.js";
@@ -27,13 +28,15 @@ export function truthy(value) {
   if (typeof value === "object") return Object.keys(value).length > 0;
   return true;
 }
-const keyError = (key) => Object.assign(new Error(`'${key}'`), {name: "KeyError"});
-const need = (object, key) => { if (!(key in object)) throw keyError(key); return object[key]; };
-const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+export const keyError = (key) => Object.assign(new Error(`'${key}'`), {name: "KeyError"});
+// dict.get(key, default): the default applies only when the key is absent (a JSON null stays null).
+export const getDefault = (object, key, fallback) => (key in object ? object[key] : fallback);
+export const need = (object, key) => { if (!(key in object)) throw keyError(key); return object[key]; };
+export const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 // Python's `except (RuntimeError, OSError, ValueError)`: the failures the page reports instead of aborting on.
 export const reportable = (error) => ["Error", "TimeoutError", "JSONDecodeError", "UnicodeDecodeError", "UnicodeEncodeError"].includes(error.name);
 
-function parseJson(text) {
+export function parseJson(text) {
   try { return JSON.parse(text); } catch (error) { throw Object.assign(new Error(error.message), {name: "JSONDecodeError"}); }
 }
 
@@ -47,14 +50,14 @@ export async function mergeLimit(console) {
 }
 
 export async function installerView(console, status, {reprovision = false, transport = "usb"} = {}) {
-  if (!INSTALLABLE_STATUS.test(status)) throw new Error("The dictionary installer is unavailable. Keep the left half connected and try again.");
-  if (await console.command(FACTORY_CAPABILITIES, 30) !== "OK FACTORY2") throw new Error("This keyboard did not offer dictionary installation.");
+  if (!INSTALLABLE_STATUS.test(status)) throw runtimeError("The dictionary installer is unavailable. Keep the left half connected and try again.");
+  if (await console.command(FACTORY_CAPABILITIES, 30) !== "OK FACTORY2") throw runtimeError("This keyboard did not offer dictionary installation.");
   return {transport, setup: {serial: console.serial, packages: FACTORY_CHOICES, expected_status: status, reprovision}};
 }
 
 export async function readCatalog(console) {
   const value = parseJson(await console.command("native_catalog", 30));
-  if (!Array.isArray(value) || !value.length) throw new Error("Provision a keyboard with the matching Steno Squid firmware first.");
+  if (!Array.isArray(value) || !value.length) throw runtimeError("Provision a keyboard with the matching Steno Squid firmware first.");
   return value;
 }
 
@@ -68,13 +71,13 @@ export async function scanLayout(console, progress, deps) {
       return await readLayout(console);
     } catch (error) {
       // Only a RuntimeError reply can be deferred; anything else (a malformed map) is final.
-      if (error.name !== "Error" || !error.message.startsWith("ERR Layout scan deferred") || attempt === 2) throw error;
+      if (!isRuntimeError(error) || !error.message.startsWith("ERR Layout scan deferred") || attempt === 2) throw error;
       progress("Waiting for flash, then retrying the scan…");
       if (error.message === "ERR Layout scan deferred until the flash and input are idle") {
         // Earlier firmware wakes flash for status queries but not for the map.
         await console.command("native_install status", 3);
       }
-      await deps.sleep(0.25);
+      await (deps.sleep ? deps.sleep(0.25) : deps.clock.sleep(0.25));
     }
   }
 }
@@ -92,9 +95,9 @@ const intOf = (token) => {
 
 export async function overlayUsage(console, {metadataOnly = false} = {}) {
   const capability = await console.command("native_install update journal-usage-capabilities", 30);
-  if (capability === "ERR Native flash busy") throw new Error(capability);
+  if (capability === "ERR Native flash busy") throw runtimeError(capability);
   const onDevice = capability === "OK USAGE2";
-  if (metadataOnly && !onDevice) throw new Error("This keyboard does not offer a metadata-only journal measurement.");
+  if (metadataOnly && !onDevice) throw runtimeError("This keyboard does not offer a metadata-only journal measurement.");
   const answer = await updateCommand(console, onDevice ? "begin metadata" : "begin backup");
   try {
     const {snapshot} = await readSnapshot(console, answer, {metadataOnly: onDevice});
@@ -160,25 +163,25 @@ export async function overlayUsage(console, {metadataOnly = false} = {}) {
 export async function readState(console, deps) {
   const transport = console.transport ?? "usb";
   const installStatus = await console.command("native_install status", 30);
-  if (installStatus === "ERR Native flash busy") throw new Error("The keyboard is still checking dictionary flash. Try connecting again in a moment.");
+  if (installStatus === "ERR Native flash busy") throw runtimeError("The keyboard is still checking dictionary flash. Try connecting again in a moment.");
   if (installStatus.startsWith("NATIVE2 UNPROVISIONED ")) {
     const backup = transport === "usb" ? await deps.lastRepackBackup(console.serial) : null;
     if (backup && await console.command("native_install update recovery-capabilities", 30) === "OK RECOVERY1") {
       return {transport, setup: {serial: console.serial, repack_backup: backup}};
     }
     if (installStatus === UNPROVISIONED) return installerView(console, installStatus, {transport});
-    throw new Error("The keyboard could not open its dictionary store. Use USB recovery or explicit reprovisioning.");
+    throw runtimeError("The keyboard could not open its dictionary store. Use USB recovery or explicit reprovisioning.");
   }
-  if (installStatus.startsWith("NATIVE2 INSTALL ")) throw new Error("A dictionary install is in progress. Keep the keyboard connected and refresh when it finishes.");
-  if (!installStatus.startsWith("NATIVE2 READY ")) throw new Error("Connect the left half running Steno Squid Native firmware.");
+  if (installStatus.startsWith("NATIVE2 INSTALL ")) throw runtimeError("A dictionary install is in progress. Keep the keyboard connected and refresh when it finishes.");
+  if (!installStatus.startsWith("NATIVE2 READY ")) throw runtimeError("Connect the left half running Steno Squid Native firmware.");
   let status;
   try {
     status = parseJson(await console.command("user_dictionary_status", 30));
   } catch (error) {
-    if (error.name === "JSONDecodeError") throw new Error("The dictionary store did not respond. Refresh the connection and try again.");
+    if (error.name === "JSONDecodeError") throw runtimeError("The dictionary store did not respond. Refresh the connection and try again.");
     throw error;
   }
-  if (!isObject(status) || status.format !== "SQBCAT02" || !truthy(status.ready)) throw new Error("The dictionary store is unavailable. Check the connection and firmware.");
+  if (!isObject(status) || status.format !== "SQBCAT02" || !truthy(status.ready)) throw runtimeError("The dictionary store is unavailable. Check the connection and firmware.");
   const layouts = parseJson(await console.command("get_parameter available_host_layouts", 30));
   const adaptive = await console.command("native_install update snapshot-capabilities", 30) === "OK SNAPSHOT2";
   const catalog = await readCatalog(console);
@@ -189,8 +192,8 @@ export async function readState(console, deps) {
   const readOnly = need(status, "read_only");
   const writable = adaptive && !truthy(readOnly);
   const state = {serial: console.serial, transport, catalog, layouts, layout,
-    hints: hints === "auto" || hints === "off" ? hints : null, read_only: readOnly, auto_checkpoints: status.auto_checkpoints ?? 0,
-    auto_reclaimed: status.auto_reclaimed ?? 0, tail: need(status, "tail"), generation: status.generation ?? null,
+    hints: hints === "auto" || hints === "off" ? hints : null, read_only: readOnly, auto_checkpoints: getDefault(status, "auto_checkpoints", 0),
+    auto_reclaimed: getDefault(status, "auto_reclaimed", 0), tail: need(status, "tail"), generation: getDefault(status, "generation", null),
     maintenance_active: truthy(status.maintenance)};
   state.personal_conversion = adaptive && await console.command("native_install update personal-snapshot-capabilities", 30) === "OK PERSONAL1";
   state.journal_conversion = adaptive && await console.command("native_install update journal-snapshot-capabilities", 30) === "OK JOURNAL1";

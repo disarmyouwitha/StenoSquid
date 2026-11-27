@@ -83,12 +83,28 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: read_state, load_view, installer_view and overlay_usage ask and conclude as manager.py does."""
         self.run_node("test_state.mjs")
 
+    def test_job_orchestration_matches_python(self):
+        """Manager milestone M3: run_job's checks, session handling, ordering and waits match manager.py action by action."""
+        self.run_node("test_jobs.mjs")
+
+    def test_dictionary_export_matches_python(self):
+        """Manager milestone M3: export_dictionary sends the same console commands and returns the same entries."""
+        self.run_node("test_export.mjs")
+
+    def test_recovery_bundles_match_python(self):
+        """Manager milestone M3: capturing, signing and validating a complete backup agree with native_recovery.py, damaged ones included."""
+        self.run_node("test_recovery.mjs")
+
+    def test_backup_matches_python(self):
+        """Manager milestone M3: backup_all reads, stamps and aborts exactly as native_update.backup_all does."""
+        self.run_node("test_backup.mjs")
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py", "golden_export.py", "golden_recovery.py", "golden_backup.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)

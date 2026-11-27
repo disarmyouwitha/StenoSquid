@@ -19,31 +19,32 @@ export function pyRepr(text) {
   return out + quote;
 }
 
-class JsonError extends Error { constructor(message) { super(message); this.name = "JSONDecodeError"; } }
+class JsonError extends Error { constructor(message, pos = 0) { super(message); this.name = "JSONDecodeError"; this.pos = pos; } }
 const OBJECT = Symbol("object");
 
 // Returns {[OBJECT]: true, pairs: [[key, value], ...]} for objects, arrays for arrays, and plain values otherwise.
 export function parseOrderedJson(source) {
-  if (source.startsWith("﻿")) throw new JsonError("Unexpected UTF-8 BOM (decode using utf-8-sig)");
+  if (source.startsWith("﻿")) throw new JsonError("Unexpected UTF-8 BOM (decode using utf-8-sig)", 0);
   let i = 0;
-  const fail = (what) => { throw new JsonError(`${what}: char ${i}`); };
+  const fail = (what, pos = i) => { throw new JsonError(`${what}: char ${pos}`, pos); };
   const skip = () => { while (i < source.length && WS.has(source[i])) i++; };
 
   function string() {
+    const begin = i; // Python reports an unterminated string at its opening quote
     i++; // opening quote
     let out = "";
     for (;;) {
-      if (i >= source.length) fail("Unterminated string");
+      if (i >= source.length) fail("Unterminated string", begin);
       const ch = source[i];
       if (ch === '"') { i++; return out; }
       if (ch === "\\") {
         const next = source[i + 1];
-        if (next === undefined) fail("Unterminated string");
+        if (next === undefined) fail("Unterminated string", begin);
         const simple = {'"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t"}[next];
         if (simple !== undefined) { out += simple; i += 2; continue; }
         if (next !== "u") fail("Invalid \\escape");
         const hex = source.slice(i + 2, i + 6);
-        if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail("Invalid \\uXXXX escape");
+        if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail("Invalid \\uXXXX escape", i + 1);
         let code = parseInt(hex, 16);
         i += 6;
         if (code >= 0xd800 && code <= 0xdbff && source[i] === "\\" && source[i + 1] === "u") {

@@ -1,11 +1,12 @@
 // Manager milestone M1 (second half): reading a frozen catalog snapshot through the keyboard's console, ported from
 // tools/storage/native_update.py (update_command, read_flash, read_live_journal, read_snapshot). `console` is any
 // object with `command(text, timeoutSeconds) -> Promise<string>` (the WebHID console in the Manager, a fake in tests).
+import {runtimeError} from "./errors.js";
 import {Snapshot, SEGMENT, LARGE_POOL_END, SMALL_POOL_END, COMMIT} from "./snapshot.js";
 
 export async function updateCommand(console, text, timeout = 30) {
   const reply = await console.command("native_install update " + text, timeout);
-  if (reply !== "OK" && !reply.startsWith("OK ")) throw new Error(reply);
+  if (reply !== "OK" && !reply.startsWith("OK ")) throw runtimeError(reply);
   return reply;
 }
 
@@ -22,7 +23,7 @@ export async function readFlash(console, start, size, onRead = null) {
     const count = Math.min(size - offset, 512);
     const reply = await updateCommand(console, `read ${start + offset} ${count}`);
     const data = decodeBase64(reply.slice(3));
-    if (data.length !== count) throw new Error("Short snapshot read");
+    if (data.length !== count) throw runtimeError("Short snapshot read");
     result.set(data, filled);
     filled += count;
     if (onRead) onRead(count);
