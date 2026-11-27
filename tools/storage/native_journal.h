@@ -307,11 +307,19 @@ public:
         const auto status = DecodeEnvelope(address, record, prefix);
         if (status != JournalResult::Ok) return status;
         if (!DecodeKeyPrefix(prefix + 32, record.payload_bytes, key)) return JournalResult::Corrupt;
-        uint8_t strokes[64];
-        std::memcpy(strokes, prefix + 40, 4);
-        if (key.count > 1 && !device.Read(address + sizeof(prefix), strokes + 4, 4u * (key.count - 1)))
+        const uint32_t first = Word(prefix + 40);
+        if (!ValidNativeStroke(first)) return JournalResult::Corrupt;
+        key.strokes[0] = first;
+        if (key.count == 1) return JournalResult::Ok;
+        uint8_t remaining[60];
+        if (!device.Read(address + sizeof(prefix), remaining, 4u * (key.count - 1)))
             return JournalResult::IoError;
-        return DecodeStrokes(strokes, key) ? JournalResult::Ok : JournalResult::Corrupt;
+        for (unsigned i = 1; i < key.count; ++i) {
+            const uint32_t stroke = Word(remaining + 4 * (i - 1));
+            if (!ValidNativeStroke(stroke)) return JournalResult::Corrupt;
+            key.strokes[i] = stroke;
+        }
+        return JournalResult::Ok;
     }
 
     JournalResult Read(uint32_t address, JournalRecord &record, JournalKey *decoded = nullptr) {

@@ -2,6 +2,31 @@
 #include "native_overlay_usage.h"
 #include <iostream>
 
+static void TestIndexChecksumRetry() {
+    NativeFixture fixture;
+    constexpr uint32_t address = 3 * kSegmentBytes;
+    uint8_t extent[kExtentBytes]{};
+    extent[0] = 3;
+    PutWord(extent + 4, 4);
+    PutWord(extent + 8, Crc(0, fixture.nor.data.data() + address, 4));
+    PutWord(extent + 12, uint32_t(ExtentKind::Forward));
+    static NativeDevice *device;
+    static unsigned retries;
+    device = &fixture.device;
+    retries = 0;
+    const auto retry = [](const RejectedExtent &failure) {
+        ++retries;
+        device->nor.fail_read = false;
+        uint32_t crc = 0;
+        return device->Checksum(failure.address, failure.bytes, crc) && crc == failure.expected;
+    };
+    assert(fixture.validator.Extent(0, extent, nullptr, retry) && retries == 0);
+    fixture.nor.fail_read = true;
+    assert(fixture.validator.Extent(0, extent, nullptr, retry) && retries == 1);
+    fixture.nor.data[address] ^= 1;
+    assert(!fixture.validator.Extent(0, extent, nullptr, retry) && retries == 2);
+}
+
 static void TestStagedRecovery(CatalogValidation mode, unsigned expected_validations) {
     NativeFixture fixture;
     assert(fixture.Edit(1, 1, "before boot") == LiveResult::Ok);
@@ -43,6 +68,7 @@ static void TestStagedRecovery(CatalogValidation mode, unsigned expected_validat
 }
 
 int main() {
+    TestIndexChecksumRetry();
     TestStagedRecovery(CatalogValidation::ReuseIdenticalPayload, 2);
     TestStagedRecovery(CatalogValidation::ReuseEnableOnlyPayload, 1);
     NativeFixture f;assert(f.Edit(1,1,"first")==LiveResult::Ok);

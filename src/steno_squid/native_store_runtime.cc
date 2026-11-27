@@ -961,6 +961,25 @@ void candidate_b::ProfileLookupFault(const char *stage, LiveResult result) {
     steno_squid_boot_stage(stage, static_cast<uint32_t>(result));
 }
 #define BOOT_STAGE(stage, detail) steno_squid_boot_stage(stage, detail)
+static bool retry_startup_index(const RejectedExtent &extent) {
+    // Startup holds the flash lock. Retry mapped-read failures through raw
+    // DMA with no cached checksum, and retain the normal index validation.
+    if (!flash_device.mapped || IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD)) return false;
+    steno_squid_dictionary_phase(STENO_SQUID_MODE_FLASH_RETRY);
+    BOOT_STAGE("index_retry_address", extent.address);
+    BOOT_STAGE("index_expected_crc", extent.expected);
+    BOOT_STAGE(extent.checksum_read ? "mapped_original_crc" : "mapped_original_error", extent.actual);
+    uint32_t crc = 0;
+    flash_device.mapped = false;
+    const bool read = flash_device.ChecksumUncached(extent.address, extent.bytes, crc);
+    flash_device.mapped = true;
+    BOOT_STAGE(read ? "index_retry_crc" : "index_retry_io_error", crc);
+    steno_squid_dictionary_phase(STENO_SQUID_MODE_CHECK_EXTENTS);
+    if (!read || crc != extent.expected) return false;
+    flash_device.RememberChecksum(extent.address, extent.bytes, crc);
+    BOOT_STAGE("index_retry_recovered", extent.address);
+    return true;
+}
 static void profile_extent_rejection(const RejectedExtent &extent) {
     switch (static_cast<ExtentKind>(extent.kind)) {
     case ExtentKind::Base: BOOT_STAGE("base_rejected", extent.address); return;
@@ -977,17 +996,6 @@ static void profile_extent_rejection(const RejectedExtent &extent) {
 #endif
     BOOT_STAGE(mapped ? (extent.checksum_read ? "mapped_original_crc" : "mapped_original_error")
                       : (extent.checksum_read ? "dma_original_crc" : "dma_original_error"), extent.actual);
-    if (!mapped) return;
-
-    // Use the same configuration, flash lock and power cycle as the failed
-    // check. Keep the uncached samples separate from the validation decision.
-    uint32_t crc = 0;
-    flash_device.mapped = false;
-    const bool dma_ok = flash_device.ChecksumUncached(extent.address, extent.bytes, crc);
-    BOOT_STAGE(dma_ok ? "dma_probe_crc" : "dma_probe_error", crc);
-    flash_device.mapped = true;
-    const bool mapped_ok = flash_device.ChecksumUncached(extent.address, extent.bytes, crc);
-    BOOT_STAGE(mapped_ok ? "mapped_repeat_crc" : "mapped_repeat_error", crc);
 }
 #else
 #define BOOT_STAGE(stage, detail) ((void)0)
@@ -1121,12 +1129,11 @@ extern "C" bool steno_squid_native_flash_open(void) {
 #endif
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY
-            , &store.live
-#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_BATCH
-            , true
-#endif
+            , &store.live, IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_BATCH)
 #elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_BATCH)
             , nullptr, true
+#elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE)
+            , nullptr, false
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
             , k_cycle_get_32, [](ValidationStage stage, const IndexTiming &timing) {
@@ -1136,6 +1143,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
                 if (reverse) BOOT_STAGE("reverse_text_ticks", timing.text);
                 BOOT_STAGE(reverse ? "reverse_order_ticks" : "forward_order_ticks", timing.ordering);
             }
+#endif
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+            , retry_startup_index
 #endif
         );
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA

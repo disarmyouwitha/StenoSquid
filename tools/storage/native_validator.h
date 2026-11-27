@@ -33,7 +33,8 @@ public:
     NativeValidator(Device &value,NativeCatalog<Device> &roots):device(value),catalog(roots),journal(value),
         unused_f(value),unused_r(value),ops(value,view,unused_f,unused_r){}
     const LiveView &ValidatedView() const { return view; }
-    bool Extent(uint32_t,const uint8_t *extent, void (*rejected)(const RejectedExtent &) = nullptr) {
+    bool Extent(uint32_t,const uint8_t *extent, void (*rejected)(const RejectedExtent &) = nullptr,
+                bool (*retry_index)(const RejectedExtent &) = nullptr) {
         const uint32_t start=uint16_t(extent[0]) | uint16_t(extent[1])<<8,bytes=Word(extent+4),kind=Word(extent+12);
         RejectedExtent info{kind, start*kSegmentBytes, bytes, Word(extent+8), 0, false};
         bool valid;
@@ -44,6 +45,7 @@ public:
         } else {
             info.checksum_read = device.Checksum(info.address, bytes, info.actual);
             valid = info.checksum_read && info.actual == info.expected;
+            if (!valid && retry_index) valid = retry_index(info);
         }
         if (!valid && rejected) rejected(info);
         return valid;
@@ -56,10 +58,11 @@ public:
                            , uint32_t (*clock)() = nullptr,
                            void (*index_timing)(ValidationStage, const IndexTiming &) = nullptr
 #endif
+                           , bool (*retry_index)(const RejectedExtent &) = nullptr
                            ) {
         if (stage) stage(ValidationStage::Extents);
         const auto schema = catalog.Validate(root, [&](uint32_t i, const uint8_t *row) {
-            return Extent(i, row, extent_failed);
+            return Extent(i, row, extent_failed, retry_index);
         });
         if(schema!=CatalogResult::Ok)return schema;
         if (stage) stage(ValidationStage::Journal);
