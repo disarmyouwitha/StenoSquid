@@ -2,6 +2,7 @@
 // tools/storage/native_update.py (update_command, read_flash, read_live_journal, read_snapshot). `console` is any
 // object with `command(text, timeoutSeconds) -> Promise<string>` (the WebHID console in the Manager, a fake in tests).
 import {runtimeError} from "./errors.js";
+import {isBase64} from "./base64.js";
 import {Snapshot, SEGMENT, LARGE_POOL_END, SMALL_POOL_END, COMMIT} from "./snapshot.js";
 
 export async function updateCommand(console, text, timeout = 30) {
@@ -12,7 +13,7 @@ export async function updateCommand(console, text, timeout = 30) {
 
 function decodeBase64(text) {
   // Python used b64decode(..., validate=True): only the base64 alphabet, correctly padded.
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(text)) throw new Error("Invalid base64 in a flash read");
+  if (!isBase64(text)) throw new Error("Invalid base64 in a flash read");
   return Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 }
 

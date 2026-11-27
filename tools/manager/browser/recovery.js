@@ -2,6 +2,7 @@
 // tools/storage/native_recovery.py (digest, pack, unpack, descriptors, capture, validate_rows, reconstruct). The Python code
 // is the oracle; golden_recovery.py records what it does with a valid backup and with hundreds of damaged variants.
 import {crc32} from "./transfer_frame.js";
+import {isBase64} from "./base64.js";
 import {Snapshot, SEGMENT, OUTLINE_FIRST, SMALL_POOL_END, LARGE_POOL_END, rowName, validateName} from "./snapshot.js";
 import {XIP, compactEntriesLazy, requireSnapshotHint} from "./decode.js";
 import {reader} from "./lookup.js";
@@ -53,7 +54,7 @@ export function pack(data) {
 
 export function unpack(encoded, expected = null) {
   if (typeof encoded !== "string" || encoded.length > Math.floor((LARGE_POOL_END * SEGMENT + 2) / 3) * 4) throw new Error("Invalid recovery data size");
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new Error("Invalid base64 in a recovery bundle");
+  if (!isBase64(encoded)) throw new Error("Invalid base64 in a recovery bundle");
   const raw = atob(encoded);
   const data = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) data[i] = raw.charCodeAt(i);

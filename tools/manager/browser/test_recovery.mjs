@@ -105,3 +105,13 @@ for (const c of vectors.captures) {
   assert.equal(index, wanted, `${c.title}: JS made ${index} reads, Python made ${wanted}`);
 }
 console.log(`PASS recovery bundles (JS): ${ok} accepted and ${rejected} rejected backups and ${vectors.captures.length} captures behave like native_recovery.py`);
+
+// A 60 MB backup carries multi-megabyte base64 extents: validation must not overflow the stack.
+{
+  const {unpack} = await import("./recovery.js");
+  const big = new Uint8Array(12 * 1024 * 1024).fill(0x5a);
+  let text = "";
+  for (let i = 0; i < big.length; i += 0x8000) text += String.fromCharCode(...big.subarray(i, i + 0x8000));
+  assert.equal(unpack(btoa(text), big.length).length, big.length);
+  assert.throws(() => unpack(btoa(text).slice(1)), /Invalid base64/);
+}
