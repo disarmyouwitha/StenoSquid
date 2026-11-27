@@ -603,3 +603,19 @@ The first USB response after ready could not be parsed, so the verifier
 retried and confirmed the generation 3 catalog and all lookups. The device
 trace supplies the time from power-on. See the
 [physical cold trace](../../docs/benchmarks/phase1-64mib-direct-keys-cold.json).
+
+### Native runtime speed and dictionary selection
+
+`CONFIG_ZMK_STENO_SQUID_BOOT_RUNTIME_SPEED=y` builds only the Native
+runtime translation unit with `-O2`. At 32 MHz the board reached ready
+in 17.917 seconds after UF2 and 18.130 seconds after a physical power
+cycle with saved base checksums. All 233 fixture probes passed. The
+latest full-base checksum comparison images have been built and still
+need device timings. See the [cold trace](../../docs/benchmarks/phase1-64mib-native-o2-cold.json).
+
+The checksum cache can now hold every base plus both indexes in the
+active catalog and avoids inserting duplicate entries. On the full
+fixture, enabling a disabled synthetic dictionary took 0.310 seconds
+and restoring its original flag took 0.313 seconds. The check verified
+all original selection flags and a representative translation. See
+[dictionary selection timing](../../docs/benchmarks/phase1-64mib-selection-save.json).
