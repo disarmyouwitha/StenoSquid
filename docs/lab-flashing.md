@@ -6,8 +6,8 @@ without anyone double-tapping reset.
 ## How it works
 
 * Firmware: `CONFIG_ZMK_STENO_SQUID_LAB_BOOTLOADER` adds the **USB-only** console command `native_install lab-bootloader`. It
-  replies `OK Entering the UF2 bootloader`, then 300 ms later does what ZMK's `&bootloader` key does (retained boot mode plus a
-  warm reboot). Dictionary flash and settings are untouched. Over Bluetooth the command does not exist.
+  replies `OK Entering the UF2 bootloader`, then sets the retained boot mode and reboots 300 ms later. On nRF52 boards without
+  Zephyr's boot-mode device, it sets the UF2 flag in GPREGRET directly. Dictionary flash and settings are untouched.
 * It is enabled by `config/boardsource-wireless-corne/lab-bootloader.conf`. The CI **Measure** builds (`*-Left-Measure`,
   `*-Right-Measure`) include it and the workflow fails if it is missing. Default and release builds do not have it, and must not.
 * Host: `tools/bench/lab_flash.py` sends the command, waits for the bootloader drive (it carries `INFO_UF2.TXT`), copies the UF2 and
@@ -28,6 +28,9 @@ python3 tools/bench/lab_flash.py NEXT.uf2 --drive /Volumes/NICENANO   # board al
 3. A build **without** the command must be flashed by hand again, and the script says so. Always keep a Measure (or other
    lab-bootloader) build as the thing you flash next, or the autonomy ends.
 
+On macOS the bootloader can disconnect during the last write and report an I/O error. With a known serial, the script waits
+for that keyboard to return and asks you to verify the installed firmware before continuing.
+
 ## Local builds
 
 `tools/ci/build_local_boardsource.sh OUT [extra conf;] [overlay]` mirrors the CI Boardsource recipe in the WSL workspace.
@@ -39,5 +42,4 @@ goes on the `EXTRA_CONF_FILE` list of `~/steno-ws/build_nn.sh`.
 * Only flash a board the owner has agreed to flash. The 64 MiB Boardsource is the owner's daily driver: ask before touching it.
 * Back up before any test that writes to the keyboard (the Manager's full backup, or `--backup-to` on the upload tools), and leave
   the keyboard with its dictionaries installed and enabled when you finish.
-* Hardware status: proven on the handwired nice!nano (Adafruit UF2 bootloader), about 15 s per flash including re-enumeration.
-  **Not yet proven on the Boardsource Left**; if the board does not enter the bootloader, flash by hand and report it.
+* Hardware status: software bootloader entry verified on the handwired nice!nano and the 64 MiB Boardsource Left.

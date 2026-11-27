@@ -55,7 +55,8 @@ def main():
     parser.add_argument("--cxx", default=None)
     args = parser.parse_args()
     cxx = shlex.split(args.cxx) if args.cxx else host_compiler()
-    binary = build_engine(args.engine, args.build_dir, Path(__file__).with_name("repeat_translation.cc"), cxx)
+    binary = build_engine(args.engine, args.build_dir, Path(__file__).with_name("repeat_translation.cc"), cxx,
+                          flags=("-DJAVELIN_PLATFORM_ZEPHYR=1",))
     subprocess.run([str(binary)], check=True)
 
 

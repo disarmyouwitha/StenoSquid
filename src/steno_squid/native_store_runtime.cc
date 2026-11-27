@@ -50,6 +50,9 @@
 #include <zephyr/sys/reboot.h>
 #if IS_ENABLED(CONFIG_RETENTION_BOOT_MODE)
 #include <zephyr/retention/bootmode.h>
+#elif defined(CONFIG_ZMK_STENO_SQUID_LAB_BOOTLOADER) && defined(CONFIG_SOC_SERIES_NRF52X)
+#include <dt-bindings/zmk/reset.h>
+#include <hal/nrf_power.h>
 #endif
 #include <zephyr/settings/settings.h>
 #include <new>
@@ -1291,6 +1294,10 @@ K_WORK_DELAYABLE_DEFINE(reboot_work,reboot_worker);
 void bootloader_worker(k_work *) {
 #if IS_ENABLED(CONFIG_RETENTION_BOOT_MODE)
     if (bootmode_set(BOOT_MODE_TYPE_BOOTLOADER) == 0) sys_reboot(SYS_REBOOT_WARM);
+#elif defined(CONFIG_SOC_SERIES_NRF52X)
+    // Boardsource uses the Cortex-M reboot handler, which ignores the reboot type.
+    nrf_power_gpregret_set(NRF_POWER, 0, RST_UF2);
+    sys_reboot(SYS_REBOOT_WARM);
 #else
     sys_reboot(0x57); // Adafruit nRF52 bootloader DFU_MAGIC_UF2_RESET
 #endif

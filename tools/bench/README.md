@@ -156,7 +156,10 @@ BLE, or physical scan timing.
 Add `config/boardsource-wireless-corne/phase1-everyday.conf` to the everyday
 left build's extra configuration files to open the 32-slot qualification pool
 with normal firmware. Use `config/boardsource-wireless-corne/phase1-replay.conf`
-for the instrumented device checks and keyboard replay below.
+for the instrumented device checks and keyboard replay below. For replay on the
+64 MiB Boardsource, use the standard left-half configuration with this fragment
+and the optional `lab-bootloader.conf`. The build combining replay with the
+experimental startup profiling fragments faulted before opening the pool.
 
 ```sh
 python3 tools/bench/phase1_device.py --serial SERIAL \
@@ -167,8 +170,14 @@ python3 tools/bench/run_device_replay.py --serial SERIAL \
 ```
 
 Use the same replay runner for 350 or 400 WPM bursts with one repeat. Focus the
-capture window and leave the keys alone during injection. The replay validates
+capture window and click **Start replay**. The waiting window releases the USB
+console so the Manager can save dictionary changes. Start checks the live
+fixture again before sending any strokes. Leave the keys alone during injection.
+The replay validates
 the injected chord sequence on the board and the final text on the host.
+`--prefix-strokes 54` keeps the sustained run's stroke spacing and records
+individual host key events around the `probe012` miss and undo. Use
+`--start-when-focused` only when the capture window should start immediately.
 `phase1_device.py` reports the first sample from each distinct miss and the
 subsequent same-outline samples separately.
 
