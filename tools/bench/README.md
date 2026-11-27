@@ -619,3 +619,16 @@ fixture, enabling a disabled synthetic dictionary took 0.310 seconds
 and restoring its original flag took 0.313 seconds. The check verified
 all original selection flags and a representative translation. See
 [dictionary selection timing](../../docs/benchmarks/phase1-64mib-selection-save.json).
+
+### Full checksums with 2 KiB base DMA
+
+The 32 MHz build with direct forward keys and `-O2` was tested with both
+`CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC=y` and
+`CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA=y`. It took 47.272 seconds after UF2
+and 51.527 seconds after a physical power cycle. Extent validation took
+28.627 and 30.120 seconds respectively. Both checks opened generation 6
+with 32 dictionaries and passed all 233 probes. The 18.130-second baseline
+used saved base checksums. These runs characterize the forced-checksum path.
+A paired forced mapped read was not run, so the DMA speedup is unmeasured.
+See the [post-UF2 trace](../../docs/benchmarks/phase1-64mib-full-checksum-dma-after-uf2.json)
+and [cold trace](../../docs/benchmarks/phase1-64mib-full-checksum-dma-cold.json).
