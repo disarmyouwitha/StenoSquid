@@ -564,3 +564,19 @@ enable field. The 32 MHz fixture took 24.296 seconds after flashing and
 pass and all 233 probes matched the current dictionary settings.
 See the [post-UF2 trace](../../docs/benchmarks/phase1-64mib-shared-flags-after-uf2.json)
 and [physical cold trace](../../docs/benchmarks/phase1-64mib-shared-flags-cold.json).
+
+### 512-byte index DMA pages
+
+`CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_WIDE_PAGE=y` changes only the index
+cache from seven 256-byte pages to three 512-byte pages in the same scratch
+buffer. On the host fixture, total validation read requests fell from
+127,135 to 110,207 and bytes transferred rose from 37,381,128 to 59,754,760.
+Both host runs still rejected a corrupt forward index.
+
+The 32 MHz hardware took 26.311 seconds after UF2 and 26.295 seconds after
+physical power-off. Both boots validated the generation 3 catalog and got
+all 233 expected lookup results. The 256-byte build took 24.296 and
+28.982 seconds respectively. The two comparisons point in opposite
+directions, so the wider page remains an opt-in experiment. See the
+[post-UF2 trace](../../docs/benchmarks/phase1-64mib-wide-index-after-uf2.json)
+and [cold trace](../../docs/benchmarks/phase1-64mib-wide-index-cold.json).

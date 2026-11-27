@@ -1010,6 +1010,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
 #endif
     BOOT_STAGE("catalog", mapping_ok);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_WIDE_PAGE
+    BOOT_STAGE("index_dma_page_bytes", StartupIndexCache::PageBytes);
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
     // The startup flash lock protects the export buffer when no export owns it.
     flash_device.boot_base_dma = !exporting;

@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
 
     const char *mode_name[] = {"direct requests", "DMA pages", "reused recovery", "batched index keys",
                                "batched index + journal DMA", "batched index + 2 KiB journal DMA",
-                               "DMA for journal and batched indexes", "DMA with seven index pages"};
+                               "DMA for journal and batched indexes", "DMA with index page cache"};
     for (unsigned mode = 0; mode < sizeof(mode_name) / sizeof(mode_name[0]); ++mode) {
         const bool read_ahead = mode == 1;
         const bool reuse_recovery = mode >= 2;
@@ -90,8 +90,11 @@ int main(int argc, char **argv) {
         assert(result == CatalogResult::Ok && store.opened);
         assert(store.selected.root.generation == 2 && store.live.TailCount() == 17);
         assert(nor.operations == writes);
-        std::cout << mode_name[mode] << ": "
-                  << nor.reads << " reads, " << nor.read_bytes << " bytes\n";
+        std::cout << mode_name[mode];
+        if (device.index_cache) {
+            std::cout << " (" << StartupIndexCache::Slots << " x " << StartupIndexCache::PageBytes << " bytes)";
+        }
+        std::cout << ": " << nor.reads << " reads, " << nor.read_bytes << " bytes\n";
 
         // The fixture's index bytes remain protected by their original CRCs.
         const auto forward_index = validator.ValidatedView().forward_address;
