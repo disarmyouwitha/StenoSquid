@@ -6,13 +6,22 @@ static void TestStagedRecovery() {
     NativeFixture fixture;
     assert(fixture.Edit(1, 1, "before boot") == LiveResult::Ok);
     LiveView scratch;
+    assert(fixture.store.Enable(3, false, scratch, fixture.Check()) == CatalogResult::Ok);
     assert(fixture.store.Enable(2, false, scratch, fixture.Check()) == CatalogResult::Ok);
+    assert(fixture.store.selected.slot == 0);
+    bool reuse_selected = false;
     const auto open = [&] {
-        return fixture.store.Open([&](const CatalogRoot &root) {
-            return fixture.validator.Validate(root, false, nullptr, nullptr, &fixture.store.live);
+        reuse_selected = false;
+        unsigned reads_after_validation = 0;
+        const auto result = fixture.store.Open([&](const CatalogRoot &root) {
+            const auto validated = fixture.validator.Validate(root, false, nullptr, nullptr, &fixture.store.live);
+            reads_after_validation = fixture.nor.reads;
+            return validated;
         }, CatalogValidation::ReuseIdenticalPayload, true);
+        reuse_selected = fixture.nor.reads == reads_after_validation;
+        return result;
     };
-    assert(open() == CatalogResult::Ok);
+    assert(open() == CatalogResult::Ok && reuse_selected);
     const auto newer = fixture.store.live.Root();
     uint8_t row[96];
     assert(fixture.store.Row(1, row) && !Word(row + 4));

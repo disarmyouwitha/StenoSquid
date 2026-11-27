@@ -1,0 +1,200 @@
+{
+  "profile": [
+    {
+      "index": 0,
+      "stage": "hfxo_held",
+      "uptime_ms": 937,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 1,
+      "stage": "qspi_start",
+      "uptime_ms": 937,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 2,
+      "stage": "quad_setup",
+      "uptime_ms": 987,
+      "detail": 32,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 3,
+      "stage": "resume_check",
+      "uptime_ms": 987,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 4,
+      "stage": "base_trust",
+      "uptime_ms": 987,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 5,
+      "stage": "mapping_probe",
+      "uptime_ms": 1345,
+      "detail": 0,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 6,
+      "stage": "catalog",
+      "uptime_ms": 1345,
+      "detail": 1,
+      "mapped_reads": 0,
+      "dma_reads": 0
+    },
+    {
+      "index": 7,
+      "stage": "root_fingerprint",
+      "uptime_ms": 1348,
+      "detail": 0,
+      "mapped_reads": 25,
+      "dma_reads": 0
+    },
+    {
+      "index": 8,
+      "stage": "extent_checks",
+      "uptime_ms": 1350,
+      "detail": 1,
+      "mapped_reads": 143,
+      "dma_reads": 0
+    },
+    {
+      "index": 9,
+      "stage": "journal_scan",
+      "uptime_ms": 1710,
+      "detail": 0,
+      "mapped_reads": 3027,
+      "dma_reads": 0
+    },
+    {
+      "index": 10,
+      "stage": "forward_index",
+      "uptime_ms": 9208,
+      "detail": 0,
+      "mapped_reads": 3027,
+      "dma_reads": 2760
+    },
+    {
+      "index": 11,
+      "stage": "reverse_index",
+      "uptime_ms": 18304,
+      "detail": 0,
+      "mapped_reads": 3027,
+      "dma_reads": 100258
+    },
+    {
+      "index": 12,
+      "stage": "root_validated",
+      "uptime_ms": 25208,
+      "detail": 0,
+      "mapped_reads": 3027,
+      "dma_reads": 124013
+    },
+    {
+      "index": 13,
+      "stage": "root_fingerprint",
+      "uptime_ms": 25231,
+      "detail": 1,
+      "mapped_reads": 3052,
+      "dma_reads": 124013
+    },
+    {
+      "index": 14,
+      "stage": "extent_checks",
+      "uptime_ms": 25243,
+      "detail": 1,
+      "mapped_reads": 3170,
+      "dma_reads": 124013
+    },
+    {
+      "index": 15,
+      "stage": "journal_scan",
+      "uptime_ms": 28049,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 124013
+    },
+    {
+      "index": 16,
+      "stage": "forward_index",
+      "uptime_ms": 35545,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 126773
+    },
+    {
+      "index": 17,
+      "stage": "reverse_index",
+      "uptime_ms": 44659,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 224271
+    },
+    {
+      "index": 18,
+      "stage": "root_validated",
+      "uptime_ms": 51554,
+      "detail": 0,
+      "mapped_reads": 6054,
+      "dma_reads": 248026
+    },
+    {
+      "index": 19,
+      "stage": "catalog_result",
+      "uptime_ms": 80012,
+      "detail": 0,
+      "mapped_reads": 166534,
+      "dma_reads": 248026
+    },
+    {
+      "index": 20,
+      "stage": "bind",
+      "uptime_ms": 80012,
+      "detail": 0,
+      "mapped_reads": 166534,
+      "dma_reads": 248026
+    },
+    {
+      "index": 21,
+      "stage": "probe_dictionaries",
+      "uptime_ms": 80034,
+      "detail": 32,
+      "mapped_reads": 166534,
+      "dma_reads": 248026
+    },
+    {
+      "index": 22,
+      "stage": "flash_ready",
+      "uptime_ms": 80068,
+      "detail": 1,
+      "mapped_reads": 166534,
+      "dma_reads": 248026
+    }
+  ],
+  "fresh_boot": true,
+  "geometry": "OK POOL1 1023",
+  "generation": 3,
+  "dictionaries": 32,
+  "lookups": {
+    "original_fixture_matches": 232,
+    "expected_misses_disabled": 1
+  },
+  "fixture_catalog_byte_differences": 1,
+  "fixture_catalog_enable_only": true,
+  "free_blocks": null,
+  "root_states": null
+}

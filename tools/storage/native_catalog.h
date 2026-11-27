@@ -286,7 +286,8 @@ public:
 
     template <class ValidateRoot>
     CatalogResult OpenValidated(CatalogSelection &selection,ValidateRoot validate,
-                                CatalogValidation mode = CatalogValidation::Independent) {
+                                CatalogValidation mode = CatalogValidation::Independent,
+                                bool newest_last = false) {
         selection={};
         write_blocked=true;
         trusted[0]={};trusted[1]={};
@@ -295,11 +296,15 @@ public:
         for(unsigned i=0;i<2;++i) {
             states[i]=Inspect(i,roots[i]);
             if(states[i]==CatalogResult::IoError || states[i]==CatalogResult::Invalid)return states[i];
+        }
+        const unsigned first = newest_last && roots[0].generation > roots[1].generation ? 1 : 0;
+        for (unsigned pass = 0; pass < 2; ++pass) {
+            const unsigned i = first ^ pass;
             if(states[i]==CatalogResult::Ok) {
                 // Opt-in validators certify the extents described by the
                 // payload. Matching mirrors describe the same flash bytes.
-                if (i != 1 || mode != CatalogValidation::ReuseIdenticalPayload ||
-                    !valid[0] || !SamePayload(roots[0], roots[1])) {
+                if (mode != CatalogValidation::ReuseIdenticalPayload ||
+                    !valid[1 - i] || !SamePayload(roots[1 - i], roots[i])) {
                     states[i]=validate(roots[i]);
                 }
                 if(states[i]==CatalogResult::IoError)return states[i];
