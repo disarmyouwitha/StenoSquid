@@ -53,6 +53,7 @@ static atomic_t sync_attempts;
 static bool force_full_status;
 
 static atomic_t upload_mode;
+static atomic_t dictionary_phase;
 static uint32_t upload_deadline;
 static struct k_spinlock upload_lock;
 
@@ -81,6 +82,12 @@ void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms) 
     }
     k_spin_unlock(&upload_lock, key);
     if (previous != (timeout_ms ? (atomic_val_t)mode : 0)) {
+        steno_squid_split_status_refresh();
+    }
+}
+
+void steno_squid_dictionary_phase(enum steno_squid_mode mode) {
+    if (atomic_set(&dictionary_phase, mode) != mode) {
         steno_squid_split_status_refresh();
     }
 }
@@ -158,6 +165,17 @@ static void send_status(struct k_work *work) {
 #if IS_ENABLED(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE)
     if (!status_override && atomic_get(&native_maintenance)) {
         status_override = STENO_SQUID_MODE_SAVING;
+    }
+#endif
+#if IS_ENABLED(CONFIG_ZMK_JAVELIN_STENO_EXTERNAL_FLASH)
+    if (!status_override) {
+        const enum steno_squid_mode phase = atomic_get(&dictionary_phase);
+        const enum dictionary_flash_state flash = dictionary_flash_status();
+        if (phase && flash == DICTIONARY_FLASH_LOADING) {
+            status_override = phase < STENO_SQUID_MODE_FLASH_ERROR ? phase : STENO_SQUID_MODE_LOADING;
+        } else if (phase && flash == DICTIONARY_FLASH_UNAVAILABLE) {
+            status_override = phase == STENO_SQUID_MODE_FLASH_ERROR ? phase : STENO_SQUID_MODE_DICTIONARY_ERROR;
+        }
     }
 #endif
     struct zmk_behavior_binding binding = {

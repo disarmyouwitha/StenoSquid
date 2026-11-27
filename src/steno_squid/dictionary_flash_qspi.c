@@ -3,6 +3,7 @@
 #include "flash_diagnostics.h"
 #include "w25q_quad.h"
 #include "native_store_runtime.h"
+#include "split_status.h"
 
 #include <string.h>
 #include <zephyr/drivers/pinctrl.h>
@@ -95,6 +96,7 @@ static bool enable_quad_reads(nrfx_qspi_config_t *config) {
 static bool transient_fault;
 
 static bool prepare_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
+    steno_squid_dictionary_phase(STENO_SQUID_MODE_FLASH_START);
     *mapping_failed = false;
     transient_fault = false;
     lf_flash_bytes = 0;
@@ -164,6 +166,7 @@ static bool prepare_flash_with_retry(nrfx_qspi_config_t *config, bool *mapping_f
             break;
         }
         squid_flash_diag_note(DIAG_RETRY);
+        steno_squid_dictionary_phase(STENO_SQUID_MODE_FLASH_RETRY);
         squid_flash_diag_log("External flash did not start (attempt %d of %d); trying again\n", attempt,
                  BRING_UP_ATTEMPTS);
         power_cycle_flash();
@@ -187,6 +190,11 @@ bool lf_bring_up_flash(nrfx_qspi_config_t *config, bool *mapping_failed) {
     const bool qspi_ok = prepare_flash_with_retry(config, mapping_failed);
 #endif
     lf_last_open_ok = atomic_get(&lf_mapped_ready) != 0;
+    if (lf_last_open_ok) {
+        steno_squid_dictionary_phase(STENO_SQUID_MODE_UNKNOWN);
+    } else if (!qspi_ok) {
+        steno_squid_dictionary_phase(STENO_SQUID_MODE_FLASH_ERROR);
+    }
     squid_flash_diag_note(DIAG_FULL_CHECK);
     if (!atomic_get(&lf_mapped_ready)) {
         squid_flash_diag_note(DIAG_UNAVAILABLE);

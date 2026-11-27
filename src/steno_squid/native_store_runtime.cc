@@ -1012,6 +1012,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
     }
     last_open_pool_end=flash_device.PoolEnd();
     healthy=false;snapshot_format_rejected=false;++full_opens;
+    steno_squid_dictionary_phase(STENO_SQUID_MODE_CHECK_CATALOG);
     ResetNativeScrub();
     if (IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC)) flash_device.Invalidate();
     BOOT_STAGE("base_trust", full_opens);
@@ -1063,7 +1064,7 @@ extern "C" bool steno_squid_native_flash_open(void) {
         flash_device.trust_bases=!IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_FORCE_BASE_CRC) &&
                                  fingerprint && fingerprint==verified_fingerprint;
         const auto status=validator.Validate(root, false
-#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+#if defined(CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE) || defined(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
             , [](ValidationStage stage) {
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_JOURNAL_DMA
                 flash_device.journal_dma = stage == ValidationStage::Journal;
@@ -1085,12 +1086,29 @@ extern "C" bool steno_squid_native_flash_open(void) {
                 if (flash_device.index_cache) StartupIndexCache::Reset(export_buffer);
 #endif
                 switch (stage) {
-                case ValidationStage::Extents: BOOT_STAGE("extent_checks", flash_device.trust_bases); break;
-                case ValidationStage::Journal: BOOT_STAGE("journal_scan", 0); break;
-                case ValidationStage::Forward: BOOT_STAGE("forward_index", 0); break;
-                case ValidationStage::Reverse: BOOT_STAGE("reverse_index", 0); break;
+                case ValidationStage::Extents:
+                    steno_squid_dictionary_phase(STENO_SQUID_MODE_CHECK_EXTENTS);
+                    BOOT_STAGE("extent_checks", flash_device.trust_bases);
+                    break;
+                case ValidationStage::Journal:
+                    steno_squid_dictionary_phase(STENO_SQUID_MODE_CHECK_JOURNAL);
+                    BOOT_STAGE("journal_scan", 0);
+                    break;
+                case ValidationStage::Forward:
+                    steno_squid_dictionary_phase(STENO_SQUID_MODE_CHECK_FORWARD);
+                    BOOT_STAGE("forward_index", 0);
+                    break;
+                case ValidationStage::Reverse:
+                    steno_squid_dictionary_phase(STENO_SQUID_MODE_CHECK_REVERSE);
+                    BOOT_STAGE("reverse_index", 0);
+                    break;
                 }
-            }, profile_extent_rejection
+            },
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_PROFILE
+            profile_extent_rejection
+#else
+            nullptr
+#endif
 #endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY
             , &store.live
@@ -1128,7 +1146,13 @@ extern "C" bool steno_squid_native_flash_open(void) {
     BOOT_STAGE("catalog_result", static_cast<uint32_t>(result));
     flash_device.cold_read_yield_at = 0;
     flash_device.mapped = false;
-    if(result!=CatalogResult::Ok && result!=CatalogResult::Quarantined){base_provider.Fault();return false;}
+    if (result != CatalogResult::Ok && result != CatalogResult::Quarantined) {
+        if (result == CatalogResult::Empty && !loaded) {
+            steno_squid_dictionary_phase(STENO_SQUID_MODE_UNKNOWN);
+        }
+        base_provider.Fault();
+        return false;
+    }
     BOOT_STAGE("bind", store.selected.slot);
     uint8_t prefix[8];if(!flash_device.Read(store.selected.root.address,prefix,8))return false;
     const size_t count=uint16_t(prefix[4]) | uint16_t(prefix[5])<<8;

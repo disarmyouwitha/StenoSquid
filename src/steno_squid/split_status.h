@@ -45,6 +45,15 @@ enum steno_squid_mode {
     STENO_SQUID_MODE_VERIFY,
     STENO_SQUID_MODE_BUSY,
     STENO_SQUID_MODE_SAVING,
+    STENO_SQUID_MODE_FLASH_START,
+    STENO_SQUID_MODE_CHECK_CATALOG,
+    STENO_SQUID_MODE_CHECK_EXTENTS,
+    STENO_SQUID_MODE_CHECK_JOURNAL,
+    STENO_SQUID_MODE_CHECK_FORWARD,
+    STENO_SQUID_MODE_CHECK_REVERSE,
+    STENO_SQUID_MODE_FLASH_RETRY,
+    STENO_SQUID_MODE_FLASH_ERROR,
+    STENO_SQUID_MODE_DICTIONARY_ERROR,
     STENO_SQUID_MODE_COUNT,
 };
 
@@ -59,11 +68,16 @@ static inline bool steno_squid_upload_mode(unsigned mode) {
 extern "C"
 #endif
 void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms);
+#ifdef __cplusplus
+extern "C"
+#endif
+void steno_squid_dictionary_phase(enum steno_squid_mode mode);
 #else
 static inline void steno_squid_upload_status(enum steno_squid_mode mode, uint32_t timeout_ms) {
     (void)mode;
     (void)timeout_ms;
 }
+static inline void steno_squid_dictionary_phase(enum steno_squid_mode mode) { (void)mode; }
 #endif
 
 #if defined(CONFIG_ZMK_STENO_SQUID_NATIVE_STORE) && defined(CONFIG_ZMK_STENO_SQUID_SPLIT_STATUS)
