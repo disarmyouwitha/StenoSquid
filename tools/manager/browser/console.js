@@ -11,7 +11,7 @@ const defaultClock = {now: () => performance.now() / 1000, sleep: (seconds) => n
 export class ConsoleTimeout extends Error { constructor(message) { super(message); this.name = "TimeoutError"; } }
 
 // Python's str.split() whitespace: the C0 spacing and separator controls, NEL, and the Unicode spaces (not the byte-order mark).
-const PY_SPACE = new RegExp("[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]+");
+export const PY_SPACE = new RegExp("[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]+");
 function firstWord(text) {
   const word = text.split(PY_SPACE).find((part) => part !== "");
   if (word === undefined) throw Object.assign(new Error("list index out of range"), {name: "IndexError"});

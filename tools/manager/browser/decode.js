@@ -3,6 +3,7 @@
 // (reader checks, require_snapshot_hint) and effective_entries in tools/storage/native_update.py. It keeps Python's
 // validation, so a damaged image is rejected rather than half-decoded; tools/manager/browser/test_decode.mjs compares
 // results and error messages with golden vectors from golden_decode.py. Supersedes tools/bench/js/decode_dict.mjs.
+import {assertionError} from "./errors.js";
 import {crc32} from "./transfer_frame.js";
 import {SEGMENT, rowName} from "./snapshot.js";
 
@@ -40,21 +41,22 @@ function readerChecks(blob, base, index, count) {
   const {word, byteAt} = accessors(blob, base);
   const pointer = (offset) => {
     const value = word(offset) - base;
-    if (!(value >= 0 && value < blob.length)) throw new Error(`Pointer outside image at 0x${offset.toString(16)}`);
+    if (!(value >= 0 && value < blob.length)) throw assertionError(`Pointer outside image at 0x${offset.toString(16)}`);
     return value;
   };
-  if (blob.length % 4 !== 0) throw new Error("assertion failed");
-  if (!(String.fromCharCode(...blob.subarray(0, 4)) === "JSC4" && word(4) === count && index < count)) throw new Error("assertion failed");
-  if (word(32) !== word(pointer(12) + word(8))) throw new Error("Timestamp mismatch");
+  if (blob.length % 4 !== 0) throw assertionError("assertion failed");
+  if (!(String.fromCharCode(...blob.subarray(0, 4)) === "JSC4" && word(4) === count && index < count)) throw assertionError("assertion failed");
+  if (word(32) !== word(pointer(12) + word(8))) throw assertionError("Timestamp mismatch");
   const definition = pointer(36 + 4 * index);
   const maximum = byteAt(definition + 1);
-  if (!(maximum > 0 && maximum <= 16)) throw new Error("assertion failed");
+  if (!(maximum > 0 && maximum <= 16)) throw assertionError("assertion failed");
   pointer(definition + 8);
   pointer(definition + 12);
 }
 
-// Every (outline, text) of one member, in table order. `count` is the number of members in the image.
-export function compactEntries(blob, base, member = 0, count = 1) {
+// Every (outline, text) of one member, in table order. The lazy form yields one entry at a time like Python's generator, so a
+// caller that verifies each entry sees a failure in the same order; compactEntries returns them all. `count` is the number of members in the image.
+export function* compactEntriesLazy(blob, base, member = 0, count = 1) {
   readerChecks(blob, base, member, count);
   const {word, byteAt, u24} = accessors(blob, base);
   const pointer = (offset) => {
@@ -68,7 +70,6 @@ export function compactEntries(blob, base, member = 0, count = 1) {
   const definition = pointer(36 + 4 * member);
   const text = pointer(definition + 8), table = pointer(definition + 12), maximum = byteAt(definition + 1);
   if (!(maximum >= 1 && maximum <= 16) || table + 12 * maximum > blob.length) throw new Corrupt("Compact stroke table bounds");
-  const out = [];
   for (let length = 1; length <= maximum; length++) {
     const entry = table + 12 * (length - 1), mask = word(entry);
     if (!mask) continue;
@@ -86,11 +87,12 @@ export function compactEntries(blob, base, member = 0, count = 1) {
       if (end < 0) throw new Error("subsection not found");
       let outline = "";
       for (let i = 0; i < length; i++) outline += (i ? "/" : "") + name(u24(position + 3 + 3 * i));
-      out.push([outline, decoder.decode(blob.subarray(start, end))]);
+      yield [outline, decoder.decode(blob.subarray(start, end))];
     }
   }
-  return out;
 }
+
+export const compactEntries = (...args) => [...compactEntriesLazy(...args)];
 
 // A user snapshot is one JSC4 member ending at its SHI1 directory.
 export function requireSnapshotHint(blob, base) {

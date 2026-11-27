@@ -23,7 +23,7 @@ export async function readFlash(console, start, size, onRead = null) {
     const count = Math.min(size - offset, 512);
     const reply = await updateCommand(console, `read ${start + offset} ${count}`);
     const data = decodeBase64(reply.slice(3));
-    if (data.length !== count) throw new Error("Short snapshot read");
+    if (data.length !== count) throw runtimeError("Short snapshot read");
     result.set(data, filled);
     filled += count;
     if (onRead) onRead(count);

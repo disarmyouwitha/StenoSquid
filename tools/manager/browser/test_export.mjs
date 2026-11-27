@@ -32,6 +32,7 @@ for (const c of vectors.cases) {
     assert.ok(error, `${c.title}: Python raised ${c.expect.error.message} but JS returned entries`);
     // Messages from Python's own base64 / unpacking are interpreter text; everything else must match exactly.
     if (!/^(not enough values|Only base64|invalid literal)/.test(c.expect.error.message)) assert.equal(error.message, c.expect.error.message, `${c.title}: error text`);
+    assert.equal(error.kind === "RuntimeError", c.expect.error.type === "RuntimeError", `${c.title}: RuntimeError or not (${c.expect.error.type})`);
   } else {
     assert.ok(!error, `${c.title}: JS raised ${error?.message}`);
     assert.deepEqual([...result.entries()], c.expect.entries, `${c.title}: entries`);
