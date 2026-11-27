@@ -27,13 +27,10 @@ const byCodePoint = (a, b) => {
 // json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
 export function dumps(value) {
   if (typeof value === "string") {
-    let out = '"';
-    for (let i = 0; i < value.length; i++) {
-      const ch = value[i], code = value.charCodeAt(i);
-      out += ch === '"' ? '\\"' : ch === "\\" ? "\\\\" : code === 10 ? "\\n" : code === 13 ? "\\r" : code === 9 ? "\\t"
-        : code === 8 ? "\\b" : code === 12 ? "\\f" : code < 32 || code > 126 ? "\\u" + code.toString(16).padStart(4, "0") : ch;
-    }
-    return out + '"';
+    // Recovery blobs are large ASCII strings. Quote them in one pass, then
+    // match Python's ensure_ascii escaping for the remaining code units.
+    return JSON.stringify(value).replace(/[\u007f-\uffff]/g, (ch) =>
+      "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
   }
   if (typeof value === "number" || typeof value === "bigint") return String(value);
   if (typeof value === "boolean") return value ? "true" : "false";
