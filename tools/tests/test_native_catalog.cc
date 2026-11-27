@@ -141,10 +141,53 @@ void ReuseIdenticalCatalogValidation() {
     assert(!catalog.CanWrite(selected.root));
 }
 
+void ReuseOnlyValidEnableChanges() {
+    Nor nor;
+    NativeCatalog<Nor> catalog(nor);
+    CatalogSelection empty, first, second, third, selected;
+    auto data = payload(2);
+    auto *absent = data.data() + 32 + 96;
+    const auto *name = FactoryName(2);
+    PutWord(absent + 4, 0);
+    absent[11] = kFactoryAbsent;
+    absent[12] = std::strlen(name);
+    std::memcpy(absent + 16, name, absent[12]);
+    absent[64] = 1;
+    assert(catalog.Publish(empty, data.size(), Source{data}, accept, first) == CatalogResult::Ok);
+    PutWord(data.data() + 32 + 4, 0);
+    assert(catalog.Publish(first, data.size(), Source{data}, accept, second) == CatalogResult::Ok);
+    unsigned calls = 0;
+    const auto open = [&] {
+        calls = 0;
+        return catalog.OpenValidated(selected, [&](const CatalogRoot &root) {
+            ++calls;
+            return catalog.Validate(root, accept);
+        }, CatalogValidation::ReuseEnableOnlyPayload, true);
+    };
+    assert(open() == CatalogResult::Ok && calls == 1 && selected.slot == second.slot);
+    assert(catalog.IsTrusted(first.root) && catalog.IsTrusted(second.root));
+
+    const auto image = nor.data;
+    auto *header = nor.data.data() + second.root.address - 32;
+    auto *stored = header + 32;
+    PutWord(stored + 32 + 96 + 4, 1);
+    PutWord(header + 20, Crc(0, stored, data.size()));
+    PutWord(header + 24, Crc(0, header, 24));
+    assert(open() == CatalogResult::Quarantined && calls == 2 && selected.slot == first.slot);
+    assert(!catalog.CanWrite(selected.root));
+
+    nor.data = image;
+    assert(open() == CatalogResult::Ok);
+    data[32 + 16] = 'N';
+    assert(catalog.Publish(second, data.size(), Source{data}, accept, third) == CatalogResult::Ok);
+    assert(open() == CatalogResult::Ok && calls == 2 && selected.slot == third.slot);
+}
+
 int main() {
     faults(1);faults(64);
     ShrinkThenGrow();
     ReuseIdenticalCatalogValidation();
+    ReuseOnlyValidEnableChanges();
     RefuseUnsupportedForwardOrder();
     // First provisioning can leave no committed root, never a fabricated root.
     auto initial=payload();Nor dryInitial;NativeCatalog<Nor> initialCatalog(dryInitial);

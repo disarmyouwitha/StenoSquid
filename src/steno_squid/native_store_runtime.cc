@@ -1070,7 +1070,8 @@ extern "C" bool steno_squid_native_flash_open(void) {
         flash_device.trust_bases=false;
         BOOT_STAGE("root_validated", static_cast<uint32_t>(status));
         return status;
-    }, CatalogValidation::ReuseIdenticalPayload,
+    }, IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY)
+           ? CatalogValidation::ReuseEnableOnlyPayload : CatalogValidation::ReuseIdenticalPayload,
        IS_ENABLED(CONFIG_ZMK_STENO_SQUID_BOOT_REUSE_LIVE_RECOVERY));
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_BASE_DMA
     flash_device.boot_base_dma = false;

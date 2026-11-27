@@ -22,7 +22,7 @@ inline const char *FactoryName(uint32_t id) {
     }
 }
 enum class CatalogResult { Ok, Empty, Corrupt, IoError, Invalid, Quarantined, Busy };
-enum class CatalogValidation { Independent, ReuseIdenticalPayload };
+enum class CatalogValidation { Independent, ReuseIdenticalPayload, ReuseEnableOnlyPayload };
 enum class ExtentKind : uint32_t { Base=1, Journal=2, Forward=3, Reverse=4 };
 // Required marker in the forward extent's 64-bit auxiliary field.
 constexpr uint32_t kOutlineFirst = 1;
@@ -71,14 +71,42 @@ class NativeCatalog {
         if (first.bytes != second.bytes || first.crc != second.crc) return false;
         // Inspect already checked both headers and payload CRCs. Compare the
         // bytes as well so a CRC collision cannot skip validation.
+        return SamePayloadBytes(first, second, 0);
+    }
+    bool SamePayloadBytes(const CatalogRoot &first, const CatalogRoot &second, uint32_t offset) {
         constexpr uint32_t granule = sizeof(buffer) / 2;
-        for (uint32_t offset = 0; offset < first.bytes; offset += granule) {
+        for (; offset < first.bytes; offset += granule) {
             const uint32_t count = first.bytes - offset < granule ? first.bytes - offset : granule;
             if (!device.Read(first.address + offset, buffer, count) ||
                 !device.Read(second.address + offset, buffer + granule, count) ||
                 std::memcmp(buffer, buffer + granule, count) != 0) return false;
         }
         return true;
+    }
+    // Journal and index validation uses identities and extents, independent
+    // of which dictionaries the engine enables. Check both flags before
+    // comparing every other byte. Inspect has already verified both CRCs.
+    bool SameExceptEnableFlags(const CatalogRoot &first, const CatalogRoot &second) {
+        if (first.bytes != second.bytes) return false;
+        auto *left = buffer;
+        auto *right = buffer + sizeof(buffer) / 2;
+        if (!device.Read(first.address, left, kCatalogPrefix) ||
+            !device.Read(second.address, right, kCatalogPrefix) ||
+            std::memcmp(left, right, kCatalogPrefix) != 0) return false;
+        const uint32_t dictionaries = left[4] | uint32_t(left[5]) << 8;
+        const uint32_t extent_offset = kCatalogPrefix + dictionaries * kDictionaryBytes;
+        if (dictionaries > 64 || extent_offset > first.bytes) return false;
+        for (uint32_t offset = kCatalogPrefix; offset < extent_offset; offset += kDictionaryBytes) {
+            if (!device.Read(first.address + offset, left, kDictionaryBytes) ||
+                !device.Read(second.address + offset, right, kDictionaryBytes)) return false;
+            const uint32_t left_flags = Word(left + 4), right_flags = Word(right + 4);
+            if (left_flags > 1 || right_flags > 1 || (left[11] == kFactoryAbsent && left_flags) ||
+                (right[11] == kFactoryAbsent && right_flags)) return false;
+            PutWord(left + 4, 0);
+            PutWord(right + 4, 0);
+            if (std::memcmp(left, right, kDictionaryBytes) != 0) return false;
+        }
+        return SamePayloadBytes(first, second, extent_offset);
     }
 public:
     NativeCatalog(Device &value,uint32_t a=0,uint32_t b=65536,uint32_t bytes=65536)
@@ -297,14 +325,21 @@ public:
             states[i]=Inspect(i,roots[i]);
             if(states[i]==CatalogResult::IoError || states[i]==CatalogResult::Invalid)return states[i];
         }
-        const unsigned first = newest_last && roots[0].generation > roots[1].generation ? 1 : 0;
+        const unsigned newest = roots[1].generation > roots[0].generation ? 1 : 0;
+        const bool shared_validation = mode == CatalogValidation::ReuseEnableOnlyPayload &&
+                                       states[0] == CatalogResult::Ok && states[1] == CatalogResult::Ok &&
+                                       SameExceptEnableFlags(roots[0], roots[1]);
+        // Stage the selected root directly when the other root can share its
+        // validation. Distinct contents still get their own validation.
+        const unsigned first = shared_validation ? newest : newest_last ? newest ^ 1u : 0;
         for (unsigned pass = 0; pass < 2; ++pass) {
             const unsigned i = first ^ pass;
             if(states[i]==CatalogResult::Ok) {
                 // Opt-in validators certify the extents described by the
                 // payload. Matching mirrors describe the same flash bytes.
-                if (mode != CatalogValidation::ReuseIdenticalPayload ||
-                    !valid[1 - i] || !SamePayload(roots[1 - i], roots[i])) {
+                const bool reuse = valid[1 - i] && (shared_validation ||
+                    (mode == CatalogValidation::ReuseIdenticalPayload && SamePayload(roots[1 - i], roots[i])));
+                if (!reuse) {
                     states[i]=validate(roots[i]);
                 }
                 if(states[i]==CatalogResult::IoError)return states[i];
