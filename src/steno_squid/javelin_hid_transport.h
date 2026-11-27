@@ -35,6 +35,9 @@ bool steno_squid_usb_hid_ready(void);
 int steno_squid_javelin_ble_receive(const void *data, size_t size, uint32_t session);
 int steno_squid_javelin_ble_send(const void *data, size_t size, uint32_t session);
 int steno_squid_javelin_ble_session_valid(uint32_t session);
+#ifdef CONFIG_ZMK_STENO_SQUID_LAB_BLE_TUNING
+void steno_squid_javelin_ble_lab(const char *args, char *reply, size_t bytes);
+#endif
 
 #ifdef __cplusplus
 }

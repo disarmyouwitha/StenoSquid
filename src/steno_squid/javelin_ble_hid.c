@@ -4,6 +4,8 @@
 #include "javelin_hid_transport.h"
 
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -20,6 +22,14 @@ static const uint8_t empty_report[JAVELIN_HID_REPORT_BYTES];
 static struct k_spinlock peer_lock;
 static struct bt_conn *peer;
 static uint32_t generation = 1;
+#ifdef CONFIG_ZMK_STENO_SQUID_BLE_FAST_LINK
+static struct bt_conn *session_peer_current(void) {
+    k_spinlock_key_t key = k_spin_lock(&peer_lock);
+    struct bt_conn *conn = peer ? bt_conn_ref(peer) : NULL;
+    k_spin_unlock(&peer_lock, key);
+    return conn;
+}
+#endif
 
 static bool allowed_peer(struct bt_conn *conn) {
     struct bt_conn_info info;
@@ -49,6 +59,50 @@ static ssize_t read_report(struct bt_conn *conn, const struct bt_gatt_attr *attr
     return bt_gatt_attr_read(conn, attr, buf, len, offset, empty_report, sizeof(empty_report));
 }
 
+#ifdef CONFIG_ZMK_STENO_SQUID_BLE_FAST_LINK
+/* While the Manager is talking, ask the host for a short connection interval and no peripheral latency: with the usual
+ * 15 ms / latency 30 a console round trip took about 120 ms and a 260 KB upload 417 s; at 7.5 ms / latency 0 it took 45 s.
+ * Ten seconds after the last console write the keyboard's normal low-power parameters are requested again. Typing, which is
+ * the other HID service, never triggers this. */
+static atomic_t fast_link;
+static int last_link_rc;
+static int change_link(bool fast) {
+    struct bt_conn *conn = session_peer_current();
+    if (!conn) {
+        return -ENOTCONN;
+    }
+    const struct bt_le_conn_param fast_param = BT_LE_CONN_PARAM_INIT(6, 9, 0, CONFIG_BT_PERIPHERAL_PREF_TIMEOUT);
+    const struct bt_le_conn_param normal_param = BT_LE_CONN_PARAM_INIT(
+        CONFIG_BT_PERIPHERAL_PREF_MIN_INT, CONFIG_BT_PERIPHERAL_PREF_MAX_INT,
+        CONFIG_BT_PERIPHERAL_PREF_LATENCY, CONFIG_BT_PERIPHERAL_PREF_TIMEOUT);
+    const int rc = bt_conn_le_param_update(conn, fast ? &fast_param : &normal_param);
+    bt_conn_unref(conn);
+    last_link_rc = rc;
+    return rc;
+}
+static void fast_link_work(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(fast_work, fast_link_work);
+static void fast_link_work(struct k_work *work) {
+    ARG_UNUSED(work);
+    if (change_link(true) != 0 && atomic_get(&fast_link)) {
+        // The stack may be busy with its own parameter update right after connecting: ask again in a second.
+        k_work_schedule(&fast_work, K_SECONDS(1));
+    }
+}
+static void relax_link_work(struct k_work *work) {
+    ARG_UNUSED(work);
+    atomic_set(&fast_link, 0);
+    change_link(false);
+}
+static K_WORK_DELAYABLE_DEFINE(relax_work, relax_link_work);
+static void console_activity(void) {
+    if (!atomic_set(&fast_link, 1)) {
+        k_work_schedule(&fast_work, K_NO_WAIT);
+    }
+    k_work_reschedule(&relax_work, K_SECONDS(10));
+}
+#endif
+
 static ssize_t write_report(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                             const void *buf, uint16_t len, uint16_t offset, uint8_t flags) {
     if (offset || (flags & BT_GATT_WRITE_FLAG_PREPARE)) {
@@ -73,6 +127,9 @@ static ssize_t write_report(struct bt_conn *conn, const struct bt_gatt_attr *att
     if (old) {
         bt_conn_unref(old);
     }
+#ifdef CONFIG_ZMK_STENO_SQUID_BLE_FAST_LINK
+    console_activity();
+#endif
     if (steno_squid_javelin_ble_receive(buf, len, session) != 0) {
         return BT_GATT_ERR(BT_ATT_ERR_INSUFFICIENT_RESOURCES);
     }
@@ -131,6 +188,50 @@ static struct bt_conn *session_peer(uint32_t session) {
     return conn;
 }
 
+#ifdef CONFIG_ZMK_STENO_SQUID_LAB_BLE_TUNING
+#ifdef CONFIG_ZMK_STENO_SQUID_BLE_FAST_LINK
+static int lab_rc(void) { return last_link_rc; }
+#else
+static int lab_rc(void) { return 0; }
+#endif
+/* Lab only: read and change the parameters of the console's Bluetooth link. Commands (from "native_install lab-ble "):
+ *   info                      interval (1.25 ms units), latency, timeout (10 ms units), PHYs, data length, MTU
+ *   params MIN MAX LAT TO     ask the central for new connection parameters (units as in the Bluetooth spec)
+ *   phy2m                     ask for the 2M PHY
+ *   datalen                   ask for the largest link-layer data length
+ */
+void steno_squid_javelin_ble_lab(const char *args, char *reply, size_t bytes) {
+    struct bt_conn *conn = session_peer(generation);
+    if (!conn) {
+        snprintf(reply, bytes, "ERR No Bluetooth console session yet");
+        return;
+    }
+    struct bt_conn_info info;
+    if (bt_conn_get_info(conn, &info) != 0 || info.type != BT_CONN_TYPE_LE) {
+        snprintf(reply, bytes, "ERR No link information");
+    } else if (!strncmp(args, "info", 4)) {
+        snprintf(reply, bytes, "OK interval %u latency %u timeout %u phy %u/%u datalen %u/%u mtu %u fastrc %d",
+                 info.le.interval, info.le.latency, info.le.timeout, info.le.phy->tx_phy, info.le.phy->rx_phy,
+                 info.le.data_len->tx_max_len, info.le.data_len->rx_max_len, bt_gatt_get_mtu(conn), lab_rc());
+    } else if (!strncmp(args, "params ", 7)) {
+        unsigned min = 0, max = 0, lat = 0, to = 0;
+        if (sscanf(args + 7, "%u %u %u %u", &min, &max, &lat, &to) != 4) {
+            snprintf(reply, bytes, "ERR params MIN MAX LATENCY TIMEOUT");
+        } else {
+            const struct bt_le_conn_param param = BT_LE_CONN_PARAM_INIT(min, max, lat, to);
+            snprintf(reply, bytes, "OK requested rc %d", bt_conn_le_param_update(conn, &param));
+        }
+    } else if (!strncmp(args, "phy2m", 5)) {
+        snprintf(reply, bytes, "OK requested rc %d", bt_conn_le_phy_update(conn, BT_CONN_LE_PHY_PARAM_2M));
+    } else if (!strncmp(args, "datalen", 7)) {
+        snprintf(reply, bytes, "OK requested rc %d", bt_conn_le_data_len_update(conn, BT_LE_DATA_LEN_PARAM_MAX));
+    } else {
+        snprintf(reply, bytes, "ERR info | params MIN MAX LAT TO | phy2m | datalen");
+    }
+    bt_conn_unref(conn);
+}
+#endif
+
 int steno_squid_javelin_ble_session_valid(uint32_t session) {
     struct bt_conn *conn = session_peer(session);
     if (!conn) {
@@ -175,6 +276,11 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
         old = peer;
         peer = NULL;
         generation++;
+#ifdef CONFIG_ZMK_STENO_SQUID_BLE_FAST_LINK
+        atomic_set(&fast_link, 0);
+        k_work_cancel_delayable(&relax_work);
+        k_work_cancel_delayable(&fast_work);
+#endif
     }
     k_spin_unlock(&peer_lock, key);
     if (old) {
