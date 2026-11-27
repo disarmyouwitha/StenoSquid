@@ -158,7 +158,8 @@ def generate_hint():
     return {"blob": snapshot.hex(), "cases": cases}
 
 
-def generate_effective():
+def effective_image():
+    """A device-shaped image (factory bases plus journal overrides and resets) and its dictionary rows."""
     rows = base_vectors.FACTORY + [(8, "Custom A", True), (9, "Custom B", False)]
     kat, dog = parse_outline("KAT"), parse_outline("TKOG")
     entries = {
@@ -179,6 +180,12 @@ def generate_effective():
                 path.write_text(json.dumps({"KAT": name, "TKOG": "dog", "KAT/TKOG": name + "!"}))
         image, _ = build(folder, collection=(rows, entries, 10), pool_end=SMALL_POOL_END)
     image = bytearray(image)
+    return image, rows
+
+
+def generate_effective():
+    image, rows = effective_image()
+    kat, dog = parse_outline("KAT"), parse_outline("TKOG")
 
     def run(title, data, name):
         address, size, crc = base_vectors.catalog_of(data)

@@ -87,12 +87,16 @@ class JavaScriptScriptedTests(unittest.TestCase):
         """Manager milestone M3: run_job's checks, session handling, ordering and waits match manager.py action by action."""
         self.run_node("test_jobs.mjs")
 
+    def test_dictionary_export_matches_python(self):
+        """Manager milestone M3: export_dictionary sends the same console commands and returns the same entries."""
+        self.run_node("test_export.mjs")
+
     def test_dictionary_decoder_matches_python(self):
         """Manager milestone M1: decoding, validation and effective entries agree with the Python reader."""
         self.run_node("test_decode.mjs")
 
     def test_golden_vectors_are_current(self):
-        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py"):
+        for script in ("golden_snapshot.py", "golden_plan.py", "golden_decode.py", "golden_snapshot_plan.py", "golden_package.py", "golden_replace.py", "golden_compile.py", "golden_import.py", "golden_layout.py", "golden_console.py", "golden_state.py", "golden_jobs.py", "golden_export.py"):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(BROWSER / script), "--check"],
                                         capture_output=True, text=True, timeout=900)
