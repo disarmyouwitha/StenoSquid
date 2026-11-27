@@ -25,7 +25,7 @@ def bench(console, operation, *, timeout=10):
     return reply
 
 
-def load_tape(data, wpm):
+def load_tape(data, wpm, prefix_strokes=None):
     phase = data["phases"]["300"]
     events = phase["events"]
     chords = [parse_outline(outline) for _, outline, _ in events]
@@ -37,7 +37,16 @@ def load_tape(data, wpm):
     interval = round(60_000_000 * words / (wpm * len(chords)))
     if not 10_000 <= interval <= 5_000_000:
         raise ValueError("The fixture cadence is outside the firmware timer range.")
-    return [chord[0] for chord in chords], phase["expected_text"], words, interval
+    expected = phase["expected_text"]
+    if prefix_strokes is not None:
+        if not 2 <= prefix_strokes <= len(chords):
+            raise ValueError("Choose a prefix of at least two strokes within the tape.")
+        chords = chords[:prefix_strokes]
+        expected = events[prefix_strokes - 1][2]
+        words = len(expected.split())
+        if not words:
+            raise ValueError("The prefix must produce text.")
+    return [chord[0] for chord in chords], expected, words, interval
 
 
 def inspect_board(console, fixture):
@@ -90,6 +99,8 @@ def foreground_check():
     send = cast(objc.objc_msgSend, c_void_p).value
     app = CFUNCTYPE(c_void_p, c_void_p, c_void_p)(send)(
         objc.objc_getClass(b"NSApplication"), objc.sel_registerName(b"sharedApplication"))
+    activate = CFUNCTYPE(None, c_void_p, c_void_p, c_bool)(send)
+    activate(app, objc.sel_registerName(b"activateIgnoringOtherApps:"), True)
     active = CFUNCTYPE(c_bool, c_void_p, c_void_p)(send)
     selector = objc.sel_registerName(b"isActive")
     return lambda: active(app, selector)
@@ -112,7 +123,8 @@ def summarize(report, masks, expected, words, interval, status, replay, capture,
     capitalized = expected[:1].upper() + expected[1:]
     text_matches = received in (expected, capitalized, " " + expected, " " + capitalized)
     overruns = sum(value * 1000 >= interval for value in completion)
-    cadence_matches = observed_wpm is not None and abs(observed_wpm - report["target_wpm"]) <= report["target_wpm"] / 100
+    scheduled_wpm = 60_000_000 * words / (interval * len(masks))
+    cadence_matches = observed_wpm is not None and abs(observed_wpm - scheduled_wpm) <= scheduled_wpm / 100
     passed = (strokes_match and text_matches and cadence_matches and not overruns and not capture["overflow"]
               and not replay["aborted"] and replay["sent"] == len(masks) == len(timestamps)
               and status["ready"] and not status["read_only"]
@@ -135,7 +147,8 @@ def summarize_loop(report, masks, expected, words, interval, status, replay, cap
                      and not capture["mismatches"] and not replay["aborted"] and not capture["overflow"])
     capitalized = expected[:1].upper() + expected[1:]
     text_matches = received in (expected, capitalized, " " + expected, " " + capitalized)
-    cadence_matches = abs(observed - report["target_wpm"]) <= report["target_wpm"] / 100
+    scheduled_wpm = 60_000_000 * words / (interval * report["strokes"])
+    cadence_matches = abs(observed - scheduled_wpm) <= scheduled_wpm / 100
     overruns = sum(sample[1] * 1000 >= interval for sample in samples)
     saturated = capture.get("engine_saturations", sum(sample[0] == 65535 for sample in samples))
     passed = (strokes_match and text_matches and cadence_matches and not overruns
@@ -155,18 +168,20 @@ def summarize_loop(report, masks, expected, words, interval, status, replay, cap
 def capture_window(args, report, fixture, masks, expected, words, interval):
     window = tk.Tk()
     window.title("StenoSquid hardware typing replay")
-    message = tk.StringVar(value=f"Click Start replay for the {args.wpm} WPM run.")
+    prompt = ("Click Start replay for the short diagnostic." if "prefix_strokes" in report
+              else f"Click Start replay for the {args.wpm} WPM run.")
+    message = tk.StringVar(value=prompt)
     tk.Label(window, textvariable=message, wraplength=740).pack(pady=6)
     editor = tk.Text(window, width=90, height=12, wrap="word")
     editor.pack(padx=10, pady=6)
     keypress_text = []
+    keypress_events = []
     active = False
     collecting = False
     collected = Event()
     connection = ExitStack()
     console = None
     drain_deadline = 0.0
-    app_active = foreground_check()
 
     def stop_device():
         for operation in ("replay stop", "capture stop"):
@@ -177,6 +192,8 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
         # Compare the incoming Tk key events with the Text widget's own editing.
         if not active:
             return
+        if "prefix_strokes" in report:
+            keypress_events.append([event.time, event.keysym, event.char])
         if event.keysym == "BackSpace" or event.char == "\b":
             if keypress_text:
                 keypress_text.pop()
@@ -205,6 +222,8 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
         collecting = True
         received = editor.get("1.0", "end-1c")
         report.update(result="collecting", captured_text=received, host_keypress_text="".join(keypress_text))
+        if "prefix_strokes" in report:
+            report["host_keypress_events"] = keypress_events
         save_report(args.report, report)
         message.set("Typing finished. Reading diagnostics…")
         Thread(target=collect_diagnostics, args=(received,), name="replay-diagnostics").start()
@@ -267,6 +286,8 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
 
     def start():
         nonlocal active, console, drain_deadline
+        if active or report["result"] != "armed":
+            return
         editor.delete("1.0", "end")
         editor.focus_set()
         if not in_foreground():
@@ -305,6 +326,7 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
         except (RuntimeError, OSError, TimeoutError) as error:
             cancel(str(error))
             return
+        print(f"Replay started with the capture textbox focused ({strokes} strokes).", flush=True)
         window.after(40, watch_focus)
         replay_ms = math.ceil(3000 + strokes * interval / 1000)
         drain_deadline = monotonic() + replay_ms / 1000 + 15
@@ -331,9 +353,14 @@ def capture_window(args, report, fixture, masks, expected, words, interval):
     window.bind("<Escape>", lambda _: cancel("Stopped by operator."))
     window.protocol("WM_DELETE_WINDOW", lambda: cancel("Capture window closed."))
     try:
+        window.deiconify()
         window.update_idletasks()
         window.lift()
+        app_active = foreground_check()
+        editor.focus_force()
         print("Replay window is open. Click Start replay when ready.", flush=True)
+        if args.start_when_focused:
+            window.after(350, start)
         window.mainloop()
     finally:
         if active:
@@ -349,13 +376,19 @@ def main():
     parser.add_argument("--fixture", type=Path, required=True, help="fixture.json from run_worst_case_replay.py")
     parser.add_argument("--wpm", type=int, choices=(300, 350, 400), required=True)
     parser.add_argument("--repeat", type=int, default=1, help="Repeat the tape at a continuous cadence")
+    parser.add_argument("--prefix-strokes", type=int, help="Replay only the first N strokes at the full tape's cadence")
+    parser.add_argument("--start-when-focused", action="store_true",
+                        help="Try to start immediately after the capture window takes focus")
     parser.add_argument("--report", type=Path, required=True, help="New JSON report path")
     args = parser.parse_args()
     if args.report.exists():
         parser.error("Choose a new report path.")
     fixture_bytes = args.fixture.read_bytes()
     fixture = json.loads(fixture_bytes)
-    masks, expected, words, interval = load_tape(fixture, args.wpm)
+    try:
+        masks, expected, words, interval = load_tape(fixture, args.wpm, args.prefix_strokes)
+    except ValueError as error:
+        parser.error(str(error))
     if args.repeat < 1:
         parser.error("--repeat must be positive.")
     expected = " ".join([expected] * args.repeat)
@@ -365,6 +398,8 @@ def main():
                   strokes=len(masks) * args.repeat, repeats=args.repeat,
                   interval_us=interval, planned_chords_per_second=1_000_000 / interval,
                   scope="Onboard replay with USB capture. Physical key scanning, split input and Bluetooth are excluded.")
+    if args.prefix_strokes is not None:
+        report["prefix_strokes"] = args.prefix_strokes
     with open_console(args.serial) as console:
         meta = json.loads(bench(console, "meta"))
         if meta["firmware"] != "hardware-typing-replay" or len(masks) > meta["capture_capacity"]:

@@ -175,6 +175,9 @@ console so the Manager can save dictionary changes. Start checks the live
 fixture again before sending any strokes. Leave the keys alone during injection.
 The replay validates
 the injected chord sequence on the board and the final text on the host.
+`--prefix-strokes 54` keeps the sustained run's stroke spacing and records
+individual host key events around the `probe012` miss and undo. Use
+`--start-when-focused` only when the capture window should start immediately.
 `phase1_device.py` reports the first sample from each distinct miss and the
 subsequent same-outline samples separately.
 
