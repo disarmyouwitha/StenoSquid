@@ -182,8 +182,11 @@ in several places), so RuntimeErrors carry `kind: "RuntimeError"` (`errors.js`);
 opening quote and a bad unicode escape at the `u`, which the importer now matches. Not a contract: the wording of a JSON decoder
 error wrapped into a commit failure, and the column Python 3.13 reports for a trailing comma.
 
-Not yet ported: `backup_all`, `overlay_usage`, the compiler's use inside `native_import_plan.named_import` and `merge_snapshots` (the console-driven orchestration, M3), repack
-(`native_repack.py`, M4) and recovery (M4). None of the JS pieces is wired into the Manager UI yet (M3/M5).
+Update (2026-11-26): every operation above has since been ported and wired into the offline page: the console-driven orchestration
+(`transfer`, `change_snapshot`, `clear_personal`, `merge_snapshots`, `named_import`, `factory_package`, `backup_all`, `overlay_usage`),
+the installer (`build`, `check_image`, `provision`), repack (`native_repack.py`), USB recovery (`recover_usb`) and the Manager repack jobs.
+Each is gated by golden vectors from the Python oracle; images and recovery bundles are byte-identical. What remains is retiring the
+Python Manager, Pyodide and the golden-vector CI (M6) after hardware qualification.
 ## 2. Findings
 
 ### RAM by owner (measured, 32-slot everyday build with the transfer option, link map)
