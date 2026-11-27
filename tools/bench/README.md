@@ -595,3 +595,11 @@ The forward pass took 5.065 seconds and 80,658 DMA transactions, compared
 with 9.680 seconds and 91,155 in the earlier cached run. All 233 probes
 behaved as expected. See the
 [post-UF2 trace](../../docs/benchmarks/phase1-64mib-direct-keys-after-uf2.json).
+
+The physical cold boot reached ready in 19.352 seconds with saved base
+checksums, versus 26.295 seconds for the prior 512-byte cache build. The
+forward pass took 5.059 seconds and all 233 probes behaved as expected.
+The first USB response after ready could not be parsed, so the verifier
+retried and confirmed the generation 3 catalog and all lookups. The device
+trace supplies the time from power-on. See the
+[physical cold trace](../../docs/benchmarks/phase1-64mib-direct-keys-cold.json).
