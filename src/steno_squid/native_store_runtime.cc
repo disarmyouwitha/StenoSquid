@@ -1048,6 +1048,9 @@ extern "C" bool steno_squid_native_flash_open(void) {
     flash_device.cold_read_yield_at = k_uptime_get() + 5;
 #endif
     BOOT_STAGE("catalog", mapping_ok);
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CRC_WORDS
+    BOOT_STAGE("crc_word_bytes", 4);
+#endif
 #ifdef CONFIG_ZMK_STENO_SQUID_BOOT_INDEX_TIMING
     BOOT_STAGE("index_timer_hz", sys_clock_hw_cycles_per_sec());
 #endif

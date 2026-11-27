@@ -34,6 +34,27 @@ inline uint32_t Crc(uint32_t crc, const uint8_t *p, uint32_t n) {
         return values;
     }();
     crc = ~crc;
+#ifdef CONFIG_ZMK_STENO_SQUID_BOOT_CRC_WORDS
+    static constexpr auto extended = [] {
+        std::array<std::array<uint32_t, 256>, 3> values{};
+        auto previous = table;
+        for (auto &slice : values) {
+            for (unsigned i = 0; i < slice.size(); ++i) {
+                const uint32_t value = previous[i];
+                slice[i] = (value >> 8) ^ table[value & 0xffu];
+            }
+            previous = slice;
+        }
+        return values;
+    }();
+    while (n >= 4) {
+        const uint32_t word = crc ^ Word(p);
+        crc = extended[2][word & 0xffu] ^ extended[1][(word >> 8) & 0xffu] ^
+              extended[0][(word >> 16) & 0xffu] ^ table[word >> 24];
+        p += 4;
+        n -= 4;
+    }
+#endif
     for (uint32_t i = 0; i < n; ++i) crc = (crc >> 8) ^ table[(crc ^ p[i]) & 0xffu];
     return ~crc;
 #elif defined(CONFIG_ZMK_STENO_SQUID_BOOT_DMA_READ_AHEAD) || defined(CONFIG_ZMK_STENO_SQUID_BOOT_FAST_CRC)
@@ -230,10 +251,14 @@ private:
 
     JournalResult DecodeEnvelope(uint32_t address, JournalRecord &record, const uint8_t *header) {
         const uint32_t offset = address % kSegmentBytes;
-        bool blank = true;
-        for (unsigned i = 0; i < 32; ++i) blank &= header[i] == 255;
-        if (blank) return JournalResult::End;
-        if (Word(header+28) != kCommit) return JournalResult::Sealed;
+        const uint32_t commit = Word(header + 28);
+        if (commit != kCommit) {
+            if (commit != UINT32_MAX) return JournalResult::Sealed;
+            for (unsigned i = 0; i < 28; ++i) {
+                if (header[i] != 255) return JournalResult::Sealed;
+            }
+            return JournalResult::End;
+        }
         uint32_t span=Word(header+4), size=Word(header+16);
         uint64_t sequence=uint64_t(Word(header+8)) | uint64_t(Word(header+12))<<32;
         if (std::memcmp(header,"SQJR",4) || !sequence || span%4 || span<44 ||
