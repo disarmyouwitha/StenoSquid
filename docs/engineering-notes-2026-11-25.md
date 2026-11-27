@@ -247,7 +247,8 @@ does not remove it from the laboratory.
 ## 4. Open decisions
 
 1. ~~Allow binary uploads over Bluetooth?~~ **Decided 2026-11-26: no.** Binary transfer stays USB-only until Bluetooth
-   reaches at least 50 KiB/s (measured today: 0.61 KiB/s, section 7.9). Implemented as
+   reaches at least 50 KiB/s of useful payload in a verified Chrome upload. See the
+   [current Bluetooth measurements and gate](bluetooth.md#bluetooth-qualification-gate). Implemented as
    `CONFIG_ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH` (default n): over Bluetooth the `transfer-capabilities` probe is
    refused, so clients fall back to the existing text paths, and binary frames are ignored. Only the lab fragment
    `transfer.conf` turns it on, so the Bluetooth throughput work can continue. Revisit when a Bluetooth run reaches 50 KiB/s.
@@ -624,3 +625,46 @@ firmware), uninstall then reinstall of Lapwing Base, JS protocol logic, HID rela
 - Tests: 12 scripted cases, each original defect reintroduced is caught; acceptance against the real NativeStage
   simulator (clean, plus 8 lossy-link seeds) matches the legacy flash; the JS record stream is byte-identical to
   Python's. Wired into `run_all` through `tools/tests/test_js_transfer.py`.
+
+
+## 8. Boardsource 64 MiB qualification handoff (2026-11-27)
+
+The combined lab configuration reopened the 64 MiB catalog with replay,
+binary transfer and fast Bluetooth all enabled. Sharing the two replay
+trace buffers recovered 5,120 bytes for the C heap. Both replay capacities,
+typing buffers and stack sizes kept their existing limits.
+[Startup fix](https://github.com/disarmyouwitha/StenoSquid/pull/13)
+
+- The fixture has 32 catalog dictionaries, 16 enabled, 2,934,544 compact
+  entries and 17 free 64 KiB blocks. Samples from 11 compact images above
+  32 MiB matched the generated fixture. USB and Bluetooth binary session
+  setup and cancellation passed without sending dictionary data.
+- The first 560-stroke run produced exact output and missed 192 deadlines.
+  Two subsequent runs on the same build produced exact output near 300 WPM
+  with zero deadline misses or input overflows. This was injected replay
+  with USB output capture. Physical split/Bluetooth typing and sleep/wake
+  remain separate checks.
+- The worst-case replay runs for this fixture are complete. Use the
+  populated board for the remaining storage qualification.
+
+### Owner storage test on the populated board
+
+1. Connect over USB. Record the catalog order and enabled flags, free
+   blocks and largest free run, and a couple of known lookups. Export a
+   dictionary you plan to delete so you can compare its entries later.
+2. Use **Download full backup** before changing the pool and verify the saved file. Save it
+   outside the browser. Keep the initial backup if you later want to
+   restore the original fixture and priorities.
+3. Delete a selected test dictionary, rescan, and verify that the intended
+   dictionary disappeared and unrelated dictionaries and lookups remain.
+4. Run **Preview USB Repack**. Compare the proposed free run with the
+   current map, then confirm **Repack**. After reconnect, check the map,
+   dictionary order, enabled flags and known lookups.
+5. Reinstall the selected dictionary and compare its exported entries
+   with the original. Check the enabled state and priority, then reboot
+   and recheck lookups and persistence. Capture elapsed times, any errors,
+   and the before/after maps. Keep the existing 32-slot lab firmware
+   while the fixture or its full backup requires more than 16 slots.
+
+This owner test covers backup, delete, repack and reinstall. Near-full
+bulk transfer rates and physical Bluetooth sleep/wake are still open.

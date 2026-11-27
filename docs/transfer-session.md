@@ -1,12 +1,14 @@
 # Experimental binary transfer session (Phase 2 prototype)
 
-Status: **host-tested prototype, not wired into firmware.** The legacy Base64
-console is unchanged and remains the compatibility/recovery path. Nothing here
-changes storage formats, shipping defaults, USB/BLE descriptors or the safety
-queue. Throughput figures are **not measured**; see "Not yet done".
+Status: **hardware-tested opt-in firmware and browser client.** Chrome
+WebHID reached 62.5 KiB/s over USB. Windows Bluetooth reached 5.8 KiB/s
+with the fast-link lab option. The legacy Base64 console remains available
+for compatibility and recovery.
 
-
-> **USB-only by default (owner decision 2026-11-26).** Shipping builds refuse the binary session over Bluetooth until it reaches 50 KiB/s (measured 0.61 KiB/s). `CONFIG_ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH` re-enables it for lab builds (it is on in `transfer.conf`).
+> Binary transfer over Bluetooth remains lab-only until a staged upload
+> reaches 50 KiB/s of useful payload in Chrome. The `transfer.conf` lab
+> fragment enables `CONFIG_ZMK_STENO_SQUID_TRANSFER_OVER_BLUETOOTH` for
+> measurement. See the [Bluetooth qualification gate](bluetooth.md#bluetooth-qualification-gate).
 
 ## Files
 
@@ -147,22 +149,19 @@ to the legacy path; eight seeded lossy links (drops, bit flips, duplicates, reor
 identical; a dead link raises without sending any legacy write; refusal and absence fall back to Base64; scripted
 keyboards pin the END-before-COMMIT rule, NAK-driven recovery and error reporting. Five deliberate client mutations
 are each caught. These fixtures upload about 1.6 KB, so they say nothing about speed.
-## Test status (2026-11-24)
+## Verification
 
-Passed: C++ suites under clang++ and g++ (`-Wall -Wextra -Werror`), JS suite under Node 22.
-The staged test uploads the planner's real import and compaction plans through the session into the real
-`NativeStage` and requires flash **byte-identical** to the legacy erase/write/commit path, safe cold-open at all
-100 simulated torn-write points per plan, and clean refusal for wrong CRC, truncation, disconnect and kind mismatch.
-Six deliberate source mutations (three in the session, three in the adapter) are each caught. Not run: real firmware, USB/BLE,
-browser WebHID, any hardware.
+Host tests compare real import and compaction plans against the legacy
+path and exercise torn writes, dropped frames, and lost acknowledgments.
+The opt-in firmware and browser client have also completed verified
+uploads on the nice!nano. On the near-full 64 MiB Boardsource, USB and
+Bluetooth session setup and cancellation passed without data writes.
+[Hardware results](engineering-notes-2026-11-25.md)
 
-## Not yet done (needs approval or hardware)
+## Remaining qualification
 
-1. Browser UI: a user-visible indicator and an opt-out switch (the client already honours `console.binary_transfer`).
-   Not exercised in a real browser (needs WebHID and a keyboard). The JS codec `transfer_frame.js` is kept for a
-   future JS-native path and is not used by the Python client.
-2. CDC (Web Serial) mapping; this build carries frames on the HID console report only.
-3. Hardware bring-up of the opt-in build (flash `Left.uf2` built with `transfer.conf`) once the board is free.
-4. Instrumentation and throughput/RAM measurements (do not quote any figure
-   until measured on the 64 MiB board once Phase 1 releases it).
-5. Download (keyboard → host) direction; this prototype is upload only.
+- Run a verified Chrome upload against the Bluetooth throughput gate.
+- Measure near-full transfer and repack on the 64 MiB Boardsource.
+- Qualify keyboard-to-host bulk transfer separately. The binary session
+  currently handles uploads. Exports and backups continue to use the
+  existing console paths.
